@@ -51,3 +51,17 @@ Record the Android version, phone model, permission settings, observed update in
 - Do not run production deployment until test accounts, backup/data review, and API/role tests are complete.
 - The old AppDeploy app and `main` branch are retained. No legacy data has been imported by this migration.
 - A production APK needs a private signing key managed outside the repository. Never commit the signing key or its password.
+
+
+## Push notification setup
+
+The app now registers Android FCM device tokens and the Functions backend sends a push notification whenever a document is created in `staff_notifications`. Direct and group message previews are not included in lock-screen notification text.
+
+Before push delivery can work:
+1. In Firebase project `kandb-net-sevice`, register an Android app with package name `in.kandbnetservice.management`.
+2. Download that Android app's `google-services.json` file.
+3. Base64-encode the file locally and add the resulting value as the GitHub Actions repository secret `ANDROID_GOOGLE_SERVICES_JSON_BASE64`. Do not commit the JSON file to this public repository.
+4. Deploy the updated Functions after the Firebase owner has confirmed project permissions and billing.
+5. Install a build containing the Firebase Android configuration, sign in, allow notifications, and verify a test push while the app is backgrounded and fully closed.
+
+The APK workflow can still compile without the secret, but that build will not be push-ready. Push delivery is not considered verified until a real Android device receives a test message while the app is not open.
