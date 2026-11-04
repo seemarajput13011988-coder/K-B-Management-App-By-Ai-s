@@ -86,3 +86,60 @@ export function isConfirmedGpsLossReason(reason: unknown): boolean {
     'Phone location services are unavailable',
   ].includes(reason);
 }
+
+
+export type CustomerLedgerEntry = {
+  id: string;
+  date: string;
+  type: 'Invoice' | 'Payment';
+  description: string;
+  debit: number;
+  credit: number;
+  reference: string;
+};
+
+export function buildCustomerLedger(
+  invoices: Array<Record<string, any>>,
+  payments: Array<Record<string, any>>,
+  customerId: string,
+): { items: Array<CustomerLedgerEntry & { balance: number }>; totalBilled: number; totalPaid: number; outstandingBalance: number } {
+  const entries: CustomerLedgerEntry[] = [];
+  for (const invoice of invoices) {
+    if (invoice.customerId !== customerId || invoice.voidedAt) continue;
+    const amount = Number(invoice.amount || 0);
+    if (!Number.isFinite(amount) || amount <= 0) continue;
+    entries.push({
+      id: 'invoice-' + String(invoice.id || ''),
+      // Record the actual posting date, not the future due date.
+      date: String(invoice.createdAt || invoice.dueDate || '').slice(0, 10),
+      type: 'Invoice',
+      description: 'Monthly service invoice · ' + String(invoice.period || ''),
+      debit: amount,
+      credit: 0,
+      reference: String(invoice.id || ''),
+    });
+  }
+  for (const payment of payments) {
+    if (payment.customerId !== customerId) continue;
+    const amount = Number(payment.amount || 0);
+    if (!Number.isFinite(amount) || amount <= 0) continue;
+    entries.push({
+      id: 'payment-' + String(payment.id || ''),
+      date: String(payment.paidAt || payment.createdAt || '').slice(0, 10),
+      type: 'Payment',
+      description: 'Payment received · ' + String(payment.method || 'Other') + (payment.month ? ' · ' + String(payment.month) : ''),
+      debit: 0,
+      credit: amount,
+      reference: String(payment.id || ''),
+    });
+  }
+  entries.sort((a, b) => a.date.localeCompare(b.date) || (a.type === b.type ? 0 : a.type === 'Invoice' ? -1 : 1) || a.id.localeCompare(b.id));
+  let balance = 0;
+  const items = entries.map(entry => {
+    balance = Math.round((balance + entry.debit - entry.credit) * 100) / 100;
+    return { ...entry, balance };
+  });
+  const totalBilled = Math.round(items.reduce((sum, item) => sum + item.debit, 0) * 100) / 100;
+  const totalPaid = Math.round(items.reduce((sum, item) => sum + item.credit, 0) * 100) / 100;
+  return { items, totalBilled, totalPaid, outstandingBalance: Math.round((totalBilled - totalPaid) * 100) / 100 };
+}
