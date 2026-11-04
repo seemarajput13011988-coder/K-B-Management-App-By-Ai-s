@@ -279,7 +279,7 @@ export const api = onRequest(
 
       if (path === '/api/staff-registration-requests' && method === 'GET') {
         if (!allow(user, ['admin'], res)) return;
-        const items = (await list('staff_registration_requests')).sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+        const items = (await list('staff_registration_requests')).map(({ trackingHash, ...safe }) => safe).sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
         send(res, 200, { items }); return;
       }
       if (path.startsWith('/api/staff-registration-requests/') && method === 'PUT') {
