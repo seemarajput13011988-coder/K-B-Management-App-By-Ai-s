@@ -44,6 +44,7 @@ Authentication and staff accounts; customers; plans; payments; dashboards; atten
 - [x] Add deny-by-default Firestore rules and Firebase Hosting configuration.
 - [x] Add Capacitor Android app configuration and dependencies.
 - [ ] Configure the confirmed Firebase project and register its web app.
+- [x] Add secure Cloud Functions HTTP API foundation and ID-token verification.
 - [ ] Port backend APIs and authentication.
 - [ ] Migrate and verify data.
 - [ ] Add Capacitor Android build and CI.
