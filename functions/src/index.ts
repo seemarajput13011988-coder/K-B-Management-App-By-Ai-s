@@ -534,9 +534,14 @@ export const api = onRequest(
         };
         const inventoryRef = db.collection('inventory').doc();
         const skuKey = sku.toLowerCase();
+        const skuReservationRef = db.collection('inventory_skus').doc(createHash('sha256').update(skuKey).digest('hex'));
         const outcome = await db.runTransaction(async transaction => {
-          const existing = await transaction.get(db.collection('inventory'));
-          if (existing.docs.some(document => String(document.data().sku || '').toLowerCase() === skuKey)) return false;
+          const [reservation, existing] = await Promise.all([
+            transaction.get(skuReservationRef),
+            transaction.get(db.collection('inventory'))
+          ]);
+          if (reservation.exists || existing.docs.some(document => String(document.data().sku || '').toLowerCase() === skuKey)) return false;
+          transaction.create(skuReservationRef, { itemId: inventoryRef.id, skuKey, createdAt: now() });
           transaction.create(inventoryRef, { ...record, skuKey });
           return true;
         });
@@ -605,14 +610,23 @@ export const api = onRequest(
             send(res, 400, { error: 'Enter valid item details, minimum stock and unit cost.' }); return;
           }
           const itemRef = db.collection('inventory').doc(id), skuKey = sku.toLowerCase();
+          const newSkuRef = db.collection('inventory_skus').doc(createHash('sha256').update(skuKey).digest('hex'));
           const updatedAt = now();
           const outcome = await db.runTransaction(async transaction => {
-            const [latest, duplicate] = await Promise.all([
-              transaction.get(itemRef),
-              transaction.get(db.collection('inventory'))
-            ]);
+            const latest = await transaction.get(itemRef);
             if (!latest.exists) return 'missing';
+            const current = latest.data() || {};
+            const oldSkuKey = String(current.sku || '').toLowerCase();
+            const oldSkuRef = oldSkuKey ? db.collection('inventory_skus').doc(createHash('sha256').update(oldSkuKey).digest('hex')) : null;
+            const [newReservation, duplicate, oldReservation] = await Promise.all([
+              transaction.get(newSkuRef),
+              transaction.get(db.collection('inventory')),
+              oldSkuRef ? transaction.get(oldSkuRef) : Promise.resolve(null)
+            ]);
+            if (newReservation.exists && newReservation.data()?.itemId !== id) return 'duplicate';
             if (duplicate.docs.some(document => document.id !== id && String(document.data().sku || '').toLowerCase() === skuKey)) return 'duplicate';
+            if (oldSkuRef && oldSkuKey !== skuKey && oldReservation?.exists && oldReservation.data()?.itemId === id) transaction.delete(oldSkuRef);
+            transaction.set(newSkuRef, { itemId: id, skuKey, updatedAt });
             transaction.update(itemRef, {
               name, sku, skuKey, category, unit, minimumQuantity, unitCost, supplier: clean(body.supplier, 100),
               location: clean(body.location, 100), notes: clean(body.notes, 500), active: body.active !== false, updatedAt
