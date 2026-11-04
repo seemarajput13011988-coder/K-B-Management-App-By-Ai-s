@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
+import type { FormEvent } from 'react';
 import { api } from './lib/api';
 
-type Customer = { id: string; name: string; plan: string; monthlyFee: number; dueDate: string };
+type Customer = { id: string; name: string; phone?: string; plan: string; monthlyFee: number; dueDate: string };
 type Plan = { id: string; name: string; price: number; active: boolean };
 type Subscription = {
   id: string; customerId: string; customerName: string; plan: string; startDate: string; endDate: string;
@@ -50,7 +51,9 @@ export default function SubscriptionWorkspace({ customers, plans, isAdmin, flash
     if (!selectedCustomer) return;
     setPlan(selectedCustomer.plan || plans.find(item=>item.active)?.name || '');
     setAmount(String(selectedCustomer.monthlyFee || plans.find(item=>item.name===selectedCustomer.plan)?.price || 0));
-    setStartDate(selectedCustomer.dueDate ? addDays(selectedCustomer.dueDate,1) : todayKey());
+    const nextStart = selectedCustomer.dueDate ? addDays(selectedCustomer.dueDate,1) : todayKey();
+    setStartDate(nextStart);
+    setEndDate(addDays(nextStart,30));
   },[customerId]);
   useEffect(()=>{
     const selectedPlan=plans.find(item=>item.name===plan);
@@ -58,7 +61,7 @@ export default function SubscriptionWorkspace({ customers, plans, isAdmin, flash
   },[plan]);
 
   const visible = useMemo(()=>items.filter(item=>filter==='All'||item.status===filter),[items,filter]);
-  async function createRenewal(event: React.FormEvent) {
+  async function createRenewal(event: FormEvent) {
     event.preventDefault();
     if(!customerId||!plan||!startDate||!endDate||Number(amount)<=0) { flash('Complete all renewal details.'); return; }
     setSaving(true);
