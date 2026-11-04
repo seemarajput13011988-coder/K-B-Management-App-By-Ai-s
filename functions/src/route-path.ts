@@ -66,3 +66,13 @@ export function subscriptionExpiryKind(
   if (endDate === threeDaysAhead) return 'due-soon';
   return null;
 }
+
+
+export function calculateInventoryBalance(currentQuantity: unknown, movementType: unknown, movementQuantity: unknown): number | null {
+  const current = Number(currentQuantity);
+  const amount = Number(movementQuantity);
+  if (!Number.isInteger(current) || current < 0 || !Number.isInteger(amount) || amount <= 0) return null;
+  if (movementType === 'IN') return current + amount;
+  if (movementType === 'OUT' && amount <= current) return current - amount;
+  return null;
+}
