@@ -129,6 +129,16 @@ export async function signInAppUser(userId: string, password: string) {
     throw new Error('Firebase accepted the sign-in, but the K&B account profile could not be loaded: ' + detail);
   }
 }
+export async function changeAppUserId(currentPassword: string, newUserId: string) {
+  if (!firebaseAuth?.currentUser?.email) throw new Error('Please sign in again to change your user ID.');
+  const userId = newUserId.trim();
+  if (!/^[a-zA-Z0-9_-]{3,32}$/.test(userId)) throw new Error('Use 3–32 letters, numbers, underscores or hyphens.');
+  const user = firebaseAuth.currentUser;
+  const credential = EmailAuthProvider.credential(user.email, currentPassword);
+  await reauthenticateWithCredential(user, credential);
+  await api.post('/api/auth/change-user-id', { userId });
+  await signOut(firebaseAuth);
+}
 export async function changeAppPassword(currentPassword: string, newPassword: string) {
   if (!firebaseAuth?.currentUser?.email) throw new Error('Please sign in again to change your password.');
   if (newPassword.length < 10) throw new Error('Choose a password with at least 10 characters.');
