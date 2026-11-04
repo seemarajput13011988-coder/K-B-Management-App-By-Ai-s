@@ -1,8 +1,11 @@
+import { createHash } from 'node:crypto';
 import { initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
+import { getMessaging } from 'firebase-admin/messaging';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import { onRequest } from 'firebase-functions/v2/https';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
+import { onDocumentCreated } from 'firebase-functions/v2/firestore';
 import { logger } from 'firebase-functions';
 import { defineSecret } from 'firebase-functions/params';
 import { gpsGracePeriodExpired, routePath } from './route-path.js';
@@ -685,6 +688,27 @@ export const api = onRequest(
         send(res, 201, { id: locationRef.id, saved: true, gpsRestored: outcome.restored }); return;
       }
 
+      if (path === '/api/push-tokens' && method === 'POST') {
+        const token = clean(body.token, 4096);
+        if (token.length < 20) { send(res, 400, { error: 'A valid device push token is required.' }); return; }
+        const tokenId = createHash('sha256').update(token).digest('hex');
+        const tokenRef = db.collection('push_tokens').doc(tokenId);
+        if (body.action === 'unregister') {
+          const existing = await tokenRef.get();
+          if (existing.exists && existing.data()?.userId === user.uid) await tokenRef.delete();
+          send(res, 200, { unregistered: true }); return;
+        }
+        const existing = await tokenRef.get();
+        await tokenRef.set({
+          userId: user.uid,
+          token,
+          platform: clean(body.platform, 20) || 'android',
+          createdAt: existing.exists ? existing.data()?.createdAt || now() : now(),
+          updatedAt: now()
+        }, { merge: true });
+        send(res, 201, { registered: true }); return;
+      }
+
       if (path === '/api/notifications' && method === 'GET') {
         const all = await list('staff_notifications');
         const items = all.filter(item => item.recipientId === user.uid || (user.role === 'admin' && item.recipientRole === 'admin')).sort((a,b) => String(b.createdAt||'').localeCompare(String(a.createdAt||''))).slice(0,100);
@@ -997,4 +1021,53 @@ export const sendTaskDueReminders = onSchedule({ schedule: '0 9 * * *', timeZone
       });
     });
   }
+});
+
+
+// Every server-created staff notification is also delivered through FCM to
+// that user's registered devices. Message previews are intentionally omitted
+// from lock-screen push payloads for privacy.
+export const deliverStaffPushNotifications = onDocumentCreated({ document: 'staff_notifications/{notificationId}', region: 'asia-south1' }, async event => {
+  const notification = event.data?.data();
+  const recipientId = String(notification?.recipientId || '');
+  if (!recipientId) return;
+
+  const tokenSnapshot = await db.collection('push_tokens').where('userId', '==', recipientId).limit(500).get();
+  if (tokenSnapshot.empty) return;
+
+  const tokenDocs = tokenSnapshot.docs;
+  const tokens = tokenDocs.map(doc => String(doc.data().token || '')).filter(Boolean);
+  if (!tokens.length) return;
+
+  const type = String(notification?.type || '');
+  const title = String(notification?.title || 'K&B Management Nexus').slice(0, 120);
+  const body = ['direct-message', 'group-message'].includes(type)
+    ? 'You have a new message. Open K&B Management Nexus to view it.'
+    : String(notification?.message || 'You have a new update.').slice(0, 180);
+
+  const response = await getMessaging().sendEachForMulticast({
+    tokens,
+    notification: { title, body },
+    data: {
+      notificationId: String(event.params.notificationId),
+      type,
+      relatedId: String(notification?.relatedId || '')
+    },
+    android: { priority: 'high' }
+  });
+
+  const staleTokenDeletes: Promise<unknown>[] = [];
+  response.responses.forEach((result, index) => {
+    if (!result.success && ['messaging/registration-token-not-registered', 'messaging/invalid-registration-token'].includes(String(result.error?.code || ''))) {
+      const matchingDoc = tokenDocs.find(doc => doc.data().token === tokens[index]);
+      if (matchingDoc) staleTokenDeletes.push(matchingDoc.ref.delete());
+    }
+  });
+  if (staleTokenDeletes.length) await Promise.all(staleTokenDeletes);
+  logger.info('Push notification delivery attempted', {
+    notificationId: event.params.notificationId,
+    recipientId,
+    successCount: response.successCount,
+    failureCount: response.failureCount
+  });
 });
