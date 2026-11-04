@@ -91,6 +91,7 @@ function firebaseSignInError(error: unknown): Error {
     'auth/invalid-credential': 'Firebase rejected this user ID or password. If this is the first login on the new Firebase system, the admin account must be initialized first; old app passwords are not automatically copied.',
     'auth/user-not-found': 'This account has not been created in Firebase Authentication yet. The admin must complete first-time setup or create this staff account.',
     'auth/wrong-password': 'The password is incorrect for this Firebase account.',
+    'auth/configuration-not-found': 'Firebase Authentication has not been initialized for project kandb-net-sevice, or it has no Email/Password provider configuration. The project owner must open Firebase Console → Authentication, choose Get started if shown, then enable Email/Password under Sign-in method.',
     'auth/operation-not-allowed': 'Email/Password sign-in is disabled in Firebase Console. The project owner must enable Authentication → Sign-in method → Email/Password.',
     'auth/invalid-api-key': 'The APK has an invalid Firebase API key. Rebuild it with the Web App configuration from project kandb-net-sevice.',
     'auth/app-not-authorized': 'This Firebase app is not authorized for the configured API key. Check the Firebase project Web App configuration and API key restrictions.',
