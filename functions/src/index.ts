@@ -852,9 +852,17 @@ export const enforceGpsGracePeriod = onSchedule({ schedule: 'every 1 minutes', t
     }
     if (elapsed >= 15 * 60000) {
       const cancelledAt = now();
-      await db.collection('attendance').doc(item.id).update({ checkOutAt: cancelledAt, status: 'Cancelled - GPS unavailable', gpsStatus: 'disabled', gpsCancelled: true, gpsRestartRequired: true, gpsCancelledAt: cancelledAt, gpsCancellationReason: item.gpsIssueReason || 'GPS was not restored within 15 minutes', shiftEvents: FieldValue.arrayUnion({ type: 'gps-cancelled', at: cancelledAt, reason: 'GPS was not restored within 15 minutes' }) });
-      await db.collection('staff_notifications').add({ recipientId: item.userId, type: 'gps-cancelled', title: 'Shift cancelled', message: 'Your shift was cancelled because GPS was not restored within 15 minutes. Contact an admin to restart it.', createdAt: cancelledAt, read: false, attendanceId: item.id });
-      await db.collection('audit_logs').add({ actorId: 'system', actorName: 'K&B Attendance Monitor', action: 'GPS_CANCEL_SHIFT', entityType: 'attendance', entityId: item.id, description: 'Automatically cancelled shift after the 15-minute GPS grace period', createdAt: cancelledAt, serverCreatedAt: FieldValue.serverTimestamp() });
+      const attendanceRef = db.collection('attendance').doc(item.id);
+      const didCancel = await db.runTransaction(async transaction => {
+        const latest = await transaction.get(attendanceRef);
+        const current = latest.data();
+        if (!latest.exists || !current || !current.gpsIssueStartedAt || current.checkOutAt || current.gpsRestartRequired) return false;
+        transaction.update(attendanceRef, { checkOutAt: cancelledAt, status: 'Cancelled - GPS unavailable', gpsStatus: 'disabled', gpsCancelled: true, gpsRestartRequired: true, gpsCancelledAt: cancelledAt, gpsCancellationReason: current.gpsIssueReason || 'GPS was not restored within 15 minutes', shiftEvents: FieldValue.arrayUnion({ type: 'gps-cancelled', at: cancelledAt, reason: 'GPS was not restored within 15 minutes' }) });
+        return true;
+      });
+      if (!didCancel) continue;
+      await db.collection('staff_notifications').doc(item.id + '-gps-cancelled').set({ recipientId: item.userId, recipientRole: 'staff', type: 'gps-cancelled', title: 'Shift cancelled', message: 'Your shift was cancelled because GPS was not restored within 15 minutes. Contact an admin to restart it.', createdAt: cancelledAt, read: false, attendanceId: item.id }, { merge: true });
+      await db.collection('audit_logs').doc('gps-cancelled-' + item.id).set({ actorId: 'system', actorName: 'K&B Attendance Monitor', action: 'GPS_CANCEL_SHIFT', entityType: 'attendance', entityId: item.id, description: 'Automatically cancelled shift after the 15-minute GPS grace period', createdAt: cancelledAt, serverCreatedAt: FieldValue.serverTimestamp() }, { merge: true });
     }
   }
 });
