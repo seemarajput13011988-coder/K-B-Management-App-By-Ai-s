@@ -5,6 +5,7 @@ import { LocalNotifications } from '@capacitor/local-notifications';
 import { PushNotifications } from '@capacitor/push-notifications';
 import StaffOperations from './StaffOperations';
 import FinanceWorkspace from './FinanceWorkspace';
+import SubscriptionWorkspace from './SubscriptionWorkspace';
 import { useAppPreferences } from './appPreferences';
 import { api as client, changeAppPassword, changeAppUserId, signInAppUser, signOutAppUser, submitStaffRegistrationRequest, getStaffRegistrationStatus } from './lib/api';
 import {
@@ -505,6 +506,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
     { label: taskPage, icon: ClipboardList, count: pendingTasks || undefined },
     ...(isAdmin ? [{ label: 'Team Operations', icon: Activity }] : [{ label: 'My Day', icon: CalendarDays }]),
     { label: 'Customers', icon: Users, count: customers.length },
+    { label: 'Subscriptions', icon: CalendarDays },
     ...(isAdmin ? [{ label: 'Plans & Pricing', icon: Wifi }] : []),
     ...(isAdmin ? [{ label: 'Staff', icon: UserRound, count: staff.length }] : []),
     ...(isAdmin ? [{ label: 'Finance & Billing', icon: IndianRupee }] : []),
@@ -628,6 +630,8 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                   : page === 'Customers'
                     ? 'Manage customer details, connections and account status.'
                     : page === 'Plans & Pricing'                      ? 'Your available internet packages and monthly pricing.'
+                      : page === 'Subscriptions'
+                        ? 'Manage customer renewals, subscription periods and expiry dates.'
                       : page === 'Payments'
                         ? 'Track customer collections and payment history.'
                         : page === 'Staff'
@@ -678,6 +682,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
 
           {page === (isAdmin ? 'Team Operations' : 'My Day') && <StaffOperations session={session} customers={customers} flash={flash} />}
           {page === 'Finance & Billing' && isAdmin && <FinanceWorkspace session={session} customers={customers} payments={payments} flash={flash} />}
+          {page === 'Subscriptions' && <SubscriptionWorkspace customers={customers} plans={plans} isAdmin={isAdmin} flash={flash} />}
           {page === 'Overview' && !isAdmin && <StaffOperations session={session} customers={customers} flash={flash} compact />}
 
           {page === 'Overview' && (
