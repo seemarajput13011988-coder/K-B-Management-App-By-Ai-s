@@ -8,6 +8,7 @@ const config: CapacitorConfig = {
     allowMixedContent: false,
     useLegacyBridge: true,
   },
+  // The native background-location callback uses CapacitorHttp for network uploads.
   plugins: {
     CapacitorHttp: {
       enabled: true,
