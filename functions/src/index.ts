@@ -172,6 +172,7 @@ export const api = onRequest(
           const password = typeof body.password === 'string' ? body.password : '';
           if (password.length < 10) { send(res, 400, { error: 'Choose a password with at least 10 characters.' }); return; }
           await auth.updateUser(id, { password });
+          await auth.revokeRefreshTokens(id);
           await audit(user, 'RESET_PASSWORD', 'staff', id, 'Reset staff password');
           send(res, 200, { reset: true }); return;
         }
