@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { api as client } from '@appdeploy/client';
+import { api as client } from './lib/api';
 import { Download, Plus, RefreshCw, ReceiptText, TrendingDown, TrendingUp, Wallet } from 'lucide-react';
 
 type Session = { token: string; user: { id: string; displayName: string; role: 'admin' | 'staff' } };
