@@ -1,3 +1,4 @@
+import { CapacitorHttp } from '@capacitor/core';
 import { EmailAuthProvider, onAuthStateChanged, reauthenticateWithCredential, signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import { firebaseAuth } from './firebase';
 
@@ -29,6 +30,22 @@ async function request<T = any>(path: string, method: string, payload?: Record<s
   try { data = await response.json(); } catch { data = {}; }
   if (!response.ok) throw new Error(typeof data.error === 'string' ? data.error : 'The request could not be completed. Please try again.');
   return { data };
+}
+export async function nativeApiPost<T = any>(path: string, payload: Record<string, unknown>): Promise<ApiResult<T>> {
+  if (!firebaseAuth?.currentUser) throw new Error('Please sign in again to continue location sharing.');
+  const token = await firebaseAuth.currentUser.getIdToken();
+  const url = new URL(path, API_BASE);
+  url.searchParams.delete('sessionToken');
+  const response = await CapacitorHttp.post({
+    url: url.toString(),
+    headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+    data: payload,
+    connectTimeout: 15000,
+    readTimeout: 15000
+  });
+  const data: any = response.data || {};
+  if (response.status < 200 || response.status >= 300) throw new Error(typeof data.error === 'string' ? data.error : 'The location update could not be sent.');
+  return { data: data as T };
 }
 export const api = {
   get: <T = any>(path: string) => request<T>(path, 'GET'),
