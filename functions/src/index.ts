@@ -277,8 +277,8 @@ export const api = onRequest(
             updates.userId = userId;
             authUpdates.email = userId.toLowerCase() + '@accounts.kandbnetservice.in';
           }
-          await db.collection('users').doc(id).update(updates);
           await auth.updateUser(id, authUpdates);
+          await db.collection('users').doc(id).update(updates);
           await audit(user, 'UPDATE', 'staff', id, body.userId !== undefined ? 'Updated staff profile and user ID' : 'Updated staff profile/status');
           send(res, 200, { updated: true }); return;
         }
