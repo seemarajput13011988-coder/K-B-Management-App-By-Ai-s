@@ -1298,9 +1298,15 @@ export const sendSubscriptionExpiryReminders = onSchedule({ schedule: '0 9 * * *
       : kind === 'due-today'
         ? customerName + ' subscription expires today. Please arrange renewal.'
         : customerName + ' subscription expired on ' + subscription.endDate + '. Update the customer after checking renewal.';
-    if (kind === 'overdue') {
-      await db.collection('subscriptions').doc(subscription.id).update({ status: 'Expired', expiredAt: now() });
-    }
+    const subscriptionRef = db.collection('subscriptions').doc(subscription.id);
+    const stillCurrent = await db.runTransaction(async transaction => {
+      const latest = await transaction.get(subscriptionRef);
+      const current = latest.data();
+      if (!latest.exists || !current || current.status !== 'Active' || String(current.endDate) !== String(subscription.endDate)) return false;
+      if (kind === 'overdue') transaction.update(subscriptionRef, { status: 'Expired', expiredAt: now() });
+      return true;
+    });
+    if (!stillCurrent) continue;
     for (const recipient of uniqueRecipients) {
       const notificationId = 'subscription-' + subscription.id + '-' + kind + '-' + String(subscription.endDate) + '-' + String(recipient.id);
       const notificationRef = db.collection('staff_notifications').doc(notificationId);
