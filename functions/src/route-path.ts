@@ -12,3 +12,11 @@ export function gpsGracePeriodExpired(issueStartedAt: unknown, currentTime = Dat
   const startedAt = Date.parse(issueStartedAt);
   return Number.isFinite(startedAt) && currentTime - startedAt >= 15 * 60 * 1000;
 }
+
+
+export function taskReminderKind(dueDate: string, today: string, tomorrow: string): 'upcoming' | 'due-today' | 'overdue' | null {
+  if (dueDate === tomorrow) return 'upcoming';
+  if (dueDate === today) return 'due-today';
+  if (dueDate < today) return 'overdue';
+  return null;
+}
