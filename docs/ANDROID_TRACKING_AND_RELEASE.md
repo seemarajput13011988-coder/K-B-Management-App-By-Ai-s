@@ -92,8 +92,8 @@ This key is a public browser key embedded in the built app, not a server secret.
 - Admins can create, edit and archive inventory items with SKU, category, unit, stock quantity, minimum-stock alert, unit cost, supplier and storage location.
 - Staff can view active inventory items and issue stock to a job with a required reason. Staff do not see unit cost or supplier details and cannot add received stock.
 - Admins can record stock received or issued. Every movement stores the before/after quantity, actor, timestamp and reason.
-- Stock movements run in a Firestore transaction and reject a stock issue that would make quantity negative.
-- Inventory history is preserved; items are archived instead of hard-deleted.
+- Stock movements run in a Firestore transaction and reject a stock issue that would make quantity negative. Inventory SKUs are checked for uniqueness inside transactions, including older records.
+- When a movement takes stock to or below the minimum level, active admins receive a deduplicated low-stock notification. Inventory history is preserved; items are archived instead of hard-deleted.
 
 ## Installation jobs
 
