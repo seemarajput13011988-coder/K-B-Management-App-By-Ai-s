@@ -619,6 +619,72 @@ export const api = onRequest(
         send(res, 200, { deleted: true }); return;
       }
 
+      if (path === '/api/installations' && method === 'GET') {
+        const items = await list('installations');
+        send(res, 200, { items: (user.role === 'admin' ? items : items.filter(item => item.assignedTo === user.uid)).sort((a, b) => String(a.scheduledDate || '').localeCompare(String(b.scheduledDate || ''))) }); return;
+      }
+      if (path === '/api/installations' && method === 'POST') {
+        if (!allow(user, ['admin'], res)) return;
+        const customerId = clean(body.customerId, 128), customer = await getDoc('customers', customerId);
+        const assignedTo = clean(body.assignedTo, 128), assigned = await staffFor(assignedTo);
+        const type = clean(body.type, 40), scheduledDate = clean(body.scheduledDate, 10);
+        if (!customer || !assigned || assigned.role !== 'staff' || assigned.active !== true || !isValidDateKey(scheduledDate) || !['New connection', 'Upgrade', 'Repair', 'Relocation'].includes(type)) {
+          send(res, 400, { error: 'Choose a customer, active staff member, valid date and installation type.' }); return;
+        }
+        const record = {
+          customerId, customerName: clean(customer.name, 100), phone: clean(customer.phone, 30),
+          address: clean(body.address, 300) || clean(customer.address, 300), type, scheduledDate,
+          assignedTo, assignedToName: clean(assigned.displayName, 80), status: 'Scheduled',
+          notes: clean(body.notes, 1000), createdAt: now(), createdBy: user.uid, createdByName: user.displayName
+        };
+        const ref = await db.collection('installations').add(record);
+        await db.collection('staff_notifications').add({
+          recipientId: assignedTo, recipientRole: 'staff', type: 'installation-assigned',
+          title: 'Installation assigned', message: type + ' for ' + record.customerName + ' is scheduled for ' + scheduledDate + '.',
+          createdAt: now(), read: false, relatedId: ref.id
+        });
+        await audit(user, 'CREATE', 'installation', ref.id, 'Scheduled ' + type + ' for ' + record.customerName);
+        send(res, 201, { id: ref.id, ...record }); return;
+      }
+      if (path.startsWith('/api/installations/')) {
+        const id = routeId(path, '/api/installations'), existing = await getDoc('installations', id);
+        if (!existing) { send(res, 404, { error: 'Installation job not found.' }); return; }
+        if (user.role === 'staff' && existing.assignedTo !== user.uid) { send(res, 403, { error: 'You can update only installation jobs assigned to you.' }); return; }
+        if (method === 'PUT') {
+          const status = clean(body.status, 24);
+          if (!['Scheduled', 'In progress', 'Completed', 'Cancelled'].includes(status)) {
+            send(res, 400, { error: 'Choose a valid installation status.' }); return;
+          }
+          const patch: Data = { status, updatedAt: now(), updatedBy: user.uid };
+          if (body.notes !== undefined) patch.notes = clean(body.notes, 1000);
+          if (status === 'Completed') patch.completedAt = now();
+          if (user.role === 'admin') {
+            if (body.scheduledDate !== undefined) {
+              const scheduledDate = clean(body.scheduledDate, 10);
+              if (!isValidDateKey(scheduledDate)) { send(res, 400, { error: 'Enter a valid installation date.' }); return; }
+              patch.scheduledDate = scheduledDate;
+            }
+            if (body.assignedTo !== undefined) {
+              const assignedTo = clean(body.assignedTo, 128), assigned = assignedTo ? await staffFor(assignedTo) : null;
+              if (assignedTo && (!assigned || assigned.role !== 'staff' || assigned.active !== true)) { send(res, 400, { error: 'Choose an active staff member.' }); return; }
+              patch.assignedTo = assignedTo;
+              patch.assignedToName = assigned ? clean(assigned.displayName, 80) : '';
+            }
+            if (body.address !== undefined) patch.address = clean(body.address, 300);
+          }
+          await db.collection('installations').doc(id).update(patch);
+          if (user.role === 'admin' && patch.assignedTo && patch.assignedTo !== existing.assignedTo) {
+            await db.collection('staff_notifications').add({
+              recipientId: patch.assignedTo, recipientRole: 'staff', type: 'installation-assigned',
+              title: 'Installation assigned', message: String(existing.type || 'Installation') + ' for ' + String(existing.customerName || 'customer') + ' is assigned to you.',
+              createdAt: now(), read: false, relatedId: id
+            });
+          }
+          await audit(user, 'UPDATE', 'installation', id, 'Updated installation for ' + String(existing.customerName || 'customer') + ' to ' + status);
+          send(res, 200, { updated: true }); return;
+        }
+      }
+
       if (path === '/api/complaints' && method === 'GET') {
         const items = await list('complaints');
         send(res,200,{items:user.role === 'admin' ? items : items.filter(item => item.assignedTo === user.uid || item.createdBy === user.uid)}); return;
