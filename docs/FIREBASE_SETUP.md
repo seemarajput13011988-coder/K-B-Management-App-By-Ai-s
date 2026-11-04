@@ -1,9 +1,9 @@
 # Firebase setup checklist
 
-Target project: `kandb-net-service`.
+Target project: `kandb-net-sevice`.
 
 ## 1. Firebase Console
-1. Confirm the Project ID is exactly `kandb-net-service`.
+1. Confirm the Project ID is exactly `kandb-net-sevice`.
 2. Enable Authentication > Sign-in method > Email/Password.
 3. Confirm whether Cloud Firestore already exists before creating or changing a database. Preserve any existing collections.
 4. Register a Web app in Project settings > General > Your apps.
