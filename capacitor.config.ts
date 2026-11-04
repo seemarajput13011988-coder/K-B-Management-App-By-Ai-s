@@ -4,7 +4,6 @@ const config: CapacitorConfig = {
   appId: 'in.kandbnetservice.management',
   appName: 'K&B Customer Management',
   webDir: 'dist',
-  bundledWebRuntime: false,
   android: {
     allowMixedContent: false,
   },
