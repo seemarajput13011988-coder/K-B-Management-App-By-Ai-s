@@ -655,6 +655,7 @@ export const api = onRequest(
           if (!['Scheduled', 'In progress', 'Completed', 'Cancelled'].includes(status)) {
             send(res, 400, { error: 'Choose a valid installation status.' }); return;
           }
+          if (user.role === 'staff' && status === 'Cancelled') { send(res, 403, { error: 'Only an administrator can cancel an installation job.' }); return; }
           const patch: Data = { status, updatedAt: now(), updatedBy: user.uid };
           if (body.notes !== undefined) patch.notes = clean(body.notes, 1000);
           if (status === 'Completed') patch.completedAt = now();
