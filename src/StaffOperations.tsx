@@ -223,6 +223,7 @@ export default function StaffOperations({ session, customers, flash, compact = f
   }, [selectedGroupId, request]);
 
   useEffect(() => {
+    if (admin) return;
     if (!activeShift || !myToday) {
       consentPromptedShiftRef.current = null;
       if (gpsConsentShiftId) {
@@ -242,7 +243,7 @@ export default function StaffOperations({ session, customers, flash, compact = f
       setGpsMessage('You did not agree to location sharing. This shift is being ended; contact an administrator if this was unexpected.');
       void request('post', '/api/attendance/check-out').then(() => refresh()).catch(() => setGpsMessage('Location sharing was declined, but the shift could not be ended automatically. Please contact an administrator.'));
     }
-  }, [activeShift, myToday?.id, gpsConsentShiftId, request, refresh]);
+  }, [admin, activeShift, myToday?.id, gpsConsentShiftId, request, refresh]);
 
   useEffect(() => {
     if (!activeShift || admin || gpsConsentShiftId !== myToday?.id || !Capacitor.isNativePlatform()) return;
@@ -383,6 +384,7 @@ export default function StaffOperations({ session, customers, flash, compact = f
         try { localStorage.setItem('kandb-gps-consent-shift', result.data.id); } catch { /* in-memory consent still applies for this app session */ }
         setGpsConsentShiftId(result.data.id);
       } else if (action === 'check-out') {
+        consentPromptedShiftRef.current = myToday?.id || null;
         try { localStorage.removeItem('kandb-gps-consent-shift'); } catch { /* storage may be unavailable */ }
         setGpsConsentShiftId(null);
       }
