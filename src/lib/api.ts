@@ -33,6 +33,19 @@ export const api = {
   put: <T = any>(path: string, payload?: Record<string, unknown>) => request<T>(path, 'PUT', payload),
   delete: <T = any>(path: string) => request<T>(path, 'DELETE'),
 };
+export async function recoverAdminPassword(recoveryCode: string, newPassword: string) {
+  const url = new URL('/api/auth/recover-admin', API_BASE);
+  const response = await fetch(url.toString(), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ userId: 'Brajraj', recoveryCode, newPassword }),
+    cache: 'no-store',
+  });
+  let data: any = {};
+  try { data = await response.json(); } catch { data = {}; }
+  if (!response.ok) throw new Error(typeof data.error === 'string' ? data.error : 'Admin password recovery failed.');
+  return data;
+}
 export async function signInAppUser(userId: string, password: string) {
   if (!firebaseAuth) throw new Error('Firebase is not configured yet. Add the K&B Firebase web app settings first.');
   const id = userId.trim().toLowerCase();
