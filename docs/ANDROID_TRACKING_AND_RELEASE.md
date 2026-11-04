@@ -65,3 +65,14 @@ Before push delivery can work:
 5. Install a build containing the Firebase Android configuration, sign in, allow notifications, and verify a test push while the app is backgrounded and fully closed.
 
 The APK workflow can still compile without the secret, but that build will not be push-ready. Push delivery is not considered verified until a real Android device receives a test message while the app is not open.
+
+## Multi-worker Google Maps setup
+
+The admin live-location screen displays all staff location points together when the Google Maps JavaScript API key is available at build time.
+
+1. In the Google Cloud project used for the K&B app, enable **Maps JavaScript API** and configure billing as required by Google.
+2. Create a browser/API key restricted to the Maps JavaScript API. Restrict allowed website origins to the production admin domain and the Capacitor WebView origin used by the app (normally `http://localhost/*`); verify the exact origin in the installed Android build before finalising restrictions.
+3. Add the key as the GitHub Actions repository secret `VITE_GOOGLE_MAPS_API_KEY`. The Android APK workflow passes this value into the Vite build.
+4. For any separate web-hosting build, add the same variable to that hosting provider's build environment and rebuild the site.
+
+This key is a public browser key embedded in the built app, not a server secret. Protect it with API and application restrictions; never use an unrestricted key. If it is absent, the admin page shows a setup notice and keeps the per-worker Google Maps links available rather than pretending a map loaded.
