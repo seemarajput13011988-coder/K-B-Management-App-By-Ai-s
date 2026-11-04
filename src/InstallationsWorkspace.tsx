@@ -1,12 +1,20 @@
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { api } from './lib/api';
+import { Download } from 'lucide-react';
 
 type Customer={id:string;name:string;phone?:string;address:string};
 type Staff={id:string;displayName:string;active:boolean};
 type Installation={id:string;customerId:string;customerName:string;phone?:string;address:string;type:string;scheduledDate:string;assignedTo:string;assignedToName:string;status:'Scheduled'|'In progress'|'Completed'|'Cancelled';notes:string;createdAt:string};
 const dateToday=()=>{const d=new Date();return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-');};
 const prettyDate=(value:string)=>value?new Date(value+'T12:00:00').toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}):'—';
+function exportInstallations(items:Installation[]){
+  const rows=[['Customer','Phone','Address','Job type','Scheduled date','Assigned staff','Status','Notes'],
+    ...items.map(item=>[item.customerName,item.phone||'',item.address,item.type,item.scheduledDate,item.assignedToName,item.status,item.notes||''])];
+  const csv='\uFEFF'+rows.map(row=>row.map(value=>'"'+String(value??'').replace(/"/g,'""')+'"').join(',')).join('\r\n');
+  const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
+  const link=document.createElement('a');link.href=url;link.download='kb-installations-'+dateToday()+'.csv';link.click();URL.revokeObjectURL(url);
+}
 
 export default function InstallationsWorkspace({customers,staff,isAdmin,flash}:{customers:Customer[];staff:Staff[];isAdmin:boolean;flash:(message:string)=>void}) {
   const [items,setItems]=useState<Installation[]>([]);
@@ -33,7 +41,7 @@ export default function InstallationsWorkspace({customers,staff,isAdmin,flash}:{
   async function updateJob(item:Installation,status:Installation['status']){try{await api.put('/api/installations/'+item.id,{status,notes:item.notes||''});await load();flash('Installation status updated.');}catch(error){flash(error instanceof Error?error.message:'Could not update installation.');}}
 
   return <section className="panel table-panel">
-    <div className="toolbar"><div><h2>Installation jobs</h2><p className="subtle">Schedule new connections, upgrades, repairs and relocations.</p></div>{isAdmin&&<button className="btn primary" onClick={()=>{setEditingJob(null);setShowForm(value=>!value);}}>+ Schedule installation</button>}</div>
+    <div className="toolbar"><div><h2>Installation jobs</h2><p className="subtle">Schedule new connections, upgrades, repairs and relocations.</p></div><div className="installation-toolbar-actions"><button className="btn secondary" disabled={!items.length} onClick={()=>exportInstallations(items)}><Download size={14}/> Export CSV</button>{isAdmin&&<button className="btn primary" onClick={()=>{setEditingJob(null);setShowForm(value=>!value);}}>+ Schedule installation</button>}</div></div>
     {showForm&&isAdmin&&<form className="installation-form" onSubmit={createJob}><strong className="installation-form-heading">{editingJob?'Edit installation job':'Schedule installation'}</strong>
       {!editingJob&&<label>Customer<select required value={customerId} onChange={e=>setCustomerId(e.target.value)}>{customers.map(item=><option key={item.id} value={item.id}>{item.name} · {item.phone||'Customer'}</option>)}</select></label>}
       <label>Assigned staff<select required value={assignedTo} onChange={e=>setAssignedTo(e.target.value)}>{staff.filter(item=>item.active).map(item=><option key={item.id} value={item.id}>{item.displayName}</option>)}</select></label>
@@ -53,7 +61,7 @@ export default function InstallationsWorkspace({customers,staff,isAdmin,flash}:{
       {!items.length&&<p className="ops-empty">{isAdmin?'No installation jobs yet. Schedule a new connection, upgrade or repair.':'No installation jobs are assigned to you yet.'}</p>}
     </div>}
     <style>{`
-      .installation-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;padding:16px;margin:12px 0 18px;border:1px solid var(--border,#dbe2ec);border-radius:14px;background:var(--surface-soft,#f7f9fc)}
+      .installation-toolbar-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.installation-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;padding:16px;margin:12px 0 18px;border:1px solid var(--border,#dbe2ec);border-radius:14px;background:var(--surface-soft,#f7f9fc)}
       .installation-form label{display:grid;gap:6px;font-size:12px;font-weight:700;color:var(--muted,#526176)}
       .installation-form input,.installation-form select,.installation-form textarea,.installation-footer select{width:100%;min-height:39px;padding:8px 10px;border:1px solid var(--border,#dbe2ec);border-radius:9px;background:var(--surface,#fff);color:var(--text,#172033);font:inherit}
       .installation-address{grid-column:1/-1}.installation-form-actions{grid-column:1/-1;display:flex;justify-content:flex-end;gap:8px}
