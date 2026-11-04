@@ -17,7 +17,8 @@ async function request<T = any>(path: string, method: string, payload?: Record<s
   const headers: Record<string, string> = { Authorization: 'Bearer ' + token };
   let body: string | undefined;
   if (payload) {
-    const { sessionToken: _ignored, ...safePayload } = payload;
+    const safePayload = { ...payload };
+    delete safePayload.sessionToken;
     headers['Content-Type'] = 'application/json';
     body = JSON.stringify(safePayload);
   }
