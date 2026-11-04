@@ -1,6 +1,6 @@
 # Existing Backend API Inventory
 
-Extracted from the preserved AppDeploy backend snapshot `1793770810412`. These routes form the migration checklist; each must be reimplemented and authorization-tested before the frontend switches to Firebase.
+Extracted from the preserved AppDeploy backend snapshot `1793770810412`. These routes form the migration checklist. The Firebase migration branch now contains implementations for the listed business modules; every route still requires build, emulator and role-based verification before production use.
 
 ## Health and authentication
 - `GET /api/_healthcheck`
@@ -74,3 +74,9 @@ Extracted from the preserved AppDeploy backend snapshot `1793770810412`. These r
 - `GET /api/audit`
 
 **Total: 59 route declarations.** The migrated backend must preserve route behavior, data validation, role boundaries, staff record scoping, and audit logging—not just endpoint names.
+
+## Current implementation notes
+- Sign-in is handled by Firebase Authentication in the browser; the Functions API verifies Firebase ID tokens.
+- Admin bootstrap and admin recovery are protected by separate Firebase Functions secrets.
+- The password-change route is being moved to Firebase client-side reauthentication and remains pending.
+- The business API handlers are implemented in `functions/src/index.ts`; implementation does not mean they have passed compilation or emulator tests.
