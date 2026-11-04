@@ -51,6 +51,14 @@ export async function nativeApiPost<T = any>(path: string, payload: Record<strin
   }
   return { data: data as T };
 }
+export async function submitStaffRegistrationRequest(input: { userId: string; displayName: string; phone?: string; reason?: string }) {
+  const url = new URL('/api/staff-registration-requests', API_BASE);
+  const response = await fetch(url.toString(), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input), cache: 'no-store' });
+  let data: any = {};
+  try { data = await response.json(); } catch { data = {}; }
+  if (!response.ok) throw new Error(typeof data.error === 'string' ? data.error : 'Could not submit your staff registration request.');
+  return data as { id: string; status: 'pending'; message: string };
+}
 export const api = {
   get: <T = any>(path: string) => request<T>(path, 'GET'),
   post: <T = any>(path: string, payload?: Record<string, unknown>) => request<T>(path, 'POST', payload),
