@@ -12,7 +12,7 @@ const adminRecoveryCode = defineSecret('ADMIN_RECOVERY_CODE');
 const adminBootstrapSecret = defineSecret('ADMIN_BOOTSTRAP_SECRET');
 
 type Role = 'admin' | 'staff';
-type AppUser = { uid: string; id: string; userId: string; displayName: string; role: Role; active: boolean };
+type AppUser = { uid: string; id: string; userId: string; displayName: string; role: Role; active: boolean; authTime: number };
 type Data = Record<string, any>;
 
 const clean = (value: unknown, max = 300): string =>
@@ -44,7 +44,7 @@ async function requireUser(req: any): Promise<AppUser | null> {
     const data = snap.data()!;
     if (data.active !== true || !['admin', 'staff'].includes(data.role)) return null;
     return { uid: decoded.uid, id: decoded.uid, userId: clean(data.userId, 40),
-      displayName: clean(data.displayName, 80), role: data.role, active: true };
+      displayName: clean(data.displayName, 80), role: data.role, active: true, authTime: Number(decoded.auth_time || 0) };
   } catch { return null; }
 }
 function allow(user: AppUser, roles: Role[], res: any): boolean {
@@ -123,7 +123,7 @@ export const api = onRequest(
       const adminId = admins.docs[0].id;
       await auth.updateUser(adminId, { password: newPassword });
       await auth.revokeRefreshTokens(adminId);
-      await audit({ uid: adminId, id: adminId, userId: 'Brajraj', displayName: 'Brajraj', role: 'admin', active: true }, 'RECOVER_PASSWORD', 'admin', adminId, 'Admin password recovered');
+      await audit({ uid: adminId, id: adminId, userId: 'Brajraj', displayName: 'Brajraj', role: 'admin', active: true, authTime: Math.floor(Date.now() / 1000) }, 'RECOVER_PASSWORD', 'admin', adminId, 'Admin password recovered');
       send(res, 200, { reset: true }); return;
     }
 
@@ -131,6 +131,17 @@ export const api = onRequest(
       const user = await requireUser(req);
       if (!user) { send(res, 401, { error: 'Please sign in again to continue.' }); return; }
       const body: Data = req.body && typeof req.body === 'object' ? req.body : {};
+
+      if (method === 'POST' && path === '/api/auth/change-password') {
+        const newPassword = typeof body.newPassword === 'string' ? body.newPassword : '';
+        if (newPassword.length < 10) { send(res, 400, { error: 'Choose a password with at least 10 characters.' }); return; }
+        if (!user.authTime || Date.now() / 1000 - user.authTime > 300) {
+          send(res, 401, { error: 'Please sign in again before changing your password.' }); return;
+        }
+        await auth.updateUser(user.uid, { password: newPassword });
+        await auth.revokeRefreshTokens(user.uid);
+        send(res, 200, { changed: true }); return;
+      }
 
       if (method === 'GET' && path === '/api/auth/me') {
         send(res, 200, { user: { id: user.uid, userId: user.userId, displayName: user.displayName, role: user.role, active: true } }); return;
