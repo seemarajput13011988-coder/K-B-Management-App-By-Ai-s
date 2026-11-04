@@ -1485,3 +1485,6 @@ footer span {
 .calendar-note{margin:14px 0 0;color:var(--muted,#718096);font-size:10px;line-height:1.5}
 @media(max-width:900px){.calendar-workspace{grid-template-columns:1fr}}
 @media(max-width:520px){.calendar-panel{padding:13px;border-radius:14px}.calendar-toolbar{align-items:flex-start;flex-direction:column}.calendar-controls{align-self:flex-end;margin-top:-4px}.calendar-day{min-height:54px;padding:6px;gap:7px}.calendar-day small{gap:3px;font-size:8px}.calendar-weekday{font-size:9px}.calendar-toolbar h2{font-size:20px}.calendar-agenda-head{align-items:flex-start}}
+
+/* Customer ledger controls and responsive summary */
+.finance-actions select{min-height:38px;max-width:100%;border:1px solid #dce3ed;border-radius:8px;padding:0 10px;background:#fff;color:#25344b;font:inherit;font-size:12px}.ledger-metrics{grid-template-columns:repeat(3,minmax(0,1fr));margin:12px 0 16px}.ledger-metrics article{padding:13px 15px}.ledger-metrics article>span{font-weight:700}.ledger-metrics strong{font-size:21px}.ledger-metrics+.finance-table-wrap{margin-top:4px}@media(max-width:600px){.ledger-metrics{grid-template-columns:1fr 1fr}.ledger-metrics article:last-child{grid-column:1/-1}.finance-foot .finance-actions{width:100%}.finance-foot .finance-actions button{flex:1;justify-content:center}.finance-actions select{width:100%}}
