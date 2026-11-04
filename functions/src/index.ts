@@ -588,7 +588,9 @@ export const api = onRequest(
         const ref = await db.collection('locations').add(record);
         if (active.gpsIssueStartedAt) {
           await db.collection('attendance').doc(active.id).update({ gpsIssueStartedAt: FieldValue.delete(), gpsStatus: 'active', gpsIssueReason: FieldValue.delete(), gpsReminderStage: FieldValue.delete(), gpsRestoredAt: now(), shiftEvents: FieldValue.arrayUnion({ type: 'gps-restored', at: now() }) });
-          await db.collection('staff_notifications').add({ recipientId: user.uid, type: 'gps-restored', title: 'GPS restored', message: 'Your location is back on. Your shift continues normally.', createdAt: now(), read: false, attendanceId: active.id });
+          const oldReminders = (await list('staff_notifications')).filter(item => item.attendanceId === active.id && String(item.type || '').startsWith('gps-'));
+          await Promise.all(oldReminders.map(item => db.collection('staff_notifications').doc(item.id).update({ read: true, resolvedAt: now() })));
+          await db.collection('staff_notifications').add({ recipientId: user.uid, recipientRole: 'staff', type: 'gps-restored', title: 'GPS restored', message: 'Your location is back on. Your shift continues normally.', createdAt: now(), read: false, attendanceId: active.id });
         }
         send(res, 201, { id: ref.id, saved: true, gpsRestored: !!active.gpsIssueStartedAt }); return;
       }
