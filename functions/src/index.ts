@@ -563,20 +563,20 @@ export const api = onRequest(
           const createdAt = now();
           const outcome = await db.runTransaction(async transaction => {
             const latest = await transaction.get(itemRef), current = latest.data();
-            if (!latest.exists || !current || current.active === false) return { ok: false, missing: true };
+            if (!latest.exists || !current || current.active === false) return { kind: 'missing' as const };
             const currentQuantity = Number(current.quantity);
             const nextQuantity = calculateInventoryBalance(current.quantity, type, quantity);
-            if (nextQuantity === null) return { ok: false, insufficient: true };
+            if (nextQuantity === null) return { kind: 'insufficient' as const };
             transaction.update(itemRef, { quantity: nextQuantity, updatedAt: createdAt });
             transaction.create(movementRef, {
               itemId: id, itemName: String(current.name || item.name), sku: String(current.sku || item.sku),
               type, quantity, quantityBefore: currentQuantity, quantityAfter: nextQuantity,
               reason, createdAt, createdBy: user.uid, createdByName: user.displayName
             });
-            return { ok: true, quantityAfter: nextQuantity, minimumQuantity: Number(current.minimumQuantity || 0), itemName: String(current.name || item.name), unit: String(current.unit || item.unit || 'units') };
+            return { kind: 'ok' as const, quantityAfter: nextQuantity, minimumQuantity: Number(current.minimumQuantity || 0), itemName: String(current.name || item.name), unit: String(current.unit || item.unit || 'units') };
           });
-          if (outcome.missing) { send(res, 404, { error: 'This inventory item is no longer active.' }); return; }
-          if (outcome.insufficient) { send(res, 409, { error: 'Not enough stock is available for this issue.' }); return; }
+          if (outcome.kind === 'missing') { send(res, 404, { error: 'This inventory item is no longer active.' }); return; }
+          if (outcome.kind === 'insufficient') { send(res, 409, { error: 'Not enough stock is available for this issue.' }); return; }
           await audit(user, 'STOCK_' + type, 'inventory-item', id, type + ' ' + quantity + ' ' + String(item.unit || 'units') + ': ' + reason);
           if (outcome.quantityAfter <= outcome.minimumQuantity) {
             const admins = (await list('users')).filter(entry => entry.role === 'admin' && entry.active === true);
