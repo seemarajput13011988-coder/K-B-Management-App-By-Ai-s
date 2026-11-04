@@ -8,7 +8,7 @@ import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { onDocumentCreated } from 'firebase-functions/v2/firestore';
 import { logger } from 'firebase-functions';
 import { defineSecret } from 'firebase-functions/params';
-import { gpsGracePeriodExpired, hasOverlappingSubscription, isSuperAdminAccount, isValidDateKey, isValidDateRange, routePath, subscriptionExpiryKind, taskReminderKind } from './route-path.js';
+import { calculateInventoryBalance, gpsGracePeriodExpired, hasOverlappingSubscription, isSuperAdminAccount, isValidDateKey, isValidDateRange, routePath, subscriptionExpiryKind, taskReminderKind } from './route-path.js';
 
 initializeApp();
 const auth = getAuth();
@@ -559,8 +559,8 @@ export const api = onRequest(
             const latest = await transaction.get(itemRef), current = latest.data();
             if (!latest.exists || !current || current.active === false) return { ok: false, missing: true };
             const currentQuantity = Number(current.quantity);
-            const nextQuantity = type === 'IN' ? currentQuantity + quantity : currentQuantity - quantity;
-            if (!Number.isInteger(currentQuantity) || nextQuantity < 0) return { ok: false, insufficient: true };
+            const nextQuantity = calculateInventoryBalance(current.quantity, type, quantity);
+            if (nextQuantity === null) return { ok: false, insufficient: true };
             transaction.update(itemRef, { quantity: nextQuantity, updatedAt: createdAt });
             transaction.create(movementRef, {
               itemId: id, itemName: String(current.name || item.name), sku: String(current.sku || item.sku),
