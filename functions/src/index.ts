@@ -924,9 +924,19 @@ export const api = onRequest(
         const requests = await list('holiday_requests');
         const exempt = requests.some(item => item.userId === user.uid && ['pending','approved'].includes(String(item.status)) && String(item.startDate) <= workDate && String(item.endDate) >= workDate);
         if (exempt) { send(res, 200, { monitoring: false, reason: 'holiday-exempt' }); return; }
+        const reason = clean(body.reason, 160);
+        const confirmedGpsLossReasons = new Set([
+          'Location permission denied',
+          'GPS location unavailable',
+          'Location permission was turned off',
+          'Phone location services are unavailable'
+        ]);
+        if (!confirmedGpsLossReasons.has(reason)) {
+          send(res, 400, { error: 'The GPS grace period starts only after location permission is denied or phone location services are confirmed unavailable.' }); return;
+        }
         const startedAt = active.gpsIssueStartedAt || now();
         if (!active.gpsIssueStartedAt) {
-          await db.collection('attendance').doc(active.id).update({ gpsIssueStartedAt: startedAt, gpsStatus: 'grace-period', gpsIssueReason: clean(body.reason, 160) || 'GPS signal unavailable', gpsReminderStage: 0 });
+          await db.collection('attendance').doc(active.id).update({ gpsIssueStartedAt: startedAt, gpsStatus: 'grace-period', gpsIssueReason: reason, gpsReminderStage: 0 });
           await db.collection('staff_notifications').doc(active.id + '-gps-0').set({ recipientId: user.uid, type: 'gps-reminder', title: 'Turn your GPS back on', message: 'Your shift is still active. Turn GPS/location back on within 15 minutes to avoid automatic shift cancellation.', createdAt: startedAt, read: false, attendanceId: active.id }, { merge: true });
         }
         const deadlineAt = new Date(new Date(startedAt).getTime() + 15 * 60 * 1000).toISOString();
