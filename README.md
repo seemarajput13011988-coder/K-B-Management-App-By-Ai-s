@@ -17,6 +17,10 @@ Work is being carried out on `firebase-migration`. The original AppDeploy implem
 - Core Firestore API route groups and Firebase ID-token authorization have been implemented.
 - React API calls and sign-in have been switched to the Firebase adapter on the migration branch.
 - A secret-protected first-admin setup and recovery flow is included.
+- Additional admin account creation and deactivation are supported; the primary owner account is protected.
+- Attendance supports full-day / half-day selection and reason-required admin corrections.
+- Admin Team Operations includes live foreground GPS status, a recent location history with Google Maps links, and a six-month attendance chart.
+- Finance includes a six-month collections-versus-expenses chart and mobile-friendly visual refinements.
 - Web build, Functions typecheck and manual Android APK workflows are included.
 - Group chat currently refreshes from the API; realtime transport remains pending.
 
@@ -24,7 +28,7 @@ Work is being carried out on `firebase-migration`. The original AppDeploy implem
 1. Confirm Firebase project `kandb-net-service` and verify Authentication / Firestore state.
 2. Add the Firebase Web App config to local `.env.local`; do not commit it.
 3. Configure Functions secrets `ADMIN_BOOTSTRAP_SECRET` and `ADMIN_RECOVERY_CODE`.
-4. Run the build workflows and emulator tests.
+4. Run the build workflows and emulator tests. The latest web build and Functions typecheck results are tracked in GitHub Actions.
 5. Back up and review old AppDeploy data before importing anything.
 
 ## Safety and data integrity
