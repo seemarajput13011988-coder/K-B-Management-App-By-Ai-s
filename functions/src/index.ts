@@ -1015,6 +1015,12 @@ export const api = onRequest(
         if (!allow(user, ['admin'], res)) return;
         const id = routeId(path, '/api/expenses'), item = await getDoc('expenses', id);
         if (!item) { send(res, 404, { error: 'Expense not found.' }); return; }
+        // Payroll creates a linked expense entry as part of the same transaction.
+        // Do not let the general cash-book delete action orphan a salary payment.
+        if (item.payrollId) {
+          send(res, 409, { error: 'This expense is linked to a staff salary record. Salary ledger entries cannot be deleted from the general expense list.' });
+          return;
+        }
         await db.collection('expenses').doc(id).delete();
         await audit(user, 'DELETE', 'expense', id, 'Deleted expense: ' + String(item.title || 'Expense'));
         send(res, 200, { deleted: true }); return;
