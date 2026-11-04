@@ -32,3 +32,12 @@ test('GPS grace-period check safely rejects missing or invalid timestamps', () =
   assert.equal(gpsGracePeriodExpired('', Date.now()), false);
   assert.equal(gpsGracePeriodExpired('not-a-date', Date.now()), false);
 });
+
+
+test('task reminders distinguish tomorrow, due today, overdue and future tasks', () => {
+  const { taskReminderKind } = require('../lib/route-path.js');
+  assert.equal(taskReminderKind('2026-11-05', '2026-11-04', '2026-11-05'), 'upcoming');
+  assert.equal(taskReminderKind('2026-11-04', '2026-11-04', '2026-11-05'), 'due-today');
+  assert.equal(taskReminderKind('2026-11-03', '2026-11-04', '2026-11-05'), 'overdue');
+  assert.equal(taskReminderKind('2026-11-06', '2026-11-04', '2026-11-05'), null);
+});
