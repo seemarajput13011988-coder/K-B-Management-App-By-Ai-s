@@ -1434,3 +1434,11 @@ footer span {
 [data-theme="dark"] .notification-item.unread{background:#1d304b}
 [data-theme="dark"] .notification-item p{color:#aab8ca}
 [data-theme="dark"] .notification-count{border-color:#132033}
+
+.ops-map-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:4px 0 12px}
+.ops-google-map{display:grid;gap:7px;margin:0 0 14px;border:1px solid #e5eaf1;border-radius:12px;overflow:hidden;background:#f7f9fc}
+.ops-google-map iframe{display:block;width:100%;height:320px;border:0}
+.ops-google-map small{padding:0 12px 11px;color:#77869a;font-size:10px}
+[data-theme="dark"] .ops-google-map{background:#101b2b;border-color:#2b3a50}
+[data-theme="dark"] .ops-google-map small{color:#a9b8cb}
+@media(max-width:600px){.ops-google-map iframe{height:250px}.ops-map-toolbar{align-items:stretch}.ops-map-toolbar .btn{width:100%;text-align:center}}
