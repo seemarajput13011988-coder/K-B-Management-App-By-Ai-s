@@ -136,6 +136,29 @@ export const api = onRequest(
       send(res, 200, { reset: true }); return;
     }
 
+    if (method === 'POST' && path === '/api/staff-registration-requests') {
+      const input: Data = req.body && typeof req.body === 'object' ? req.body : {};
+      const userId = clean(input.userId, 32);
+      const displayName = clean(input.displayName, 80);
+      const phone = clean(input.phone, 30);
+      const reason = clean(input.reason, 300);
+      if (!/^[a-zA-Z0-9_-]{3,32}$/.test(userId) || !displayName) {
+        send(res, 400, { error: 'Enter a valid staff ID and your full name.' }); return;
+      }
+      const userIdLower = userId.toLowerCase();
+      const allUsers = await list('users');
+      if (allUsers.some(item => String(item.userId || '').toLowerCase() === userIdLower)) {
+        send(res, 409, { error: 'This staff ID is already registered. Contact your administrator.' }); return;
+      }
+      const pending = await db.collection('staff_registration_requests').where('userIdLower', '==', userIdLower).where('status', '==', 'pending').limit(1).get();
+      if (!pending.empty) {
+        send(res, 409, { error: 'A registration request for this staff ID is already pending. Please wait for the administrator to review it.' }); return;
+      }
+      const createdAt = now();
+      const ref = await db.collection('staff_registration_requests').add({ userId, userIdLower, displayName, phone, reason, status: 'pending', createdAt });
+      send(res, 201, { id: ref.id, status: 'pending', message: 'Your request has been submitted. An administrator must approve it before you can sign in.' }); return;
+    }
+
     try {
       const user = await requireUser(req);
       if (!user) { send(res, 401, { error: 'Please sign in again to continue.' }); return; }
@@ -225,6 +248,46 @@ export const api = onRequest(
           await db.collection('users').doc(id).update({ active: false, deletedAt: now() });
           await audit(user, 'DISABLE', 'admin', id, 'Disabled administrator account');
           send(res, 200, { deleted: true }); return;
+        }
+      }
+
+      if (path === '/api/staff-registration-requests' && method === 'GET') {
+        if (!allow(user, ['admin'], res)) return;
+        const items = (await list('staff_registration_requests')).sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+        send(res, 200, { items }); return;
+      }
+      if (path.startsWith('/api/staff-registration-requests/') && method === 'PUT') {
+        if (!allow(user, ['admin'], res)) return;
+        const id = routeId(path, '/api/staff-registration-requests');
+        const request = await getDoc('staff_registration_requests', id);
+        if (!request || request.status !== 'pending') { send(res, 404, { error: 'Pending registration request not found.' }); return; }
+        const decision = body.status === 'approved' ? 'approved' : body.status === 'rejected' ? 'rejected' : '';
+        if (!decision) { send(res, 400, { error: 'Choose approve or reject.' }); return; }
+        if (decision === 'rejected') {
+          await db.collection('staff_registration_requests').doc(id).update({ status: 'rejected', reviewedAt: now(), reviewedBy: user.uid, reviewedByName: user.displayName });
+          await audit(user, 'REJECT_STAFF_REGISTRATION', 'staff_registration_request', id, 'Rejected staff registration for ' + String(request.userId || 'unknown user'));
+          send(res, 200, { updated: true, status: 'rejected' }); return;
+        }
+        const password = typeof body.password === 'string' ? body.password : '';
+        if (password.length < 10) { send(res, 400, { error: 'Set a temporary password with at least 10 characters before approving.' }); return; }
+        const userId = clean(request.userId, 32);
+        const userIdLower = userId.toLowerCase();
+        const users = await list('users');
+        if (users.some(item => String(item.userId || '').toLowerCase() === userIdLower)) {
+          send(res, 409, { error: 'This staff ID has already been registered. Reject or close this duplicate request.' }); return;
+        }
+        const email = userIdLower + '@accounts.kandbnetservice.in';
+        let account: Awaited<ReturnType<typeof auth.createUser>> | undefined;
+        try {
+          account = await auth.createUser({ email, password, displayName: clean(request.displayName, 80), disabled: false });
+          const record = { userId, displayName: clean(request.displayName, 80), role: 'staff', active: true, createdAt: now(), registrationRequestId: id };
+          await db.collection('users').doc(account.uid).set(record);
+          await db.collection('staff_registration_requests').doc(id).update({ status: 'approved', reviewedAt: now(), reviewedBy: user.uid, reviewedByName: user.displayName, approvedUserId: account.uid });
+          await audit(user, 'APPROVE_STAFF_REGISTRATION', 'staff_registration_request', id, 'Approved staff registration and created account ' + userId);
+          send(res, 200, { updated: true, status: 'approved', user: { id: account.uid, ...record } }); return;
+        } catch (error) {
+          if (account?.uid) await auth.deleteUser(account.uid).catch(() => undefined);
+          throw error;
         }
       }
 
