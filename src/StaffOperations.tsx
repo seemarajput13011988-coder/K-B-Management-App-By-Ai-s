@@ -77,6 +77,8 @@ export default function StaffOperations({ session, customers, flash, compact = f
   const [busy, setBusy] = useState(false);
   const [gpsMessage, setGpsMessage] = useState('Location sharing is limited to active work shifts.');
   const [gpsDeadline, setGpsDeadline] = useState<string | null>(null);
+  const [gpsConsentShiftId, setGpsConsentShiftId] = useState<string | null>(() => { try { return localStorage.getItem('kandb-gps-consent-shift'); } catch { return null; } });
+  const consentPromptedShiftRef = useRef<string | null>(null);
   const [announcementForm, setAnnouncementForm] = useState({ title: '', message: '' });
   const [messageForm, setMessageForm] = useState({ recipientId: '', message: '' });
   const [visitForm, setVisitForm] = useState({ customerId: customers[0]?.id || '', purpose: 'Installation / service visit', notes: '' });
@@ -221,7 +223,29 @@ export default function StaffOperations({ session, customers, flash, compact = f
   }, [selectedGroupId, request]);
 
   useEffect(() => {
-    if (!activeShift || admin || !Capacitor.isNativePlatform()) return;
+    if (!activeShift || !myToday) {
+      consentPromptedShiftRef.current = null;
+      if (gpsConsentShiftId) {
+        try { localStorage.removeItem('kandb-gps-consent-shift'); } catch { /* storage may be unavailable */ }
+        setGpsConsentShiftId(null);
+      }
+      return;
+    }
+    if (gpsConsentShiftId === myToday.id || consentPromptedShiftRef.current === myToday.id) return;
+    consentPromptedShiftRef.current = myToday.id;
+    const accepted = window.confirm('Your shift was started by an administrator. K&B shares your live work location with authorised administrators only while the shift is active. Android shows a persistent tracking notification. Do you agree to location sharing for this shift?');
+    if (accepted) {
+      try { localStorage.setItem('kandb-gps-consent-shift', myToday.id); } catch { /* in-memory consent still applies for this app session */ }
+      setGpsConsentShiftId(myToday.id);
+      setGpsMessage('Location sharing consent recorded for this shift.');
+    } else {
+      setGpsMessage('You did not agree to location sharing. This shift is being ended; contact an administrator if this was unexpected.');
+      void request('post', '/api/attendance/check-out').then(() => refresh()).catch(() => setGpsMessage('Location sharing was declined, but the shift could not be ended automatically. Please contact an administrator.'));
+    }
+  }, [activeShift, myToday?.id, gpsConsentShiftId, request, refresh]);
+
+  useEffect(() => {
+    if (!activeShift || admin || gpsConsentShiftId !== myToday?.id || !Capacitor.isNativePlatform()) return;
     let cancelled = false;
     let watcherId: string | null = null;
     const startBackgroundTracking = async () => {
@@ -286,10 +310,10 @@ export default function StaffOperations({ session, customers, flash, compact = f
       cancelled = true;
       if (watcherId) void BackgroundGeolocation.removeWatcher({ id: watcherId });
     };
-  }, [activeShift, admin, refresh]);
+  }, [activeShift, admin, refresh, gpsConsentShiftId, myToday?.id]);
 
   useEffect(() => {
-    if (!activeShift || admin || Capacitor.isNativePlatform() || !navigator.geolocation) return;
+    if (!activeShift || admin || gpsConsentShiftId !== myToday?.id || Capacitor.isNativePlatform() || !navigator.geolocation) return;
     let cancelled = false;
     let inFlight = false;
     const captureLocation = () => {
@@ -334,7 +358,7 @@ export default function StaffOperations({ session, customers, flash, compact = f
       window.clearInterval(interval);
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, [activeShift, admin, request, refresh]);
+  }, [activeShift, admin, request, refresh, gpsConsentShiftId, myToday?.id]);
 
   async function shift(action: 'check-in' | 'check-out') {
     setBusy(true);
@@ -354,7 +378,14 @@ export default function StaffOperations({ session, customers, flash, compact = f
           throw new Error('Enable GPS/location permission before starting your shift.');
         }
       }
-      await request('post', '/api/attendance/' + action, { ...coords, dayType, capturedAt: new Date().toISOString() });
+      const result = await request('post', '/api/attendance/' + action, { ...coords, dayType, capturedAt: new Date().toISOString() });
+      if (action === 'check-in' && result.data.id) {
+        try { localStorage.setItem('kandb-gps-consent-shift', result.data.id); } catch { /* in-memory consent still applies for this app session */ }
+        setGpsConsentShiftId(result.data.id);
+      } else if (action === 'check-out') {
+        try { localStorage.removeItem('kandb-gps-consent-shift'); } catch { /* storage may be unavailable */ }
+        setGpsConsentShiftId(null);
+      }
       await refresh();
       flash(action === 'check-in' ? 'You are checked in for today.' : 'Your shift has been checked out.');
     } catch (err) {
