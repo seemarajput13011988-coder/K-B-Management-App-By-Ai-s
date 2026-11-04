@@ -3,6 +3,7 @@ import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 
 
+const expectedFirebaseProjectId = 'kandb-net-service';
 const config = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
@@ -22,8 +23,6 @@ export const firebaseApp = firebaseConfigured
 
 export const firebaseAuth = firebaseApp ? getAuth(firebaseApp) : null;
 export const firestore = firebaseApp ? getFirestore(firebaseApp) : null;
-
-export const expectedFirebaseProjectId = 'kandb-net-service';
 
 if (firebaseConfigured && config.projectId !== expectedFirebaseProjectId) {
   console.error(
