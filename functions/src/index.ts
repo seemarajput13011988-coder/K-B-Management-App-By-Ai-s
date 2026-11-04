@@ -8,7 +8,7 @@ import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { onDocumentCreated } from 'firebase-functions/v2/firestore';
 import { logger } from 'firebase-functions';
 import { defineSecret } from 'firebase-functions/params';
-import { calculateInventoryBalance, gpsGracePeriodExpired, hasOverlappingSubscription, isConfirmedGpsLossReason, isSuperAdminAccount, isValidDateKey, isValidDateRange, routePath, subscriptionExpiryKind, taskReminderKind } from './route-path.js';
+import { buildCustomerLedger, calculateInventoryBalance, gpsGracePeriodExpired, hasOverlappingSubscription, isConfirmedGpsLossReason, isSuperAdminAccount, isValidDateKey, isValidDateRange, routePath, subscriptionExpiryKind, taskReminderKind } from './route-path.js';
 
 initializeApp();
 const auth = getAuth();
@@ -1235,43 +1235,7 @@ export const api = onRequest(
         const customer = await getDoc('customers', customerId);
         if (!customer) { send(res, 404, { error: 'Customer not found.' }); return; }
         const [invoiceItems, paymentItems] = await Promise.all([list('invoices'), list('payments')]);
-        const entries: Array<{ id: string; date: string; type: 'Invoice' | 'Payment'; description: string; debit: number; credit: number; reference: string }> = [];
-        for (const invoice of invoiceItems) {
-          if (invoice.customerId !== customerId || invoice.voidedAt) continue;
-          const amount = Number(invoice.amount || 0);
-          if (!Number.isFinite(amount) || amount <= 0) continue;
-          entries.push({
-            id: 'invoice-' + invoice.id,
-            date: String(invoice.dueDate || invoice.createdAt || '').slice(0, 10),
-            type: 'Invoice',
-            description: 'Monthly service invoice · ' + String(invoice.period || ''),
-            debit: amount,
-            credit: 0,
-            reference: String(invoice.id || '')
-          });
-        }
-        for (const payment of paymentItems) {
-          if (payment.customerId !== customerId) continue;
-          const amount = Number(payment.amount || 0);
-          if (!Number.isFinite(amount) || amount <= 0) continue;
-          entries.push({
-            id: 'payment-' + payment.id,
-            date: String(payment.paidAt || payment.createdAt || '').slice(0, 10),
-            type: 'Payment',
-            description: 'Payment received · ' + String(payment.method || 'Other') + (payment.month ? ' · ' + String(payment.month) : ''),
-            debit: 0,
-            credit: amount,
-            reference: String(payment.id || '')
-          });
-        }
-        entries.sort((a, b) => a.date.localeCompare(b.date) || (a.type === b.type ? 0 : a.type === 'Invoice' ? -1 : 1) || a.id.localeCompare(b.id));
-        let balance = 0;
-        const items = entries.map(entry => {
-          balance = Math.round((balance + entry.debit - entry.credit) * 100) / 100;
-          return { ...entry, balance };
-        });
-        const totalBilled = items.reduce((sum, item) => sum + item.debit, 0);
-        const totalPaid = items.reduce((sum, item) => sum + item.credit, 0);
+        const ledger = buildCustomerLedger(invoiceItems, paymentItems, customerId);
         send(res, 200, {
           customer: { id: customerId, name: String(customer.name || ''), phone: String(customer.phone || ''), plan: String(customer.plan || '') },
           items,
