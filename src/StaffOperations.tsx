@@ -239,7 +239,10 @@ export default function StaffOperations({ session, customers, flash, compact = f
             void nativeApiPost<{monitoring?:boolean;deadlineAt?:string;remainingSeconds?:number;reason?:string}>('/api/attendance/gps-lost', { reason })
               .then(result => {
                 if (cancelled) return;
-                if (result.data.monitoring && result.data.deadlineAt) {
+                if (!result.data.monitoring && result.data.reason === 'no-active-shift') {
+                  if (watcherId) void BackgroundGeolocation.removeWatcher({ id: watcherId });
+                  setGpsMessage('The shift is no longer active. Background location tracking has stopped.');
+                } else if (result.data.monitoring && result.data.deadlineAt) {
                   setGpsDeadline(result.data.deadlineAt);
                   const minutes = Math.max(0, Math.ceil(Number(result.data.remainingSeconds || 0) / 60));
                   setGpsMessage('GPS is unavailable. Turn it back on within 15 minutes. About ' + minutes + ' minutes remain. Your shift stays active during this grace period.');
@@ -261,7 +264,13 @@ export default function StaffOperations({ session, customers, flash, compact = f
               setGpsMessage('GPS restored. Your shift continues normally, including while the screen is locked.');
               await refresh();
             } else setGpsMessage('Background GPS tracking is active. Android shows a persistent location notification while your shift is open.');
-          }).catch(() => { if (!cancelled) setGpsMessage('Background GPS is active, but the latest point could not reach the server. Check your internet connection.'); });
+          }).catch(error => {
+            if (cancelled) return;
+            if ((error as Error & {status?:number}).status === 403 && watcherId) {
+              void BackgroundGeolocation.removeWatcher({ id: watcherId });
+              setGpsMessage('The server confirmed that your shift is no longer active. Background location tracking has stopped.');
+            } else setGpsMessage('Background GPS is active, but the latest point could not reach the server. Check your internet connection.');
+          });
         });
         if (cancelled) await BackgroundGeolocation.removeWatcher({ id: watcher });
         else {
