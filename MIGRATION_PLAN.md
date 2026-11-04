@@ -5,8 +5,8 @@ The complete 16-file source snapshot from AppDeploy version 1793770810412 is pre
 
 ## Current architecture found in source
 - React 19 + Vite + TypeScript frontend.
-- Existing frontend API calls use `@appdeploy/client`.
-- Existing backend routes and data persistence use `@appdeploy/sdk`.
+- The preserved legacy backend uses `@appdeploy/sdk`.
+- The migration branch now has a Firebase Auth-aware API adapter; legacy AppDeploy SDK imports were removed from the React modules.
 - Existing backend includes password hashing, sessions, role checks, audit logging, business modules, and realtime subscriptions.
 - The current source is not Firebase-backed yet.
 
@@ -32,9 +32,10 @@ The complete 16-file source snapshot from AppDeploy version 1793770810412 is pre
 Authentication and staff accounts; customers; plans; payments; dashboards; attendance and admin corrections; consent-based foreground GPS; tasks; complaints; announcements; direct messages and group chat; field visits; finance and invoices; expenses; CSV exports; audit logs; language and theme preferences.
 
 ## Current blockers / inputs needed
-- Correct Firebase Project ID for this K&B Customer Management app.
-- Confirm whether the Firebase project already has Authentication and Firestore enabled.
-- A secure export of the current AppDeploy data is still required before live-data migration.
+- Confirm Firebase Authentication and Firestore state in project `kandb-net-service`.
+- Add the Firebase Web App config to local `.env.local` (never commit it).
+- Set the Functions secrets `ADMIN_BOOTSTRAP_SECRET` and `ADMIN_RECOVERY_CODE`.
+- A secure export and reviewed backup of the current AppDeploy data are still required before live-data migration.
 
 ## Status
 - [x] Verify repository is private/public as configured and connected with push access.
@@ -45,7 +46,11 @@ Authentication and staff accounts; customers; plans; payments; dashboards; atten
 - [x] Add Capacitor Android app configuration and dependencies.
 - [ ] Configure the confirmed Firebase project and register its web app.
 - [x] Add secure Cloud Functions HTTP API foundation and ID-token verification.
-- [ ] Port backend APIs and authentication.
+- [x] Port the core Firestore-backed API route groups and Firebase ID-token authentication checks.
+- [x] Switch React API calls and sign-in to Firebase Authentication / Cloud Functions.
+- [ ] Finish password-change flow, realtime chat transport, and full role/edge-case review.
 - [ ] Migrate and verify data.
+- [x] Add a GitHub Actions Functions typecheck workflow.
 - [ ] Add Capacitor Android build and CI.
+- [ ] Run Functions and frontend builds; fix all reported errors.
 - [ ] Test web and Android flows for admin and staff.
