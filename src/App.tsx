@@ -12,10 +12,7 @@ import { useAppPreferences } from './appPreferences';
 import { api as client, changeAppPassword, changeAppUserId, signInAppUser, signOutAppUser, submitStaffRegistrationRequest, getStaffRegistrationStatus } from './lib/api';
 import {
   Activity,
-  ArrowDownRight,
-  ArrowUpRight,
   Bell,
-  Check,
   ChevronDown,
   CircleHelp,
   CreditCard,
@@ -23,7 +20,6 @@ import {
   LayoutDashboard,
   Menu,
   MessageSquare,
-  MoreHorizontal,
   Plus,
   Search,
   Signal,
@@ -34,15 +30,13 @@ import {
   CalendarDays,
   Phone,
   MapPin,
-  Filter,
   Clock3,
   CheckCircle2,
   ClipboardList,
-  AlertCircle,
   Pencil,
   Trash2,
   Eye,
-  Download, ShieldCheck, KeyRound, BarChart3, LogOut, UserPlus, UserRound, LockKeyhole,
+  ShieldCheck, KeyRound, BarChart3, LogOut, UserPlus, UserRound, LockKeyhole,
 } from 'lucide-react';
 
 type Session={token:string;expiresAt:number;user:{id:string;userId:string;displayName:string;role:'admin'|'staff';active:boolean;isSuperAdmin?:boolean}};
@@ -925,7 +919,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                 rows={filtered}
                 onView={setSelected}
                 onDelete={isAdmin ? removeCustomer : undefined}
-                onEdit={c => {
+                onEdit={(c: Customer) => {
                   setEditing(c);
                   setShowCustomer(true);
                 }}
@@ -1092,10 +1086,10 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
         />
       )}
       {showStaff && <StaffModal onClose={() => setShowStaff(false)} onSave={createStaff} />}
-      {showAccountSettings && <AccountSettingsModal session={session} onClose={() => setShowAccountSettings(false)} onChangeUserId={async (currentPassword, userId) => { await changeAppUserId(currentPassword, userId); onLogout(); }} onChangePassword={async (currentPassword, newPassword) => { await changeAppPassword(currentPassword, newPassword); onLogout(); }} />}
+      {showAccountSettings && <AccountSettingsModal session={session} onClose={() => setShowAccountSettings(false)} onChangeUserId={async (currentPassword: string, userId: string) => { await changeAppUserId(currentPassword, userId); onLogout(); }} onChangePassword={async (currentPassword: string, newPassword: string) => { await changeAppPassword(currentPassword, newPassword); onLogout(); }} />}
       {showTask && <TaskModal staff={staff.filter(member => member.active)} onClose={() => setShowTask(false)} onSave={saveTask} />}
-      {editStaffUserId && <StaffUsernameModal staff={editStaffUserId} onClose={() => setEditStaffUserId(null)} onSave={userId => saveStaffUserId(editStaffUserId, userId)} />}
-      {resetStaff && <StaffPasswordModal staff={resetStaff} onClose={() => setResetStaff(null)} onSave={password => saveStaffPassword(resetStaff, password)} />}
+      {editStaffUserId && <StaffUsernameModal staff={editStaffUserId} onClose={() => setEditStaffUserId(null)} onSave={(userId: string) => saveStaffUserId(editStaffUserId, userId)} />}
+      {resetStaff && <StaffPasswordModal staff={resetStaff} onClose={() => setResetStaff(null)} onSave={(password: string) => saveStaffPassword(resetStaff, password)} />}
       {selected && (
         <div
           className="modal-backdrop"
