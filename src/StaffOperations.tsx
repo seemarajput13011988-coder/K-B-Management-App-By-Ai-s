@@ -320,6 +320,13 @@ export default function StaffOperations({ session, customers, flash, compact = f
   const sortedAttendance = [...attendance].sort((a, b) => b.workDate.localeCompare(a.workDate) || b.checkInAt.localeCompare(a.checkInAt));
   const sortedVisits = [...visits].sort((a, b) => b.visitedAt.localeCompare(a.visitedAt));
   const sortedMessages = [...messages].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const attendanceTrend = Array.from({length:6},(_,index)=>{
+    const date=new Date(); date.setDate(1); date.setMonth(date.getMonth()-(5-index));
+    const key=date.getFullYear()+'-'+String(date.getMonth()+1).padStart(2,'0');
+    return {key,label:date.toLocaleString('en-IN',{month:'short'}),full:attendance.filter(item=>item.workDate.startsWith(key)&&(item.dayType||'Full day')==='Full day').length,half:attendance.filter(item=>item.workDate.startsWith(key)&&item.dayType==='Half day').length};
+  });
+  const attendanceMax=Math.max(1,...attendanceTrend.map(item=>item.full+item.half*.5));
+
 
   if (compact && !admin) return <section className="panel ops-home-shift">
     <div className="ops-home-shift-copy"><span className="eyebrow">TODAY’S ATTENDANCE</span><h2>{activeShift ? 'Your shift is active' : myToday?.checkOutAt ? 'Shift completed' : 'Ready to start work?'}</h2><p>{activeShift ? 'Checked in at ' + stamp(myToday?.checkInAt) + '. Your workday is being recorded.' : myToday?.checkOutAt ? 'You checked out at ' + stamp(myToday.checkOutAt) + '.' : 'Start your shift directly from the home screen.'}</p></div>
@@ -365,8 +372,16 @@ export default function StaffOperations({ session, customers, flash, compact = f
       <p className="ops-gps-note">{gpsMessage}</p>
     </section>}
 
+    {admin && <section className="panel ops-panel finance-chart-panel">
+      <div className="ops-panel-head"><div><span className="eyebrow">WORKFORCE ANALYTICS</span><h2>Monthly attendance trend</h2><p>Full-day and half-day attendance entries for the last six months.</p></div></div>
+      <div className="finance-chart" role="img" aria-label="Six month attendance chart">
+        {attendanceTrend.map(item=><div className="finance-chart-month" key={item.key}><div className="finance-chart-bars"><div className="finance-chart-bar income-bar" style={{height:Math.max(3,item.full/attendanceMax*100)+'%'}} title={item.full+' full-day records'}/><div className="finance-chart-bar expense-bar" style={{height:Math.max(3,item.half*.5/attendanceMax*100)+'%'}} title={item.half+' half-day records'}/></div><b>{item.label}</b><small>{item.full} full · {item.half} half</small></div>)}
+      </div>
+      <div className="finance-chart-legend"><span><i className="income-dot"/> Full day</span><span><i className="expense-dot"/> Half day (0.5)</span></div>
+    </section>}
+
     {admin && <section className="panel ops-panel">
-      <div className="ops-panel-head"><div><span className="eyebrow">TEAM VISIBILITY · LIVE</span><h2>Live staff locations</h2><p>Admin locations refresh every 15 seconds. Staff locations update about every 30 seconds while their shift is active and this app is open with location permission granted.</p></div><button className="btn secondary compact" onClick={refresh}>Refresh now</button></div>
+      <div className="ops-panel-head"><div><span className="eyebrow">TEAM VISIBILITY · LIVE</span><h2>Live staff locations</h2><p>Admin locations refresh every 15 seconds. Staff locations update about every 30 seconds while their shift is active and this app is open with location permission granted.</p></div><label className="ops-day-type">New shift type <select value={dayType} onChange={e=>setDayType(e.target.value as 'Full day'|'Half day')}><option>Full day</option><option>Half day</option></select></label><button className="btn secondary compact" onClick={refresh}>Refresh now</button></div>
       <div className="ops-location-list">{staff.map(member => {
         const loc = locations.find(item => item.userId === member.id);
         const shiftRecord = sortedAttendance.find(item => item.userId === member.id && item.workDate === today);
