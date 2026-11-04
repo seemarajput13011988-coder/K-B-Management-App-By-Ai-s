@@ -152,6 +152,22 @@ export const api = onRequest(
         send(res, 200, { changed: true }); return;
       }
 
+      if (method === 'POST' && path === '/api/auth/change-user-id') {
+        if (!user.authTime || Date.now() / 1000 - user.authTime > 300) {
+          send(res, 401, { error: 'Please sign in again before changing your user ID.' }); return;
+        }
+        const userId = clean(body.userId, 32);
+        if (!/^[a-zA-Z0-9_-]{3,32}$/.test(userId)) {
+          send(res, 400, { error: 'Use 3–32 letters, numbers, underscores or hyphens for the user ID.' }); return;
+        }
+        const existing = (await list('users')).some(item => item.id !== user.uid && String(item.userId).toLowerCase() === userId.toLowerCase());
+        if (existing) { send(res, 409, { error: 'That user ID is already in use.' }); return; }
+        const email = userId.toLowerCase() + '@accounts.kandbnetservice.in';
+        await auth.updateUser(user.uid, { email });
+        await db.collection('users').doc(user.uid).update({ userId });
+        await audit(user, 'CHANGE_USER_ID', user.role, user.uid, 'Changed own user ID');
+        send(res, 200, { changed: true, userId }); return;
+      }
       if (method === 'GET' && path === '/api/auth/me') {
         send(res, 200, { user: { id: user.uid, userId: user.userId, displayName: user.displayName, role: user.role, active: true, isSuperAdmin: user.isSuperAdmin === true } }); return;
       }
@@ -249,9 +265,21 @@ export const api = onRequest(
         if (method === 'PUT') {
           const displayName = clean(body.displayName, 80) || target.displayName;
           const active = typeof body.active === 'boolean' ? body.active : target.active === true;
-          await db.collection('users').doc(id).update({ displayName, active });
-          await auth.updateUser(id, { displayName, disabled: !active });
-          await audit(user, 'UPDATE', 'staff', id, 'Updated staff profile/status');
+          const updates: Data = { displayName, active };
+          const authUpdates: Data = { displayName, disabled: !active };
+          if (body.userId !== undefined) {
+            const userId = clean(body.userId, 32);
+            if (!/^[a-zA-Z0-9_-]{3,32}$/.test(userId)) {
+              send(res, 400, { error: 'Use 3–32 letters, numbers, underscores or hyphens for the user ID.' }); return;
+            }
+            const existing = (await list('users')).some(item => item.id !== id && String(item.userId).toLowerCase() === userId.toLowerCase());
+            if (existing) { send(res, 409, { error: 'That user ID is already in use.' }); return; }
+            updates.userId = userId;
+            authUpdates.email = userId.toLowerCase() + '@accounts.kandbnetservice.in';
+          }
+          await db.collection('users').doc(id).update(updates);
+          await auth.updateUser(id, authUpdates);
+          await audit(user, 'UPDATE', 'staff', id, body.userId !== undefined ? 'Updated staff profile and user ID' : 'Updated staff profile/status');
           send(res, 200, { updated: true }); return;
         }
         if (method === 'DELETE') {
