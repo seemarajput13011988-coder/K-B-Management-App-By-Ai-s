@@ -2,7 +2,9 @@
   "name": "kandb-firebase-functions",
   "private": true,
   "main": "lib/index.js",
-  "engines": { "node": "22" },
+  "engines": {
+    "node": "22"
+  },
   "scripts": {
     "build": "tsc",
     "serve": "npm run build && firebase emulators:start --only functions,firestore",
@@ -13,6 +15,7 @@
     "firebase-functions": "^6.4.0"
   },
   "devDependencies": {
-    "typescript": "^5.7.0"
+    "typescript": "^5.7.0",
+    "@types/node": "^22.10.0"
   }
 }
