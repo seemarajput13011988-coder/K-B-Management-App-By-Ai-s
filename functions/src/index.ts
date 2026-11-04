@@ -18,13 +18,13 @@ const clean = (value: unknown, max = 300): string =>
 const money = (value: unknown): number => Number(value);
 const validMoney = (value: unknown): boolean =>
   typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1000000;
-const datePattern = /^\\d{4}-\\d{2}-\\d{2}$/;
-const monthPattern = /^\\d{4}-\\d{2}$/;
+const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+const monthPattern = /^\d{4}-\d{2}$/;
 const now = () => new Date().toISOString();
 const send = (res: any, status: number, body: Data) => { res.status(status).json(body); };
 
 function routePath(path: string): string {
-  return path.replace(/\\/+$/, '') || '/';
+  return path.replace(/\/+$//, '') || '/';
 }
 function routeId(path: string, base: string): string {
   return decodeURIComponent(path.slice(base.length + 1));
