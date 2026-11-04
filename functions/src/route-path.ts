@@ -25,7 +25,7 @@ export function taskReminderKind(dueDate: string, today: string, tomorrow: strin
 // Super Admin is a server-assigned privilege, never a username-derived role.
 // In particular, changing an account's display/login ID to "Brajraj" must not
 // grant administrator-management permissions.
-export function isSuperAdminAccount(user: { role?: unknown; isSuperAdmin?: unknown }): boolean {
+export function isSuperAdminAccount(user: { role?: unknown; userId?: unknown; isSuperAdmin?: unknown }): boolean {
   return user.role === 'admin' && user.isSuperAdmin === true;
 }
 
