@@ -69,7 +69,7 @@ export default function LiveStaffMap({ locations, staff }: { locations: StaffLoc
         const position = { lat: point.latitude, lng: point.longitude };
         bounds.extend(position);
         const ageMs = Math.max(0, Date.now() - new Date(point.capturedAt).getTime());
-        const status = ageMs < 90000 ? 'Live location' : 'Last known location';
+        const status = ageMs < 90000 ? 'Recently updated location' : 'Last known location';
         const marker = new maps.Marker({
           map: mapRef.current,
           position,
@@ -111,7 +111,7 @@ export default function LiveStaffMap({ locations, staff }: { locations: StaffLoc
 
   return <section className="kandb-live-map-card" aria-label="All staff live locations">
     <div className="kandb-live-map-heading">
-      <div><strong>All staff on one map</strong><span>{validLocations.length} location point{validLocations.length === 1 ? '' : 's'} · refreshes automatically</span></div>
+      <div><strong>All staff locations</strong><span>{validLocations.length} location point{validLocations.length === 1 ? '' : 's'} · refreshes automatically</span></div>
       <span className="kandb-live-map-count">{validLocations.length}/{staff.length} located</span>
     </div>
     {mapsKey
