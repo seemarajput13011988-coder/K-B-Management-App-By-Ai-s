@@ -38,7 +38,8 @@ jobs:
       - name: Install dependencies and build web app
         env:
           # Firebase web config is public client configuration, not a private key.
-          VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY || 'AIzaSyAuJuFA1I06aSJ1AyHhVA86ws8c_cX1ZC8' }}
+          # Use the confirmed Web App key for this Firebase project; do not let a stale Actions secret override it.
+          VITE_FIREBASE_API_KEY: 'AIzaSyAuJuFA1I06aSJ1AyHhVA86ws8c_cX1ZC8'
           VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.VITE_FIREBASE_AUTH_DOMAIN || 'kandb-net-sevice.firebaseapp.com' }}
           VITE_FIREBASE_PROJECT_ID: kandb-net-sevice
           VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.VITE_FIREBASE_STORAGE_BUCKET || 'kandb-net-sevice.firebasestorage.app' }}
