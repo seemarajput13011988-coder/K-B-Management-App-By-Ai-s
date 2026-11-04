@@ -3,7 +3,8 @@ import type { FormEvent } from 'react';
 import { api as client, ws } from './lib/api';
 
 type Session = { token: string; user: { id: string; displayName: string; role: 'admin' | 'staff' } };
-type Attendance = { id: string; userId: string; displayName: string; workDate: string; checkInAt: string; checkOutAt?: string; dayType?: 'Full day' | 'Half day'; correctionReason?: string };
+type Attendance = { id: string; userId: string; displayName: string; workDate: string; checkInAt: string; checkOutAt?: string; dayType?: 'Full day' | 'Half day'; correctionReason?: string; gpsRestartRequired?: boolean; gpsCancelled?: boolean; status?: string };
+type HolidayRequest = { id: string; userId: string; displayName: string; startDate: string; endDate: string; reason: string; status: 'pending'|'approved'|'rejected'; createdAt: string };
 type Visit = { id: string; customerName: string; purpose: string; notes: string; visitedAt: string; staffName: string };
 type Announcement = { id: string; title: string; message: string; createdAt: string; createdByName: string };
 type Message = { id: string; senderName: string; recipientName: string; message: string; createdAt: string };
@@ -21,6 +22,8 @@ const stamp = (value?: string) => value ? new Date(value).toLocaleString('en-IN'
 export default function StaffOperations({ session, customers, flash, compact = false }: { session: Session; customers: Array<{ id: string; name: string }>; flash: (message: string) => void; compact?: boolean }) {
   const admin = session.user.role === 'admin';
   const [attendance, setAttendance] = useState<Attendance[]>([]);
+  const [holidays, setHolidays] = useState<HolidayRequest[]>([]);
+  const [holidayForm, setHolidayForm] = useState({ startDate: localDay(), endDate: localDay(), reason: '' });
   const [visits, setVisits] = useState<Visit[]>([]);
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -84,12 +87,13 @@ export default function StaffOperations({ session, customers, flash, compact = f
 
   const refresh = useCallback(async () => {
     try {
-      const [a, v, n, m, g, p] = await Promise.all([
+      const [a, v, n, m, g, p, hr] = await Promise.all([
         request('get', '/api/attendance'), request('get', '/api/visits'),
         request('get', '/api/announcements'), request('get', '/api/messages'),
-        request('get', '/api/groups'), request('get', '/api/payments')
+        request('get', '/api/groups'), request('get', '/api/payments'), request('get', '/api/holidays')
       ]);
       setAttendance(a.data.items || []);
+      setHolidays(hr.data.items || []);
       setVisits(v.data.items || []);
       setAnnouncements(n.data.items || []);
       setMessages(m.data.items || []);
@@ -203,8 +207,14 @@ export default function StaffOperations({ session, customers, flash, compact = f
         } finally {
           inFlight = false;
         }
-      }, error => {
-        if (!cancelled) setGpsMessage(error.code === 1 ? 'Location permission is off. Enable it in browser settings to share your work location.' : 'Waiting for a GPS location fix. Keep this app open for updates.');
+      }, async error => {
+        if (error.code === 1) {
+          try {
+            const result = await request('post', '/api/attendance/gps-lost', { reason: 'Location permission denied during active shift' });
+            if (result.data.cancelled) { setGpsMessage('Shift cancelled because location permission was turned off. Only an admin can restart it.'); await refresh(); }
+            else setGpsMessage('GPS cancellation was skipped for an exempt holiday date.');
+          } catch { if (!cancelled) setGpsMessage('Location permission is off. Reconnect and contact an admin if the shift status does not update.'); }
+        } else if (!cancelled) setGpsMessage('GPS signal is temporarily unavailable. Keep location enabled and retry.');
         inFlight = false;
       }, { enableHighAccuracy: true, maximumAge: 10000, timeout: 20000 });
     };
@@ -217,7 +227,7 @@ export default function StaffOperations({ session, customers, flash, compact = f
       window.clearInterval(interval);
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, [activeShift, admin, request]);
+  }, [activeShift, admin, request, refresh]);
 
   async function shift(action: 'check-in' | 'check-out') {
     setBusy(true);
@@ -228,7 +238,8 @@ export default function StaffOperations({ session, customers, flash, compact = f
           const p = await new Promise<GeolocationPosition>((resolve, reject) => navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 9000, maximumAge: 30000 }));
           coords = { latitude: p.coords.latitude, longitude: p.coords.longitude, accuracy: p.coords.accuracy };
         } catch {
-          setGpsMessage('Attendance can continue, but location permission is needed for location sharing.');
+          setGpsMessage('Location permission is required to start a shift.');
+          throw new Error('Enable GPS/location permission before starting your shift.');
         }
       }
       await request('post', '/api/attendance/' + action, { ...coords, dayType, capturedAt: new Date().toISOString() });
@@ -255,7 +266,7 @@ export default function StaffOperations({ session, customers, flash, compact = f
     try {
       await request('post', '/api/attendance/' + action, { userId, dayType });
       await refresh();
-      flash(action === 'admin-start' ? 'Staff shift started by administrator.' : 'Staff shift ended by administrator.');
+      flash(action === 'admin-start' ? 'Staff shift started or restarted by administrator.' : 'Staff shift ended by administrator.');
     } catch (err) {
       flash(err instanceof Error ? err.message : 'Could not update staff attendance.');
     } finally { setBusy(false); }
@@ -365,6 +376,12 @@ export default function StaffOperations({ session, customers, flash, compact = f
       })}{!staff.length && <tr><td colSpan={6}>No staff records available yet.</td></tr>}</tbody></table></div>
     </section>}
 
+    <section className="panel ops-panel">
+      <div className="ops-panel-head"><div><span className="eyebrow">HOLIDAY MANAGEMENT</span><h2>{admin ? 'Staff holiday requests' : 'Request a holiday'}</h2><p>Pending and approved holiday dates are exempt from automatic GPS shift cancellation.</p></div><span className="ops-pill">{holidays.filter(item=>item.status==='pending').length} PENDING</span></div>
+      {!admin && <form className="ops-form" onSubmit={e=>{e.preventDefault();submit('/api/holidays',{...holidayForm},'Holiday request submitted for admin approval.');setHolidayForm({...holidayForm,reason:''});}}><label>From <input type="date" required value={holidayForm.startDate} onChange={e=>setHolidayForm({...holidayForm,startDate:e.target.value})}/></label><label>To <input type="date" required min={holidayForm.startDate} value={holidayForm.endDate} onChange={e=>setHolidayForm({...holidayForm,endDate:e.target.value})}/></label><textarea required maxLength={300} rows={2} placeholder="Reason for holiday request" value={holidayForm.reason} onChange={e=>setHolidayForm({...holidayForm,reason:e.target.value})}/><button className="btn primary" disabled={busy}>Submit holiday request</button></form>}
+      <div className="ops-feed">{holidays.map(item=><article className="ops-feed-item" key={item.id}><div className="ops-message-top"><b>{item.displayName} · {item.startDate}{item.endDate!==item.startDate?' to '+item.endDate:''}</b><span className={'ops-pill '+(item.status==='approved'?'is-live':item.status==='rejected'?'is-idle':'')}>{item.status.toUpperCase()}</span></div><p>{item.reason}</p><small>Requested {stamp(item.createdAt)}</small>{admin && item.status==='pending' && <div className="ops-actions"><button className="btn primary compact" disabled={busy} onClick={()=>submit('/api/holidays/'+item.id,{status:'approved'},'Holiday request approved.')}>Approve</button><button className="btn danger compact" disabled={busy} onClick={()=>submit('/api/holidays/'+item.id,{status:'rejected'},'Holiday request rejected.')}>Reject</button></div>}</article>)}{!holidays.length && <p className="ops-empty">No holiday requests yet.</p>}</div>
+    </section>
+
     {!admin && <section className="panel ops-panel">
       <div className="ops-panel-head"><div><span className="eyebrow">ATTENDANCE</span><h2>My workday</h2><p>Record your shift start and finish. Work location is shared with Admin during an active shift while this app is open and location permission is granted. Sharing stops at checkout.</p></div><span className={'ops-pill ' + (activeShift ? 'is-live' : 'is-idle')}>{activeShift ? 'ON SHIFT' : myToday?.checkOutAt ? 'SHIFT COMPLETE' : 'OFF SHIFT'}</span></div>
       <div className="ops-clock-row"><div><small>CHECK IN</small><strong>{myToday ? stamp(myToday.checkInAt) : 'Not checked in'}</strong></div><div><small>CHECK OUT</small><strong>{myToday?.checkOutAt ? stamp(myToday.checkOutAt) : '—'}</strong></div></div>
@@ -387,7 +404,7 @@ export default function StaffOperations({ session, customers, flash, compact = f
         const shiftRecord = sortedAttendance.find(item => item.userId === member.id && item.workDate === today);
         const locationAge = loc ? Date.now() - new Date(loc.capturedAt).getTime() : Number.POSITIVE_INFINITY;
         const locationStatus = locationAge < 90000 ? 'Live · Updated ' : 'Last known · Updated ';
-        return <article className="ops-location-card" key={member.id}><div className="ops-person"><span className="avatar">{member.displayName.slice(0, 2).toUpperCase()}</span><div><b>{member.displayName}</b><small>{shiftRecord?.checkOutAt ? 'Checked out ' + stamp(shiftRecord.checkOutAt) : shiftRecord ? 'Checked in ' + stamp(shiftRecord.checkInAt) : 'No attendance today'}</small></div></div><div className="ops-location-detail">{loc ? <><span>{locationStatus}{stamp(loc.capturedAt)}</span><small>Accuracy approx. {Math.round(loc.accuracy)} m</small><a href={'https://www.google.com/maps?q=' + loc.latitude + ',' + loc.longitude} target="_blank" rel="noreferrer">Open in Google Maps ↗</a></> : <span>No location shared during this shift yet</span>}{!shiftRecord ? <button className="btn primary compact" disabled={busy || !member.active} onClick={() => adminShift(member.id, 'admin-start')}>Start shift</button> : shiftRecord.checkOutAt ? <span className="ops-complete">Shift completed</span> : <button className="btn danger compact" disabled={busy} onClick={() => adminShift(member.id, 'admin-end')}>End shift</button>}</div></article>;
+        return <article className="ops-location-card" key={member.id}><div className="ops-person"><span className="avatar">{member.displayName.slice(0, 2).toUpperCase()}</span><div><b>{member.displayName}</b><small>{shiftRecord?.checkOutAt ? 'Checked out ' + stamp(shiftRecord.checkOutAt) : shiftRecord ? 'Checked in ' + stamp(shiftRecord.checkInAt) : 'No attendance today'}</small></div></div><div className="ops-location-detail">{loc ? <><span>{locationStatus}{stamp(loc.capturedAt)}</span><small>Accuracy approx. {Math.round(loc.accuracy)} m</small><a href={'https://www.google.com/maps?q=' + loc.latitude + ',' + loc.longitude} target="_blank" rel="noreferrer">Open in Google Maps ↗</a></> : <span>No location shared during this shift yet</span>}{!shiftRecord ? <button className="btn primary compact" disabled={busy || !member.active} onClick={() => adminShift(member.id, 'admin-start')}>Start shift</button> : shiftRecord.gpsRestartRequired ? <button className="btn primary compact" disabled={busy || !member.active} onClick={() => adminShift(member.id, 'admin-start')}>Admin restart required</button> : shiftRecord.checkOutAt ? <span className="ops-complete">Shift completed</span> : <button className="btn danger compact" disabled={busy} onClick={() => adminShift(member.id, 'admin-end')}>End shift</button>}</div></article>;
       })}{!staff.length && <p className="ops-empty">Staff accounts will appear here after they are created.</p>}</div>
     </section>}
 
