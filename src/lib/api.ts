@@ -8,11 +8,12 @@ type ApiResult<T = any> = { data: T };
 
 async function request<T = any>(path: string, method: string, payload?: Record<string, unknown>): Promise<ApiResult<T>> {
   if (!firebaseAuth) throw new Error('Firebase is not configured yet. Add the K&B Firebase web app settings before signing in.');
-  if (!firebaseAuth.currentUser) await new Promise<void>(resolve => {
+  const auth = firebaseAuth;
+  if (!auth.currentUser) await new Promise<void>(resolve => {
     let unsubscribe = () => {};
-    unsubscribe = onAuthStateChanged(firebaseAuth, () => { unsubscribe(); resolve(); });
+    unsubscribe = onAuthStateChanged(auth, () => { unsubscribe(); resolve(); });
   });
-  const currentUser = firebaseAuth.currentUser;
+  const currentUser = auth.currentUser;
   if (!currentUser) throw new Error('Please sign in again to continue.');
   const token = await currentUser.getIdToken();
   const url = new URL(path, API_BASE);
@@ -153,7 +154,9 @@ export async function changeAppUserId(currentPassword: string, newUserId: string
   const userId = newUserId.trim();
   if (!/^[a-zA-Z0-9_-]{3,32}$/.test(userId)) throw new Error('Use 3–32 letters, numbers, underscores or hyphens.');
   const user = firebaseAuth.currentUser;
-  const credential = EmailAuthProvider.credential(user.email, currentPassword);
+  const email = user.email;
+  if (!email) throw new Error('This account does not have a sign-in email. Contact an administrator.');
+  const credential = EmailAuthProvider.credential(email, currentPassword);
   await reauthenticateWithCredential(user, credential);
   await api.post('/api/auth/change-user-id', { userId });
   await signOut(firebaseAuth);
@@ -162,7 +165,9 @@ export async function changeAppPassword(currentPassword: string, newPassword: st
   if (!firebaseAuth?.currentUser?.email) throw new Error('Please sign in again to change your password.');
   if (newPassword.length < 10) throw new Error('Choose a password with at least 10 characters.');
   const user = firebaseAuth.currentUser;
-  const credential = EmailAuthProvider.credential(user.email, currentPassword);
+  const email = user.email;
+  if (!email) throw new Error('This account does not have a sign-in email. Contact an administrator.');
+  const credential = EmailAuthProvider.credential(email, currentPassword);
   await reauthenticateWithCredential(user, credential);
   await user.getIdToken(true);
   await api.post('/api/auth/change-password', { newPassword });
