@@ -19,7 +19,7 @@ Work is being carried out on `firebase-migration`. The original AppDeploy implem
 - A secret-protected first-admin setup and recovery flow is included.
 - Additional admin account creation and deactivation are supported; the primary owner account is protected.
 - Attendance supports full-day / half-day selection and reason-required admin corrections.
-- Admin Team Operations includes live foreground GPS status, a recent location history with Google Maps links, and a six-month attendance chart.
+- Admin Team Operations includes active-shift location visibility and history. Android uses a visible native background location service with consent; browser tracking is foreground-only. Live location is best-effort and must be verified on real devices.
 - Finance includes a six-month collections-versus-expenses chart and mobile-friendly visual refinements.
 - Web build, Functions typecheck and manual Android APK workflows are included.
 - Group chat currently refreshes from the API; realtime transport remains pending.
