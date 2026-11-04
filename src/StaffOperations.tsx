@@ -3,7 +3,7 @@ import type { FormEvent } from 'react';
 import { api as client, ws } from './lib/api';
 
 type Session = { token: string; user: { id: string; displayName: string; role: 'admin' | 'staff' } };
-type Attendance = { id: string; userId: string; displayName: string; workDate: string; checkInAt: string; checkOutAt?: string };
+type Attendance = { id: string; userId: string; displayName: string; workDate: string; checkInAt: string; checkOutAt?: string; dayType?: 'Full day' | 'Half day'; correctionReason?: string };
 type Visit = { id: string; customerName: string; purpose: string; notes: string; visitedAt: string; staffName: string };
 type Announcement = { id: string; title: string; message: string; createdAt: string; createdByName: string };
 type Message = { id: string; senderName: string; recipientName: string; message: string; createdAt: string };
@@ -25,6 +25,11 @@ export default function StaffOperations({ session, customers, flash, compact = f
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
+  const [locationHistory, setLocationHistory] = useState<Location[]>([]);
+  const [admins, setAdmins] = useState<Array<{id:string;userId:string;displayName:string;active:boolean}>>([]);
+  const [adminForm, setAdminForm] = useState({userId:'',displayName:'',password:''});
+  const [dayType, setDayType] = useState<'Full day'|'Half day'>('Full day');
+  const [attendanceCorrection, setAttendanceCorrection] = useState<{id:string;dayType:'Full day'|'Half day';reason:string}|null>(null);
   const [staff, setStaff] = useState<Array<{ id: string; displayName: string; active: boolean }>>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [groups, setGroups] = useState<ChatGroup[]>([]);
@@ -45,9 +50,10 @@ export default function StaffOperations({ session, customers, flash, compact = f
   const myToday = attendance.find(item => item.userId === session.user.id && item.workDate === today);
   const activeShift = !!myToday && !myToday.checkOutAt;
 
-  const request = useCallback((method: 'get' | 'post' | 'delete', path: string, data?: Record<string, unknown>) => {
+  const request = useCallback((method: 'get' | 'post' | 'put' | 'delete', path: string, data?: Record<string, unknown>) => {
     if (method === 'get') return client.get(path + (path.includes('?') ? '&' : '?') + 'sessionToken=' + encodeURIComponent(session.token));
     if (method === 'delete') return client.delete(path + '?sessionToken=' + encodeURIComponent(session.token));
+    if (method === 'put') return client.put(path, { ...(data || {}), sessionToken: session.token });
     return client.post(path, { ...(data || {}), sessionToken: session.token });
   }, [session.token]);
 
@@ -92,9 +98,11 @@ export default function StaffOperations({ session, customers, flash, compact = f
       setGroups(availableGroups);
       setSelectedGroupId(current => current && availableGroups.some(group => group.id === current) ? current : availableGroups[0]?.id || '');
       if (admin) {
-        const [l, s] = await Promise.all([request('get', '/api/locations'), request('get', '/api/staff')]);
+        const [l, s, h, ad] = await Promise.all([request('get', '/api/locations'), request('get', '/api/staff'), request('get', '/api/locations/history'), request('get', '/api/admins')]);
         setLocations(l.data.items || []);
         setStaff(s.data.items || []);
+        setLocationHistory(h.data.items || []);
+        setAdmins(ad.data.items || []);
       }
     } catch {
       flash('Could not load team operations. Please refresh and try again.');
@@ -223,7 +231,7 @@ export default function StaffOperations({ session, customers, flash, compact = f
           setGpsMessage('Attendance can continue, but location permission is needed for location sharing.');
         }
       }
-      await request('post', '/api/attendance/' + action, { ...coords, capturedAt: new Date().toISOString() });
+      await request('post', '/api/attendance/' + action, { ...coords, dayType, capturedAt: new Date().toISOString() });
       await refresh();
       flash(action === 'check-in' ? 'You are checked in for today.' : 'Your shift has been checked out.');
     } catch (err) {
@@ -245,12 +253,33 @@ export default function StaffOperations({ session, customers, flash, compact = f
   async function adminShift(userId: string, action: 'admin-start' | 'admin-end') {
     setBusy(true);
     try {
-      await request('post', '/api/attendance/' + action, { userId });
+      await request('post', '/api/attendance/' + action, { userId, dayType });
       await refresh();
       flash(action === 'admin-start' ? 'Staff shift started by administrator.' : 'Staff shift ended by administrator.');
     } catch (err) {
       flash(err instanceof Error ? err.message : 'Could not update staff attendance.');
     } finally { setBusy(false); }
+  }
+
+  async function createAdmin(event: FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    try { await request('post','/api/admins',adminForm); setAdminForm({userId:'',displayName:'',password:''}); await refresh(); flash('Administrator account created.'); }
+    catch(err){flash(err instanceof Error?err.message:'Could not create administrator.');}
+    finally{setBusy(false);}
+  }
+  async function updateAdminAccount(item:{id:string;displayName:string;active:boolean},active:boolean) {
+    if(!window.confirm((active?'Reactivate ':'Deactivate ')+item.displayName+'?'))return;
+    setBusy(true);
+    try{await request('put','/api/admins/'+item.id,{displayName:item.displayName,active});await refresh();flash('Administrator status updated.');}
+    catch(err){flash(err instanceof Error?err.message:'Could not update administrator.');}
+    finally{setBusy(false);}
+  }
+  async function correctAttendance(event:FormEvent) {
+    event.preventDefault(); if(!attendanceCorrection?.reason.trim())return; setBusy(true);
+    try{await request('put','/api/attendance/'+attendanceCorrection.id+'/day-type',{dayType:attendanceCorrection.dayType,reason:attendanceCorrection.reason});setAttendanceCorrection(null);await refresh();flash('Attendance corrected and audit logged.');}
+    catch(err){flash(err instanceof Error?err.message:'Could not correct attendance.');}
+    finally{setBusy(false);}
   }
 
   async function createGroup(event: FormEvent) {
