@@ -500,6 +500,99 @@ export const api = onRequest(
         }
       }
 
+      if (path === '/api/expenses' && method === 'GET') {
+        if (!allow(user, ['admin'], res)) return;
+        const items = (await list('expenses')).sort((a, b) => String(b.spentAt || '').localeCompare(String(a.spentAt || '')));
+        send(res, 200, { items }); return;
+      }
+      if (path === '/api/expenses' && method === 'POST') {
+        if (!allow(user, ['admin'], res)) return;
+        const title = clean(body.title, 120), category = clean(body.category, 60), amount = money(body.amount), spentAt = clean(body.spentAt, 10), methodName = clean(body.method, 40);
+        if (!title || !category || !validMoney(amount) || amount <= 0 || !datePattern.test(spentAt) || !methodName) { send(res, 400, { error: 'Enter a valid expense title, category, amount, date and payment method.' }); return; }
+        const record = { title, category, amount, spentAt, method: methodName, notes: clean(body.notes, 300), createdBy: user.uid, createdByName: user.displayName, createdAt: now() };
+        const ref = await db.collection('expenses').add(record);
+        await audit(user, 'CREATE', 'expense', ref.id, 'Recorded ' + category + ' expense of ₹' + amount);
+        send(res, 201, { id: ref.id, ...record }); return;
+      }
+      if (path.startsWith('/api/expenses/') && method === 'DELETE') {
+        if (!allow(user, ['admin'], res)) return;
+        const id = routeId(path, '/api/expenses'), item = await getDoc('expenses', id);
+        if (!item) { send(res, 404, { error: 'Expense not found.' }); return; }
+        await db.collection('expenses').doc(id).delete();
+        await audit(user, 'DELETE', 'expense', id, 'Deleted expense: ' + String(item.title || 'Expense'));
+        send(res, 200, { deleted: true }); return;
+      }
+      if (path === '/api/invoices' && method === 'GET') {
+        if (!allow(user, ['admin'], res)) return;
+        const period = clean(req.query.period, 7);
+        if (!monthPattern.test(period)) { send(res, 400, { error: 'Select a valid billing month.' }); return; }
+        const [invoiceItems, payments] = await Promise.all([list('invoices'), list('payments')]);
+        const monthLabel = new Date(period + '-01T12:00:00').toLocaleString('en-IN', { month: 'long', year: 'numeric' });
+        const items = invoiceItems.filter(item => item.period === period).map(item => {
+          const paidAmount = payments.filter(payment => payment.customerId === item.customerId && (payment.month === monthLabel || String(payment.paidAt || '').slice(0, 7) === period)).reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+          const amount = Number(item.amount || 0);
+          return { ...item, paidAmount: item.voidedAt ? 0 : paidAmount, status: item.voidedAt ? 'Void' : paidAmount >= amount ? 'Paid' : paidAmount > 0 ? 'Partially paid' : 'Unpaid' };
+        });
+        send(res, 200, { items }); return;
+      }
+      if (path === '/api/invoices/generate' && method === 'POST') {
+        if (!allow(user, ['admin'], res)) return;
+        const period = clean(body.period, 7);
+        if (!monthPattern.test(period)) { send(res, 400, { error: 'Select a valid billing month.' }); return; }
+        const [customers, invoices] = await Promise.all([list('customers'), list('invoices')]);
+        const existing = new Set(invoices.map(item => String(item.customerId) + '|' + String(item.period)));
+        const active = customers.filter(customer => customer.status === 'Active');
+        let created = 0;
+        for (const customer of active) {
+          const key = String(customer.id) + '|' + period;
+          if (existing.has(key)) continue;
+          const [year, month] = period.split('-').map(Number);
+          const dueDay = datePattern.test(String(customer.dueDate || '')) ? Number(String(customer.dueDate).slice(-2)) : 10;
+          const dueDate = period + '-' + String(Math.min(Math.max(dueDay, 1), new Date(year, month, 0).getDate())).padStart(2, '0');
+          const id = 'inv-' + Buffer.from(key).toString('base64url').slice(0, 32);
+          await db.collection('invoices').doc(id).create({ customerId: customer.id, customerName: customer.name, period, dueDate, amount: Number(customer.monthlyFee || 0), createdAt: now(), createdBy: user.uid });
+          created++;
+        }
+        await audit(user, 'GENERATE', 'invoice_batch', period, 'Generated ' + created + ' monthly invoices for ' + period);
+        send(res, 200, { created, skippedExisting: Math.max(0, active.length - created) }); return;
+      }
+      if (path.startsWith('/api/invoices/') && path.endsWith('/void') && method === 'PUT') {
+        if (!allow(user, ['admin'], res)) return;
+        const id = decodeURIComponent(path.slice('/api/invoices/'.length, -'/void'.length)), invoice = await getDoc('invoices', id);
+        if (!invoice) { send(res, 404, { error: 'Invoice not found.' }); return; }
+        await db.collection('invoices').doc(id).update({ voidedAt: now(), voidedBy: user.uid });
+        await audit(user, 'VOID', 'invoice', id, 'Voided invoice for ' + String(invoice.customerName || 'customer') + ' (' + String(invoice.period || '') + ')');
+        send(res, 200, { voided: true }); return;
+      }
+      if (path === '/api/audit' && method === 'GET') {
+        if (!allow(user, ['admin'], res)) return;
+        const items = (await list('audit_logs')).sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || ''))).slice(0, 300);
+        send(res, 200, { items }); return;
+      }
+      if (path === '/api/visits' && method === 'GET') {
+        const items = await list('visits');
+        send(res, 200, { items: user.role === 'admin' ? items : items.filter(item => item.staffId === user.uid) }); return;
+      }
+      if (path === '/api/visits' && method === 'POST') {
+        if (!allow(user, ['staff'], res)) return;
+        const customerId = clean(body.customerId, 128), customer = await getDoc('customers', customerId);
+        if (!customer) { send(res, 404, { error: 'Customer not found.' }); return; }
+        if (customer.assignedTo !== user.uid) { send(res, 403, { error: 'You can record visits only for your assigned customers.' }); return; }
+        const purpose = clean(body.purpose, 120);
+        if (!purpose) { send(res, 400, { error: 'Enter the visit purpose.' }); return; }
+        const record = { customerId, customerName: customer.name, purpose, notes: clean(body.notes, 1200), visitedAt: clean(body.visitedAt, 40) || now(), staffId: user.uid, staffName: user.displayName };
+        const ref = await db.collection('visits').add(record);
+        send(res, 201, { id: ref.id, ...record }); return;
+      }
+      if (path.startsWith('/api/visits/') && method === 'DELETE') {
+        if (!allow(user, ['admin'], res)) return;
+        const id = routeId(path, '/api/visits'), visit = await getDoc('visits', id);
+        if (!visit) { send(res, 404, { error: 'Visit record not found.' }); return; }
+        await db.collection('visits').doc(id).delete();
+        await audit(user, 'DELETE', 'visit', id, 'Deleted field visit for ' + String(visit.customerName || 'customer'));
+        send(res, 200, { deleted: true }); return;
+      }
+
       const notMigrated = ['/api/attendance','/api/locations','/api/announcements','/api/messages','/api/groups','/api/visits','/api/expenses','/api/invoices','/api/audit'];
       if (notMigrated.some(base => path === base || path.startsWith(base + '/')) || path.startsWith('/api/complaints/')) {
         logger.warn('API route not migrated yet', { method, path, role: user.role });
