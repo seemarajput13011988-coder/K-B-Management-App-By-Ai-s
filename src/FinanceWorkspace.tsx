@@ -1,0 +1,145 @@
+import { useEffect, useMemo, useState } from 'react';
+import { api as client } from '@appdeploy/client';
+import { Download, Plus, RefreshCw, ReceiptText, TrendingDown, TrendingUp, Wallet } from 'lucide-react';
+
+type Session = { token: string; user: { id: string; displayName: string; role: 'admin' | 'staff' } };
+type Customer = { id: string; name: string; monthlyFee: number; status: string; dueDate?: string };
+type Payment = { id: string; customerId: string; customerName: string; amount: number; paidAt: string; month: string; method: string };
+type Expense = { id: string; title: string; category: string; amount: number; spentAt: string; method: string; notes?: string; createdByName: string };
+type Invoice = { id: string; customerId: string; customerName: string; period: string; dueDate: string; amount: number; status: string; paidAmount: number };
+
+const money = (value: number) => '₹' + Number(value || 0).toLocaleString('en-IN');
+const monthName = (period: string) => new Date(period + '-01T12:00:00').toLocaleString('en-IN', { month: 'long', year: 'numeric' });
+const today = () => new Date().toISOString().slice(0, 10);
+const csvCell = (value: unknown) => '"' + String(value ?? '').replace(/"/g, '""') + '"';
+function downloadCsv(name: string, rows: unknown[][]) {
+  const content = '\uFEFF' + rows.map(row => row.map(csvCell).join(',')).join('\r\n');
+  const url = URL.createObjectURL(new Blob([content], { type: 'text/csv;charset=utf-8;' }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = name;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+export default function FinanceWorkspace({ session, customers, payments, flash }: {
+  session: Session;
+  customers: Customer[];
+  payments: Payment[];
+  flash: (message: string) => void;
+}) {
+  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [audit, setAudit] = useState<Array<{ id: string; action: string; entityType: string; description: string; actorName: string; createdAt: string }>>([]);
+  const [period, setPeriod] = useState(today().slice(0, 7));
+  const [title, setTitle] = useState('');
+  const [category, setCategory] = useState('Network / provider');
+  const [amount, setAmount] = useState('');
+  const [spentAt, setSpentAt] = useState(today());
+  const [method, setMethod] = useState('Cash');
+  const [notes, setNotes] = useState('');
+  const [busy, setBusy] = useState(false);
+  const tokenQuery = '?sessionToken=' + encodeURIComponent(session.token);
+  const load = async () => {
+    const [e, i, a] = await Promise.all([
+      client.get('/api/expenses' + tokenQuery),
+      client.get('/api/invoices?period=' + encodeURIComponent(period) + '&sessionToken=' + encodeURIComponent(session.token)),
+      client.get('/api/audit' + tokenQuery)
+    ]);
+    setExpenses(e.data.items || []);
+    setInvoices(i.data.items || []);
+    setAudit(a.data.items || []);
+  };
+  useEffect(() => { load().catch(() => flash('Could not load finance records.')); }, [period]);
+  const monthPayments = payments.filter(item => item.month === monthName(period) || item.paidAt?.slice(0, 7) === period);
+  const monthExpenses = expenses.filter(item => item.spentAt?.slice(0, 7) === period);
+  const collected = monthPayments.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+  const spent = monthExpenses.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+  const outstanding = invoices.reduce((sum, item) => sum + Math.max(0, Number(item.amount || 0) - Number(item.paidAmount || 0)), 0);
+  const cashResult = collected - spent;
+  const activeCustomers = customers.filter(item => item.status === 'Active');
+  const unpaidInvoices = invoices.filter(item => item.status !== 'Paid');
+  const sortedExpenses = useMemo(() => [...expenses].sort((a, b) => b.spentAt.localeCompare(a.spentAt)), [expenses]);
+
+  async function generateInvoices() {
+    if (!window.confirm('Generate monthly invoices for ' + monthName(period) + ' for all active customers? Existing invoices will not be duplicated.')) return;
+    setBusy(true);
+    try {
+      const result = await client.post('/api/invoices/generate', { period, sessionToken: session.token });
+      await load();
+      flash(result.data.created ? result.data.created + ' invoices generated.' : 'Invoices are already up to date.');
+    } catch (err) {
+      flash(err instanceof Error ? err.message : 'Could not generate invoices.');
+    } finally { setBusy(false); }
+  }
+  async function addExpense(event: React.FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    try {
+      await client.post('/api/expenses', { title, category, amount: Number(amount), spentAt, method, notes, sessionToken: session.token });
+      setTitle(''); setAmount(''); setNotes('');
+      await load();
+      flash('Expense saved.');
+    } catch (err) {
+      flash(err instanceof Error ? err.message : 'Could not save expense.');
+    } finally { setBusy(false); }
+  }
+  async function deleteExpense(item: Expense) {
+    if (!window.confirm('Delete expense "' + item.title + '"? The audit history will remain.')) return;
+    setBusy(true);
+    try {
+      await client.delete('/api/expenses/' + item.id + tokenQuery);
+      await load();
+      flash('Expense deleted.');
+    } catch (err) {
+      flash(err instanceof Error ? err.message : 'Could not delete expense.');
+    } finally { setBusy(false); }
+  }
+
+  return <div className="finance-workspace">
+    <section className="finance-metrics">
+      <article><span><TrendingUp size={17}/> Collections · {monthName(period)}</span><strong>{money(collected)}</strong><small>{monthPayments.length} payment records</small></article>
+      <article><span><TrendingDown size={17}/> Expenses</span><strong>{money(spent)}</strong><small>{monthExpenses.length} expense records</small></article>
+      <article><span><Wallet size={17}/> Cash operating balance</span><strong className={cashResult < 0 ? 'negative' : ''}>{money(cashResult)}</strong><small>Collections minus recorded expenses</small></article>
+      <article><span><ReceiptText size={17}/> Unpaid invoice balance</span><strong>{money(outstanding)}</strong><small>{unpaidInvoices.length} unpaid / partial invoices</small></article>
+    </section>
+    <section className="panel finance-panel">
+      <div className="finance-head"><div><span className="eyebrow">MONTHLY BILLING</span><h2>Customer invoices</h2><p>Generate a monthly bill for every active customer. Existing invoices for the same customer and month are skipped.</p></div><div className="finance-actions"><input aria-label="Billing month" type="month" value={period} onChange={e => setPeriod(e.target.value)}/><button className="btn primary" disabled={busy || !activeCustomers.length} onClick={generateInvoices}>Generate invoices</button></div></div>
+      <div className="finance-table-wrap"><table><thead><tr><th>CUSTOMER</th><th>PERIOD</th><th>DUE DATE</th><th>AMOUNT</th><th>PAID</th><th>BALANCE</th><th>STATUS</th></tr></thead><tbody>
+        {invoices.map(item => <tr key={item.id}><td><b>{item.customerName}</b></td><td>{monthName(item.period)}</td><td>{item.dueDate}</td><td>{money(item.amount)}</td><td>{money(item.paidAmount)}</td><td className="amount">{money(Math.max(0, item.amount - item.paidAmount))}</td><td><span className={'status ' + (item.status === 'Paid' ? 'active' : 'inactive')}>{item.status}</span></td></tr>)}
+        {!invoices.length && <tr><td colSpan={7}>No invoices for this month. Generate invoices to start monthly billing.</td></tr>}
+      </tbody></table></div>
+      <div className="finance-foot"><span>{invoices.length} invoices · {activeCustomers.length} active customers</span><button className="btn secondary compact" onClick={() => downloadCsv('kb-invoices-' + period + '.csv', [['Customer','Period','Due date','Amount','Paid','Balance','Status'], ...invoices.map(i => [i.customerName, monthName(i.period), i.dueDate, i.amount, i.paidAmount, Math.max(0, i.amount-i.paidAmount), i.status])])}><Download size={14}/> Export invoices</button></div>
+    </section>
+    <section className="panel finance-panel">
+      <div className="finance-head"><div><span className="eyebrow">CASH BOOK</span><h2>Record business expense</h2><p>Track provider bills, fuel, equipment, salaries and other operating costs.</p></div></div>
+      <form className="finance-expense-form" onSubmit={addExpense}>
+        <label>Expense title<input required maxLength={120} value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. Monthly upstream payment"/></label>
+        <label>Category<select value={category} onChange={e => setCategory(e.target.value)}><option>Network / provider</option><option>Salary</option><option>Equipment</option><option>Fuel / travel</option><option>Office</option><option>Installation</option><option>Other</option></select></label>
+        <label>Amount (₹)<input required type="number" min="0.01" max="10000000" step="0.01" value={amount} onChange={e => setAmount(e.target.value)}/></label>
+        <label>Date<input required type="date" value={spentAt} onChange={e => setSpentAt(e.target.value)}/></label>
+        <label>Payment method<select value={method} onChange={e => setMethod(e.target.value)}><option>Cash</option><option>UPI</option><option>Bank transfer</option><option>Card</option><option>Other</option></select></label>
+        <label className="wide">Notes<input maxLength={300} value={notes} onChange={e => setNotes(e.target.value)} placeholder="Optional reference or details"/></label>
+        <button className="btn primary" disabled={busy || !title.trim() || !amount}> <Plus size={15}/> Save expense</button>
+      </form>
+      <div className="finance-table-wrap"><table><thead><tr><th>DATE</th><th>EXPENSE</th><th>CATEGORY</th><th>METHOD</th><th>AMOUNT</th><th>RECORDED BY</th><th></th></tr></thead><tbody>
+        {sortedExpenses.map(item => <tr key={item.id}><td>{item.spentAt}</td><td><b>{item.title}</b>{item.notes && <small className="finance-note">{item.notes}</small>}</td><td>{item.category}</td><td>{item.method}</td><td className="amount">{money(item.amount)}</td><td>{item.createdByName}</td><td><button className="btn danger compact" disabled={busy} onClick={() => deleteExpense(item)}>Delete</button></td></tr>)}
+        {!sortedExpenses.length && <tr><td colSpan={7}>No expenses recorded yet.</td></tr>}
+      </tbody></table></div>
+      <div className="finance-foot"><span>{expenses.length} expense records</span><button className="btn secondary compact" onClick={() => downloadCsv('kb-expenses.csv', [['Date','Title','Category','Method','Amount','Notes','Recorded by'], ...sortedExpenses.map(e => [e.spentAt,e.title,e.category,e.method,e.amount,e.notes,e.createdByName])])}><Download size={14}/> Export expenses</button></div>
+    </section>
+    <section className="panel finance-panel">
+      <div className="finance-head"><div><span className="eyebrow">MANAGEMENT REPORTS</span><h2>Business reports</h2><p>Download your current payment and collection data for spreadsheet analysis.</p></div></div>
+      <div className="finance-report-actions">
+        <button className="btn secondary" onClick={() => downloadCsv('kb-payments-' + period + '.csv', [['Date','Customer','Billing month','Method','Amount','Recorded by'], ...monthPayments.map(p => [p.paidAt,p.customerName,p.month,p.method,p.amount,p.recordedByName])])}><Download size={15}/> Export monthly collections</button>
+        <button className="btn secondary" onClick={() => downloadCsv('kb-customer-ledger.csv', [['Customer','Phone','Plan','Monthly fee','Status','Assigned to'], ...customers.map(c => [c.name,(c as any).phone,(c as any).plan,c.monthlyFee,c.status,(c as any).assignedToName])])}><Download size={15}/> Export customer list</button>
+        <button className="btn secondary" onClick={() => downloadCsv('kb-finance-summary-' + period + '.csv', [['Metric','Amount'],['Collections',collected],['Expenses',spent],['Cash operating balance',cashResult],['Outstanding invoices',outstanding]])}><Download size={15}/> Export finance summary</button>
+      </div>
+      <p className="finance-disclaimer">Cash operating balance is a simple management figure: recorded collections minus recorded expenses. It is not a statutory profit figure and does not include taxes, unpaid supplier bills, depreciation or other unrecorded liabilities.</p>
+    </section>
+    <section className="panel finance-panel">
+      <div className="finance-head"><div><span className="eyebrow">ACCOUNTABILITY</span><h2>Recent activity log</h2><p>Records important finance actions such as invoices and expense changes.</p></div><button className="btn secondary compact" onClick={() => load().catch(() => flash('Could not refresh finance data.'))}><RefreshCw size={14}/> Refresh</button></div>
+      <div className="finance-audit-list">{audit.slice(0, 40).map(item => <article key={item.id}><div><b>{item.description}</b><small>{item.actorName} · {item.entityType} · {item.action}</small></div><time>{new Date(item.createdAt).toLocaleString('en-IN')}</time></article>)}{!audit.length && <p>No activity log entries yet. New finance actions will appear here.</p>}</div>
+    </section>
+  </div>;
+}
