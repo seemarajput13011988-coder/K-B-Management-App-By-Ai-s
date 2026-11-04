@@ -945,7 +945,14 @@ export const api = onRequest(
         const startedAt = active.gpsIssueStartedAt || now();
         if (!active.gpsIssueStartedAt) {
           await db.collection('attendance').doc(active.id).update({ gpsIssueStartedAt: startedAt, gpsStatus: 'grace-period', gpsIssueReason: reason, gpsReminderStage: 0 });
-          await db.collection('staff_notifications').doc(active.id + '-gps-0').set({ recipientId: user.uid, type: 'gps-reminder', title: 'Turn your GPS back on', message: 'Your shift is still active. Turn GPS/location back on within 15 minutes to avoid automatic shift cancellation.', createdAt: startedAt, read: false, attendanceId: active.id }, { merge: true });
+          await db.collection('staff_notifications').doc(active.id + '-gps-0').set({ recipientId: user.uid, recipientRole: 'staff', type: 'gps-reminder', title: 'Turn your GPS back on', message: 'Your shift is still active. Turn GPS/location back on within 15 minutes to avoid automatic shift cancellation.', createdAt: startedAt, read: false, attendanceId: active.id }, { merge: true });
+          const admins = (await list('users')).filter(item => item.role === 'admin' && item.active === true);
+          await Promise.all(admins.map(admin => db.collection('staff_notifications').doc(active.id + '-gps-admin-' + admin.id).set({
+            recipientId: admin.id, recipientRole: 'admin', type: 'gps-issue',
+            title: 'Staff GPS unavailable',
+            message: user.displayName + ' has lost GPS/location during an active shift. The 15-minute restoration period has started.',
+            createdAt: startedAt, read: false, attendanceId: active.id
+          }, { merge: true })));
         }
         const deadlineAt = new Date(new Date(startedAt).getTime() + 15 * 60 * 1000).toISOString();
         send(res, 200, { monitoring: true, cancelled: false, startedAt, deadlineAt, remainingSeconds: Math.max(0, Math.ceil((new Date(deadlineAt).getTime() - Date.now()) / 1000)) }); return;
@@ -1424,7 +1431,13 @@ export const enforceGpsGracePeriod = onSchedule({ schedule: 'every 1 minutes', t
         return true;
       });
       if (!didCancel) continue;
-
+      const admins = (await list('users')).filter(entry => entry.role === 'admin' && entry.active === true);
+      await Promise.all(admins.map(admin => db.collection('staff_notifications').doc(item.id + '-gps-cancelled-admin-' + admin.id).set({
+        recipientId: admin.id, recipientRole: 'admin', type: 'gps-cancelled-admin',
+        title: 'Staff shift cancelled for GPS',
+        message: String(item.displayName || 'A staff member') + ' did not restore GPS/location within 15 minutes. The shift was automatically cancelled.',
+        createdAt: cancelledAt, read: false, attendanceId: item.id
+      }, { merge: true })));
     }
   }
 });
