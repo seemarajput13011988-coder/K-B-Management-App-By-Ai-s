@@ -661,8 +661,8 @@ export const api = onRequest(
         send(res, 200, { deleted: true }); return;
       }
 
-      const notMigrated = ['/api/attendance','/api/locations','/api/announcements','/api/messages','/api/groups','/api/visits','/api/expenses','/api/invoices','/api/audit'];
-      if (notMigrated.some(base => path === base || path.startsWith(base + '/')) || path.startsWith('/api/complaints/')) {
+      const notMigrated = ['/api/subscriptions'];
+      if (notMigrated.some(base => path === base || path.startsWith(base + '/'))) {
         logger.warn('API route not migrated yet', { method, path, role: user.role });
         send(res,501,{error:'This feature is being migrated and is not available yet.'}); return;
       }
