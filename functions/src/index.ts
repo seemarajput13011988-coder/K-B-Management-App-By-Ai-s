@@ -8,7 +8,7 @@ import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { onDocumentCreated } from 'firebase-functions/v2/firestore';
 import { logger } from 'firebase-functions';
 import { defineSecret } from 'firebase-functions/params';
-import { gpsGracePeriodExpired, routePath } from './route-path.js';
+import { gpsGracePeriodExpired, routePath, taskReminderKind } from './route-path.js';
 
 initializeApp();
 const auth = getAuth();
@@ -996,7 +996,7 @@ export const sendTaskDueReminders = onSchedule({ schedule: '0 9 * * *', timeZone
     const assignedTo = String(task.assignedTo || '');
     if (!task.id || !assignedTo || !/^\\d{4}-\\d{2}-\\d{2}$/.test(dueDate) || task.status === 'Completed') continue;
 
-    const reminderKind = dueDate === tomorrow ? 'upcoming' : dueDate <= today ? 'overdue' : '';
+    const reminderKind = taskReminderKind(dueDate, today, tomorrow);
     if (!reminderKind) continue;
 
     const notificationId = 'task-reminder-' + String(task.id) + '-' + reminderKind + '-' + dueDate;
@@ -1005,14 +1005,16 @@ export const sendTaskDueReminders = onSchedule({ schedule: '0 9 * * *', timeZone
     await db.runTransaction(async transaction => {
       const existing = await transaction.get(notificationRef);
       if (existing.exists) return;
-      const title = reminderKind === 'upcoming' ? 'Task due tomorrow' : 'Task overdue';
+      const title = reminderKind === 'upcoming' ? 'Task due tomorrow' : reminderKind === 'due-today' ? 'Task due today' : 'Task overdue';
       const message = reminderKind === 'upcoming'
         ? String(task.title || 'Assigned task') + ' is due tomorrow (' + dueDate + ').'
-        : String(task.title || 'Assigned task') + ' was due on ' + dueDate + ' and is still incomplete.';
+        : reminderKind === 'due-today'
+          ? String(task.title || 'Assigned task') + ' is due today (' + dueDate + ').'
+          : String(task.title || 'Assigned task') + ' was due on ' + dueDate + ' and is still incomplete.';
       transaction.create(notificationRef, {
         recipientId: assignedTo,
         recipientRole: 'staff',
-        type: reminderKind === 'upcoming' ? 'task-reminder' : 'task-overdue',
+        type: reminderKind === 'overdue' ? 'task-overdue' : 'task-reminder',
         title,
         message,
         createdAt,
