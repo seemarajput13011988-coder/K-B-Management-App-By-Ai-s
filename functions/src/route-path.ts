@@ -54,3 +54,15 @@ export function hasOverlappingSubscription(
     item.endDate >= startDate
   );
 }
+
+
+export function subscriptionExpiryKind(
+  endDate: string,
+  today: string,
+  threeDaysAhead: string,
+): 'due-soon' | 'due-today' | 'overdue' | null {
+  if (endDate < today) return 'overdue';
+  if (endDate === today) return 'due-today';
+  if (endDate === threeDaysAhead) return 'due-soon';
+  return null;
+}
