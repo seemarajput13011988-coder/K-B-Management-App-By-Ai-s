@@ -336,6 +336,74 @@ export const api = onRequest(
         }
       }
 
+      const indiaDate = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+      if (path === '/api/attendance' && method === 'GET') {
+        const items = await list('attendance');
+        send(res, 200, { items: user.role === 'admin' ? items : items.filter(item => item.userId === user.uid) }); return;
+      }
+      if (path === '/api/attendance/check-in' && method === 'POST') {
+        if (!allow(user, ['staff'], res)) return;
+        const workDate = indiaDate(), items = await list('attendance');
+        if (items.some(item => item.userId === user.uid && item.workDate === workDate)) { send(res, 409, { error: 'Attendance has already been recorded for today.' }); return; }
+        const checkInAt = clean(body.capturedAt, 40) || now();
+        const record = { userId: user.uid, displayName: user.displayName, workDate, checkInAt, status: 'Checked in' };
+        const ref = await db.collection('attendance').add(record);
+        const latitude = Number(body.latitude), longitude = Number(body.longitude);
+        if (Number.isFinite(latitude) && Number.isFinite(longitude) && Math.abs(latitude) <= 90 && Math.abs(longitude) <= 180) {
+          await db.collection('locations').add({ userId: user.uid, displayName: user.displayName, latitude, longitude, accuracy: Number(body.accuracy) || 0, capturedAt: checkInAt });
+        }
+        send(res, 201, { id: ref.id, ...record }); return;
+      }
+      if (path === '/api/attendance/check-out' && method === 'POST') {
+        if (!allow(user, ['staff'], res)) return;
+        const workDate = indiaDate(), items = await list('attendance');
+        const record = items.find(item => item.userId === user.uid && item.workDate === workDate);
+        if (!record) { send(res, 400, { error: 'Check in before checking out.' }); return; }
+        if (record.checkOutAt) { send(res, 409, { error: 'You have already checked out today.' }); return; }
+        await db.collection('attendance').doc(record.id).update({ checkOutAt: now(), status: 'Completed' });
+        send(res, 200, { updated: true }); return;
+      }
+      if ((path === '/api/attendance/admin-start' || path === '/api/attendance/admin-end') && method === 'POST') {
+        if (!allow(user, ['admin'], res)) return;
+        const staffId = clean(body.userId, 128), member = await staffFor(staffId);
+        if (!member || member.role !== 'staff' || member.active !== true) { send(res, 400, { error: 'Choose an active staff member.' }); return; }
+        const workDate = indiaDate(), items = await list('attendance');
+        const existing = items.find(item => item.userId === staffId && item.workDate === workDate);
+        if (path.endsWith('admin-start')) {
+          if (existing) { send(res, 409, { error: 'Attendance is already recorded for this staff member today.' }); return; }
+          const record = { userId: staffId, displayName: member.displayName, workDate, checkInAt: now(), status: 'Checked in', startedByAdmin: user.displayName, attendanceSource: 'Admin' };
+          const ref = await db.collection('attendance').add(record);
+          await audit(user, 'ADMIN_START', 'attendance', ref.id, 'Started shift for ' + member.displayName);
+          send(res, 201, { id: ref.id, ...record }); return;
+        }
+        if (!existing) { send(res, 400, { error: 'Start this staff member’s shift before ending it.' }); return; }
+        if (existing.checkOutAt) { send(res, 409, { error: 'This staff member has already ended today’s shift.' }); return; }
+        await db.collection('attendance').doc(existing.id).update({ checkOutAt: now(), status: 'Completed', endedByAdmin: user.displayName });
+        await audit(user, 'ADMIN_END', 'attendance', existing.id, 'Ended shift for ' + member.displayName);
+        send(res, 200, { updated: true }); return;
+      }
+      if (path === '/api/locations' && method === 'GET') {
+        if (!allow(user, ['admin'], res)) return;
+        const [locations, attendance] = await Promise.all([list('locations'), list('attendance')]), today = indiaDate();
+        const activeIds = new Set(attendance.filter(item => item.workDate === today && !item.checkOutAt).map(item => String(item.userId)));
+        const latest = new Map<string, Data>();
+        for (const item of locations) if (activeIds.has(String(item.userId))) {
+          const old = latest.get(String(item.userId));
+          if (!old || String(item.capturedAt || '') > String(old.capturedAt || '')) latest.set(String(item.userId), item);
+        }
+        send(res, 200, { items: Array.from(latest.values()) }); return;
+      }
+      if (path === '/api/locations' && method === 'POST') {
+        if (!allow(user, ['staff'], res)) return;
+        const latitude = Number(body.latitude), longitude = Number(body.longitude);
+        if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || Math.abs(latitude) > 90 || Math.abs(longitude) > 180) { send(res, 400, { error: 'A valid GPS location is required.' }); return; }
+        const shifts = await list('attendance'), today = indiaDate();
+        if (!shifts.some(item => item.userId === user.uid && item.workDate === today && !item.checkOutAt)) { send(res, 403, { error: 'Location can be shared only during an active shift.' }); return; }
+        const record = { userId: user.uid, displayName: user.displayName, latitude, longitude, accuracy: Math.min(Math.max(Number(body.accuracy) || 0, 0), 100000), capturedAt: clean(body.capturedAt, 40) || now() };
+        const ref = await db.collection('locations').add(record);
+        send(res, 201, { id: ref.id, saved: true }); return;
+      }
+
       const notMigrated = ['/api/attendance','/api/locations','/api/announcements','/api/messages','/api/groups','/api/visits','/api/expenses','/api/invoices','/api/audit'];
       if (notMigrated.some(base => path === base || path.startsWith(base + '/')) || path.startsWith('/api/complaints/')) {
         logger.warn('API route not migrated yet', { method, path, role: user.role });
