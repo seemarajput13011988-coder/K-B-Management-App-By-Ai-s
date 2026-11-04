@@ -3,10 +3,12 @@ import { getAuth } from 'firebase-admin/auth';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import { onRequest } from 'firebase-functions/v2/https';
 import { logger } from 'firebase-functions';
+import { defineSecret } from 'firebase-functions/params';
 
 initializeApp();
 const auth = getAuth();
 const db = getFirestore();
+const adminRecoveryCode = defineSecret('ADMIN_RECOVERY_CODE');
 
 type Role = 'admin' | 'staff';
 type AppUser = { uid: string; id: string; userId: string; displayName: string; role: Role; active: boolean };
@@ -73,7 +75,7 @@ const defaultPlans = [
 ];
 
 export const api = onRequest(
-  { region: 'asia-south1', cors: true, maxInstances: 10, timeoutSeconds: 60 },
+  { region: 'asia-south1', cors: true, maxInstances: 10, timeoutSeconds: 60, secrets: [adminRecoveryCode] },
   async (req, res) => {
     res.set('Cache-Control', 'no-store');
     const method = req.method.toUpperCase();
@@ -82,6 +84,27 @@ export const api = onRequest(
     if (method === 'GET' && path === '/api/_healthcheck') {
       send(res, 200, { message: 'Success', service: 'kandb-firebase-api' }); return;
     }
+    if (method === 'POST' && path === '/api/auth/recover-admin') {
+      const input = req.body && typeof req.body === 'object' ? req.body : {};
+      const userId = clean(input.userId, 40);
+      const recoveryCode = typeof input.recoveryCode === 'string' ? input.recoveryCode : '';
+      const newPassword = typeof input.newPassword === 'string' ? input.newPassword : '';
+      if (userId.toLowerCase() !== 'brajraj' || newPassword.length < 10 || !recoveryCode) {
+        send(res, 400, { error: 'Enter the admin recovery code and a password with at least 10 characters.' }); return;
+      }
+      const configuredCode = adminRecoveryCode.value();
+      if (!configuredCode || recoveryCode !== configuredCode) {
+        send(res, 401, { error: 'The admin recovery code is incorrect or has not been configured.' }); return;
+      }
+      const admins = await db.collection('users').where('userId', '==', 'Brajraj').where('role', '==', 'admin').limit(1).get();
+      if (admins.empty) { send(res, 404, { error: 'The admin account has not been set up yet.' }); return; }
+      const adminId = admins.docs[0].id;
+      await auth.updateUser(adminId, { password: newPassword });
+      await auth.revokeRefreshTokens(adminId);
+      await audit({ uid: adminId, id: adminId, userId: 'Brajraj', displayName: 'Brajraj', role: 'admin', active: true }, 'RECOVER_PASSWORD', 'admin', adminId, 'Admin password recovered');
+      send(res, 200, { reset: true }); return;
+    }
+
     try {
       const user = await requireUser(req);
       if (!user) { send(res, 401, { error: 'Please sign in again to continue.' }); return; }
