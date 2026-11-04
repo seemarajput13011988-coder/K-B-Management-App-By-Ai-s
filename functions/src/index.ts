@@ -446,6 +446,16 @@ export const api = onRequest(
           }
           patch.updatedAt = now();
           await db.collection('tasks').doc(id).update(patch);
+          const changedStatus = !!status && status !== existing.status;
+          const notificationRecipients = user.role === 'staff'
+            ? (await list('users')).filter(member => member.active === true && member.role === 'admin').map(member => ({ id: member.id, role: 'admin' }))
+            : existing.assignedTo ? [{ id: String(existing.assignedTo), role: 'staff' }] : [];
+          if (changedStatus || (user.role === 'admin' && Object.keys(patch).some(key => ['title','details','dueDate'].includes(key)))) {
+            const updateTitle = changedStatus ? 'Work status updated' : 'Work details updated';
+            const updateMessage = changedStatus ? String(existing.title) + ' is now ' + status + '.' : String(patch.title || existing.title) + ' was updated by ' + user.displayName + '.';
+            await Promise.all(notificationRecipients.map(recipient => db.collection('staff_notifications').add({ recipientId: recipient.id, recipientRole: recipient.role, type: 'task-update', title: updateTitle, message: updateMessage.slice(0,180), createdAt: now(), read: false, relatedId: id })));
+          }
+          await audit(user,'UPDATE','task',id,'Updated task ' + String(existing.title) + (changedStatus ? ' to ' + status : ''));
           send(res,200,{updated:true}); return;
         }
         if (method === 'DELETE') {
@@ -645,7 +655,10 @@ export const api = onRequest(
         }
         const record = { senderId: user.uid, senderName: user.displayName, recipientId, recipientName, message, createdAt: now() };
         const ref = await db.collection('messages').add(record);
-        await db.collection('staff_notifications').add({ recipientId: user.role === 'admin' ? recipientId : 'admin-primary', recipientRole: user.role === 'admin' ? 'staff' : 'admin', type: 'direct-message', title: 'New message from ' + user.displayName, message: message.slice(0, 180), createdAt: now(), read: false, relatedId: ref.id });
+        const notificationRecipients = user.role === 'admin'
+          ? [{ id: recipientId, role: 'staff' }]
+          : (await list('users')).filter(member => member.active === true && member.role === 'admin').map(member => ({ id: member.id, role: 'admin' }));
+        await Promise.all(notificationRecipients.map(recipient => db.collection('staff_notifications').add({ recipientId: recipient.id, recipientRole: recipient.role, type: 'direct-message', title: 'New message from ' + user.displayName, message: message.slice(0, 180), createdAt: now(), read: false, relatedId: ref.id })));
         send(res, 201, { id: ref.id, ...record }); return;
       }
       if (path.startsWith('/api/messages/') && method === 'DELETE') {
@@ -694,8 +707,10 @@ export const api = onRequest(
           if (!message) { send(res, 400, { error: 'Write a message before sending.' }); return; }
           const record = { groupId, senderId: user.uid, senderName: user.displayName, message, createdAt: now() };
           const ref = await db.collection('group_messages').add(record);
-          const recipients = (Array.isArray(group.memberIds) ? group.memberIds : []).filter((id: string) => id !== user.uid);
-          await Promise.all(recipients.map((id: string) => db.collection('staff_notifications').add({ recipientId: id, recipientRole: 'staff', type: 'group-message', title: 'New group message · ' + clean(group.name, 60), message: message.slice(0, 180), createdAt: now(), read: false, relatedId: ref.id })));
+          const memberIds = (Array.isArray(group.memberIds) ? group.memberIds : []).filter((id: string) => id !== user.uid);
+          const memberProfiles = await Promise.all(memberIds.map((id: string) => staffFor(id)));
+          const recipients = memberProfiles.filter((member): member is Data => !!member && member.active === true && ['staff','admin'].includes(String(member.role)));
+          await Promise.all(recipients.map(member => db.collection('staff_notifications').add({ recipientId: member.id, recipientRole: member.role, type: 'group-message', title: 'New group message · ' + clean(group.name, 60), message: message.slice(0, 180), createdAt: now(), read: false, relatedId: ref.id })));
           send(res, 201, { id: ref.id, ...record }); return;
         }
         if (parts[3] === 'messages' && parts.length === 5 && method === 'DELETE') {
