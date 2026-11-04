@@ -474,7 +474,7 @@ export const api = onRequest(
         if (!allow(user, ['staff'], res)) return;
         const workDate = indiaDate(), items = await list('attendance');
         if (items.some(item => item.userId === user.uid && item.workDate === workDate)) { send(res, 409, { error: 'Attendance has already been recorded for today.' }); return; }
-        const checkInAt = clean(body.capturedAt, 40) || now();
+        const checkInAt = now();
         const dayType = body.dayType === 'Half day' ? 'Half day' : 'Full day';
         const record = { userId: user.uid, displayName: user.displayName, workDate, checkInAt, status: 'Checked in', dayType };
         const ref = await db.collection('attendance').add(record);
@@ -535,7 +535,7 @@ export const api = onRequest(
         if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || Math.abs(latitude) > 90 || Math.abs(longitude) > 180) { send(res, 400, { error: 'A valid GPS location is required.' }); return; }
         const shifts = await list('attendance'), today = indiaDate();
         if (!shifts.some(item => item.userId === user.uid && item.workDate === today && !item.checkOutAt)) { send(res, 403, { error: 'Location can be shared only during an active shift.' }); return; }
-        const record = { userId: user.uid, displayName: user.displayName, latitude, longitude, accuracy: Math.min(Math.max(Number(body.accuracy) || 0, 0), 100000), capturedAt: clean(body.capturedAt, 40) || now() };
+        const record = { userId: user.uid, displayName: user.displayName, latitude, longitude, accuracy: Math.min(Math.max(Number(body.accuracy) || 0, 0), 100000), capturedAt: now() };
         const ref = await db.collection('locations').add(record);
         send(res, 201, { id: ref.id, saved: true }); return;
       }
