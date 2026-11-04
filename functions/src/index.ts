@@ -148,6 +148,56 @@ export const api = onRequest(
       }
       if (method === 'POST' && path === '/api/auth/logout') { send(res, 200, { ok: true }); return; }
 
+      // Additional administrator accounts. The original Brajraj owner account cannot be removed here.
+      if (path === '/api/admins' && method === 'GET') {
+        if (!allow(user, ['admin'], res)) return;
+        const admins = (await list('users')).filter(item => item.role === 'admin')
+          .map(({ passwordHash, salt, ...safe }) => safe);
+        send(res, 200, { items: admins }); return;
+      }
+      if (path === '/api/admins' && method === 'POST') {
+        if (!allow(user, ['admin'], res)) return;
+        const userId = clean(body.userId, 32);
+        const displayName = clean(body.displayName, 80);
+        const password = typeof body.password === 'string' ? body.password : '';
+        if (!/^[a-zA-Z0-9_-]{3,32}$/.test(userId) || userId.toLowerCase() === 'brajraj' || !displayName || password.length < 12) {
+          send(res, 400, { error: 'Enter a unique admin ID, name and password with at least 12 characters.' }); return;
+        }
+        const existing = (await list('users')).some(item => String(item.userId).toLowerCase() === userId.toLowerCase());
+        if (existing) { send(res, 409, { error: 'That account ID is already in use.' }); return; }
+        const email = userId.toLowerCase() + '@accounts.kandbnetservice.in';
+        const account = await auth.createUser({ email, password, displayName, disabled: false });
+        const record = { userId, displayName, role: 'admin', active: true, createdAt: now(), createdBy: user.uid };
+        await db.collection('users').doc(account.uid).set(record);
+        await audit(user, 'CREATE', 'admin', account.uid, 'Created administrator account ' + userId);
+        send(res, 201, { user: { id: account.uid, ...record } }); return;
+      }
+      if (path.startsWith('/api/admins/')) {
+        if (!allow(user, ['admin'], res)) return;
+        const id = routeId(path, '/api/admins');
+        const target = await getDoc('users', id);
+        if (!target || target.role !== 'admin') { send(res, 404, { error: 'Administrator account not found.' }); return; }
+        if (String(target.userId).toLowerCase() === 'brajraj') { send(res, 403, { error: 'The primary owner account is protected.' }); return; }
+        if (method === 'PUT') {
+          if (id === user.uid && body.active === false) { send(res, 400, { error: 'You cannot deactivate your own account.' }); return; }
+          const displayName = clean(body.displayName, 80) || target.displayName;
+          const active = typeof body.active === 'boolean' ? body.active : target.active === true;
+          await db.collection('users').doc(id).update({ displayName, active });
+          await auth.updateUser(id, { displayName, disabled: !active });
+          if (!active) await auth.revokeRefreshTokens(id);
+          await audit(user, 'UPDATE', 'admin', id, 'Updated administrator profile/status');
+          send(res, 200, { updated: true }); return;
+        }
+        if (method === 'DELETE') {
+          if (id === user.uid) { send(res, 400, { error: 'You cannot remove your own account.' }); return; }
+          await auth.updateUser(id, { disabled: true });
+          await auth.revokeRefreshTokens(id);
+          await db.collection('users').doc(id).update({ active: false, deletedAt: now() });
+          await audit(user, 'DISABLE', 'admin', id, 'Disabled administrator account');
+          send(res, 200, { deleted: true }); return;
+        }
+      }
+
       // Staff accounts are Firebase Authentication users. Passwords never enter Firestore.
       if (path === '/api/staff' && method === 'GET') {
         if (!allow(user, ['admin'], res)) return;
@@ -405,6 +455,17 @@ export const api = onRequest(
       }
 
       const indiaDate = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+      if (path.startsWith('/api/attendance/') && path.endsWith('/day-type') && method === 'PUT') {
+        if (!allow(user, ['admin'], res)) return;
+        const id = decodeURIComponent(path.slice('/api/attendance/'.length, -'/day-type'.length));
+        const record = await getDoc('attendance', id);
+        const dayType = body.dayType === 'Half day' ? 'Half day' : body.dayType === 'Full day' ? 'Full day' : '';
+        const reason = clean(body.reason, 300);
+        if (!record || !dayType || !reason) { send(res, 400, { error: 'Choose Full day or Half day and enter a correction reason.' }); return; }
+        await db.collection('attendance').doc(id).update({ dayType, correctionReason: reason, correctedBy: user.uid, correctedAt: now() });
+        await audit(user, 'ATTENDANCE_CORRECTION', 'attendance', id, 'Changed attendance to ' + dayType + ': ' + reason);
+        send(res, 200, { updated: true }); return;
+      }
       if (path === '/api/attendance' && method === 'GET') {
         const items = await list('attendance');
         send(res, 200, { items: user.role === 'admin' ? items : items.filter(item => item.userId === user.uid) }); return;
@@ -414,7 +475,8 @@ export const api = onRequest(
         const workDate = indiaDate(), items = await list('attendance');
         if (items.some(item => item.userId === user.uid && item.workDate === workDate)) { send(res, 409, { error: 'Attendance has already been recorded for today.' }); return; }
         const checkInAt = clean(body.capturedAt, 40) || now();
-        const record = { userId: user.uid, displayName: user.displayName, workDate, checkInAt, status: 'Checked in' };
+        const dayType = body.dayType === 'Half day' ? 'Half day' : 'Full day';
+        const record = { userId: user.uid, displayName: user.displayName, workDate, checkInAt, status: 'Checked in', dayType };
         const ref = await db.collection('attendance').add(record);
         const latitude = Number(body.latitude), longitude = Number(body.longitude);
         if (Number.isFinite(latitude) && Number.isFinite(longitude) && Math.abs(latitude) <= 90 && Math.abs(longitude) <= 180) {
@@ -439,7 +501,8 @@ export const api = onRequest(
         const existing = items.find(item => item.userId === staffId && item.workDate === workDate);
         if (path.endsWith('admin-start')) {
           if (existing) { send(res, 409, { error: 'Attendance is already recorded for this staff member today.' }); return; }
-          const record = { userId: staffId, displayName: member.displayName, workDate, checkInAt: now(), status: 'Checked in', startedByAdmin: user.displayName, attendanceSource: 'Admin' };
+          const dayType = body.dayType === 'Half day' ? 'Half day' : 'Full day';
+          const record = { userId: staffId, displayName: member.displayName, workDate, checkInAt: now(), status: 'Checked in', dayType, startedByAdmin: user.displayName, attendanceSource: 'Admin' };
           const ref = await db.collection('attendance').add(record);
           await audit(user, 'ADMIN_START', 'attendance', ref.id, 'Started shift for ' + member.displayName);
           send(res, 201, { id: ref.id, ...record }); return;
@@ -449,6 +512,11 @@ export const api = onRequest(
         await db.collection('attendance').doc(existing.id).update({ checkOutAt: now(), status: 'Completed', endedByAdmin: user.displayName });
         await audit(user, 'ADMIN_END', 'attendance', existing.id, 'Ended shift for ' + member.displayName);
         send(res, 200, { updated: true }); return;
+      }
+      if (path === '/api/locations/history' && method === 'GET') {
+        if (!allow(user, ['admin'], res)) return;
+        const history = (await list('locations')).sort((a, b) => String(b.capturedAt || '').localeCompare(String(a.capturedAt || ''))).slice(0, 500);
+        send(res, 200, { items: history }); return;
       }
       if (path === '/api/locations' && method === 'GET') {
         if (!allow(user, ['admin'], res)) return;
