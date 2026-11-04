@@ -84,3 +84,12 @@ test('subscription overlap ignores cancelled and expired history', () => {
   assert.equal(hasOverlappingSubscription(existing, '2026-11-01', '2026-11-30'), false);
   assert.equal(hasOverlappingSubscription(existing, '2026-12-01', '2026-12-31'), false);
 });
+
+
+test('subscription expiry reminders identify three-day, due-today and overdue dates', () => {
+  const { subscriptionExpiryKind } = require('../lib/route-path.js');
+  assert.equal(subscriptionExpiryKind('2026-11-07', '2026-11-04', '2026-11-07'), 'due-soon');
+  assert.equal(subscriptionExpiryKind('2026-11-04', '2026-11-04', '2026-11-07'), 'due-today');
+  assert.equal(subscriptionExpiryKind('2026-11-03', '2026-11-04', '2026-11-07'), 'overdue');
+  assert.equal(subscriptionExpiryKind('2026-11-08', '2026-11-04', '2026-11-07'), null);
+});
