@@ -51,3 +51,13 @@ test('only the designated super admin can manage administrator accounts', () => 
   assert.equal(isSuperAdminAccount({ role: 'staff', userId: 'Brajraj', isSuperAdmin: true }), false, 'staff cannot become super admin by setting a flag');
   assert.equal(isSuperAdminAccount({ role: 'staff', userId: 'employee' }), false);
 });
+
+
+test('task reminder scheduler accepts valid ISO date keys and rejects malformed dates', () => {
+  const { isValidDateKey } = require('../lib/route-path.js');
+  assert.equal(isValidDateKey('2026-11-04'), true);
+  assert.equal(isValidDateKey('2026-02-29'), false);
+  assert.equal(isValidDateKey('2026-2-04'), false);
+  assert.equal(isValidDateKey('not-a-date'), false);
+  assert.equal(isValidDateKey(undefined), false);
+});
