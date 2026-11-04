@@ -32,7 +32,14 @@ Copy `.env.example` to `.env.local` and fill in the Firebase Web App values. The
 - Staff accounts are created in Firebase Authentication by an authenticated admin. Passwords are not stored in Firestore.
 - Group chat currently loads through the API; realtime subscriptions are not migrated yet.
 
-## 5. Migration and production safety
+## 5. GitHub Actions deployment secrets
+For Firebase Hosting / Functions deployment, add these in GitHub repository Settings > Secrets and variables > Actions:
+- `FIREBASE_SERVICE_ACCOUNT_KANDB_NET_SEVICE`: service-account JSON with the minimum required Firebase deploy permissions.
+- `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_STORAGE_BUCKET`, `VITE_FIREBASE_MESSAGING_SENDER_ID`, `VITE_FIREBASE_APP_ID`: public Firebase Web App config values for the Hosting build.
+
+The Android debug APK workflow already uses the public Firebase Web App config supplied in its workflow as a fallback; it does not need a service-account key. Never paste service-account JSON or private credentials into ChatGPT or commit them to Git.
+
+## 6. Migration and production safety
 - The old AppDeploy backend and its source snapshot are retained. Do not delete or disable the old app.
 - No old AppDeploy customer, payment, staff, attendance, or finance records have been imported yet.
 - Treat the old database as potentially containing important records until a backup and record count are reviewed.
