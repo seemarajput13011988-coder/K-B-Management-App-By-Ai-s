@@ -51,6 +51,9 @@ Authentication and staff accounts; customers; plans; payments; dashboards; atten
 - [x] Add a GitHub Actions Functions typecheck workflow; the latest recorded typecheck passed.
 - [x] Add a frontend production build workflow; the latest recorded build passed.
 - [x] Configure the Android workflow to use the confirmed project and app identity.
+- [x] Add native Android background GPS with a persistent notification, consent gating and native HTTP delivery.
+- [x] Enable Capacitor native HTTP and legacy bridge for Android background tracking.
+- [x] Add notifications for staff-to-admin messages, group messages, task updates and holiday decisions.
 - [ ] Add local Firebase Web App config and enable Email/Password authentication.
 - [ ] Configure Functions secrets and verify the API using emulators.
 - [ ] Finish password-change flow, realtime chat transport, and full role/edge-case review.
