@@ -1168,7 +1168,6 @@ export const api = onRequest(
         }
       }
 
-      const notMigrated: string[] = [];
       send(res,404,{error:'This API route was not found.'});
     } catch (error: any) {
       logger.error('API request failed', { message: error?.message || String(error) });
