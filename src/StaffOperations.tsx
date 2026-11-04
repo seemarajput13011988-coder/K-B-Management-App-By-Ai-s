@@ -359,7 +359,7 @@ export default function StaffOperations({ session, customers, flash, compact = f
         const memberPayments = payments.filter(payment => payment.recordedBy === member.id);
         const memberTotal = memberPayments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
         const memberMonth = memberPayments.filter(payment => String(payment.paidAt || '').slice(0, 7) === monthKey).reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
-        const memberDays = attendance.filter(item => item.userId === member.id).length;
+        const memberDays = attendance.filter(item => item.userId === member.id).reduce((sum,item) => sum + (item.dayType === 'Half day' ? 0.5 : 1), 0);
         const memberShift = attendance.find(item => item.userId === member.id && item.workDate === today);
         return <tr key={member.id}><td><b>{member.displayName}</b></td><td>{memberPayments.length}</td><td className="amount">₹{memberTotal.toLocaleString('en-IN')}</td><td className="amount">₹{memberMonth.toLocaleString('en-IN')}</td><td>{memberDays}</td><td>{memberShift?.checkOutAt ? 'Completed' : memberShift ? 'On shift' : 'Not started'}</td></tr>;
       })}{!staff.length && <tr><td colSpan={6}>No staff records available yet.</td></tr>}</tbody></table></div>
