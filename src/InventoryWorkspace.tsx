@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import type { FormEvent } from 'react';
 import { api } from './lib/api';
 
 type InventoryItem = {
@@ -39,7 +40,7 @@ export default function InventoryWorkspace({isAdmin,flash}:{isAdmin:boolean;flas
   function openEdit(item:InventoryItem) {
     setEditing(item);setForm({name:item.name,sku:item.sku,category:item.category,unit:item.unit,quantity:String(item.quantity),minimumQuantity:String(item.minimumQuantity),unitCost:String(item.unitCost||0),supplier:item.supplier||'',location:item.location||'',notes:item.notes||'',active:item.active});setShowForm(true);
   }
-  async function saveItem(event:React.FormEvent) {
+  async function saveItem(event:FormEvent) {
     event.preventDefault();setSaving(true);
     const payload={...form,quantity:Number(form.quantity),minimumQuantity:Number(form.minimumQuantity),unitCost:Number(form.unitCost)};
     try {
@@ -49,7 +50,7 @@ export default function InventoryWorkspace({isAdmin,flash}:{isAdmin:boolean;flas
     } catch(error) { flash(error instanceof Error?error.message:'Could not save inventory item.'); }
     finally { setSaving(false); }
   }
-  async function saveMovement(event:React.FormEvent) {
+  async function saveMovement(event:FormEvent) {
     event.preventDefault();if(!movementItem)return;setSaving(true);
     try {
       await api.post('/api/inventory/'+movementItem.id+'/movements',{type:movementType,quantity:Number(movementQuantity),reason:movementReason});
