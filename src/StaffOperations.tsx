@@ -157,11 +157,11 @@ export default function StaffOperations({ session, customers, flash, compact = f
     }
     let cancelled = false;
     const connection = chatConnection.current;
-    request('get', '/api/groups/' + selectedGroupId + '/messages').then(result => {
-      if (!cancelled) setGroupMessages(result.data.items || []);
-    }).catch(() => {
-      if (!cancelled) setGroupMessages([]);
-    });
+    const refreshGroupMessages = () => request('get', '/api/groups/' + selectedGroupId + '/messages')
+      .then(result => { if (!cancelled) setGroupMessages(result.data.items || []); })
+      .catch(() => undefined);
+    void refreshGroupMessages();
+    const refreshTimer = window.setInterval(refreshGroupMessages, 8000);
     if (connection) connection.ready.then(async () => {
       if (cancelled || !connection.connectionId) return;
       await request('post', '/api/subscriptions', { entity_type: 'groupchat', entity_id: selectedGroupId, connection_id: connection.connectionId });
@@ -169,6 +169,7 @@ export default function StaffOperations({ session, customers, flash, compact = f
     }).catch(() => undefined);
     return () => {
       cancelled = true;
+      window.clearInterval(refreshTimer);
       if (connection?.connectionId) request('post', '/api/subscriptions/remove', { entity_type: 'groupchat', entity_id: selectedGroupId, connection_id: connection.connectionId }).catch(() => undefined);
     };
   }, [selectedGroupId, request]);
