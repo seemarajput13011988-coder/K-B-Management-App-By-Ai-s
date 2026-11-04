@@ -404,6 +404,102 @@ export const api = onRequest(
         send(res, 201, { id: ref.id, saved: true }); return;
       }
 
+      if (path === '/api/announcements' && method === 'GET') {
+        const items = (await list('announcements')).sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+        send(res, 200, { items }); return;
+      }
+      if (path === '/api/announcements' && method === 'POST') {
+        if (!allow(user, ['admin'], res)) return;
+        const title = clean(body.title, 120), message = clean(body.message, 2000);
+        if (!title || !message) { send(res, 400, { error: 'Enter an announcement title and message.' }); return; }
+        const record = { title, message, createdAt: now(), createdBy: user.uid, createdByName: user.displayName };
+        const ref = await db.collection('announcements').add(record);
+        await audit(user, 'CREATE', 'announcement', ref.id, 'Published announcement: ' + title);
+        send(res, 201, { id: ref.id, ...record }); return;
+      }
+      if (path.startsWith('/api/announcements/') && method === 'DELETE') {
+        if (!allow(user, ['admin'], res)) return;
+        const id = routeId(path, '/api/announcements'), existing = await getDoc('announcements', id);
+        if (!existing) { send(res, 404, { error: 'Announcement not found.' }); return; }
+        await db.collection('announcements').doc(id).delete();
+        await audit(user, 'DELETE', 'announcement', id, 'Deleted announcement');
+        send(res, 200, { deleted: true }); return;
+      }
+      if (path === '/api/messages' && method === 'GET') {
+        const all = await list('messages');
+        const items = user.role === 'admin' ? all : all.filter(item => item.senderId === user.uid || item.recipientId === user.uid);
+        send(res, 200, { items: items.sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || ''))) }); return;
+      }
+      if (path === '/api/messages' && method === 'POST') {
+        const message = clean(body.message, 1500), recipientId = user.role === 'admin' ? clean(body.recipientId, 128) : 'admin-primary';
+        if (!message) { send(res, 400, { error: 'Write a message before sending.' }); return; }
+        let recipientName = 'K&B Administrator';
+        if (user.role === 'admin') {
+          const recipient = await staffFor(recipientId);
+          if (!recipient || recipient.role !== 'staff' || recipient.active !== true) { send(res, 400, { error: 'Choose an active staff member.' }); return; }
+          recipientName = clean(recipient.displayName, 80);
+        }
+        const record = { senderId: user.uid, senderName: user.displayName, recipientId, recipientName, message, createdAt: now() };
+        const ref = await db.collection('messages').add(record);
+        send(res, 201, { id: ref.id, ...record }); return;
+      }
+      if (path.startsWith('/api/messages/') && method === 'DELETE') {
+        if (!allow(user, ['admin'], res)) return;
+        const id = routeId(path, '/api/messages'), existing = await getDoc('messages', id);
+        if (!existing) { send(res, 404, { error: 'Message not found.' }); return; }
+        await db.collection('messages').doc(id).delete();
+        send(res, 200, { deleted: true }); return;
+      }
+      if (path === '/api/groups' && method === 'GET') {
+        const all = await list('chat_groups');
+        const items = user.role === 'admin' ? all : all.filter(group => Array.isArray(group.memberIds) && group.memberIds.includes(user.uid));
+        send(res, 200, { items: items.sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''))) }); return;
+      }
+      if (path === '/api/groups' && method === 'POST') {
+        if (!allow(user, ['admin'], res)) return;
+        const name = clean(body.name, 60);
+        const ids: string[] = Array.isArray(body.memberIds) ? Array.from(new Set(body.memberIds.filter((value: unknown) => typeof value === 'string' && value.length > 0))).slice(0, 100) as string[] : [];
+        if (!name || !ids.length) { send(res, 400, { error: 'Enter a group name and select at least one staff member.' }); return; }
+        const docs = await Promise.all(ids.map(id => staffFor(id)));
+        const members = docs.filter((member): member is Data => !!member && member.role === 'staff' && member.active === true);
+        if (members.length !== ids.length) { send(res, 400, { error: 'One or more selected staff accounts are unavailable. Refresh the staff list.' }); return; }
+        const record = { name, memberIds: [user.uid, ...ids], memberNames: [user.displayName, ...members.map(member => clean(member.displayName, 80))], createdAt: now(), createdBy: user.uid, createdByName: user.displayName };
+        const ref = await db.collection('chat_groups').add(record);
+        send(res, 201, { id: ref.id, ...record }); return;
+      }
+      if (path.startsWith('/api/groups/')) {
+        const parts = path.split('/').filter(Boolean), groupId = decodeURIComponent(parts[2] || ''), group = await getDoc('chat_groups', groupId);
+        if (!group) { send(res, 404, { error: 'Group not found.' }); return; }
+        if (parts.length === 3 && method === 'DELETE') {
+          if (!allow(user, ['admin'], res)) return;
+          const messages = (await list('group_messages')).filter(item => item.groupId === groupId);
+          const batch = db.batch();
+          for (const item of messages) batch.delete(db.collection('group_messages').doc(item.id));
+          if (messages.length) await batch.commit();
+          await db.collection('chat_groups').doc(groupId).delete();
+          send(res, 200, { deleted: true }); return;
+        }
+        if (user.role !== 'admin' && !(Array.isArray(group.memberIds) && group.memberIds.includes(user.uid))) { send(res, 403, { error: 'You are not a member of this group.' }); return; }
+        if (parts[3] === 'messages' && parts.length === 4 && method === 'GET') {
+          const items = (await list('group_messages')).filter(item => item.groupId === groupId).sort((a, b) => String(a.createdAt || '').localeCompare(String(b.createdAt || '')));
+          send(res, 200, { items }); return;
+        }
+        if (parts[3] === 'messages' && parts.length === 4 && method === 'POST') {
+          const message = clean(body.message, 1500);
+          if (!message) { send(res, 400, { error: 'Write a message before sending.' }); return; }
+          const record = { groupId, senderId: user.uid, senderName: user.displayName, message, createdAt: now() };
+          const ref = await db.collection('group_messages').add(record);
+          send(res, 201, { id: ref.id, ...record }); return;
+        }
+        if (parts[3] === 'messages' && parts.length === 5 && method === 'DELETE') {
+          if (!allow(user, ['admin'], res)) return;
+          const id = decodeURIComponent(parts[4]), message = await getDoc('group_messages', id);
+          if (!message || message.groupId !== groupId) { send(res, 404, { error: 'Group message not found.' }); return; }
+          await db.collection('group_messages').doc(id).delete();
+          send(res, 200, { deleted: true }); return;
+        }
+      }
+
       const notMigrated = ['/api/attendance','/api/locations','/api/announcements','/api/messages','/api/groups','/api/visits','/api/expenses','/api/invoices','/api/audit'];
       if (notMigrated.some(base => path === base || path.startsWith(base + '/')) || path.startsWith('/api/complaints/')) {
         logger.warn('API route not migrated yet', { method, path, role: user.role });
