@@ -956,3 +956,45 @@ export const enforceGpsGracePeriod = onSchedule({ schedule: 'every 1 minutes', t
     }
   }
 });
+
+
+// Send each assigned worker one reminder when a task is due tomorrow and one
+// overdue reminder if it remains incomplete. Deterministic document IDs make
+// repeated scheduler invocations safe.
+export const sendTaskDueReminders = onSchedule({ schedule: '0 9 * * *', timeZone: 'Asia/Kolkata', region: 'asia-south1' }, async () => {
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+  const [year, month, day] = today.split('-').map(Number);
+  const tomorrow = new Date(Date.UTC(year, month - 1, day + 1)).toISOString().slice(0, 10);
+  const tasks = await list('tasks');
+
+  for (const task of tasks) {
+    const dueDate = String(task.dueDate || '');
+    const assignedTo = String(task.assignedTo || '');
+    if (!task.id || !assignedTo || !/^\\d{4}-\\d{2}-\\d{2}$/.test(dueDate) || task.status === 'Completed') continue;
+
+    const reminderKind = dueDate === tomorrow ? 'upcoming' : dueDate <= today ? 'overdue' : '';
+    if (!reminderKind) continue;
+
+    const notificationId = 'task-reminder-' + String(task.id) + '-' + reminderKind + '-' + dueDate;
+    const notificationRef = db.collection('staff_notifications').doc(notificationId);
+    const createdAt = now();
+    await db.runTransaction(async transaction => {
+      const existing = await transaction.get(notificationRef);
+      if (existing.exists) return;
+      const title = reminderKind === 'upcoming' ? 'Task due tomorrow' : 'Task overdue';
+      const message = reminderKind === 'upcoming'
+        ? String(task.title || 'Assigned task') + ' is due tomorrow (' + dueDate + ').'
+        : String(task.title || 'Assigned task') + ' was due on ' + dueDate + ' and is still incomplete.';
+      transaction.create(notificationRef, {
+        recipientId: assignedTo,
+        recipientRole: 'staff',
+        type: reminderKind === 'upcoming' ? 'task-reminder' : 'task-overdue',
+        title,
+        message,
+        createdAt,
+        read: false,
+        relatedId: String(task.id)
+      });
+    });
+  }
+});
