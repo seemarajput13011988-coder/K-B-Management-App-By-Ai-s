@@ -47,11 +47,14 @@ export default function SubscriptionWorkspace({ customers, plans, isAdmin, flash
     finally { setLoading(false); }
   }
   useEffect(()=>{ void load(); },[]);
+  useEffect(()=>{ if (!customerId && customers.length) setCustomerId(customers[0].id); },[customers,customerId]);
   useEffect(()=>{
     if (!selectedCustomer) return;
     setPlan(selectedCustomer.plan || plans.find(item=>item.active)?.name || '');
     setAmount(String(selectedCustomer.monthlyFee || plans.find(item=>item.name===selectedCustomer.plan)?.price || 0));
-    const nextStart = selectedCustomer.dueDate ? addDays(selectedCustomer.dueDate,1) : todayKey();
+    const today = todayKey();
+    const dueDateStart = selectedCustomer.dueDate ? addDays(selectedCustomer.dueDate,1) : today;
+    const nextStart = dueDateStart > today ? dueDateStart : today;
     setStartDate(nextStart);
     setEndDate(addDays(nextStart,30));
   },[customerId]);
