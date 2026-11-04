@@ -21,7 +21,7 @@ Work is being carried out on `firebase-migration`. The original AppDeploy implem
 - Attendance supports full-day / half-day selection and reason-required admin corrections.
 - Admin Team Operations includes active-shift location visibility and history. Android uses a visible native background location service with consent; browser tracking is foreground-only. Live location is best-effort and must be verified on real devices.
 - Finance includes a six-month collections-versus-expenses chart and mobile-friendly visual refinements.
-- Web build, Functions typecheck and manual Android APK workflows are included.
+- Web build and Functions typecheck workflows are included. An Android debug APK workflow now runs on migration-branch changes; its first run exposed an obsolete Android SDK package and the workflow fix is being verified.
 - Group chat currently refreshes from the API; realtime transport remains pending.
 
 ## Before using or deploying
