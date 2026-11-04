@@ -133,6 +133,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   const [showTask, setShowTask] = useState(false);
   const [showStaff, setShowStaff] = useState(false);
   const [resetStaff, setResetStaff] = useState<Staff | null>(null);
+  const [editStaffUserId, setEditStaffUserId] = useState<Staff | null>(null);
   const [showAccountSettings, setShowAccountSettings] = useState(false);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -429,6 +430,16 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
       flash(patch.active === false ? 'Staff access disabled' : 'Staff account updated');
     } catch {
       flash('Could not update staff account');
+    }
+  }
+  async function saveStaffUserId(staffUser: Staff, userId: string) {
+    try {
+      await api.put('/api/staff/' + staffUser.id, { userId, displayName: staffUser.displayName });
+      setEditStaffUserId(null);
+      await load();
+      flash('Staff username updated. The staff member must sign in with the new ID.');
+    } catch (err) {
+      flash(err instanceof Error ? err.message : 'Could not change staff username');
     }
   }
   async function saveStaffPassword(staffUser: Staff, password: string) {
@@ -820,7 +831,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                 {staff.map(member => {
                   const assigned = customers.filter(c => c.assignedTo === member.id).length;
                   const total = payments.filter(p => p.recordedBy === member.id).reduce((sum, p) => sum + Number(p.amount || 0), 0);
-                  return <tr key={member.id}><td><b>{member.displayName}</b></td><td>{member.userId}</td><td>{assigned}</td><td className="amount">{money(total)}</td><td><span className={'status ' + (member.active ? 'active' : 'inactive')}>{member.active ? 'Active' : 'Disabled'}</span></td><td><div className="staff-actions"><button className="btn secondary compact" onClick={() => updateStaff(member, { active: !member.active })}>{member.active ? 'Disable' : 'Enable'}</button><button className="row-action" title="Reset password" onClick={() => setResetStaff(member)}><LockKeyhole size={15} /></button><button className="row-action danger" title="Delete staff account" onClick={() => removeStaff(member)}><Trash2 size={15} /></button></div></td></tr>;
+                  return <tr key={member.id}><td><b>{member.displayName}</b></td><td>{member.userId}</td><td>{assigned}</td><td className="amount">{money(total)}</td><td><span className={'status ' + (member.active ? 'active' : 'inactive')}>{member.active ? 'Active' : 'Disabled'}</span></td><td><div className="staff-actions"><button className="btn secondary compact" onClick={() => updateStaff(member, { active: !member.active })}>{member.active ? 'Disable' : 'Enable'}</button><button className="row-action" title="Change username" onClick={() => setEditStaffUserId(member)}><Pencil size={15} /></button><button className="row-action" title="Reset password" onClick={() => setResetStaff(member)}><LockKeyhole size={15} /></button><button className="row-action danger" title="Delete staff account" onClick={() => removeStaff(member)}><Trash2 size={15} /></button></div></td></tr>;
                 })}
               </tbody></table></div>
               {!staff.length && <Empty icon={<UserRound />} title="No staff accounts yet" text="Create a staff account, then assign customers to that person from the customer form." action="Add staff member" onClick={() => setShowStaff(true)} />}
@@ -1068,6 +1079,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
       {showStaff && <StaffModal onClose={() => setShowStaff(false)} onSave={createStaff} />}
       {showAccountSettings && <AccountSettingsModal session={session} onClose={() => setShowAccountSettings(false)} onChangeUserId={async (currentPassword, userId) => { await changeAppUserId(currentPassword, userId); onLogout(); }} onChangePassword={async (currentPassword, newPassword) => { await changeAppPassword(currentPassword, newPassword); onLogout(); }} />}
       {showTask && <TaskModal staff={staff.filter(member => member.active)} onClose={() => setShowTask(false)} onSave={saveTask} />}
+      {editStaffUserId && <StaffUsernameModal staff={editStaffUserId} onClose={() => setEditStaffUserId(null)} onSave={userId => saveStaffUserId(editStaffUserId, userId)} />}
       {resetStaff && <StaffPasswordModal staff={resetStaff} onClose={() => setResetStaff(null)} onSave={password => saveStaffPassword(resetStaff, password)} />}
       {selected && (
         <div
@@ -1520,6 +1532,11 @@ function AccountSettingsModal({ session, onClose, onChangeUserId, onChangePasswo
       </form>
     </div>
   </Modal>;
+}
+function StaffUsernameModal({ staff, onClose, onSave }: any) {
+  const [userId, setUserId] = useState(staff.userId);
+  const [busy, setBusy] = useState(false);
+  return <Modal title={'Change username · ' + staff.displayName} subtitle="The staff member must use the new ID at their next sign-in." onClose={onClose}><form className="form-grid" onSubmit={async e => { e.preventDefault(); setBusy(true); await onSave(userId.trim()); setBusy(false); }}><Field label="New staff user ID"><input required minLength={3} maxLength={32} pattern="[a-zA-Z0-9_-]{3,32}" value={userId} onChange={e => setUserId(e.target.value)} /></Field><div className="form-actions"><button type="button" className="btn secondary" onClick={onClose}>Cancel</button><button className="btn primary" disabled={busy || userId.trim().toLowerCase() === staff.userId.toLowerCase()}>{busy ? 'Saving…' : 'Save username'}</button></div></form></Modal>;
 }
 function StaffPasswordModal({ staff, onClose, onSave }: any) {
   const [password, setPassword] = useState('');
