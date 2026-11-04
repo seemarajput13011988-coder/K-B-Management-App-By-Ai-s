@@ -38,7 +38,7 @@ async function requireUser(req: any): Promise<AppUser | null> {
     : clean(req.body?.sessionToken, 4096) || clean(req.query?.sessionToken, 4096);
   if (!token) return null;
   try {
-    const decoded = await auth.verifyIdToken(token);
+    const decoded = await auth.verifyIdToken(token, true);
     const snap = await db.collection('users').doc(decoded.uid).get();
     if (!snap.exists) return null;
     const data = snap.data()!;
