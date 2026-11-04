@@ -514,6 +514,84 @@ export const api = onRequest(
         }
       }
 
+      if (path === '/api/inventory' && method === 'GET') {
+        const items = await list('inventory');
+        const visible = user.role === 'admin' ? items : items.filter(item => item.active !== false);
+        send(res, 200, { items: visible.sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''))).map(item => user.role === 'admin' ? item : ({ ...item, unitCost: undefined, supplier: undefined })) }); return;
+      }
+      if (path === '/api/inventory' && method === 'POST') {
+        if (!allow(user, ['admin'], res)) return;
+        const name = clean(body.name, 100), sku = clean(body.sku, 50), category = clean(body.category, 60);
+        const unit = clean(body.unit, 24) || 'pcs', quantity = Number(body.quantity), minimumQuantity = Number(body.minimumQuantity);
+        const unitCost = money(body.unitCost);
+        if (!name || !sku || !category || !Number.isInteger(quantity) || quantity < 0 || !Number.isInteger(minimumQuantity) || minimumQuantity < 0 || !validMoney(unitCost)) {
+          send(res, 400, { error: 'Enter an item name, SKU, category, whole-number stock quantities and a valid unit cost.' }); return;
+        }
+        const duplicate = (await list('inventory')).some(item => String(item.sku || '').toLowerCase() === sku.toLowerCase());
+        if (duplicate) { send(res, 409, { error: 'An inventory item with this SKU already exists.' }); return; }
+        const record = {
+          name, sku, category, unit, quantity, minimumQuantity, unitCost,
+          supplier: clean(body.supplier, 100), location: clean(body.location, 100), notes: clean(body.notes, 500),
+          active: true, createdAt: now(), updatedAt: now(), createdBy: user.uid
+        };
+        const ref = await db.collection('inventory').add(record);
+        await audit(user, 'CREATE', 'inventory-item', ref.id, 'Added inventory item ' + name);
+        send(res, 201, { id: ref.id, ...record }); return;
+      }
+      if (path.startsWith('/api/inventory/')) {
+        const parts = path.split('/').filter(Boolean), id = parts[2];
+        if (!id) { send(res, 404, { error: 'Inventory item not found.' }); return; }
+        const item = await getDoc('inventory', id);
+        if (!item) { send(res, 404, { error: 'Inventory item not found.' }); return; }
+        if (parts[3] === 'movements' && method === 'GET') {
+          const movements = (await list('inventory_movements')).filter(entry => entry.itemId === id).sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || ''))).slice(0, 100);
+          send(res, 200, { items: movements }); return;
+        }
+        if (parts[3] === 'movements' && method === 'POST') {
+          const type = clean(body.type, 12), quantity = Number(body.quantity), reason = clean(body.reason, 240);
+          if (!['IN', 'OUT'].includes(type) || !Number.isInteger(quantity) || quantity <= 0 || quantity > 100000 || !reason) {
+            send(res, 400, { error: 'Choose stock in/out, enter a whole-number quantity and a reason.' }); return;
+          }
+          if (user.role === 'staff' && type !== 'OUT') { send(res, 403, { error: 'Staff can record stock issued to a job. Only admins can add received stock.' }); return; }
+          const itemRef = db.collection('inventory').doc(id), movementRef = db.collection('inventory_movements').doc();
+          const createdAt = now();
+          const outcome = await db.runTransaction(async transaction => {
+            const latest = await transaction.get(itemRef), current = latest.data();
+            if (!latest.exists || !current || current.active === false) return { ok: false, missing: true };
+            const currentQuantity = Number(current.quantity);
+            const nextQuantity = type === 'IN' ? currentQuantity + quantity : currentQuantity - quantity;
+            if (!Number.isInteger(currentQuantity) || nextQuantity < 0) return { ok: false, insufficient: true };
+            transaction.update(itemRef, { quantity: nextQuantity, updatedAt: createdAt });
+            transaction.create(movementRef, {
+              itemId: id, itemName: String(current.name || item.name), sku: String(current.sku || item.sku),
+              type, quantity, quantityBefore: currentQuantity, quantityAfter: nextQuantity,
+              reason, createdAt, createdBy: user.uid, createdByName: user.displayName
+            });
+            return { ok: true, quantityAfter: nextQuantity };
+          });
+          if (outcome.missing) { send(res, 404, { error: 'This inventory item is no longer active.' }); return; }
+          if (outcome.insufficient) { send(res, 409, { error: 'Not enough stock is available for this issue.' }); return; }
+          await audit(user, 'STOCK_' + type, 'inventory-item', id, type + ' ' + quantity + ' ' + String(item.unit || 'units') + ': ' + reason);
+          send(res, 201, { id: movementRef.id, quantityAfter: outcome.quantityAfter }); return;
+        }
+        if (parts.length === 3 && method === 'PUT') {
+          if (!allow(user, ['admin'], res)) return;
+          const name = clean(body.name, 100), sku = clean(body.sku, 50), category = clean(body.category, 60);
+          const unit = clean(body.unit, 24) || 'pcs', minimumQuantity = Number(body.minimumQuantity), unitCost = money(body.unitCost);
+          if (!name || !sku || !category || !Number.isInteger(minimumQuantity) || minimumQuantity < 0 || !validMoney(unitCost)) {
+            send(res, 400, { error: 'Enter valid item details, minimum stock and unit cost.' }); return;
+          }
+          const duplicate = (await list('inventory')).some(entry => entry.id !== id && String(entry.sku || '').toLowerCase() === sku.toLowerCase());
+          if (duplicate) { send(res, 409, { error: 'Another inventory item already uses this SKU.' }); return; }
+          await db.collection('inventory').doc(id).update({
+            name, sku, category, unit, minimumQuantity, unitCost, supplier: clean(body.supplier, 100),
+            location: clean(body.location, 100), notes: clean(body.notes, 500), active: body.active !== false, updatedAt: now()
+          });
+          await audit(user, 'UPDATE', 'inventory-item', id, 'Updated inventory item ' + name);
+          send(res, 200, { updated: true }); return;
+        }
+      }
+
       if (path === '/api/payments' && method === 'GET') {
         const items = await list('payments');
         send(res,200,{items:user.role === 'admin' ? items : items.filter(item => item.recordedBy === user.uid)}); return;
@@ -1176,6 +1254,7 @@ export const api = onRequest(
       send(res,404,{error:'This API route was not found.'});
     } catch (error: any) {
       logger.error('API request failed', { message: error?.message || String(error) });
+      if (error?.code === 'inventory/insufficient') { send(res, 409, { error: error.message }); return; }
       if (error?.code === 'subscription/overlap') { send(res, 409, { error: error.message }); return; }
       if (error?.code === 'auth/email-already-exists') { send(res,409,{error:'That staff ID is already in use.'}); return; }
       if (error?.code === 'auth/invalid-password') { send(res,400,{error:'Password must contain at least 10 characters.'}); return; }
