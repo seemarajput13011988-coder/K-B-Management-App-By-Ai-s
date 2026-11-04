@@ -11,7 +11,7 @@ The Cloud Functions HTTP entry point is `functions/src/index.ts`; the React API 
 - Firebase Authentication staff provisioning, activation/deactivation and password reset.
 - Multiple administrator accounts with protected primary owner, activation/deactivation and audit entries.
 - Full-day / half-day attendance selection at shift start, plus reason-required admin corrections with audit history.
-- GPS history API for the admin location audit trail; current and historical locations are only collected during active shifts while the staff app is open and permission is granted.
+- Shift-scoped GPS: browser builds update while the staff page is visible; the Android app uses the Capacitor background-geolocation foreground service with a persistent notification and native HTTP uploads while a shift is active. Staff consent is required for check-in and for shifts started by an admin. Location access is limited to authorised admins. This is best-effort: force-stop, phone shutdown, revoked permission, disabled location services, battery restrictions and network loss can interrupt updates; show last update time rather than claim continuous coverage.
 - Firestore-backed staff, plans, customers, payments, complaints, tasks, attendance, foreground shift-scoped GPS, announcements, direct messages, groups, group messages, visits, expenses, invoices and audit endpoints.
 - Admin/staff role restrictions and server-side record scoping for the major collections.
 - Audit entries for the main create/update/delete and administrative operations.
