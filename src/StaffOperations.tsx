@@ -44,6 +44,7 @@ export default function StaffOperations({ session, customers, flash, compact = f
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [gpsMessage, setGpsMessage] = useState('Location sharing is limited to active work shifts.');
+  const [gpsDeadline, setGpsDeadline] = useState<string | null>(null);
   const [announcementForm, setAnnouncementForm] = useState({ title: '', message: '' });
   const [messageForm, setMessageForm] = useState({ recipientId: '', message: '' });
   const [visitForm, setVisitForm] = useState({ customerId: customers[0]?.id || '', purpose: 'Installation / service visit', notes: '' });
@@ -201,20 +202,26 @@ export default function StaffOperations({ session, customers, flash, compact = f
             accuracy: position.coords.accuracy,
             capturedAt: new Date().toISOString()
           });
-          if (!cancelled) setGpsMessage('Work location sharing is active while this app is open. Last update: ' + new Date().toLocaleTimeString());
+          if (!cancelled) {
+            setGpsMessage('Work location sharing is active. Last update: ' + new Date().toLocaleTimeString());
+            setGpsDeadline(null);
+            if ((await Promise.resolve(true)) && activeShift) await refresh();
+          }
         } catch {
           if (!cancelled) setGpsMessage('Location update failed. Check your connection and location permission.');
         } finally {
           inFlight = false;
         }
       }, async error => {
-        if (error.code === 1) {
-          try {
-            const result = await request('post', '/api/attendance/gps-lost', { reason: 'Location permission denied during active shift' });
-            if (result.data.cancelled) { setGpsMessage('Shift cancelled because location permission was turned off. Only an admin can restart it.'); await refresh(); }
-            else setGpsMessage('GPS cancellation was skipped for an exempt holiday date.');
-          } catch { if (!cancelled) setGpsMessage('Location permission is off. Reconnect and contact an admin if the shift status does not update.'); }
-        } else if (!cancelled) setGpsMessage('GPS signal is temporarily unavailable. Keep location enabled and retry.');
+        try {
+          const reason = error.code === 1 ? 'Location permission denied' : error.code === 2 ? 'GPS location unavailable' : 'GPS location request timed out';
+          const result = await request('post', '/api/attendance/gps-lost', { reason });
+          if (result.data.monitoring && result.data.deadlineAt) {
+            setGpsDeadline(result.data.deadlineAt);
+            const minutes = Math.max(0, Math.ceil(Number(result.data.remainingSeconds || 0) / 60));
+            if (!cancelled) setGpsMessage('GPS is unavailable. Turn it back on within 15 minutes. About ' + minutes + ' minutes remain. Your shift will be cancelled only after the grace period.');
+          } else if (result.data.reason === 'holiday-exempt') setGpsMessage('GPS monitoring is paused for your pending/approved holiday date.');
+        } catch { if (!cancelled) setGpsMessage('GPS is unavailable. Reconnect and restore location; the 15-minute grace timer will be enforced by the server once detected.'); }
         inFlight = false;
       }, { enableHighAccuracy: true, maximumAge: 10000, timeout: 20000 });
     };
