@@ -69,6 +69,7 @@ export default function FinanceWorkspace({ session, customers, payments, flash }
   const collected = monthPayments.reduce((sum, item) => sum + Number(item.amount || 0), 0);
   const spent = monthExpenses.reduce((sum, item) => sum + Number(item.amount || 0), 0);
   const outstanding = invoices.reduce((sum, item) => sum + Math.max(0, Number(item.amount || 0) - Number(item.paidAmount || 0)), 0);
+  const payrollTotal = payroll.reduce((sum, item) => sum + Number(item.amount || 0), 0);
   const cashResult = collected - spent;
   const activeCustomers = customers.filter(item => item.status === 'Active');
   const unpaidInvoices = invoices.filter(item => item.status !== 'Paid');
@@ -154,6 +155,7 @@ export default function FinanceWorkspace({ session, customers, payments, flash }
         {payroll.map(item => <tr key={item.id}><td><b>{item.staffName}</b></td><td>{monthName(item.period)}</td><td>{item.paidAt}</td><td>{item.method}</td><td className="amount">{money(item.amount)}</td></tr>)}
         {!payroll.length && <tr><td colSpan={5}>No salary payments recorded for this month.</td></tr>}
       </tbody></table></div>
+      <div className="finance-foot"><span>{payroll.length} staff payments · Total salary paid: <b>{money(payrollTotal)}</b></span><button className="btn secondary compact" disabled={!payroll.length} onClick={() => downloadCsv('kb-payroll-' + period + '.csv', [['Staff member','Staff ID','Month','Paid date','Method','Amount','Notes'], ...payroll.map(item => [item.staffName, item.staffUserId, monthName(item.period), item.paidAt, item.method, item.amount, item.notes || ''])])}><Download size={14}/> Export payroll</button></div>
     </section>
     <section className="panel finance-panel finance-chart-panel">
       <div className="finance-head"><div><span className="eyebrow">FINANCIAL ANALYTICS</span><h2>Six-month collection and expense trend</h2><p>Monthly recorded collections compared with recorded operating expenses.</p></div><div className="finance-chart-legend"><span><i className="income-dot"/> Collections</span><span><i className="expense-dot"/> Expenses</span></div></div>
