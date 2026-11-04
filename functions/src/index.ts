@@ -1229,6 +1229,58 @@ export const api = onRequest(
         await audit(user, 'DELETE', 'expense', id, 'Deleted expense: ' + String(item.title || 'Expense'));
         send(res, 200, { deleted: true }); return;
       }
+      if (path === '/api/customer-ledger' && method === 'GET') {
+        if (!allow(user, ['admin'], res)) return;
+        const customerId = clean(req.query.customerId, 128);
+        const customer = await getDoc('customers', customerId);
+        if (!customer) { send(res, 404, { error: 'Customer not found.' }); return; }
+        const [invoiceItems, paymentItems] = await Promise.all([list('invoices'), list('payments')]);
+        const entries: Array<{ id: string; date: string; type: 'Invoice' | 'Payment'; description: string; debit: number; credit: number; reference: string }> = [];
+        for (const invoice of invoiceItems) {
+          if (invoice.customerId !== customerId || invoice.voidedAt) continue;
+          const amount = Number(invoice.amount || 0);
+          if (!Number.isFinite(amount) || amount <= 0) continue;
+          entries.push({
+            id: 'invoice-' + invoice.id,
+            date: String(invoice.dueDate || invoice.createdAt || '').slice(0, 10),
+            type: 'Invoice',
+            description: 'Monthly service invoice · ' + String(invoice.period || ''),
+            debit: amount,
+            credit: 0,
+            reference: String(invoice.id || '')
+          });
+        }
+        for (const payment of paymentItems) {
+          if (payment.customerId !== customerId) continue;
+          const amount = Number(payment.amount || 0);
+          if (!Number.isFinite(amount) || amount <= 0) continue;
+          entries.push({
+            id: 'payment-' + payment.id,
+            date: String(payment.paidAt || payment.createdAt || '').slice(0, 10),
+            type: 'Payment',
+            description: 'Payment received · ' + String(payment.method || 'Other') + (payment.month ? ' · ' + String(payment.month) : ''),
+            debit: 0,
+            credit: amount,
+            reference: String(payment.id || '')
+          });
+        }
+        entries.sort((a, b) => a.date.localeCompare(b.date) || (a.type === 'Invoice' ? -1 : 1) || a.id.localeCompare(b.id));
+        let balance = 0;
+        const items = entries.map(entry => {
+          balance = Math.round((balance + entry.debit - entry.credit) * 100) / 100;
+          return { ...entry, balance };
+        });
+        const totalBilled = items.reduce((sum, item) => sum + item.debit, 0);
+        const totalPaid = items.reduce((sum, item) => sum + item.credit, 0);
+        send(res, 200, {
+          customer: { id: customerId, name: String(customer.name || ''), phone: String(customer.phone || ''), plan: String(customer.plan || '') },
+          items,
+          totalBilled,
+          totalPaid,
+          balance: Math.round((totalBilled - totalPaid) * 100) / 100
+        }); return;
+      }
+
       if (path === '/api/invoices' && method === 'GET') {
         if (!allow(user, ['admin'], res)) return;
         const period = clean(req.query.period, 7);
