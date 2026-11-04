@@ -335,6 +335,17 @@ export default function StaffOperations({ session, customers, flash, compact = f
       <article className="ops-summary"><span>{admin ? 'Field visits' : 'Messages'}</span><strong>{admin ? visits.length : messages.length}</strong><small>{admin ? 'Service visits submitted by the team' : 'Your conversation with administration'}</small></article>
     </section>
 
+    {admin && <section className="panel ops-panel">
+      <div className="ops-panel-head"><div><span className="eyebrow">ACCESS CONTROL</span><h2>Administrator accounts</h2><p>Create additional admin logins. Actions are audited and the primary owner account is protected.</p></div><span className="ops-pill is-live">{admins.filter(a=>a.active).length} ACTIVE</span></div>
+      <form className="ops-form" onSubmit={createAdmin}>
+        <input required minLength={3} maxLength={32} pattern="[A-Za-z0-9_-]+" placeholder="Admin login ID" value={adminForm.userId} onChange={e=>setAdminForm({...adminForm,userId:e.target.value})}/>
+        <input required maxLength={80} placeholder="Administrator name" value={adminForm.displayName} onChange={e=>setAdminForm({...adminForm,displayName:e.target.value})}/>
+        <input required minLength={12} type="password" autoComplete="new-password" placeholder="Temporary password (12+ characters)" value={adminForm.password} onChange={e=>setAdminForm({...adminForm,password:e.target.value})}/>
+        <button className="btn primary" disabled={busy}>Add administrator</button>
+      </form>
+      <div className="ops-location-list">{admins.map(item=><article className="ops-location-card" key={item.id}><div className="ops-person"><span className="avatar">{item.displayName.slice(0,2).toUpperCase()}</span><div><b>{item.displayName}</b><small>{item.userId} · {item.userId.toLowerCase()==='brajraj'?'Primary owner':'Administrator'}</small></div></div><div className="ops-location-detail"><span className={item.active?'ops-pill is-live':'ops-pill is-idle'}>{item.active?'ACTIVE':'DISABLED'}</span>{item.userId.toLowerCase()!=='brajraj' && <button className={'btn compact '+(item.active?'danger':'secondary')} disabled={busy} onClick={()=>updateAdminAccount(item,!item.active)}>{item.active?'Deactivate':'Reactivate'}</button>}</div></article>)}</div>
+    </section>}
+
     {admin && <section className="panel ops-panel team-summary-panel">
       <div className="ops-panel-head"><div><span className="eyebrow">BUSINESS DATA</span><h2>Team collection summary</h2><p>Collections are attributed to the staff account that recorded each payment.</p></div><span className="ops-pill is-live">LIVE DATA</span></div>
       <div className="table-wrap"><table><thead><tr><th>STAFF MEMBER</th><th>PAYMENT RECORDS</th><th>TOTAL COLLECTED</th><th>THIS MONTH</th><th>ATTENDANCE DAYS</th><th>TODAY</th></tr></thead><tbody>{staff.map(member => {
@@ -350,7 +361,7 @@ export default function StaffOperations({ session, customers, flash, compact = f
     {!admin && <section className="panel ops-panel">
       <div className="ops-panel-head"><div><span className="eyebrow">ATTENDANCE</span><h2>My workday</h2><p>Record your shift start and finish. Work location is shared with Admin during an active shift while this app is open and location permission is granted. Sharing stops at checkout.</p></div><span className={'ops-pill ' + (activeShift ? 'is-live' : 'is-idle')}>{activeShift ? 'ON SHIFT' : myToday?.checkOutAt ? 'SHIFT COMPLETE' : 'OFF SHIFT'}</span></div>
       <div className="ops-clock-row"><div><small>CHECK IN</small><strong>{myToday ? stamp(myToday.checkInAt) : 'Not checked in'}</strong></div><div><small>CHECK OUT</small><strong>{myToday?.checkOutAt ? stamp(myToday.checkOutAt) : '—'}</strong></div></div>
-      <div className="ops-actions">{!myToday ? <button className="btn primary" disabled={busy} onClick={() => shift('check-in')}>Check in and start shift</button> : activeShift ? <button className="btn danger" disabled={busy} onClick={() => shift('check-out')}>Check out and end shift</button> : <span className="ops-complete">Today’s attendance is complete.</span>}</div>
+      <div className="ops-actions"><label className="ops-day-type">Attendance type <select value={dayType} disabled={!!myToday} onChange={e=>setDayType(e.target.value as 'Full day'|'Half day')}><option>Full day</option><option>Half day</option></select></label>{!myToday ? <button className="btn primary" disabled={busy} onClick={() => shift('check-in')}>Check in and start shift</button> : activeShift ? <button className="btn danger" disabled={busy} onClick={() => shift('check-out')}>Check out and end shift</button> : <span className="ops-complete">Today’s attendance is complete.</span>}</div>
       <p className="ops-gps-note">{gpsMessage}</p>
     </section>}
 
@@ -363,6 +374,11 @@ export default function StaffOperations({ session, customers, flash, compact = f
         const locationStatus = locationAge < 90000 ? 'Live · Updated ' : 'Last known · Updated ';
         return <article className="ops-location-card" key={member.id}><div className="ops-person"><span className="avatar">{member.displayName.slice(0, 2).toUpperCase()}</span><div><b>{member.displayName}</b><small>{shiftRecord?.checkOutAt ? 'Checked out ' + stamp(shiftRecord.checkOutAt) : shiftRecord ? 'Checked in ' + stamp(shiftRecord.checkInAt) : 'No attendance today'}</small></div></div><div className="ops-location-detail">{loc ? <><span>{locationStatus}{stamp(loc.capturedAt)}</span><small>Accuracy approx. {Math.round(loc.accuracy)} m</small><a href={'https://www.google.com/maps?q=' + loc.latitude + ',' + loc.longitude} target="_blank" rel="noreferrer">Open in Google Maps ↗</a></> : <span>No location shared during this shift yet</span>}{!shiftRecord ? <button className="btn primary compact" disabled={busy || !member.active} onClick={() => adminShift(member.id, 'admin-start')}>Start shift</button> : shiftRecord.checkOutAt ? <span className="ops-complete">Shift completed</span> : <button className="btn danger compact" disabled={busy} onClick={() => adminShift(member.id, 'admin-end')}>End shift</button>}</div></article>;
       })}{!staff.length && <p className="ops-empty">Staff accounts will appear here after they are created.</p>}</div>
+    </section>}
+
+    {admin && <section className="panel ops-panel">
+      <div className="ops-panel-head"><div><span className="eyebrow">GPS AUDIT TRAIL</span><h2>Location history</h2><p>Location points recorded during active shifts. Open any point in Google Maps.</p></div><span className="ops-pill">{locationHistory.length} RECENT POINTS</span></div>
+      <div className="ops-history-list">{locationHistory.slice(0,40).map((point,index)=><article className="ops-history-row" key={point.userId+'-'+point.capturedAt+'-'+index}><div><b>{point.displayName}</b><small>{stamp(point.capturedAt)}</small></div><span>±{Math.round(point.accuracy||0)} m</span><a href={'https://www.google.com/maps?q='+point.latitude+','+point.longitude} target="_blank" rel="noreferrer">Open map ↗</a></article>)}{!locationHistory.length && <p className="ops-empty">No GPS points have been recorded yet.</p>}</div>
     </section>}
 
     <div className="ops-two-col">
@@ -407,9 +423,10 @@ export default function StaffOperations({ session, customers, flash, compact = f
       <div className="ops-feed">{sortedVisits.map(item => <article className="ops-feed-item" key={item.id}><div className="ops-message-top"><b>{item.customerName}</b><small>{stamp(item.visitedAt)}</small></div><p>{item.purpose}</p>{item.notes && <p>{item.notes}</p>}{admin && <small>Staff: {item.staffName}</small>}</article>)}{!visits.length && <p className="ops-empty">No field visits recorded yet.</p>}</div>
     </section>
 
+    {admin && attendanceCorrection && <section className="panel ops-panel"><div className="ops-panel-head"><div><span className="eyebrow">ATTENDANCE CORRECTION</span><h2>Correct day type</h2><p>Changes are recorded in the audit log.</p></div><button className="btn secondary compact" onClick={()=>setAttendanceCorrection(null)}>Cancel</button></div><form className="ops-form" onSubmit={correctAttendance}><select value={attendanceCorrection.dayType} onChange={e=>setAttendanceCorrection({...attendanceCorrection,dayType:e.target.value as 'Full day'|'Half day'})}><option>Full day</option><option>Half day</option></select><textarea required maxLength={300} rows={2} placeholder="Reason for correction" value={attendanceCorrection.reason} onChange={e=>setAttendanceCorrection({...attendanceCorrection,reason:e.target.value})}/><button className="btn primary" disabled={busy}>Save correction</button></form></section>}
     <section className="panel ops-panel">
       <div className="ops-panel-head"><div><span className="eyebrow">WORK HISTORY</span><h2>{admin ? 'Team attendance history' : 'My attendance history'}</h2><p>Daily attendance records, kept separate by staff member and date.</p></div></div>
-      <div className="ops-history-list">{sortedAttendance.slice(0, 30).map(item => <article className="ops-history-row" key={item.id}><div><b>{item.displayName}</b><small>{item.workDate}</small></div><span>{stamp(item.checkInAt)}</span><span>{item.checkOutAt ? stamp(item.checkOutAt) : 'Still checked in'}</span><strong>{item.checkOutAt ? 'Completed' : 'On shift'}</strong></article>)}{!attendance.length && <p className="ops-empty">Attendance history will appear here.</p>}</div>
+      <div className="ops-history-list">{sortedAttendance.slice(0, 30).map(item => <article className="ops-history-row" key={item.id}><div><b>{item.displayName}</b><small>{item.workDate}</small></div><span>{stamp(item.checkInAt)}</span><span>{item.checkOutAt ? stamp(item.checkOutAt) : 'Still checked in'}</span><strong>{item.dayType || 'Full day'} · {item.checkOutAt ? 'Completed' : 'On shift'}</strong>{admin && <button className="btn secondary compact" onClick={()=>setAttendanceCorrection({id:item.id,dayType:item.dayType||'Full day',reason:''})}>Correct</button>}</article>)}{!attendance.length && <p className="ops-empty">Attendance history will appear here.</p>}</div>
     </section>
     {loading && <div className="ops-loading">Loading team operations…</div>}
   </div>;
