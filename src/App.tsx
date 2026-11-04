@@ -203,6 +203,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
         for (const item of items.slice().reverse()) {
           if (seenNotifications.current.has(item.id)) continue;
           seenNotifications.current.add(item.id);
+          if (item.read) continue;
           if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
             new Notification(item.title || 'K&B update', { body: item.message || 'You have a new update.' });
           } else {
