@@ -29,7 +29,7 @@ The complete 16-file source snapshot from AppDeploy version 1793770810412 is pre
 7. Use Firestore Security Rules and server-side authorization; do not trust role values supplied by the client.
 
 ## Modules to preserve and verify
-Authentication and staff accounts; customers; plans; payments; dashboards; attendance and admin corrections; consent-based foreground GPS; tasks; complaints; announcements; direct messages and group chat; field visits; finance and invoices; expenses; CSV exports; audit logs; language and theme preferences.
+Authentication and staff accounts; customers; plans; payments; dashboards; attendance and admin corrections; consent-based shift-scoped GPS (native Android foreground service with persistent notification; browser foreground fallback); tasks; complaints; announcements; direct messages and group chat; field visits; finance and invoices; expenses; CSV exports; audit logs; language and theme preferences.
 
 ## Current blockers / inputs needed
 - Add the Firebase Web App config to local `.env.local` on the build machine (never commit it).
