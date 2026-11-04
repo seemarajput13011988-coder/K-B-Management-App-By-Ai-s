@@ -8,6 +8,11 @@ const config: CapacitorConfig = {
     allowMixedContent: false,
     useLegacyBridge: true,
   },
+  plugins: {
+    CapacitorHttp: {
+      enabled: true,
+    },
+  },
 };
 
 export default config;
