@@ -1264,7 +1264,7 @@ export const api = onRequest(
             reference: String(payment.id || '')
           });
         }
-        entries.sort((a, b) => a.date.localeCompare(b.date) || (a.type === 'Invoice' ? -1 : 1) || a.id.localeCompare(b.id));
+        entries.sort((a, b) => a.date.localeCompare(b.date) || (a.type === b.type ? 0 : a.type === 'Invoice' ? -1 : 1) || a.id.localeCompare(b.id));
         let balance = 0;
         const items = entries.map(entry => {
           balance = Math.round((balance + entry.debit - entry.credit) * 100) / 100;
