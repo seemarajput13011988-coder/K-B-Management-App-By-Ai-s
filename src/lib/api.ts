@@ -67,9 +67,14 @@ export async function signInAppUser(userId: string, password: string) {
   const id = userId.trim().toLowerCase();
   if (!id) throw new Error('Enter your user ID.');
   await signInWithEmailAndPassword(firebaseAuth, id + '@' + ACCOUNT_DOMAIN, password);
-  const token = await firebaseAuth.currentUser!.getIdToken();
-  const profile = await api.get<{ user: { id: string; userId: string; displayName: string; role: 'admin' | 'staff'; active: boolean } }>('/api/auth/me');
-  return { token, expiresAt: Date.now() + 3600000, user: profile.data.user };
+  try {
+    const token = await firebaseAuth.currentUser!.getIdToken();
+    const profile = await api.get<{ user: { id: string; userId: string; displayName: string; role: 'admin' | 'staff'; active: boolean } }>('/api/auth/me');
+    return { token, expiresAt: Date.now() + 3600000, user: profile.data.user };
+  } catch (error) {
+    await signOut(firebaseAuth);
+    throw error;
+  }
 }
 export async function signOutAppUser() { if (firebaseAuth) await signOut(firebaseAuth); }
 export const ws = {
