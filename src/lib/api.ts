@@ -57,7 +57,18 @@ export async function submitStaffRegistrationRequest(input: { userId: string; di
   let data: any = {};
   try { data = await response.json(); } catch { data = {}; }
   if (!response.ok) throw new Error(typeof data.error === 'string' ? data.error : 'Could not submit your staff registration request.');
-  return data as { id: string; status: 'pending'; message: string };
+  return data as { id: string; trackingCode: string; status: 'pending'; message: string };
+}
+
+export async function getStaffRegistrationStatus(requestId: string, trackingCode: string) {
+  const url = new URL('/api/staff-registration-requests/status', API_BASE);
+  url.searchParams.set('requestId', requestId);
+  url.searchParams.set('trackingCode', trackingCode);
+  const response = await fetch(url.toString(), { method: 'GET', cache: 'no-store' });
+  let data: any = {};
+  try { data = await response.json(); } catch { data = {}; }
+  if (!response.ok) throw new Error(typeof data.error === 'string' ? data.error : 'Could not check registration status.');
+  return data as { status: 'pending'|'approved'|'rejected'; createdAt: string; reviewedAt?: string | null; reviewedByName?: string | null };
 }
 export const api = {
   get: <T = any>(path: string) => request<T>(path, 'GET'),
