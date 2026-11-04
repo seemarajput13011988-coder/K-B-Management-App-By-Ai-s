@@ -1,5 +1,5 @@
 import { CapacitorHttp } from '@capacitor/core';
-import { EmailAuthProvider, onAuthStateChanged, reauthenticateWithCredential, signInWithEmailAndPassword, signOut } from 'firebase/auth';
+import { browserLocalPersistence, EmailAuthProvider, onAuthStateChanged, reauthenticateWithCredential, setPersistence, signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import { firebaseAuth } from './firebase';
 
 const API_BASE = import.meta.env.VITE_FIREBASE_FUNCTIONS_URL || 'https://asia-south1-kandb-net-sevice.cloudfunctions.net/api';
@@ -83,18 +83,49 @@ export async function recoverAdminPassword(recoveryCode: string, newPassword: st
   if (!response.ok) throw new Error(typeof data.error === 'string' ? data.error : 'Admin password recovery failed.');
   return data;
 }
+function firebaseSignInError(error: unknown): Error {
+  const code = typeof error === 'object' && error !== null && 'code' in error
+    ? String((error as { code?: unknown }).code || '')
+    : '';
+  const messages: Record<string, string> = {
+    'auth/invalid-credential': 'Firebase rejected this user ID or password. If this is the first login on the new Firebase system, the admin account must be initialized first; old app passwords are not automatically copied.',
+    'auth/user-not-found': 'This account has not been created in Firebase Authentication yet. The admin must complete first-time setup or create this staff account.',
+    'auth/wrong-password': 'The password is incorrect for this Firebase account.',
+    'auth/operation-not-allowed': 'Email/Password sign-in is disabled in Firebase Console. The project owner must enable Authentication → Sign-in method → Email/Password.',
+    'auth/invalid-api-key': 'The APK has an invalid Firebase API key. Rebuild it with the Web App configuration from project kandb-net-sevice.',
+    'auth/app-not-authorized': 'This Firebase app is not authorized for the configured API key. Check the Firebase project Web App configuration and API key restrictions.',
+    'auth/unauthorized-domain': 'Firebase rejected this app domain. Check Authentication → Settings → Authorized domains for the configured Firebase project.',
+    'auth/network-request-failed': 'Firebase could not be reached. Check the phone internet connection, date and time, then try again.',
+    'auth/too-many-requests': 'Firebase temporarily blocked sign-in attempts. Wait a while before trying again.',
+    'auth/invalid-email': 'The generated Firebase account email is invalid. Check the user ID and account configuration.',
+  };
+  const message = messages[code] || (error instanceof Error ? error.message : 'Firebase sign-in failed. Check the Firebase project configuration and account setup.');
+  const result = new Error(message) as Error & { code?: string };
+  if (code) result.code = code;
+  return result;
+}
+
 export async function signInAppUser(userId: string, password: string) {
-  if (!firebaseAuth) throw new Error('Firebase is not configured yet. Add the K&B Firebase web app settings first.');
+  if (!firebaseAuth) throw new Error('Firebase is not configured in this APK. Rebuild it with the Web App settings for project kandb-net-sevice.');
   const id = userId.trim().toLowerCase();
   if (!id) throw new Error('Enter your user ID.');
-  await signInWithEmailAndPassword(firebaseAuth, id + '@' + ACCOUNT_DOMAIN, password);
   try {
-    const token = await firebaseAuth.currentUser!.getIdToken();
+    // Keep the Firebase session available after Android closes and reopens the app.
+    await setPersistence(firebaseAuth, browserLocalPersistence);
+    await signInWithEmailAndPassword(firebaseAuth, id + '@' + ACCOUNT_DOMAIN, password);
+  } catch (error) {
+    throw firebaseSignInError(error);
+  }
+  try {
+    const currentUser = firebaseAuth.currentUser;
+    if (!currentUser) throw new Error('Firebase sign-in completed but no authenticated user session was returned. Please sign in again.');
+    const token = await currentUser.getIdToken();
     const profile = await api.get<{ user: { id: string; userId: string; displayName: string; role: 'admin' | 'staff'; active: boolean; isSuperAdmin?: boolean } }>('/api/auth/me');
     return { token, expiresAt: Date.now() + 3600000, user: profile.data.user };
   } catch (error) {
     await signOut(firebaseAuth);
-    throw error;
+    const detail = error instanceof Error ? error.message : 'Unknown server response.';
+    throw new Error('Firebase accepted the sign-in, but the K&B account profile could not be loaded: ' + detail);
   }
 }
 export async function changeAppPassword(currentPassword: string, newPassword: string) {
