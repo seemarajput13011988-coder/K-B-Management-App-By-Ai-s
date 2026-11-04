@@ -6,14 +6,16 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "android:sync": "cap sync android"
   },
   "dependencies": {
     "lucide-react": "^0.469.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "@capacitor/core": "^7.4.3",
-    "firebase": "^12.5.0"
+    "firebase": "^12.5.0",
+    "@capacitor/android": "^7.4.3"
   },
   "optionalDependencies": {
     "@rollup/rollup-linux-x64-gnu": "^4.0.0"
