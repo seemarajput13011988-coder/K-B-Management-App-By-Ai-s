@@ -7,7 +7,10 @@ type ApiResult<T = any> = { data: T };
 
 async function request<T = any>(path: string, method: string, payload?: Record<string, unknown>): Promise<ApiResult<T>> {
   if (!firebaseAuth) throw new Error('Firebase is not configured yet. Add the K&B Firebase web app settings before signing in.');
-  if (!firebaseAuth.currentUser) await new Promise<void>(resolve => onAuthStateChanged(firebaseAuth, () => resolve()));
+  if (!firebaseAuth.currentUser) await new Promise<void>(resolve => {
+    let unsubscribe = () => {};
+    unsubscribe = onAuthStateChanged(firebaseAuth, () => { unsubscribe(); resolve(); });
+  });
   const currentUser = firebaseAuth.currentUser;
   if (!currentUser) throw new Error('Please sign in again to continue.');
   const token = await currentUser.getIdToken();
