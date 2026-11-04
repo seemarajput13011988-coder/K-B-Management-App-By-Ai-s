@@ -393,6 +393,16 @@ export const api = onRequest(
         send(res,201,{id:ref.id,...record}); return;
       }
 
+      if (path.startsWith('/api/payments/') && method === 'DELETE') {
+        if (!allow(user, ['admin'], res)) return;
+        const id = routeId(path, '/api/payments');
+        const payment = await getDoc('payments', id);
+        if (!payment) { send(res, 404, { error: 'Payment record not found.' }); return; }
+        await db.collection('payments').doc(id).delete();
+        await audit(user, 'DELETE', 'payment', id, 'Deleted payment of ₹' + String(payment.amount) + ' for ' + String(payment.customerName || 'customer'));
+        send(res, 200, { deleted: true }); return;
+      }
+
       if (path === '/api/complaints' && method === 'GET') {
         const items = await list('complaints');
         send(res,200,{items:user.role === 'admin' ? items : items.filter(item => item.assignedTo === user.uid || item.createdBy === user.uid)}); return;
