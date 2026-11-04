@@ -24,7 +24,7 @@ const now = () => new Date().toISOString();
 const send = (res: any, status: number, body: Data) => { res.status(status).json(body); };
 
 function routePath(path: string): string {
-  return path.replace(/\/+$//, '') || '/';
+  return path.replace(/\/+$/, '') || '/';
 }
 function routeId(path: string, base: string): string {
   return decodeURIComponent(path.slice(base.length + 1));
