@@ -3,7 +3,6 @@ import { getAuth } from 'firebase-admin/auth';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import { onRequest } from 'firebase-functions/v2/https';
 import { logger } from 'firebase-functions';
-import { randomBytes } from 'node:crypto';
 
 initializeApp();
 const auth = getAuth();
