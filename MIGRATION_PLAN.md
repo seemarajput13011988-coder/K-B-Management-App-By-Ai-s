@@ -8,7 +8,7 @@ The complete 16-file source snapshot from AppDeploy version 1793770810412 is pre
 - The preserved legacy backend uses `@appdeploy/sdk`.
 - The migration branch now has a Firebase Auth-aware API adapter; legacy AppDeploy SDK imports were removed from the React modules.
 - Existing backend includes password hashing, sessions, role checks, audit logging, business modules, and realtime subscriptions.
-- The current source is not Firebase-backed yet.
+- The current migration branch targets Firebase project `kandb-net-sevice`.
 
 ## Target architecture
 - React + Vite frontend.
@@ -32,26 +32,29 @@ The complete 16-file source snapshot from AppDeploy version 1793770810412 is pre
 Authentication and staff accounts; customers; plans; payments; dashboards; attendance and admin corrections; consent-based foreground GPS; tasks; complaints; announcements; direct messages and group chat; field visits; finance and invoices; expenses; CSV exports; audit logs; language and theme preferences.
 
 ## Current blockers / inputs needed
-- Confirm Firebase Authentication and Firestore state in project `kandb-net-sevice`.
-- Add the Firebase Web App config to local `.env.local` (never commit it).
+- Add the Firebase Web App config to local `.env.local` on the build machine (never commit it).
+- Enable Firebase Authentication Email/Password and verify Firestore in the confirmed project.
 - Set the Functions secrets `ADMIN_BOOTSTRAP_SECRET` and `ADMIN_RECOVERY_CODE`.
+- Add the six public Firebase config values as GitHub Actions secrets before requesting an APK build.
 - A secure export and reviewed backup of the current AppDeploy data are still required before live-data migration.
 
 ## Status
-- [x] Verify repository is private/public as configured and connected with push access.
-- [x] Preserve all 16 source files from the current AppDeploy snapshot on `main`.
+- [x] Preserve the AppDeploy source snapshot on `main`.
 - [x] Create a separate `firebase-migration` working branch.
+- [x] Confirm Firebase project ID `kandb-net-sevice` and register the Web App.
 - [x] Add Firebase browser SDK initialization scaffold with a project-ID guard.
 - [x] Add deny-by-default Firestore rules and Firebase Hosting configuration.
 - [x] Add Capacitor Android app configuration and dependencies.
-- [ ] Configure the confirmed Firebase project and register its web app.
 - [x] Add secure Cloud Functions HTTP API foundation and ID-token verification.
 - [x] Port the core Firestore-backed API route groups and Firebase ID-token authentication checks.
 - [x] Switch React API calls and sign-in to Firebase Authentication / Cloud Functions.
+- [x] Add a GitHub Actions Functions typecheck workflow; the latest recorded typecheck passed.
+- [x] Add a frontend production build workflow; the latest recorded build passed.
+- [x] Configure the Android workflow to use the confirmed project and app identity.
+- [ ] Add local Firebase Web App config and enable Email/Password authentication.
+- [ ] Configure Functions secrets and verify the API using emulators.
 - [ ] Finish password-change flow, realtime chat transport, and full role/edge-case review.
 - [ ] Migrate and verify data.
-- [x] Add a GitHub Actions Functions typecheck workflow.
-- [x] Add a manual GitHub Actions workflow to build a private Android debug APK.
-- [ ] Run the Android APK workflow after Firebase web configuration secrets are added.
-- [ ] Run Functions and frontend builds; fix all reported errors.
+- [ ] Add required GitHub Actions config secrets and run the Android APK workflow.
 - [ ] Test web and Android flows for admin and staff.
+- [ ] Deploy Hosting and Functions only after approval and all safety checks.
