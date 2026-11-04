@@ -40,6 +40,7 @@ import {
 } from 'lucide-react';
 
 type Session={token:string;expiresAt:number;user:{id:string;userId:string;displayName:string;role:'admin'|'staff';active:boolean}};
+type AppNotification={id:string;title:string;message:string;createdAt:string;read:boolean;type:string};
 const getToken=()=>{try{return (JSON.parse(localStorage.getItem('kb-customer-session')||'null') as Session|null)?.token||'';}catch{return '';}};
 const api={get:(url:string)=>client.get(url+(url.includes('?')?'&':'?')+'sessionToken='+encodeURIComponent(getToken())),post:(url:string,data?:Record<string,unknown>)=>client.post(url,{...(data||{}),sessionToken:getToken()}),put:(url:string,data?:Record<string,unknown>)=>client.put(url,{...(data||{}),sessionToken:getToken()}),delete:(url:string)=>client.delete(url+'?sessionToken='+encodeURIComponent(getToken()))};
 type Customer = {
@@ -143,6 +144,8 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   const [showComplaint, setShowComplaint] = useState(false);
   const [notice, setNotice] = useState('');
   const [mobileNav, setMobileNav] = useState(false);
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
   const seenNotifications = useRef<Set<string> | null>(null);
 
   useEffect(() => {
@@ -194,10 +197,10 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
       try {
         const result = await api.get('/api/notifications');
         if (stopped) return;
-        const items = (result.data.items || []) as Array<{id:string;title:string;message:string;read?:boolean}>;
+        const items = (result.data.items || []) as AppNotification[];
+        setNotifications(items);
         if (seenNotifications.current === null) {
           seenNotifications.current = new Set(items.map(item => item.id));
-          await Promise.all(items.filter(item => !item.read).map(item => api.put('/api/notifications/' + item.id, { read: true }).catch(() => undefined)));
           return;
         }
         for (const item of items.slice().reverse()) {
@@ -209,7 +212,6 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
           } else {
             setNotice((item.title || 'K&B update') + ': ' + (item.message || 'You have a new update.'));
           }
-          await api.put('/api/notifications/' + item.id, { read: true }).catch(() => undefined);
         }
       } catch { /* Notification polling must not interrupt normal app use. */ }
     };
@@ -255,6 +257,11 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   function flash(message: string) {
     setNotice(message);
     window.setTimeout(() => setNotice(''), 3200);
+  }
+  async function markNotificationsRead() {
+    const unread = notifications.filter(item => !item.read);
+    await Promise.all(unread.map(item => api.put('/api/notifications/' + item.id, { read: true }).catch(() => undefined)));
+    setNotifications(current => current.map(item => ({ ...item, read: true })));
   }
   async function signOut() {
     try { await api.post('/api/auth/logout'); } catch { /* local sign-out still proceeds */ }
@@ -511,12 +518,16 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
               <label className="language-control" title="App language"><span>🌐</span><select aria-label="App language" value={language} onChange={event => setLanguage(event.target.value as 'en' | 'hi' | 'gu')}><option value="en">English</option><option value="hi">हिन्दी</option><option value="gu">ગુજરાતી</option></select></label>
               <button className="theme-toggle" onClick={toggleTheme} title={theme === 'dark' ? 'Switch to day mode' : 'Switch to night mode'} aria-label={theme === 'dark' ? 'Switch to day mode' : 'Switch to night mode'}>{theme === 'dark' ? '☀️' : '🌙'}<span>{theme === 'dark' ? 'Day' : 'Night'}</span></button>
             </div>
-            <button
-              className="icon-button"
-              onClick={() => flash('You are all caught up.')}
-            >
-              <Bell size={18} />
-            </button>
+            <div className="notification-anchor">
+              <button className="icon-button notification-bell" onClick={() => setNotificationsOpen(open => !open)} aria-label="Open notifications">
+                <Bell size={18}/>{notifications.filter(item=>!item.read).length>0 && <span className="notification-count">{Math.min(99,notifications.filter(item=>!item.read).length)}</span>}
+              </button>
+              {notificationsOpen && <div className="notification-popover">
+                <div className="notification-popover-head"><b>Notifications</b><button onClick={markNotificationsRead} disabled={!notifications.some(item=>!item.read)}>Mark all read</button></div>
+                {notifications.slice(0,12).map(item=><article className={'notification-item '+(!item.read?'unread':'')} key={item.id}><b>{item.title}</b><p>{item.message}</p><small>{item.createdAt ? new Date(item.createdAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'}) : ''}</small></article>)}
+                {!notifications.length && <p className="notification-empty">You’re all caught up.</p>}
+              </div>}
+            </div>
             <div className="avatar small-avatar">{session.user.displayName.slice(0, 2).toUpperCase()}</div>
           </div>
         </header>
