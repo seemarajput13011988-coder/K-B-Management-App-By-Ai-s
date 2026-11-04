@@ -1,4 +1,4 @@
-import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'firebase/auth';
+import { EmailAuthProvider, onAuthStateChanged, reauthenticateWithCredential, signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import { firebaseAuth } from './firebase';
 
 const API_BASE = import.meta.env.VITE_FIREBASE_FUNCTIONS_URL || 'https://asia-south1-kandb-net-service.cloudfunctions.net/api';
@@ -75,6 +75,16 @@ export async function signInAppUser(userId: string, password: string) {
     await signOut(firebaseAuth);
     throw error;
   }
+}
+export async function changeAppPassword(currentPassword: string, newPassword: string) {
+  if (!firebaseAuth?.currentUser?.email) throw new Error('Please sign in again to change your password.');
+  if (newPassword.length < 10) throw new Error('Choose a password with at least 10 characters.');
+  const user = firebaseAuth.currentUser;
+  const credential = EmailAuthProvider.credential(user.email, currentPassword);
+  await reauthenticateWithCredential(user, credential);
+  await user.getIdToken(true);
+  await api.post('/api/auth/change-password', { newPassword });
+  await signOut(firebaseAuth);
 }
 export async function signOutAppUser() { if (firebaseAuth) await signOut(firebaseAuth); }
 export const ws = {
