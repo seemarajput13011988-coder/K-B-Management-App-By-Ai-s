@@ -961,6 +961,42 @@ export const api = onRequest(
         }
       }
 
+      if (path === '/api/payroll' && method === 'GET') {
+        if (!allow(user, ['admin'], res)) return;
+        const period = clean(req.query.period, 7);
+        if (!monthPattern.test(period) || Number(period.slice(5, 7)) < 1 || Number(period.slice(5, 7)) > 12) { send(res, 400, { error: 'Select a valid payroll month.' }); return; }
+        const items = (await list('payroll')).filter(item => item.period === period).sort((a, b) => String(a.staffName || '').localeCompare(String(b.staffName || '')));
+        send(res, 200, { items }); return;
+      }
+      if (path === '/api/payroll' && method === 'POST') {
+        if (!allow(user, ['admin'], res)) return;
+        const staffUserId = clean(body.staffUserId, 128), period = clean(body.period, 7);
+        const amount = money(body.amount), paidAt = clean(body.paidAt, 10), methodName = clean(body.method, 40);
+        const member = staffUserId ? await staffFor(staffUserId) : null;
+        if (!member || member.role !== 'staff' || member.active !== true) { send(res, 400, { error: 'Choose an active staff member.' }); return; }
+        if (!monthPattern.test(period) || Number(period.slice(5, 7)) < 1 || Number(period.slice(5, 7)) > 12 || !isValidDateKey(paidAt) || paidAt.slice(0, 7) !== period || !validMoney(amount) || amount <= 0 || !methodName) {
+          send(res, 400, { error: 'Enter a valid payroll month, payment date, amount and payment method.' }); return;
+        }
+        const key = staffUserId + '|' + period;
+        const id = 'pay-' + createHash('sha256').update(key).digest('hex').slice(0, 32);
+        const payrollRef = db.collection('payroll').doc(id);
+        const expenseRef = db.collection('expenses').doc('salary-' + id);
+        const createdAt = now();
+        const record = { staffUserId, staffName: clean(member.displayName, 80), period, amount, paidAt, method: methodName, notes: clean(body.notes, 300), createdBy: user.uid, createdByName: user.displayName, createdAt };
+        const expense = { title: 'Salary - ' + record.staffName + ' (' + period + ')', category: 'Salary', amount, spentAt: paidAt, method: methodName, notes: record.notes, createdBy: user.uid, createdByName: user.displayName, createdAt, payrollId: id, staffUserId };
+        const created = await db.runTransaction(async transaction => {
+          const existing = await transaction.get(payrollRef);
+          const existingExpense = await transaction.get(expenseRef);
+          if (existing.exists || existingExpense.exists) return false;
+          transaction.create(payrollRef, record);
+          transaction.create(expenseRef, expense);
+          return true;
+        });
+        if (!created) { send(res, 409, { error: 'Salary is already recorded for this staff member and month.' }); return; }
+        await audit(user, 'CREATE', 'payroll', id, 'Recorded salary of ₹' + amount + ' for ' + record.staffName + ' (' + period + ')');
+        send(res, 201, { id, ...record }); return;
+      }
+
       if (path === '/api/expenses' && method === 'GET') {
         if (!allow(user, ['admin'], res)) return;
         const items = (await list('expenses')).sort((a, b) => String(b.spentAt || '').localeCompare(String(a.spentAt || '')));
