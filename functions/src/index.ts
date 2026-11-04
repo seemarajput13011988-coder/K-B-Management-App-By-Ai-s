@@ -8,7 +8,7 @@ import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { onDocumentCreated } from 'firebase-functions/v2/firestore';
 import { logger } from 'firebase-functions';
 import { defineSecret } from 'firebase-functions/params';
-import { gpsGracePeriodExpired, isSuperAdminAccount, isValidDateKey, routePath, taskReminderKind } from './route-path.js';
+import { gpsGracePeriodExpired, hasOverlappingSubscription, isSuperAdminAccount, isValidDateKey, isValidDateRange, routePath, taskReminderKind } from './route-path.js';
 
 initializeApp();
 const auth = getAuth();
@@ -1111,7 +1111,7 @@ export const api = onRequest(
         const plan = clean(body.plan, 100), startDate = clean(body.startDate, 10), endDate = clean(body.endDate, 10);
         const amount = money(body.amount), paymentStatus = body.paymentStatus === 'Paid' ? 'Paid' : 'Pending';
         const paidAt = clean(body.paidAt, 10), paymentMethod = clean(body.paymentMethod, 40);
-        if (!customer || !plan || !isValidDateKey(startDate) || !isValidDateKey(endDate) || endDate < startDate || !validMoney(amount) || amount <= 0) {
+        if (!customer || !plan || !isValidDateRange(startDate, endDate) || !validMoney(amount) || amount <= 0) {
           send(res, 400, { error: 'Choose a customer and plan, enter valid start/end dates and a renewal amount.' }); return;
         }
         if (user.role === 'staff' && customer.assignedTo !== user.uid) {
@@ -1121,7 +1121,7 @@ export const api = onRequest(
           send(res, 400, { error: 'A paid renewal needs a valid payment date and payment method.' }); return;
         }
         const existing = (await list('subscriptions')).filter(item => item.customerId === customerId && !['Cancelled', 'Expired'].includes(String(item.status)));
-        if (existing.some(item => String(item.startDate) <= endDate && String(item.endDate) >= startDate)) {
+        if (hasOverlappingSubscription(existing, startDate, endDate)) {
           send(res, 409, { error: 'This renewal overlaps an existing active subscription. Check the current expiry date first.' }); return;
         }
         const subscriptionRef = db.collection('subscriptions').doc();
