@@ -94,3 +94,10 @@ This key is a public browser key embedded in the built app, not a server secret.
 - Admins can record stock received or issued. Every movement stores the before/after quantity, actor, timestamp and reason.
 - Stock movements run in a Firestore transaction and reject a stock issue that would make quantity negative.
 - Inventory history is preserved; items are archived instead of hard-deleted.
+
+## Installation jobs
+
+- Admins can schedule a new connection, upgrade, repair or relocation for a customer and assign an active staff member.
+- The assigned staff member receives an in-app/push notification and sees only their own installation jobs.
+- Assigned staff can update job progress to Scheduled, In progress or Completed and add progress notes. Only admins can cancel a job.
+- Every job creation and update is written to the audit log. Installation history is preserved.
