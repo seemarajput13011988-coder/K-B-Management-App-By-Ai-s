@@ -32,7 +32,7 @@ The complete 16-file source snapshot from AppDeploy version 1793770810412 is pre
 Authentication and staff accounts; customers; plans; payments; dashboards; attendance and admin corrections; consent-based foreground GPS; tasks; complaints; announcements; direct messages and group chat; field visits; finance and invoices; expenses; CSV exports; audit logs; language and theme preferences.
 
 ## Current blockers / inputs needed
-- Confirm Firebase Authentication and Firestore state in project `kandb-net-service`.
+- Confirm Firebase Authentication and Firestore state in project `kandb-net-sevice`.
 - Add the Firebase Web App config to local `.env.local` (never commit it).
 - Set the Functions secrets `ADMIN_BOOTSTRAP_SECRET` and `ADMIN_RECOVERY_CODE`.
 - A secure export and reviewed backup of the current AppDeploy data are still required before live-data migration.
