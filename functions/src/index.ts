@@ -9,6 +9,7 @@ initializeApp();
 const auth = getAuth();
 const db = getFirestore();
 const adminRecoveryCode = defineSecret('ADMIN_RECOVERY_CODE');
+const adminBootstrapSecret = defineSecret('ADMIN_BOOTSTRAP_SECRET');
 
 type Role = 'admin' | 'staff';
 type AppUser = { uid: string; id: string; userId: string; displayName: string; role: Role; active: boolean };
@@ -75,7 +76,7 @@ const defaultPlans = [
 ];
 
 export const api = onRequest(
-  { region: 'asia-south1', cors: true, maxInstances: 10, timeoutSeconds: 60, secrets: [adminRecoveryCode] },
+  { region: 'asia-south1', cors: true, maxInstances: 10, timeoutSeconds: 60, secrets: [adminRecoveryCode, adminBootstrapSecret] },
   async (req, res) => {
     res.set('Cache-Control', 'no-store');
     const method = req.method.toUpperCase();
@@ -84,6 +85,27 @@ export const api = onRequest(
     if (method === 'GET' && path === '/api/_healthcheck') {
       send(res, 200, { message: 'Success', service: 'kandb-firebase-api' }); return;
     }
+    if (method === 'POST' && path === '/api/auth/bootstrap-admin') {
+      const input = req.body && typeof req.body === 'object' ? req.body : {};
+      const bootstrapSecret = typeof input.bootstrapSecret === 'string' ? input.bootstrapSecret : '';
+      const password = typeof input.password === 'string' ? input.password : '';
+      const configuredSecret = adminBootstrapSecret.value();
+      if (!configuredSecret || bootstrapSecret !== configuredSecret) {
+        send(res, 401, { error: 'The one-time admin setup key is incorrect or has not been configured.' }); return;
+      }
+      if (password.length < 12) {
+        send(res, 400, { error: 'Choose an admin password with at least 12 characters.' }); return;
+      }
+      const existing = await db.collection('users').where('role', '==', 'admin').limit(1).get();
+      if (!existing.empty) { send(res, 409, { error: 'The admin account is already initialized. Use admin sign in.' }); return; }
+      const email = 'brajraj@accounts.kandbnetservice.in';
+      const account = await auth.createUser({ email, password, displayName: 'Brajraj', disabled: false });
+      await db.collection('users').doc(account.uid).set({
+        userId: 'Brajraj', displayName: 'Brajraj', role: 'admin', active: true, createdAt: now(),
+      });
+      send(res, 201, { initialized: true, userId: 'Brajraj' }); return;
+    }
+
     if (method === 'POST' && path === '/api/auth/recover-admin') {
       const input = req.body && typeof req.body === 'object' ? req.body : {};
       const userId = clean(input.userId, 40);
