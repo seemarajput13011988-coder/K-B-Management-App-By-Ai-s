@@ -35,3 +35,22 @@ export function isValidDateKey(value: unknown): boolean {
   const parsed = Date.parse(value);
   return Number.isFinite(parsed) && new Date(parsed).toISOString().slice(0, 10) === value;
 }
+
+
+export function isValidDateRange(startDate: unknown, endDate: unknown): boolean {
+  return isValidDateKey(startDate) && isValidDateKey(endDate) && String(endDate) >= String(startDate);
+}
+
+export function hasOverlappingSubscription(
+  existing: Array<{ startDate?: unknown; endDate?: unknown; status?: unknown }>,
+  startDate: string,
+  endDate: string,
+): boolean {
+  return existing.some(item =>
+    !['Cancelled', 'Expired'].includes(String(item.status)) &&
+    typeof item.startDate === 'string' &&
+    typeof item.endDate === 'string' &&
+    item.startDate <= endDate &&
+    item.endDate >= startDate
+  );
+}
