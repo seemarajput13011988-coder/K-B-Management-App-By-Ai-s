@@ -12,6 +12,7 @@ on:
       - "capacitor.config.ts"
       - "index.html"
       - ".env.example"
+      - ".github/workflows/web-build-check.yml"
       - "firebase.json"
       - ".firebaserc"
   pull_request:
