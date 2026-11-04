@@ -18,7 +18,8 @@
     "firebase": "^12.5.0",
     "@capacitor/android": "^7.4.3",
     "@capacitor-community/background-geolocation": "^1.2.25",
-    "@capacitor/local-notifications": "^7.0.2"
+    "@capacitor/local-notifications": "^7.0.2",
+    "@capacitor/push-notifications": "^7.0.2"
   },
   "optionalDependencies": {
     "@rollup/rollup-linux-x64-gnu": "^4.0.0"
