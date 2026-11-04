@@ -29,5 +29,7 @@ export function isSuperAdminAccount(user: { role?: unknown; userId?: unknown; is
 
 
 export function isValidDateKey(value: unknown): boolean {
-  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value));
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) && new Date(parsed).toISOString().slice(0, 10) === value;
 }
