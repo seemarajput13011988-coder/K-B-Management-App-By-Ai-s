@@ -638,15 +638,51 @@ export const api = onRequest(
         const shifts = await list('attendance'), today = indiaDate();
         const active = shifts.find(item => item.userId === user.uid && item.workDate === today && !item.checkOutAt && !item.gpsRestartRequired);
         if (!active) { send(res, 403, { error: 'Location can be shared only during an active, authorized shift.' }); return; }
+
+        // Save the point and clear the GPS grace timer in one transaction. This
+        // prevents the scheduled 15-minute cancellation from racing a GPS restore.
+        const locationRef = db.collection('locations').doc();
+        const attendanceRef = db.collection('attendance').doc(active.id);
         const record = { userId: user.uid, displayName: user.displayName, latitude, longitude, accuracy: Math.min(Math.max(Number(body.accuracy) || 0, 0), 100000), capturedAt: now() };
-        const ref = await db.collection('locations').add(record);
-        if (active.gpsIssueStartedAt) {
-          await db.collection('attendance').doc(active.id).update({ gpsIssueStartedAt: FieldValue.delete(), gpsStatus: 'active', gpsIssueReason: FieldValue.delete(), gpsReminderStage: FieldValue.delete(), gpsRestoredAt: now(), shiftEvents: FieldValue.arrayUnion({ type: 'gps-restored', at: now() }) });
-          const oldReminders = (await list('staff_notifications')).filter(item => item.attendanceId === active.id && String(item.type || '').startsWith('gps-'));
-          await Promise.all(oldReminders.map(item => db.collection('staff_notifications').doc(item.id).update({ read: true, resolvedAt: now() })));
-          await db.collection('staff_notifications').add({ recipientId: user.uid, recipientRole: 'staff', type: 'gps-restored', title: 'GPS restored', message: 'Your location is back on. Your shift continues normally.', createdAt: now(), read: false, attendanceId: active.id });
+        const outcome = await db.runTransaction(async transaction => {
+          const latest = await transaction.get(attendanceRef);
+          const current = latest.data();
+          if (!latest.exists || !current || current.userId !== user.uid || current.workDate !== today || current.checkOutAt || current.gpsRestartRequired) {
+            return { saved: false, restored: false, expired: false };
+          }
+          const issueStartedAt = current.gpsIssueStartedAt ? new Date(String(current.gpsIssueStartedAt)).getTime() : null;
+          if (issueStartedAt !== null && (!Number.isFinite(issueStartedAt) || Date.now() - issueStartedAt >= 15 * 60 * 1000)) {
+            return { saved: false, restored: false, expired: true };
+          }
+          transaction.create(locationRef, record);
+          if (issueStartedAt !== null) {
+            const restoredAt = now();
+            transaction.update(attendanceRef, {
+              gpsIssueStartedAt: FieldValue.delete(),
+              gpsStatus: 'active',
+              gpsIssueReason: FieldValue.delete(),
+              gpsReminderStage: FieldValue.delete(),
+              gpsRestoredAt: restoredAt,
+              shiftEvents: FieldValue.arrayUnion({ type: 'gps-restored', at: restoredAt })
+            });
+            return { saved: true, restored: true, expired: false };
+          }
+          return { saved: true, restored: false, expired: false };
+        });
+
+        if (outcome.expired) {
+          send(res, 409, { error: 'The 15-minute GPS grace period has expired. Contact an administrator to restart your shift.' }); return;
         }
-        send(res, 201, { id: ref.id, saved: true, gpsRestored: !!active.gpsIssueStartedAt }); return;
+        if (!outcome.saved) {
+          send(res, 403, { error: 'Location can be shared only during an active, authorized shift.' }); return;
+        }
+        if (outcome.restored) {
+          const resolvedAt = now();
+          const oldReminders = (await list('staff_notifications')).filter(item => item.attendanceId === active.id && String(item.type || '').startsWith('gps-'));
+          await Promise.all(oldReminders.map(item => db.collection('staff_notifications').doc(item.id).update({ read: true, resolvedAt })));
+          await db.collection('staff_notifications').add({ recipientId: user.uid, recipientRole: 'staff', type: 'gps-restored', title: 'GPS restored', message: 'Your location is back on. Your shift continues normally.', createdAt: resolvedAt, read: false, attendanceId: active.id });
+        }
+        send(res, 201, { id: locationRef.id, saved: true, gpsRestored: outcome.restored }); return;
       }
 
       if (path === '/api/notifications' && method === 'GET') {
