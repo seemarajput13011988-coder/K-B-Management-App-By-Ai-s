@@ -10,7 +10,7 @@ type Invoice = { id: string; customerId: string; customerName: string; period: s
 
 const money = (value: number) => '₹' + Number(value || 0).toLocaleString('en-IN');
 const monthName = (period: string) => new Date(period + '-01T12:00:00').toLocaleString('en-IN', { month: 'long', year: 'numeric' });
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 const csvCell = (value: unknown) => '"' + String(value ?? '').replace(/"/g, '""') + '"';
 function downloadCsv(name: string, rows: unknown[][]) {
   const content = '\uFEFF' + rows.map(row => row.map(csvCell).join(',')).join('\r\n');
