@@ -27,7 +27,12 @@ const now = () => new Date().toISOString();
 const send = (res: any, status: number, body: Data) => { res.status(status).json(body); };
 
 function routePath(path: string): string {
-  return path.replace(/\/+$/, '') || '/';
+  const normalized = path.replace(/\/+$/, '') || '/';
+  // Direct Cloud Functions URLs remove the exported function name from req.path,
+  // while Firebase Hosting rewrites preserve the incoming /api prefix.
+  // Normalize both forms so every API route works in either deployment.
+  if (normalized === '/api' || normalized.startsWith('/api/')) return normalized;
+  return normalized === '/' ? normalized : `/api${normalized}`;
 }
 function routeId(path: string, base: string): string {
   return decodeURIComponent(path.slice(base.length + 1));
