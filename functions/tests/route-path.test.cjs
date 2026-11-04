@@ -62,3 +62,25 @@ test('task reminder scheduler accepts valid ISO date keys and rejects malformed 
   assert.equal(isValidDateKey('not-a-date'), false);
   assert.equal(isValidDateKey(undefined), false);
 });
+
+
+test('subscription date ranges accept valid inclusive dates and reject reversed or malformed dates', () => {
+  const { isValidDateRange } = require('../lib/route-path.js');
+  assert.equal(isValidDateRange('2026-11-01', '2026-11-30'), true);
+  assert.equal(isValidDateRange('2026-11-04', '2026-11-04'), true);
+  assert.equal(isValidDateRange('2026-11-30', '2026-11-01'), false);
+  assert.equal(isValidDateRange('2026-02-30', '2026-03-01'), false);
+  assert.equal(isValidDateRange('not-a-date', '2026-11-01'), false);
+});
+
+test('subscription overlap ignores cancelled and expired history', () => {
+  const { hasOverlappingSubscription } = require('../lib/route-path.js');
+  const existing = [
+    { startDate: '2026-10-01', endDate: '2026-10-31', status: 'Active' },
+    { startDate: '2026-11-01', endDate: '2026-11-30', status: 'Cancelled' },
+    { startDate: '2026-11-01', endDate: '2026-11-30', status: 'Expired' },
+  ];
+  assert.equal(hasOverlappingSubscription(existing, '2026-10-31', '2026-11-15'), true);
+  assert.equal(hasOverlappingSubscription(existing, '2026-11-01', '2026-11-30'), false);
+  assert.equal(hasOverlappingSubscription(existing, '2026-12-01', '2026-12-31'), false);
+});
