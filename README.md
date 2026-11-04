@@ -25,7 +25,7 @@ Work is being carried out on `firebase-migration`. The original AppDeploy implem
 - Group chat currently refreshes from the API; realtime transport remains pending.
 
 ## Before using or deploying
-1. Confirm Firebase project `kandb-net-service` and verify Authentication / Firestore state.
+1. Confirm Firebase project `kandb-net-sevice` and verify Authentication / Firestore state.
 2. Add the Firebase Web App config to local `.env.local`; do not commit it.
 3. Configure Functions secrets `ADMIN_BOOTSTRAP_SECRET` and `ADMIN_RECOVERY_CODE`.
 4. Run the build workflows and emulator tests. The latest web build and Functions typecheck results are tracked in GitHub Actions.
