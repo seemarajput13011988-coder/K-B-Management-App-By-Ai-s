@@ -1,9 +1,20 @@
 name: Build private Android APK
 on:
+  push:
+    branches:
+      - firebase-migration
+    paths:
+      - "src/**"
+      - "package.json"
+      - "capacitor.config.ts"
+      - "vite.config.ts"
+      - ".github/workflows/android-apk.yml"
   workflow_dispatch:
 jobs:
   build-apk:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
         with:
@@ -16,23 +27,15 @@ jobs:
           distribution: temurin
           java-version: 21
       - uses: android-actions/setup-android@v3
-      - name: Check Firebase configuration secrets
+      - name: Install dependencies and build web app
         env:
-          FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY }}
-          FIREBASE_AUTH_DOMAIN: ${{ secrets.VITE_FIREBASE_AUTH_DOMAIN }}
-          FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID }}
-        run: |
-          test -n "$FIREBASE_API_KEY" || (echo "Missing GitHub secret VITE_FIREBASE_API_KEY" && exit 1)
-          test -n "$FIREBASE_AUTH_DOMAIN" || (echo "Missing GitHub secret VITE_FIREBASE_AUTH_DOMAIN" && exit 1)
-          test -n "$FIREBASE_APP_ID" || (echo "Missing GitHub secret VITE_FIREBASE_APP_ID" && exit 1)
-      - name: Install and build web app
-        env:
-          VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY }}
-          VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.VITE_FIREBASE_AUTH_DOMAIN }}
+          # Firebase web config is public client configuration, not a private key.
+          VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY || 'AIzaSyAuJuFA1I06aSJ1AyHhVA86ws8c_cX1ZC8' }}
+          VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.VITE_FIREBASE_AUTH_DOMAIN || 'kandb-net-sevice.firebaseapp.com' }}
           VITE_FIREBASE_PROJECT_ID: kandb-net-sevice
-          VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.VITE_FIREBASE_STORAGE_BUCKET }}
-          VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID }}
-          VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID }}
+          VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.VITE_FIREBASE_STORAGE_BUCKET || 'kandb-net-sevice.firebasestorage.app' }}
+          VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID || '847932976304' }}
+          VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID || '1:847932976304:web:87148565df2a329a5f9f75' }}
           VITE_FIREBASE_FUNCTIONS_URL: https://asia-south1-kandb-net-sevice.cloudfunctions.net/api
         run: |
           npm install
@@ -40,9 +43,10 @@ jobs:
           npx cap add android
           npx cap sync android
       - name: Assemble debug APK
-        run: cd android && ./gradlew assembleDebug
+        run: cd android && ./gradlew --no-daemon assembleDebug
       - uses: actions/upload-artifact@v4
         with:
           name: kandb-management-nexus-debug-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+          retention-days: 14
