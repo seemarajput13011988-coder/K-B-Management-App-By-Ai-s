@@ -93,3 +93,15 @@ test('subscription expiry reminders identify three-day, due-today and overdue da
   assert.equal(subscriptionExpiryKind('2026-11-03', '2026-11-04', '2026-11-07'), 'overdue');
   assert.equal(subscriptionExpiryKind('2026-11-08', '2026-11-04', '2026-11-07'), null);
 });
+
+
+test('inventory stock movements never allow invalid or negative stock', () => {
+  const { calculateInventoryBalance } = require('../lib/route-path.js');
+  assert.equal(calculateInventoryBalance(10, 'IN', 5), 15);
+  assert.equal(calculateInventoryBalance(10, 'OUT', 5), 5);
+  assert.equal(calculateInventoryBalance(10, 'OUT', 10), 0);
+  assert.equal(calculateInventoryBalance(10, 'OUT', 11), null);
+  assert.equal(calculateInventoryBalance(-1, 'IN', 2), null);
+  assert.equal(calculateInventoryBalance(10, 'OUT', 0), null);
+  assert.equal(calculateInventoryBalance(10, 'ADJUST', 2), null);
+});
