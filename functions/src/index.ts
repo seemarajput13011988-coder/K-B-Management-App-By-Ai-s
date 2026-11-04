@@ -20,9 +20,6 @@ type AppUser = {
 const clean = (value: unknown, max = 300): string =>
   typeof value === 'string' ? value.trim().slice(0, max) : '';
 
-const send = (res: Parameters<Parameters<typeof onRequest>[0]>[0] extends never ? never : any, status: number, body: unknown) =>
-  res.status(status).json(body);
-
 function routePath(path: string): string {
   return path.replace(/\\/+$/, '') || '/';
 }
@@ -51,11 +48,7 @@ async function requireUser(req: any): Promise<AppUser | null> {
   }
 }
 
-function isRole(user: AppUser, ...roles: Role[]): boolean {
-  return roles.includes(user.role);
-}
-
-async function audit(user: AppUser, action: string, entityType: string, entityId: string, description: string) {
+export async function writeAudit(user: AppUser, action: string, entityType: string, entityId: string, description: string) {
   await db.collection('audit_logs').add({
     actorId: user.uid,
     actorName: user.displayName,
