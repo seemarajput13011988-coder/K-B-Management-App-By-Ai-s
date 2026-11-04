@@ -61,6 +61,7 @@ export default function StaffOperations({ session, customers, flash, compact = f
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
+  const [selectedMapStaffId, setSelectedMapStaffId] = useState('');
   const [locationHistory, setLocationHistory] = useState<Location[]>([]);
   const [admins, setAdmins] = useState<Array<{id:string;userId:string;displayName:string;active:boolean}>>([]);
   const [adminForm, setAdminForm] = useState({userId:'',displayName:'',password:''});
@@ -541,6 +542,32 @@ export default function StaffOperations({ session, customers, flash, compact = f
 
     {admin && <section className="panel ops-panel">
       <div className="ops-panel-head"><div><span className="eyebrow">TEAM VISIBILITY · LIVE</span><h2>Live staff locations</h2><p>Admin locations refresh every 15 seconds. Android staff devices use a visible background location service during active shifts; browser tracking works only while the page is open.</p></div><label className="ops-day-type">New shift type <select value={dayType} onChange={e=>setDayType(e.target.value as 'Full day'|'Half day')}><option>Full day</option><option>Half day</option></select></label><button className="btn secondary compact" onClick={refresh}>Refresh now</button></div>
+      <div className="ops-map-toolbar">
+        <label className="ops-day-type">Show staff member
+          <select value={selectedMapStaffId || staff.find(member => locations.some(point => point.userId === member.id))?.id || ''} onChange={event => setSelectedMapStaffId(event.target.value)}>
+            {staff.map(member => <option key={member.id} value={member.id}>{member.displayName}</option>)}
+          </select>
+        </label>
+        {(() => {
+          const selectedLocation = locations.find(point => point.userId === (selectedMapStaffId || staff.find(member => locations.some(location => location.userId === member.id))?.id || ''));
+          return selectedLocation
+            ? <a className="btn secondary compact" href={'https://www.google.com/maps?q=' + selectedLocation.latitude + ',' + selectedLocation.longitude} target="_blank" rel="noreferrer">Open full Google Maps</a>
+            : <span className="ops-empty">No GPS point is available for the selected staff member.</span>;
+        })()}
+      </div>
+      {(() => {
+        const selectedLocation = locations.find(point => point.userId === (selectedMapStaffId || staff.find(member => locations.some(location => location.userId === member.id))?.id || ''));
+        return selectedLocation ? <div className="ops-google-map">
+          <iframe
+            title={'Live work location for ' + selectedLocation.displayName}
+            src={'https://maps.google.com/maps?q=' + selectedLocation.latitude + ',' + selectedLocation.longitude + '&z=16&output=embed'}
+            loading="lazy"
+            referrerPolicy="no-referrer-when-downgrade"
+            allowFullScreen
+          />
+          <small>{selectedLocation.displayName} · Last GPS update {stamp(selectedLocation.capturedAt)} · Accuracy ±{Math.round(selectedLocation.accuracy || 0)} m</small>
+        </div> : null;
+      })()}
       <div className="ops-location-list">{staff.map(member => {
         const loc = locations.find(item => item.userId === member.id);
         const shiftRecord = sortedAttendance.find(item => item.userId === member.id && item.workDate === today);
