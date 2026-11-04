@@ -94,7 +94,7 @@ export default function SubscriptionWorkspace({ customers, plans, isAdmin, flash
     {showForm && <form className="subscription-form" onSubmit={createRenewal}>
       <label>Customer<select required value={customerId} onChange={event=>setCustomerId(event.target.value)}>{customers.map(item=><option key={item.id} value={item.id}>{item.name} · {item.phone || item.plan}</option>)}</select></label>
       <label>Plan<select required value={plan} onChange={event=>setPlan(event.target.value)}>{plans.filter(item=>item.active).map(item=><option key={item.id} value={item.name}>{item.name}</option>)}{plan&&!plans.some(item=>item.name===plan)&&<option value={plan}>{plan} (current)</option>}</select></label>
-      <label>Start date<input type="date" required value={startDate} onChange={event=>setStartDate(event.target.value)}/></label>
+      <label>Start date<input type="date" required value={startDate} onChange={event=>{const value=event.target.value;setStartDate(value);if(endDate<value)setEndDate(addDays(value,30));}}/></label>
       <label>Expiry date<input type="date" required min={startDate} value={endDate} onChange={event=>setEndDate(event.target.value)}/></label>
       <label>Renewal amount (₹)<input type="number" min="1" step="0.01" required value={amount} onChange={event=>setAmount(event.target.value)}/></label>
       <label>Payment status<select value={paymentStatus} onChange={event=>setPaymentStatus(event.target.value as 'Paid'|'Pending')}><option>Pending</option><option>Paid</option></select></label>
@@ -107,7 +107,7 @@ export default function SubscriptionWorkspace({ customers, plans, isAdmin, flash
     {loading?<p className="ops-empty">Loading renewal history…</p>:<div className="subscription-table-wrap"><table className="subscription-table">
       <thead><tr><th>Customer</th><th>Plan</th><th>Period</th><th>Amount</th><th>Payment</th><th>Status</th>{isAdmin&&<th>Manage</th>}</tr></thead>
       <tbody>{visible.map(item=><tr key={item.id}>
-        <td><strong>{item.customerName}</strong><small>{labelDate(item.createdAt.slice(0,10))}</small></td>
+        <td><strong>{item.customerName}</strong><small>{labelDate(String(item.createdAt||'').slice(0,10))}</small></td>
         <td>{item.plan}</td><td>{labelDate(item.startDate)} – {labelDate(item.endDate)}</td><td>{money(item.amount)}</td>
         <td><span className={'subscription-payment '+(item.paymentStatus==='Paid'?'paid':'unpaid')}>{item.paymentStatus}</span>{item.paymentStatus==='Paid'&&<small>{item.paymentMethod} · {labelDate(item.paidAt||'')}</small>}</td>
         <td><span className={'subscription-status '+item.status.toLowerCase()}>{item.status}</span></td>
