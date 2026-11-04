@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
+import { Capacitor } from '@capacitor/core';
+import { LocalNotifications } from '@capacitor/local-notifications';
 import StaffOperations from './StaffOperations';
 import FinanceWorkspace from './FinanceWorkspace';
 import { useAppPreferences } from './appPreferences';
@@ -207,7 +209,15 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
           if (seenNotifications.current.has(item.id)) continue;
           seenNotifications.current.add(item.id);
           if (item.read) continue;
-          if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+          if (Capacitor.isNativePlatform()) {
+            try {
+              const permission = await LocalNotifications.checkPermissions();
+              if (permission.display === 'granted') {
+                const notificationId = Array.from(String(item.id)).reduce((hash, character) => (hash * 31 + character.charCodeAt(0)) & 0x7fffffff, 1);
+                await LocalNotifications.schedule({ notifications: [{ id: notificationId, title: item.title || 'K&B update', body: item.message || 'You have a new update.', schedule: { at: new Date(Date.now() + 1000) } }] });
+              } else setNotice((item.title || 'K&B update') + ': ' + (item.message || 'You have a new update.'));
+            } catch { setNotice((item.title || 'K&B update') + ': ' + (item.message || 'You have a new update.')); }
+          } else if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
             new Notification(item.title || 'K&B update', { body: item.message || 'You have a new update.' });
           } else {
             setNotice((item.title || 'K&B update') + ': ' + (item.message || 'You have a new update.'));
@@ -472,7 +482,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
           ))}
         </nav>
         <div className="sidebar-bottom">
-          <button className="btn secondary compact" style={{width:'100%',marginBottom:12}} onClick={async()=>{if(typeof Notification==='undefined'){flash('This browser does not support desktop notifications.');return;}const permission=await Notification.requestPermission();flash(permission==='granted'?'Notifications enabled. You will receive new messages, assigned work and reminders.': 'Notifications are blocked. Enable them in your browser settings.');}}>
+          <button className="btn secondary compact" style={{width:'100%',marginBottom:12}} onClick={async()=>{if(Capacitor.isNativePlatform()){const permission=await LocalNotifications.requestPermissions();flash(permission.display==='granted'?'Notifications enabled. You will receive new messages, assigned work and reminders while the app is running.':'Notifications are blocked. Enable them in Android settings.');return;}if(typeof Notification==='undefined'){flash('This browser does not support desktop notifications.');return;}const permission=await Notification.requestPermission();flash(permission==='granted'?'Notifications enabled. You will receive new messages, assigned work and reminders while the app is open.': 'Notifications are blocked. Enable them in your browser settings.');}}>
             <Bell size={15}/> Enable notifications
           </button>
           <div className="help-card">
