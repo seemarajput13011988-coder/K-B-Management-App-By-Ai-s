@@ -6,8 +6,14 @@ on:
     paths:
       - "src/**"
       - "package.json"
+      - "package-lock.json"
       - "vite.config.ts"
       - "tsconfig.json"
+      - "capacitor.config.ts"
+      - "index.html"
+      - ".env.example"
+      - "firebase.json"
+      - ".firebaserc"
   pull_request:
     branches:
       - firebase-migration
