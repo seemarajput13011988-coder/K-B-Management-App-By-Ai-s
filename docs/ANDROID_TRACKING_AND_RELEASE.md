@@ -76,3 +76,13 @@ The admin live-location screen displays all staff location points together when 
 4. For any separate web-hosting build, add the same variable to that hosting provider's build environment and rebuild the site.
 
 This key is a public browser key embedded in the built app, not a server secret. Protect it with API and application restrictions; never use an unrestricted key. If it is absent, the admin page shows a setup notice and keeps the per-worker Google Maps links available rather than pretending a map loaded.
+
+## Customer subscriptions and renewals
+
+- Admins and staff can view renewal history; staff see only subscriptions for customers assigned to them.
+- Admins and assigned staff can create renewals. A paid renewal creates its payment-history record in the same Firestore transaction.
+- A renewal updates the customer's plan, monthly fee and due date. Existing customer and payment history is preserved.
+- Overlapping active subscription periods are rejected inside the Firestore transaction to prevent two simultaneous renewals from racing.
+- Admins can change a renewal to Active, Pending, Expired or Cancelled. Renewal records are not hard-deleted.
+- A daily Asia/Kolkata scheduled function reminds admins and assigned staff three days before expiry, on the expiry date, and marks overdue active renewals as Expired with a notification.
+- The daily reminder requires Cloud Scheduler support and a deployed Firebase Functions environment. It is not active merely because the source code is committed.
