@@ -76,3 +76,13 @@ export function calculateInventoryBalance(currentQuantity: unknown, movementType
   if (movementType === 'OUT' && amount <= current) return current - amount;
   return null;
 }
+
+
+export function isConfirmedGpsLossReason(reason: unknown): boolean {
+  return typeof reason === 'string' && [
+    'Location permission denied',
+    'GPS location unavailable',
+    'Location permission was turned off',
+    'Phone location services are unavailable',
+  ].includes(reason);
+}
