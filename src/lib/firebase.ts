@@ -2,6 +2,7 @@ import { getApp, getApps, initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 
+
 const config = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
@@ -12,7 +13,7 @@ const config = {
 };
 
 export const firebaseConfigured = Boolean(
-  config.apiKey && config.authDomain && config.projectId && config.appId,
+  config.apiKey && config.authDomain && config.projectId === expectedFirebaseProjectId && config.appId,
 );
 
 export const firebaseApp = firebaseConfigured
