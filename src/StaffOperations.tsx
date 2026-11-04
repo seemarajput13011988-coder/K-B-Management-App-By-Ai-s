@@ -349,8 +349,13 @@ export default function StaffOperations({ session, customers, flash, compact = f
           inFlight = false;
         }
       }, async error => {
+        if (error.code === 3) {
+          if (!cancelled) setGpsMessage('Location request timed out. This can happen with a weak signal or connection; your shift will not be cancelled for a timeout. Checking again shortly.');
+          inFlight = false;
+          return;
+        }
         try {
-          const reason = error.code === 1 ? 'Location permission denied' : error.code === 2 ? 'GPS location unavailable' : 'GPS location request timed out';
+          const reason = error.code === 1 ? 'Location permission denied' : 'GPS location unavailable';
           const result = await request('post', '/api/attendance/gps-lost', { reason });
           if (result.data.monitoring && result.data.deadlineAt) {
             setGpsDeadline(result.data.deadlineAt);
