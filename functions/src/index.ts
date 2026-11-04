@@ -480,6 +480,8 @@ export const api = onRequest(
         if (duplicate) { send(res, 409, { error: 'A pending or approved holiday already covers part of these dates.' }); return; }
         const record = { userId: user.uid, displayName: user.displayName, startDate, endDate, reason, status: 'pending', createdAt: now() };
         const ref = await db.collection('holiday_requests').add(record);
+        const admins = (await list('users')).filter(member => member.active === true && member.role === 'admin');
+        await Promise.all(admins.map(member => db.collection('staff_notifications').add({ recipientId: member.id, recipientRole: 'admin', type: 'holiday-request', title: 'New holiday request', message: user.displayName + ' requested leave from ' + startDate + ' to ' + endDate + '.', createdAt: now(), read: false, relatedId: ref.id })));
         await audit(user, 'HOLIDAY_REQUEST', 'holiday', ref.id, 'Requested holiday from ' + startDate + ' to ' + endDate);
         send(res, 201, { id: ref.id, ...record }); return;
       }
@@ -489,6 +491,7 @@ export const api = onRequest(
         const status = body.status === 'approved' ? 'approved' : body.status === 'rejected' ? 'rejected' : '';
         if (!request || !status) { send(res, 400, { error: 'Choose a valid holiday request and decision.' }); return; }
         await db.collection('holiday_requests').doc(id).update({ status, reviewedAt: now(), reviewedBy: user.uid, reviewedByName: user.displayName, reviewNote: clean(body.reviewNote, 240) });
+        await db.collection('staff_notifications').add({ recipientId: request.userId, recipientRole: 'staff', type: 'holiday-decision', title: 'Holiday request ' + status, message: 'Your holiday request from ' + request.startDate + ' to ' + request.endDate + ' was ' + status + '.' + (clean(body.reviewNote, 240) ? ' Note: ' + clean(body.reviewNote, 240) : ''), createdAt: now(), read: false, relatedId: id });
         await audit(user, 'HOLIDAY_' + status.toUpperCase(), 'holiday', id, status + ' holiday request for ' + request.displayName);
         send(res, 200, { updated: true, status }); return;
       }
