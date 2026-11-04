@@ -1143,7 +1143,7 @@ export const api = onRequest(
           }
           transaction.create(subscriptionRef, record);
           const currentDueDate = String(latestCustomer.data()?.dueDate || '');
-          const customerPatch: Data = { plan, updatedAt: createdAt };
+          const customerPatch: Data = { plan, monthlyFee: amount, updatedAt: createdAt };
           if (!currentDueDate || endDate >= currentDueDate) customerPatch.dueDate = endDate;
           transaction.update(customerRef, customerPatch);
           if (paymentRef) transaction.create(paymentRef, {
