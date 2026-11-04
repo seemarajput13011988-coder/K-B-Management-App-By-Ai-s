@@ -1,0 +1,172 @@
+[
+  {
+    "name": "Admin manages internet plans and worker personal records",
+    "sanity": true,
+    "viewport": "desktop",
+    "covers": [
+      "admin create internet plan",
+      "admin edit plan price and specifications",
+      "admin archive and restore plan",
+      "admin delete unused plan with customer-history protection",
+      "plan search and status filters",
+      "customer plan selector uses active plans",
+      "archived plan history preserves existing customer records",
+      "admin staff directory",
+      "admin delete staff account and revoke sessions while preserving historical records",
+      "individual worker profile",
+      "per-worker payment history and totals",
+      "per-worker attendance history",
+      "assigned customers",
+      "admin delete customer",
+      "monthly invoice generation without duplicates",
+      "invoice payment reconciliation from existing payments",
+      "record and delete business expenses",
+      "cash operating summary and CSV exports",
+      "finance audit history",
+      "task progress"
+    ],
+    "description": "Verifies the administrator can customise plans and inspect an individual worker's own business activity.",
+    "setup": [
+      "Sign in as admin",
+      "Create a staff account named Test Worker",
+      "Assign a customer to Test Worker",
+      "Record a customer payment while signed in as Test Worker",
+      "Have Test Worker check in and check out on a workday",
+      "Assign a task to Test Worker"
+    ],
+    "steps": [
+      "Open Plans & Pricing and create Test Fiber 75 with provider Test Network, speed 75 Mbps, data 2 TB and monthly price 749",
+      "Verify Test Fiber 75 appears in Active plans",
+      "Edit its price to 799 and verify the saved value",
+      "Search for Test Fiber and verify the result appears in the responsive plan list without horizontal carousel navigation",
+      "Archive the plan, verify it leaves Active plans, then restore it from Archived",
+      "Open the customer Internet plan selector and verify the active plan is available",
+      "Open Staff and choose View personal record for Test Worker",
+      "Verify the worker's payment total, payment row, check-in/out, assigned customers and tasks"
+    ],
+    "expected": "Plan create, edit, archive, restore, search and customer selection work; the worker's personal record shows only their own payment, attendance, customer assignment and task activity."
+  },
+  {
+    "name": "Admin controls staff shift start and end",
+    "viewport": "desktop",
+    "covers": [
+      "admin start staff shift",
+      "admin end staff shift",
+      "attendance role permissions",
+      "attendance history consistency"
+    ],
+    "description": "Verifies the administrator can start and end a worker's shift and the worker's attendance record reflects both actions.",
+    "setup": [
+      "Sign in as admin",
+      "Create an active staff account named Shift Worker"
+    ],
+    "steps": [
+      "Open Team Operations",
+      "Use Start shift for Shift Worker",
+      "Verify the worker appears as on shift",
+      "Use End shift for Shift Worker",
+      "Sign in as Shift Worker and verify today's attendance is completed"
+    ],
+    "expected": "Admin-managed check-in and check-out are stored in the same attendance record visible to the staff member."
+  },
+  {
+    "name": "Team chat, business summary and active-shift location",
+    "viewport": "desktop",
+    "covers": [
+      "admin creates staff group",
+      "group member access",
+      "group message send and receive",
+      "realtime group message update",
+      "business collection summary",
+      "monthly collections by worker",
+      "team attendance summary",
+      "staff-visible location sharing notice",
+      "location permission required",
+      "periodic foreground location updates",
+      "admin automatic location refresh",
+      "Google Maps location link",
+      "location hidden after shift ends"
+    ],
+    "description": "Verifies team collaboration, collection summaries and consent-based location visibility during an active shift.",
+    "setup": [
+      "Sign in as admin and create active staff accounts Worker A and Worker B",
+      "Record a payment by Worker A",
+      "Create a group named Field Team and add Worker A",
+      "Sign in as Worker A, grant location permission and start a shift"
+    ],
+    "steps": [
+      "Verify the admin summary includes Worker A's payment and today's attendance",
+      "Send a message in Field Team as admin",
+      "Sign in as Worker A and verify the message, then send a reply",
+      "Verify the reply appears in the admin group conversation",
+      "Verify Worker B cannot access Field Team",
+      "Verify Worker A sees the location-sharing notice and periodic foreground location updates",
+      "Open Team Operations as admin, verify the location refreshes and open it in Google Maps",
+      "End Worker A's shift and verify the worker is removed from the live-location list"
+    ],
+    "expected": "Group access is limited to members, summaries include recorded business activity, and staff location is visible to admin only during an active shift while the staff app is open and permission is granted."
+  },
+  {
+    "name": "Finance billing, expenses and management reports",
+    "viewport": "desktop",
+    "covers": [
+      "admin-only finance workspace",
+      "monthly invoice generation",
+      "duplicate invoice prevention",
+      "invoice balance reconciliation",
+      "expense creation and deletion",
+      "cash operating balance",
+      "CSV export for invoices, expenses and payments",
+      "finance audit history"
+    ],
+    "description": "Verifies monthly billing, expense recording, management totals and downloadable reports.",
+    "setup": [
+      "Sign in as admin",
+      "Create one active customer with a monthly fee of 549",
+      "Record a payment of 200 for the current billing month"
+    ],
+    "steps": [
+      "Open Finance & Billing",
+      "Generate invoices for the current month",
+      "Verify one invoice exists for the active customer and its paid amount reflects the recorded payment",
+      "Generate invoices again and verify a duplicate is not created",
+      "Record an expense of 100 for office costs",
+      "Verify the expense appears and the cash operating balance reflects collections minus expenses",
+      "Export the invoice, expense and finance summary CSV reports",
+      "Delete the test expense and verify the audit log retains its deletion entry"
+    ],
+    "expected": "Invoices are generated once per customer and month, payments are reconciled into invoice balances, expenses persist and can be deleted, totals are correct and finance activity is logged.",
+    "sanity": true
+  },
+  {
+    "name": "Staff privacy, mobile navigation and preferences",
+    "viewport": "mobile",
+    "covers": [
+      "staff role boundary",
+      "private worker records",
+      "admin-only staff management",
+      "mobile navigation menu scroll isolation",
+      "English language",
+      "Hindi language",
+      "Gujarati language",
+      "preference persistence",
+      "day theme",
+      "night theme"
+    ],
+    "description": "Verifies staff privacy and key mobile navigation, language and appearance controls.",
+    "setup": [
+      "Sign in as a staff member"
+    ],
+    "steps": [
+      "Open the mobile navigation menu and scroll to its bottom; verify the menu itself moves while the dashboard behind it stays fixed",
+      "Verify the Staff section is not available",
+      "Open Payments and verify only the signed-in staff member's own payments are visible",
+      "Select Hindi and verify common navigation labels change",
+      "Select Gujarati and verify common navigation labels change",
+      "Refresh and verify Gujarati remains selected",
+      "Switch to English, enable Night mode, refresh and verify the dark theme remains",
+      "Switch back to Day mode"
+    ],
+    "expected": "Staff cannot access admin-only or other workers' private records; the mobile menu scrolls independently and language and theme preferences persist."
+  }
+]
