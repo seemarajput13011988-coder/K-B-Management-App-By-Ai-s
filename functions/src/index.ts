@@ -502,15 +502,14 @@ export const api = onRequest(
       if (path === '/api/attendance/check-in' && method === 'POST') {
         if (!allow(user, ['staff'], res)) return;
         const workDate = indiaDate(), items = await list('attendance');
-        if (items.some(item => item.userId === user.uid && item.workDate === workDate)) { send(res, 409, { error: 'Attendance has already been recorded for today.' }); return; }
+        if (items.some(item => item.userId === user.uid && item.workDate === workDate)) { send(res, 409, { error: 'Attendance already exists today. Ask an admin to restart a GPS-cancelled shift.' }); return; }
+        const latitude = Number(body.latitude), longitude = Number(body.longitude);
+        if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || Math.abs(latitude) > 90 || Math.abs(longitude) > 180) { send(res, 403, { error: 'Enable location permission and obtain a GPS fix before starting your shift.' }); return; }
         const checkInAt = now();
         const dayType = body.dayType === 'Half day' ? 'Half day' : 'Full day';
-        const record = { userId: user.uid, displayName: user.displayName, workDate, checkInAt, status: 'Checked in', dayType };
+        const record = { userId: user.uid, displayName: user.displayName, workDate, checkInAt, status: 'Checked in', dayType, gpsStatus: 'active' };
         const ref = await db.collection('attendance').add(record);
-        const latitude = Number(body.latitude), longitude = Number(body.longitude);
-        if (Number.isFinite(latitude) && Number.isFinite(longitude) && Math.abs(latitude) <= 90 && Math.abs(longitude) <= 180) {
-          await db.collection('locations').add({ userId: user.uid, displayName: user.displayName, latitude, longitude, accuracy: Number(body.accuracy) || 0, capturedAt: checkInAt });
-        }
+        await db.collection('locations').add({ userId: user.uid, displayName: user.displayName, latitude, longitude, accuracy: Number(body.accuracy) || 0, capturedAt: checkInAt });
         send(res, 201, { id: ref.id, ...record }); return;
       }
       if (path === '/api/attendance/check-out' && method === 'POST') {
@@ -529,9 +528,15 @@ export const api = onRequest(
         const workDate = indiaDate(), items = await list('attendance');
         const existing = items.find(item => item.userId === staffId && item.workDate === workDate);
         if (path.endsWith('admin-start')) {
-          if (existing) { send(res, 409, { error: 'Attendance is already recorded for this staff member today.' }); return; }
+          if (existing && !existing.gpsRestartRequired) { send(res, 409, { error: 'Attendance is already recorded for this staff member today.' }); return; }
+          if (existing && existing.gpsRestartRequired) {
+            const resumedAt = now();
+            await db.collection('attendance').doc(existing.id).update({ checkInAt: resumedAt, checkOutAt: null, status: 'Checked in', gpsCancelled: false, gpsRestartRequired: false, gpsStatus: 'active', restartedByAdmin: user.displayName, restartedAt: resumedAt, shiftEvents: FieldValue.arrayUnion({ type: 'admin-restart-after-gps-cancel', at: resumedAt, by: user.displayName }) });
+            await audit(user, 'ADMIN_RESTART_GPS_SHIFT', 'attendance', existing.id, 'Restarted GPS-cancelled shift for ' + member.displayName);
+            send(res, 200, { id: existing.id, restarted: true }); return;
+          }
           const dayType = body.dayType === 'Half day' ? 'Half day' : 'Full day';
-          const record = { userId: staffId, displayName: member.displayName, workDate, checkInAt: now(), status: 'Checked in', dayType, startedByAdmin: user.displayName, attendanceSource: 'Admin' };
+          const record = { userId: staffId, displayName: member.displayName, workDate, checkInAt: now(), status: 'Checked in', dayType, startedByAdmin: user.displayName, attendanceSource: 'Admin', gpsStatus: 'active' };
           const ref = await db.collection('attendance').add(record);
           await audit(user, 'ADMIN_START', 'attendance', ref.id, 'Started shift for ' + member.displayName);
           send(res, 201, { id: ref.id, ...record }); return;
@@ -541,6 +546,19 @@ export const api = onRequest(
         await db.collection('attendance').doc(existing.id).update({ checkOutAt: now(), status: 'Completed', endedByAdmin: user.displayName });
         await audit(user, 'ADMIN_END', 'attendance', existing.id, 'Ended shift for ' + member.displayName);
         send(res, 200, { updated: true }); return;
+      }
+      if (path === '/api/attendance/gps-lost' && method === 'POST') {
+        if (!allow(user, ['staff'], res)) return;
+        const workDate = indiaDate(), shifts = await list('attendance');
+        const active = shifts.find(item => item.userId === user.uid && item.workDate === workDate && !item.checkOutAt && !item.gpsRestartRequired);
+        if (!active) { send(res, 200, { cancelled: false, reason: 'no-active-shift' }); return; }
+        const requests = await list('holiday_requests');
+        const exempt = requests.some(item => item.userId === user.uid && ['pending','approved'].includes(String(item.status)) && String(item.startDate) <= workDate && String(item.endDate) >= workDate);
+        if (exempt) { send(res, 200, { cancelled: false, reason: 'holiday-exempt' }); return; }
+        const cancelledAt = now();
+        await db.collection('attendance').doc(active.id).update({ checkOutAt: cancelledAt, status: 'Cancelled - GPS unavailable', gpsStatus: 'disabled', gpsCancelled: true, gpsRestartRequired: true, gpsCancelledAt: cancelledAt, gpsCancellationReason: clean(body.reason, 160) || 'Location permission denied', shiftEvents: FieldValue.arrayUnion({ type: 'gps-cancelled', at: cancelledAt, reason: clean(body.reason, 160) || 'GPS unavailable' }) });
+        await audit(user, 'GPS_CANCEL_SHIFT', 'attendance', active.id, 'Automatically cancelled active shift because location permission was disabled');
+        send(res, 200, { cancelled: true, adminRestartRequired: true }); return;
       }
       if (path === '/api/locations/history' && method === 'GET') {
         if (!allow(user, ['admin'], res)) return;
@@ -563,7 +581,7 @@ export const api = onRequest(
         const latitude = Number(body.latitude), longitude = Number(body.longitude);
         if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || Math.abs(latitude) > 90 || Math.abs(longitude) > 180) { send(res, 400, { error: 'A valid GPS location is required.' }); return; }
         const shifts = await list('attendance'), today = indiaDate();
-        if (!shifts.some(item => item.userId === user.uid && item.workDate === today && !item.checkOutAt)) { send(res, 403, { error: 'Location can be shared only during an active shift.' }); return; }
+        if (!shifts.some(item => item.userId === user.uid && item.workDate === today && !item.checkOutAt && !item.gpsRestartRequired)) { send(res, 403, { error: 'Location can be shared only during an active, authorized shift.' }); return; }
         const record = { userId: user.uid, displayName: user.displayName, latitude, longitude, accuracy: Math.min(Math.max(Number(body.accuracy) || 0, 0), 100000), capturedAt: now() };
         const ref = await db.collection('locations').add(record);
         send(res, 201, { id: ref.id, saved: true }); return;
