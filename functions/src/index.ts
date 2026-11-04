@@ -527,16 +527,22 @@ export const api = onRequest(
         if (!name || !sku || !category || !Number.isInteger(quantity) || quantity < 0 || !Number.isInteger(minimumQuantity) || minimumQuantity < 0 || !validMoney(unitCost)) {
           send(res, 400, { error: 'Enter an item name, SKU, category, whole-number stock quantities and a valid unit cost.' }); return;
         }
-        const duplicate = (await list('inventory')).some(item => String(item.sku || '').toLowerCase() === sku.toLowerCase());
-        if (duplicate) { send(res, 409, { error: 'An inventory item with this SKU already exists.' }); return; }
         const record = {
           name, sku, category, unit, quantity, minimumQuantity, unitCost,
           supplier: clean(body.supplier, 100), location: clean(body.location, 100), notes: clean(body.notes, 500),
           active: true, createdAt: now(), updatedAt: now(), createdBy: user.uid
         };
-        const ref = await db.collection('inventory').add(record);
-        await audit(user, 'CREATE', 'inventory-item', ref.id, 'Added inventory item ' + name);
-        send(res, 201, { id: ref.id, ...record }); return;
+        const inventoryRef = db.collection('inventory').doc();
+        const skuKey = sku.toLowerCase();
+        const outcome = await db.runTransaction(async transaction => {
+          const existing = await transaction.get(db.collection('inventory').where('skuKey', '==', skuKey));
+          if (!existing.empty) return false;
+          transaction.create(inventoryRef, { ...record, skuKey });
+          return true;
+        });
+        if (!outcome) { send(res, 409, { error: 'An inventory item with this SKU already exists.' }); return; }
+        await audit(user, 'CREATE', 'inventory-item', inventoryRef.id, 'Added inventory item ' + name);
+        send(res, 201, { id: inventoryRef.id, ...record }); return;
       }
       if (path.startsWith('/api/inventory/')) {
         const parts = path.split('/').filter(Boolean), id = parts[2];
@@ -581,12 +587,23 @@ export const api = onRequest(
           if (!name || !sku || !category || !Number.isInteger(minimumQuantity) || minimumQuantity < 0 || !validMoney(unitCost)) {
             send(res, 400, { error: 'Enter valid item details, minimum stock and unit cost.' }); return;
           }
-          const duplicate = (await list('inventory')).some(entry => entry.id !== id && String(entry.sku || '').toLowerCase() === sku.toLowerCase());
-          if (duplicate) { send(res, 409, { error: 'Another inventory item already uses this SKU.' }); return; }
-          await db.collection('inventory').doc(id).update({
-            name, sku, category, unit, minimumQuantity, unitCost, supplier: clean(body.supplier, 100),
-            location: clean(body.location, 100), notes: clean(body.notes, 500), active: body.active !== false, updatedAt: now()
+          const itemRef = db.collection('inventory').doc(id), skuKey = sku.toLowerCase();
+          const updatedAt = now();
+          const outcome = await db.runTransaction(async transaction => {
+            const [latest, duplicate] = await Promise.all([
+              transaction.get(itemRef),
+              transaction.get(db.collection('inventory').where('skuKey', '==', skuKey))
+            ]);
+            if (!latest.exists) return 'missing';
+            if (duplicate.docs.some(document => document.id !== id)) return 'duplicate';
+            transaction.update(itemRef, {
+              name, sku, skuKey, category, unit, minimumQuantity, unitCost, supplier: clean(body.supplier, 100),
+              location: clean(body.location, 100), notes: clean(body.notes, 500), active: body.active !== false, updatedAt
+            });
+            return 'updated';
           });
+          if (outcome === 'missing') { send(res, 404, { error: 'Inventory item no longer exists.' }); return; }
+          if (outcome === 'duplicate') { send(res, 409, { error: 'Another inventory item already uses this SKU.' }); return; }
           await audit(user, 'UPDATE', 'inventory-item', id, 'Updated inventory item ' + name);
           send(res, 200, { updated: true }); return;
         }
