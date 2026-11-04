@@ -6,7 +6,7 @@ The application source and CI build are maintained on the `firebase-migration` b
 
 In Firebase Console, open project `kandb-net-sevice` → Project settings → Your apps. Register an Android app with the exact package ID:
 
-`in.kandbnetservice.management`
+`kandbnet.service2010`
 
 Download that app's `google-services.json`. In the GitHub repository, open Settings → Secrets and variables → Actions → New repository secret:
 
