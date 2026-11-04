@@ -8,7 +8,7 @@ import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { onDocumentCreated } from 'firebase-functions/v2/firestore';
 import { logger } from 'firebase-functions';
 import { defineSecret } from 'firebase-functions/params';
-import { gpsGracePeriodExpired, isSuperAdminAccount, routePath, taskReminderKind } from './route-path.js';
+import { gpsGracePeriodExpired, isSuperAdminAccount, isValidDateKey, routePath, taskReminderKind } from './route-path.js';
 
 initializeApp();
 const auth = getAuth();
@@ -1000,7 +1000,7 @@ export const sendTaskDueReminders = onSchedule({ schedule: '0 9 * * *', timeZone
   for (const task of tasks) {
     const dueDate = String(task.dueDate || '');
     const assignedTo = String(task.assignedTo || '');
-    if (!task.id || !assignedTo || !/^\d{4}-\d{2}-\d{2}$/.test(dueDate) || task.status === 'Completed') continue;
+    if (!task.id || !assignedTo || !isValidDateKey(dueDate) || task.status === 'Completed') continue;
 
     const reminderKind = taskReminderKind(dueDate, today, tomorrow);
     if (!reminderKind) continue;
