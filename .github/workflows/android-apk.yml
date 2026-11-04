@@ -8,7 +8,6 @@ on:
       - "public/**"
       - "index.html"
       - "package.json"
-      - "package-lock.json"
       - "capacitor.config.ts"
       - "vite.config.ts"
       - "firebase.json"
@@ -47,7 +46,7 @@ jobs:
           VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID || '1:847932976304:web:87148565df2a329a5f9f75' }}
           VITE_FIREBASE_FUNCTIONS_URL: https://asia-south1-kandb-net-sevice.cloudfunctions.net/api
         run: |
-          npm ci
+          npm install
           npm run build
           npx cap add android
           npx cap sync android
