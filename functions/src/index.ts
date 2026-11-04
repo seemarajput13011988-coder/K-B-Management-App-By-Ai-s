@@ -150,12 +150,17 @@ export const api = onRequest(
       if (allUsers.some(item => String(item.userId || '').toLowerCase() === userIdLower)) {
         send(res, 409, { error: 'This staff ID is already registered. Contact your administrator.' }); return;
       }
-      const pending = await db.collection('staff_registration_requests').where('userIdLower', '==', userIdLower).where('status', '==', 'pending').limit(1).get();
-      if (!pending.empty) {
+      const createdAt = now();
+      const ref = db.collection('staff_registration_requests').doc(userIdLower);
+      const submitted = await db.runTransaction(async transaction => {
+        const previous = await transaction.get(ref);
+        if (previous.exists && previous.data()?.status === 'pending') return false;
+        transaction.set(ref, { userId, userIdLower, displayName, phone, reason, status: 'pending', createdAt });
+        return true;
+      });
+      if (!submitted) {
         send(res, 409, { error: 'A registration request for this staff ID is already pending. Please wait for the administrator to review it.' }); return;
       }
-      const createdAt = now();
-      const ref = await db.collection('staff_registration_requests').add({ userId, userIdLower, displayName, phone, reason, status: 'pending', createdAt });
       send(res, 201, { id: ref.id, status: 'pending', message: 'Your request has been submitted. An administrator must approve it before you can sign in.' }); return;
     }
 
