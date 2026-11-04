@@ -3,7 +3,7 @@ import type { FormEvent } from 'react';
 import StaffOperations from './StaffOperations';
 import FinanceWorkspace from './FinanceWorkspace';
 import { useAppPreferences } from './appPreferences';
-import { api as client, restoreAppSession, signInAppUser, signOutAppUser } from './lib/api';
+import { api as client, signInAppUser, signOutAppUser } from './lib/api';
 import {
   Activity,
   ArrowDownRight,
