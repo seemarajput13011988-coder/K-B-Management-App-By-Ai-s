@@ -86,3 +86,11 @@ This key is a public browser key embedded in the built app, not a server secret.
 - Admins can change a renewal to Active, Pending, Expired or Cancelled. Renewal records are not hard-deleted.
 - A daily Asia/Kolkata scheduled function reminds admins and assigned staff three days before expiry, on the expiry date, and marks overdue active renewals as Expired with a notification.
 - The daily reminder requires Cloud Scheduler support and a deployed Firebase Functions environment. It is not active merely because the source code is committed.
+
+## Inventory and stock control
+
+- Admins can create, edit and archive inventory items with SKU, category, unit, stock quantity, minimum-stock alert, unit cost, supplier and storage location.
+- Staff can view active inventory items and issue stock to a job with a required reason. Staff do not see unit cost or supplier details and cannot add received stock.
+- Admins can record stock received or issued. Every movement stores the before/after quantity, actor, timestamp and reason.
+- Stock movements run in a Firestore transaction and reject a stock issue that would make quantity negative.
+- Inventory history is preserved; items are archived instead of hard-deleted.
