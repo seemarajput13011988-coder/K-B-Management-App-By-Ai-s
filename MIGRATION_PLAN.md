@@ -58,6 +58,7 @@ Authentication and staff accounts; customers; plans; payments; dashboards; atten
 - [ ] Configure Functions secrets and verify the API using emulators.
 - [ ] Finish password-change flow, realtime chat transport, and full role/edge-case review.
 - [ ] Migrate and verify data.
-- [ ] Add required GitHub Actions config secrets and run the Android APK workflow.
+- [ ] Verify the corrected Android APK workflow and download its debug APK artifact.
+- [ ] Create a stable app-signing key through a secure local process before distributing updateable release APKs.
 - [ ] Test web and Android flows for admin and staff.
 - [ ] Deploy Hosting and Functions only after approval and all safety checks.
