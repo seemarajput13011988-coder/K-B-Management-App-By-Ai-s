@@ -8,7 +8,7 @@ import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { onDocumentCreated } from 'firebase-functions/v2/firestore';
 import { logger } from 'firebase-functions';
 import { defineSecret } from 'firebase-functions/params';
-import { calculateInventoryBalance, gpsGracePeriodExpired, hasOverlappingSubscription, isSuperAdminAccount, isValidDateKey, isValidDateRange, routePath, subscriptionExpiryKind, taskReminderKind } from './route-path.js';
+import { calculateInventoryBalance, gpsGracePeriodExpired, hasOverlappingSubscription, isConfirmedGpsLossReason, isSuperAdminAccount, isValidDateKey, isValidDateRange, routePath, subscriptionExpiryKind, taskReminderKind } from './route-path.js';
 
 initializeApp();
 const auth = getAuth();
@@ -925,13 +925,7 @@ export const api = onRequest(
         const exempt = requests.some(item => item.userId === user.uid && ['pending','approved'].includes(String(item.status)) && String(item.startDate) <= workDate && String(item.endDate) >= workDate);
         if (exempt) { send(res, 200, { monitoring: false, reason: 'holiday-exempt' }); return; }
         const reason = clean(body.reason, 160);
-        const confirmedGpsLossReasons = new Set([
-          'Location permission denied',
-          'GPS location unavailable',
-          'Location permission was turned off',
-          'Phone location services are unavailable'
-        ]);
-        if (!confirmedGpsLossReasons.has(reason)) {
+        if (!isConfirmedGpsLossReason(reason)) {
           send(res, 400, { error: 'The GPS grace period starts only after location permission is denied or phone location services are confirmed unavailable.' }); return;
         }
         const startedAt = active.gpsIssueStartedAt || now();
