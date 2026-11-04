@@ -27,9 +27,10 @@ function downloadCsv(name: string, rows: unknown[][]) {
 function printReport(title: string, rows: unknown[][]) {
   const popup = window.open('', '_blank');
   if (!popup) return;
-  const escapeHtml = (value: unknown) => String(value ?? '').replace(/[&<>"']/g, character => ({
-    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-  })[character] || character);
+  const escapeHtml = (value: unknown) => {
+    const replacements: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+    return String(value ?? '').replace(/[&<>"']/g, character => replacements[character] || character);
+  };
   const table = rows.map((row, index) => '<tr>' + row.map(cell => index === 0
     ? '<th>' + escapeHtml(cell) + '</th>'
     : '<td>' + escapeHtml(cell) + '</td>').join('') + '</tr>').join('');
