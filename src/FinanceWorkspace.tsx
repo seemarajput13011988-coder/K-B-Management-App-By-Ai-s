@@ -7,6 +7,8 @@ type Customer = { id: string; name: string; monthlyFee: number; status: string; 
 type Payment = { id: string; customerId: string; customerName: string; amount: number; paidAt: string; month: string; method: string };
 type Expense = { id: string; title: string; category: string; amount: number; spentAt: string; method: string; notes?: string; createdByName: string };
 type Invoice = { id: string; customerId: string; customerName: string; period: string; dueDate: string; amount: number; status: string; paidAmount: number };
+type StaffMember = { id: string; displayName: string; userId: string; role: string; active: boolean };
+type PayrollRecord = { id: string; staffUserId: string; staffName: string; period: string; amount: number; paidAt: string; method: string; notes?: string };
 
 const money = (value: number) => '₹' + Number(value || 0).toLocaleString('en-IN');
 const monthName = (period: string) => new Date(period + '-01T12:00:00').toLocaleString('en-IN', { month: 'long', year: 'numeric' });
@@ -31,6 +33,13 @@ export default function FinanceWorkspace({ session, customers, payments, flash }
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [audit, setAudit] = useState<Array<{ id: string; action: string; entityType: string; description: string; actorName: string; createdAt: string }>>([]);
+  const [staff, setStaff] = useState<StaffMember[]>([]);
+  const [payroll, setPayroll] = useState<PayrollRecord[]>([]);
+  const [salaryStaffId, setSalaryStaffId] = useState('');
+  const [salaryAmount, setSalaryAmount] = useState('');
+  const [salaryPaidAt, setSalaryPaidAt] = useState(today());
+  const [salaryMethod, setSalaryMethod] = useState('Bank transfer');
+  const [salaryNotes, setSalaryNotes] = useState('');
   const [period, setPeriod] = useState(today().slice(0, 7));
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState('Network / provider');
@@ -41,14 +50,18 @@ export default function FinanceWorkspace({ session, customers, payments, flash }
   const [busy, setBusy] = useState(false);
   const tokenQuery = '?sessionToken=' + encodeURIComponent(session.token);
   const load = async () => {
-    const [e, i, a] = await Promise.all([
+    const [e, i, a, st, pr] = await Promise.all([
       client.get('/api/expenses' + tokenQuery),
       client.get('/api/invoices?period=' + encodeURIComponent(period) + '&sessionToken=' + encodeURIComponent(session.token)),
-      client.get('/api/audit' + tokenQuery)
+      client.get('/api/audit' + tokenQuery),
+      client.get('/api/staff' + tokenQuery),
+      client.get('/api/payroll?period=' + encodeURIComponent(period) + '&sessionToken=' + encodeURIComponent(session.token))
     ]);
     setExpenses(e.data.items || []);
     setInvoices(i.data.items || []);
     setAudit(a.data.items || []);
+    setStaff((st.data.items || []).filter((item: StaffMember) => item.active));
+    setPayroll(pr.data.items || []);
   };
   useEffect(() => { load().catch(() => flash('Could not load finance records.')); }, [period]);
   const monthPayments = payments.filter(item => item.month === monthName(period) || item.paidAt?.slice(0, 7) === period);
@@ -82,6 +95,20 @@ export default function FinanceWorkspace({ session, customers, payments, flash }
       flash(err instanceof Error ? err.message : 'Could not generate invoices.');
     } finally { setBusy(false); }
   }
+  async function recordSalary(event: React.FormEvent) {
+    event.preventDefault();
+    if (!salaryStaffId || !salaryAmount || !salaryPaidAt) return;
+    setBusy(true);
+    try {
+      await client.post('/api/payroll', { staffUserId: salaryStaffId, period, amount: Number(salaryAmount), paidAt: salaryPaidAt, method: salaryMethod, notes: salaryNotes, sessionToken: session.token });
+      setSalaryAmount(''); setSalaryNotes('');
+      await load();
+      flash('Staff salary recorded.');
+    } catch (err) {
+      flash(err instanceof Error ? err.message : 'Could not record salary.');
+    } finally { setBusy(false); }
+  }
+
   async function addExpense(event: React.FormEvent) {
     event.preventDefault();
     setBusy(true);
@@ -112,6 +139,21 @@ export default function FinanceWorkspace({ session, customers, payments, flash }
       <article><span><TrendingDown size={17}/> Expenses</span><strong>{money(spent)}</strong><small>{monthExpenses.length} expense records</small></article>
       <article><span><Wallet size={17}/> Cash operating balance</span><strong className={cashResult < 0 ? 'negative' : ''}>{money(cashResult)}</strong><small>Collections minus recorded expenses</small></article>
       <article><span><ReceiptText size={17}/> Unpaid invoice balance</span><strong>{money(outstanding)}</strong><small>{unpaidInvoices.length} unpaid / partial invoices</small></article>
+    </section>
+    <section className="panel finance-panel">
+      <div className="finance-head"><div><span className="eyebrow">STAFF PAYROLL</span><h2>Monthly salary records</h2><p>Record each staff member's salary once per month. Salary is also added to the expense ledger automatically.</p></div></div>
+      <form className="finance-expense-form" onSubmit={recordSalary}>
+        <label>Staff member<select required value={salaryStaffId} onChange={e => setSalaryStaffId(e.target.value)}><option value="">Select staff member</option>{staff.map(item => <option key={item.id} value={item.id}>{item.displayName} ({item.userId})</option>)}</select></label>
+        <label>Salary amount (₹)<input required type="number" min="0.01" max="1000000" step="0.01" value={salaryAmount} onChange={e => setSalaryAmount(e.target.value)}/></label>
+        <label>Payment date<input required type="date" value={salaryPaidAt} onChange={e => setSalaryPaidAt(e.target.value)}/></label>
+        <label>Payment method<select value={salaryMethod} onChange={e => setSalaryMethod(e.target.value)}><option>Bank transfer</option><option>UPI</option><option>Cash</option><option>Card</option><option>Other</option></select></label>
+        <label className="wide">Notes<input maxLength={300} value={salaryNotes} onChange={e => setSalaryNotes(e.target.value)} placeholder="Optional salary reference"/></label>
+        <button className="btn primary" disabled={busy || !staff.length || !salaryStaffId || !salaryAmount}>Record salary</button>
+      </form>
+      <div className="finance-table-wrap"><table><thead><tr><th>STAFF MEMBER</th><th>MONTH</th><th>PAID DATE</th><th>METHOD</th><th>AMOUNT</th></tr></thead><tbody>
+        {payroll.map(item => <tr key={item.id}><td><b>{item.staffName}</b></td><td>{monthName(item.period)}</td><td>{item.paidAt}</td><td>{item.method}</td><td className="amount">{money(item.amount)}</td></tr>)}
+        {!payroll.length && <tr><td colSpan={5}>No salary payments recorded for this month.</td></tr>}
+      </tbody></table></div>
     </section>
     <section className="panel finance-panel finance-chart-panel">
       <div className="finance-head"><div><span className="eyebrow">FINANCIAL ANALYTICS</span><h2>Six-month collection and expense trend</h2><p>Monthly recorded collections compared with recorded operating expenses.</p></div><div className="finance-chart-legend"><span><i className="income-dot"/> Collections</span><span><i className="expense-dot"/> Expenses</span></div></div>
