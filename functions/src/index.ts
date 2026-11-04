@@ -5,7 +5,7 @@ import { onRequest } from 'firebase-functions/v2/https';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { logger } from 'firebase-functions';
 import { defineSecret } from 'firebase-functions/params';
-import { routePath } from './route-path.js';
+import { gpsGracePeriodExpired, routePath } from './route-path.js';
 
 initializeApp();
 const auth = getAuth();
@@ -651,7 +651,7 @@ export const api = onRequest(
             return { saved: false, restored: false, expired: false };
           }
           const issueStartedAt = current.gpsIssueStartedAt ? new Date(String(current.gpsIssueStartedAt)).getTime() : null;
-          if (issueStartedAt !== null && (!Number.isFinite(issueStartedAt) || Date.now() - issueStartedAt >= 15 * 60 * 1000)) {
+          if (issueStartedAt !== null && gpsGracePeriodExpired(current.gpsIssueStartedAt)) {
             return { saved: false, restored: false, expired: true };
           }
           transaction.create(locationRef, record);
