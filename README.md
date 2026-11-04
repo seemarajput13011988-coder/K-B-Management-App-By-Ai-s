@@ -1,11 +1,36 @@
 # K&B Customer Management
 
-Private source repository for the K&B NET SERVICE customer and business management app.
+Source repository for the K&B NET SERVICE customer and business management app.
 
-## Migration status
-- Original AppDeploy source snapshot: being preserved from version 1793770810412.
-- Target architecture: React + Vite + Capacitor Android app, Firebase Authentication, Cloud Firestore, Cloud Functions, and Firebase Hosting.
-- Existing AppDeploy app and data must remain untouched until the replacement is migrated, tested, and verified.
+## Current migration branch
+Work is being carried out on `firebase-migration`. The original AppDeploy implementation remains on `main`; do not deploy or overwrite it as part of the Firebase migration.
 
-## Important
-The preserved source still contains AppDeploy SDK imports and is not yet the Firebase migration. Do not deploy it as a standalone Firebase app until the backend and client API have been migrated.
+## Target architecture
+- React + Vite web application.
+- Capacitor Android wrapper for a privately distributed APK.
+- Firebase Authentication for admin and staff sign-in.
+- Cloud Firestore for application records.
+- Cloud Functions for authenticated, role-checked API operations.
+- Firebase Hosting for the web app and API rewrite.
+
+## Current progress
+- Core Firestore API route groups and Firebase ID-token authorization have been implemented.
+- React API calls and sign-in have been switched to the Firebase adapter on the migration branch.
+- A secret-protected first-admin setup and recovery flow is included.
+- Web build, Functions typecheck and manual Android APK workflows are included.
+- Group chat currently refreshes from the API; realtime transport remains pending.
+
+## Before using or deploying
+1. Confirm Firebase project `kandb-net-service` and verify Authentication / Firestore state.
+2. Add the Firebase Web App config to local `.env.local`; do not commit it.
+3. Configure Functions secrets `ADMIN_BOOTSTRAP_SECRET` and `ADMIN_RECOVERY_CODE`.
+4. Run the build workflows and emulator tests.
+5. Back up and review old AppDeploy data before importing anything.
+
+## Safety and data integrity
+- Firestore direct browser access is denied; data access goes through Cloud Functions.
+- Never commit service-account keys, customer exports, passwords or recovery/setup secrets.
+- No old customer, payment, staff, attendance or finance records have been imported.
+- Do not disable the old AppDeploy app until migration and acceptance testing are complete.
+
+See `MIGRATION_PLAN.md`, `docs/FIREBASE_SETUP.md`, `docs/FIREBASE_API_STATUS.md` and `docs/DATA_MIGRATION.md`.
