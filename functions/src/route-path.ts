@@ -26,3 +26,8 @@ export function isSuperAdminAccount(user: { role?: unknown; userId?: unknown; is
   if (user.role !== 'admin') return false;
   return user.isSuperAdmin === true || (typeof user.userId === 'string' && user.userId.trim().toLowerCase() === 'brajraj');
 }
+
+
+export function isValidDateKey(value: unknown): boolean {
+  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value));
+}
