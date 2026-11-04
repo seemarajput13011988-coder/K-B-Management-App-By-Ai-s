@@ -8,7 +8,7 @@ import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { onDocumentCreated } from 'firebase-functions/v2/firestore';
 import { logger } from 'firebase-functions';
 import { defineSecret } from 'firebase-functions/params';
-import { calculateInventoryBalance, gpsGracePeriodExpired, hasOverlappingSubscription, isConfirmedGpsLossReason, isSuperAdminAccount, isValidDateKey, isValidDateRange, routePath, subscriptionExpiryKind, taskReminderKind } from './route-path.js';
+import { calculateInventoryBalance, gpsGracePeriodExpired, hasOverlappingSubscription, isConfirmedGpsLossReason, isConfirmedGpsLossReason, isSuperAdminAccount, isValidDateKey, isValidDateRange, routePath, subscriptionExpiryKind, taskReminderKind } from './route-path.js';
 
 initializeApp();
 const auth = getAuth();
