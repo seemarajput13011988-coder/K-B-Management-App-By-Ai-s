@@ -1120,10 +1120,6 @@ export const api = onRequest(
         if (paymentStatus === 'Paid' && (!isValidDateKey(paidAt) || !paymentMethod)) {
           send(res, 400, { error: 'A paid renewal needs a valid payment date and payment method.' }); return;
         }
-        const existing = (await list('subscriptions')).filter(item => item.customerId === customerId && !['Cancelled', 'Expired'].includes(String(item.status)));
-        if (hasOverlappingSubscription(existing, startDate, endDate)) {
-          send(res, 409, { error: 'This renewal overlaps an existing active subscription. Check the current expiry date first.' }); return;
-        }
         const subscriptionRef = db.collection('subscriptions').doc();
         const paymentRef = paymentStatus === 'Paid' ? db.collection('payments').doc() : null;
         const createdAt = now();
@@ -1134,8 +1130,17 @@ export const api = onRequest(
         };
         await db.runTransaction(async transaction => {
           const customerRef = db.collection('customers').doc(customerId);
-          const latestCustomer = await transaction.get(customerRef);
+          const subscriptionQuery = db.collection('subscriptions').where('customerId', '==', customerId);
+          const [latestCustomer, existingSubscriptions] = await Promise.all([
+            transaction.get(customerRef),
+            transaction.get(subscriptionQuery)
+          ]);
           if (!latestCustomer.exists) throw new Error('Customer no longer exists.');
+          if (hasOverlappingSubscription(existingSubscriptions.docs.map(document => document.data()), startDate, endDate)) {
+            const overlapError = new Error('This renewal overlaps an existing active subscription. Check the current expiry date first.') as Error & { code: string };
+            overlapError.code = 'subscription/overlap';
+            throw overlapError;
+          }
           transaction.create(subscriptionRef, record);
           const currentDueDate = String(latestCustomer.data()?.dueDate || '');
           const customerPatch: Data = { plan, updatedAt: createdAt };
@@ -1171,6 +1176,7 @@ export const api = onRequest(
       send(res,404,{error:'This API route was not found.'});
     } catch (error: any) {
       logger.error('API request failed', { message: error?.message || String(error) });
+      if (error?.code === 'subscription/overlap') { send(res, 409, { error: error.message }); return; }
       if (error?.code === 'auth/email-already-exists') { send(res,409,{error:'That staff ID is already in use.'}); return; }
       if (error?.code === 'auth/invalid-password') { send(res,400,{error:'Password must contain at least 10 characters.'}); return; }
       send(res,500,{error:'Something went wrong. Please try again.'});
