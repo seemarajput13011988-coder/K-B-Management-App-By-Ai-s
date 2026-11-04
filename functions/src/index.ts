@@ -265,7 +265,7 @@ export const api = onRequest(
       if (path === '/api/payments' && method === 'POST') {
         const customerId = clean(body.customerId,128), amount = money(body.amount);
         const customer = await getDoc('customers',customerId);
-        if (!customer || !validMoney(amount) || amount <= 0 || !clean(body.method,40) || !datePattern.test(clean(body.paidAt,10)) || !monthPattern.test(clean(body.month,7))) {
+        if (!customer || !validMoney(amount) || amount <= 0 || !clean(body.method,40) || !datePattern.test(clean(body.paidAt,10)) || !clean(body.month,40)) {
           send(res,400,{error:'Enter a valid customer, amount, payment method, payment date and billing month.'}); return;
         }
         if (user.role === 'staff' && customer.assignedTo !== user.uid) { send(res,403,{error:'You can record payments only for your assigned customers.'}); return; }
