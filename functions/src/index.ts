@@ -1238,10 +1238,10 @@ export const api = onRequest(
         const ledger = buildCustomerLedger(invoiceItems, paymentItems, customerId);
         send(res, 200, {
           customer: { id: customerId, name: String(customer.name || ''), phone: String(customer.phone || ''), plan: String(customer.plan || '') },
-          items,
-          totalBilled,
-          totalPaid,
-          balance: Math.round((totalBilled - totalPaid) * 100) / 100
+          items: ledger.items,
+          totalBilled: ledger.totalBilled,
+          totalPaid: ledger.totalPaid,
+          balance: ledger.outstandingBalance
         }); return;
       }
 
