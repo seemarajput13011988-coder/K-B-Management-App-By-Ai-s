@@ -5,6 +5,7 @@ import { onRequest } from 'firebase-functions/v2/https';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { logger } from 'firebase-functions';
 import { defineSecret } from 'firebase-functions/params';
+import { routePath } from './route-path.js';
 
 initializeApp();
 const auth = getAuth();
@@ -26,14 +27,7 @@ const monthPattern = /^\d{4}-\d{2}$/;
 const now = () => new Date().toISOString();
 const send = (res: any, status: number, body: Data) => { res.status(status).json(body); };
 
-function routePath(path: string): string {
-  const normalized = path.replace(/\/+$/, '') || '/';
-  // Direct Cloud Functions URLs remove the exported function name from req.path,
-  // while Firebase Hosting rewrites preserve the incoming /api prefix.
-  // Normalize both forms so every API route works in either deployment.
-  if (normalized === '/api' || normalized.startsWith('/api/')) return normalized;
-  return normalized === '/' ? normalized : `/api${normalized}`;
-}
+
 function routeId(path: string, base: string): string {
   return decodeURIComponent(path.slice(base.length + 1));
 }
