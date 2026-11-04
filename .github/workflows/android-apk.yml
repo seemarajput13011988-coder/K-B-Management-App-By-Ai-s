@@ -26,10 +26,9 @@ jobs:
         with:
           distribution: temurin
           java-version: 21
-      - uses: android-actions/setup-android@v3
-        with:
-          # The legacy SDK package named "tools" has been removed from Google's repository.
-          packages: platform-tools platforms;android-35 build-tools;35.0.0
+      - uses: android-actions/setup-android@v4
+      - name: Install Android build platform
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
       - name: Install dependencies and build web app
         env:
           # Firebase web config is public client configuration, not a private key.
