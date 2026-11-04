@@ -3,7 +3,7 @@ import type { FormEvent } from 'react';
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import type { BackgroundGeolocationPlugin } from '@capacitor-community/background-geolocation';
-import { api as client, nativeApiPost, ws } from './lib/api';
+import { api as client, nativeApiPost } from './lib/api';
 
 const BackgroundGeolocation = registerPlugin<BackgroundGeolocationPlugin>('BackgroundGeolocation');
 
@@ -82,7 +82,6 @@ export default function StaffOperations({ session, customers, flash, compact = f
   const [announcementForm, setAnnouncementForm] = useState({ title: '', message: '' });
   const [messageForm, setMessageForm] = useState({ recipientId: '', message: '' });
   const [visitForm, setVisitForm] = useState({ customerId: customers[0]?.id || '', purpose: 'Installation / service visit', notes: '' });
-  const chatConnection = useRef<ReturnType<typeof ws.connect> | null>(null);
   const selectedGroupRef = useRef('');
   const today = localDay();
   const myToday = attendance.find(item => item.userId === session.user.id && item.workDate === today);
@@ -184,18 +183,12 @@ export default function StaffOperations({ session, customers, flash, compact = f
   }, [selectedGroupId]);
 
   useEffect(() => {
-    const connection = ws.connect();
-    chatConnection.current = connection;
-    connection.onMessage(message => {
-      const payload = message?.payload;
-      if (message?.type === 'entity.update' && payload?.entity_type === 'groupchat' && payload?.entity_id === selectedGroupRef.current) {
-        request('get', '/api/groups/' + payload.entity_id + '/messages').then(result => setGroupMessages(result.data.items || [])).catch(() => undefined);
-      }
-    });
-    return () => {
-      connection.disconnect();
-      chatConnection.current = null;
-    };
+    let cancelled = false;
+    const refreshDirectMessages = () => request('get', '/api/messages')
+      .then(result => { if (!cancelled) setMessages(result.data.items || []); })
+      .catch(() => undefined);
+    const timer = window.setInterval(refreshDirectMessages, 12000);
+    return () => { cancelled = true; window.clearInterval(timer); };
   }, [request]);
 
   useEffect(() => {
@@ -204,23 +197,17 @@ export default function StaffOperations({ session, customers, flash, compact = f
       return;
     }
     let cancelled = false;
-    const connection = chatConnection.current;
     const refreshGroupMessages = () => request('get', '/api/groups/' + selectedGroupId + '/messages')
       .then(result => { if (!cancelled) setGroupMessages(result.data.items || []); })
       .catch(() => undefined);
     void refreshGroupMessages();
     const refreshTimer = window.setInterval(refreshGroupMessages, 8000);
-    if (connection) connection.ready.then(async () => {
-      if (cancelled || !connection.connectionId) return;
-      await request('post', '/api/subscriptions', { entity_type: 'groupchat', entity_id: selectedGroupId, connection_id: connection.connectionId });
-      if (cancelled) await request('post', '/api/subscriptions/remove', { entity_type: 'groupchat', entity_id: selectedGroupId, connection_id: connection.connectionId });
-    }).catch(() => undefined);
     return () => {
       cancelled = true;
       window.clearInterval(refreshTimer);
-      if (connection?.connectionId) request('post', '/api/subscriptions/remove', { entity_type: 'groupchat', entity_id: selectedGroupId, connection_id: connection.connectionId }).catch(() => undefined);
     };
   }, [selectedGroupId, request]);
+
 
   useEffect(() => {
     if (admin) return;
