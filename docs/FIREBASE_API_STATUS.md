@@ -9,6 +9,9 @@ The Cloud Functions HTTP entry point is `functions/src/index.ts`; the React API 
 - Health check, current-user profile, and logout compatibility endpoint.
 - Secret-protected one-time admin bootstrap and admin password recovery.
 - Firebase Authentication staff provisioning, activation/deactivation and password reset.
+- Multiple administrator accounts with protected primary owner, activation/deactivation and audit entries.
+- Full-day / half-day attendance selection at shift start, plus reason-required admin corrections with audit history.
+- GPS history API for the admin location audit trail; current and historical locations are only collected during active shifts while the staff app is open and permission is granted.
 - Firestore-backed staff, plans, customers, payments, complaints, tasks, attendance, foreground shift-scoped GPS, announcements, direct messages, groups, group messages, visits, expenses, invoices and audit endpoints.
 - Admin/staff role restrictions and server-side record scoping for the major collections.
 - Audit entries for the main create/update/delete and administrative operations.
@@ -20,6 +23,9 @@ The Cloud Functions HTTP entry point is `functions/src/index.ts`; the React API 
 - Password changes now require client-side reauthentication and a recent Firebase auth timestamp before the server updates the password.
 - Replace the temporary no-op realtime transport; group messages currently require API refresh.
 - Review and test every route against the legacy behavior, including field-level permissions and edge cases.
+- Validate the new administrator and attendance correction workflows against Firebase Auth / Firestore Emulator.
+- GPS is foreground browser tracking, not background Android tracking; a native background mode would require a separate consent and permission design.
+- Finance charts currently visualize six months of recorded collections and expenses; attendance chart compares full and half days.
 - Run the GitHub Actions typecheck and the frontend production build, then fix all compile errors.
 - Add emulator-based API tests for admin and staff roles.
 - Android debug-APK workflow is ready but has not been run; add the required Firebase web config secrets first.
