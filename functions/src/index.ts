@@ -455,6 +455,35 @@ export const api = onRequest(
       }
 
       const indiaDate = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+      const holidayExempt = async (staffId: string, date: string) => {
+        const requests = await list('holiday_requests');
+        return requests.some(item => item.userId === staffId && ['pending', 'approved'].includes(String(item.status)) && String(item.startDate) <= date && String(item.endDate) >= date);
+      };
+      if (path === '/api/holidays' && method === 'GET') {
+        const requests = await list('holiday_requests');
+        const items = user.role === 'admin' ? requests : requests.filter(item => item.userId === user.uid);
+        send(res, 200, { items: items.sort((a,b) => String(b.createdAt||'').localeCompare(String(a.createdAt||''))) }); return;
+      }
+      if (path === '/api/holidays' && method === 'POST') {
+        if (!allow(user, ['staff'], res)) return;
+        const startDate = clean(body.startDate, 10), endDate = clean(body.endDate, 10), reason = clean(body.reason, 300);
+        if (!datePattern.test(startDate) || !datePattern.test(endDate) || endDate < startDate || !reason) { send(res, 400, { error: 'Choose a valid holiday date range and enter a reason.' }); return; }
+        const duplicate = (await list('holiday_requests')).some(item => item.userId === user.uid && ['pending','approved'].includes(String(item.status)) && String(item.startDate) <= endDate && String(item.endDate) >= startDate);
+        if (duplicate) { send(res, 409, { error: 'A pending or approved holiday already covers part of these dates.' }); return; }
+        const record = { userId: user.uid, displayName: user.displayName, startDate, endDate, reason, status: 'pending', createdAt: now() };
+        const ref = await db.collection('holiday_requests').add(record);
+        await audit(user, 'HOLIDAY_REQUEST', 'holiday', ref.id, 'Requested holiday from ' + startDate + ' to ' + endDate);
+        send(res, 201, { id: ref.id, ...record }); return;
+      }
+      if (path.startsWith('/api/holidays/') && method === 'PUT') {
+        if (!allow(user, ['admin'], res)) return;
+        const id = routeId(path, '/api/holidays'), request = await getDoc('holiday_requests', id);
+        const status = body.status === 'approved' ? 'approved' : body.status === 'rejected' ? 'rejected' : '';
+        if (!request || !status) { send(res, 400, { error: 'Choose a valid holiday request and decision.' }); return; }
+        await db.collection('holiday_requests').doc(id).update({ status, reviewedAt: now(), reviewedBy: user.uid, reviewedByName: user.displayName, reviewNote: clean(body.reviewNote, 240) });
+        await audit(user, 'HOLIDAY_' + status.toUpperCase(), 'holiday', id, status + ' holiday request for ' + request.displayName);
+        send(res, 200, { updated: true, status }); return;
+      }
       if (path.startsWith('/api/attendance/') && path.endsWith('/day-type') && method === 'PUT') {
         if (!allow(user, ['admin'], res)) return;
         const id = decodeURIComponent(path.slice('/api/attendance/'.length, -'/day-type'.length));
