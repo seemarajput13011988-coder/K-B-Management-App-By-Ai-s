@@ -7,6 +7,7 @@ import StaffOperations from './StaffOperations';
 import FinanceWorkspace from './FinanceWorkspace';
 import SubscriptionWorkspace from './SubscriptionWorkspace';
 import InventoryWorkspace from './InventoryWorkspace';
+import InstallationsWorkspace from './InstallationsWorkspace';
 import { useAppPreferences } from './appPreferences';
 import { api as client, changeAppPassword, changeAppUserId, signInAppUser, signOutAppUser, submitStaffRegistrationRequest, getStaffRegistrationStatus } from './lib/api';
 import {
@@ -509,6 +510,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
     { label: 'Customers', icon: Users, count: customers.length },
     { label: 'Subscriptions', icon: CalendarDays },
     { label: 'Inventory', icon: ClipboardList },
+    { label: 'Installations', icon: MapPin },
     ...(isAdmin ? [{ label: 'Plans & Pricing', icon: Wifi }] : []),
     ...(isAdmin ? [{ label: 'Staff', icon: UserRound, count: staff.length }] : []),
     ...(isAdmin ? [{ label: 'Finance & Billing', icon: IndianRupee }] : []),
@@ -634,6 +636,8 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                     : page === 'Plans & Pricing'                      ? 'Your available internet packages and monthly pricing.'
                       : page === 'Subscriptions'
                         ? 'Manage customer renewals, subscription periods and expiry dates.'
+                      : page === 'Installations'
+                        ? 'Schedule customer installations, upgrades and repair visits.'
                       : page === 'Inventory'
                         ? 'Track equipment, stock levels, supplies and stock movements.'
                       : page === 'Payments'
@@ -688,6 +692,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
           {page === 'Finance & Billing' && isAdmin && <FinanceWorkspace session={session} customers={customers} payments={payments} flash={flash} />}
           {page === 'Subscriptions' && <SubscriptionWorkspace customers={customers} plans={plans} isAdmin={isAdmin} flash={flash} />}
           {page === 'Inventory' && <InventoryWorkspace isAdmin={isAdmin} flash={flash} />}
+          {page === 'Installations' && <InstallationsWorkspace customers={customers} staff={staff} isAdmin={isAdmin} flash={flash} />}
           {page === 'Overview' && !isAdmin && <StaffOperations session={session} customers={customers} flash={flash} compact />}
 
           {page === 'Overview' && (
