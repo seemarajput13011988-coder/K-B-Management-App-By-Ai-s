@@ -13,6 +13,7 @@ export default function InstallationsWorkspace({customers,staff,isAdmin,flash}:{
   const [loading,setLoading]=useState(true);
   const [saving,setSaving]=useState(false);
   const [showForm,setShowForm]=useState(false);
+  const [editingJob,setEditingJob]=useState<Installation|null>(null);
   const [customerId,setCustomerId]=useState(customers[0]?.id||'');
   const selectedCustomer=customers.find(item=>item.id===customerId);
   const [assignedTo,setAssignedTo]=useState(staff.find(item=>item.active)?.id||'');
@@ -27,15 +28,16 @@ export default function InstallationsWorkspace({customers,staff,isAdmin,flash}:{
   useEffect(()=>{if(selectedCustomer)setAddress(selectedCustomer.address||'');},[customerId]);
   useEffect(()=>{if(!assignedTo&&staff.some(item=>item.active))setAssignedTo(staff.find(item=>item.active)!.id);},[staff,assignedTo]);
 
-  async function createJob(event:FormEvent){event.preventDefault();if(!customerId||!assignedTo){flash('Choose a customer and staff member.');return;}setSaving(true);try{await api.post('/api/installations',{customerId,assignedTo,type,scheduledDate,address,notes});setShowForm(false);setNotes('');await load();flash('Installation job assigned.');}catch(error){flash(error instanceof Error?error.message:'Could not create installation job.');}finally{setSaving(false);}}
+  function openEdit(item:Installation){setEditingJob(item);setCustomerId(item.customerId);setAssignedTo(item.assignedTo);setType(item.type);setScheduledDate(item.scheduledDate);setAddress(item.address);setNotes(item.notes||'');setShowForm(true);}
+  async function createJob(event:FormEvent){event.preventDefault();if(!customerId||!assignedTo){flash('Choose a customer and staff member.');return;}setSaving(true);try{if(editingJob){await api.put('/api/installations/'+editingJob.id,{status:editingJob.status,assignedTo,scheduledDate,address,notes});}else{await api.post('/api/installations',{customerId,assignedTo,type,scheduledDate,address,notes});}setShowForm(false);setEditingJob(null);setNotes('');await load();flash(editingJob?'Installation job updated.':'Installation job assigned.');}catch(error){flash(error instanceof Error?error.message:'Could not save installation job.');}finally{setSaving(false);}}
   async function updateJob(item:Installation,status:Installation['status']){try{await api.put('/api/installations/'+item.id,{status,notes:item.notes||''});await load();flash('Installation status updated.');}catch(error){flash(error instanceof Error?error.message:'Could not update installation.');}}
 
   return <section className="panel table-panel">
-    <div className="toolbar"><div><h2>Installation jobs</h2><p className="subtle">Schedule new connections, upgrades, repairs and relocations.</p></div>{isAdmin&&<button className="btn primary" onClick={()=>setShowForm(value=>!value)}>+ Schedule installation</button>}</div>
-    {showForm&&isAdmin&&<form className="installation-form" onSubmit={createJob}>
-      <label>Customer<select required value={customerId} onChange={e=>setCustomerId(e.target.value)}>{customers.map(item=><option key={item.id} value={item.id}>{item.name} · {item.phone||'Customer'}</option>)}</select></label>
+    <div className="toolbar"><div><h2>Installation jobs</h2><p className="subtle">Schedule new connections, upgrades, repairs and relocations.</p></div>{isAdmin&&<button className="btn primary" onClick={()=>{setEditingJob(null);setShowForm(value=>!value);}}>+ Schedule installation</button>}</div>
+    {showForm&&isAdmin&&<form className="installation-form" onSubmit={createJob}><strong className="installation-form-heading">{editingJob?'Edit installation job':'Schedule installation'}</strong>
+      {!editingJob&&<label>Customer<select required value={customerId} onChange={e=>setCustomerId(e.target.value)}>{customers.map(item=><option key={item.id} value={item.id}>{item.name} · {item.phone||'Customer'}</option>)}</select></label>}
       <label>Assigned staff<select required value={assignedTo} onChange={e=>setAssignedTo(e.target.value)}>{staff.filter(item=>item.active).map(item=><option key={item.id} value={item.id}>{item.displayName}</option>)}</select></label>
-      <label>Job type<select value={type} onChange={e=>setType(e.target.value)}><option>New connection</option><option>Upgrade</option><option>Repair</option><option>Relocation</option></select></label>
+      {!editingJob&&<label>Job type<select value={type} onChange={e=>setType(e.target.value)}><option>New connection</option><option>Upgrade</option><option>Repair</option><option>Relocation</option></select></label>}
       <label>Scheduled date<input type="date" required value={scheduledDate} onChange={e=>setScheduledDate(e.target.value)}/></label>
       <label className="installation-address">Installation address<input required maxLength={300} value={address} onChange={e=>setAddress(e.target.value)}/></label>
       <label className="installation-address">Work notes<textarea rows={2} maxLength={1000} value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Equipment, access instructions, customer availability…"/></label>
@@ -46,7 +48,7 @@ export default function InstallationsWorkspace({customers,staff,isAdmin,flash}:{
         <div className="installation-main"><div><span className="installation-type">{item.type}</span><h3>{item.customerName}</h3><p>{item.address}</p><small>{item.phone||''}</small></div><div className="installation-date"><b>{prettyDate(item.scheduledDate)}</b><small>Scheduled date</small></div></div>
         <div className="installation-meta"><span>Assigned to: <b>{item.assignedToName||'Unassigned'}</b></span><span>Created: {prettyDate(String(item.createdAt||'').slice(0,10))}</span></div>
         {item.notes&&<p className="installation-notes">{item.notes}</p>}
-        <div className="installation-footer"><span className={'installation-status '+item.status.toLowerCase().replace(' ','-')}>{item.status}</span><label>Update status<select aria-label={'Update status for '+item.customerName} value={item.status} onChange={e=>void updateJob(item,e.target.value as Installation['status'])}><option>Scheduled</option><option>In progress</option><option>Completed</option>{isAdmin&&<option>Cancelled</option>}</select></label></div>
+        <div className="installation-footer"><span className={'installation-status '+item.status.toLowerCase().replace(' ','-')}>{item.status}</span>{isAdmin&&<button className="btn secondary compact" onClick={()=>openEdit(item)}>Edit job</button>}<label>Update status<select aria-label={'Update status for '+item.customerName} value={item.status} onChange={e=>void updateJob(item,e.target.value as Installation['status'])}><option>Scheduled</option><option>In progress</option><option>Completed</option>{isAdmin&&<option>Cancelled</option>}</select></label></div>
       </article>)}
       {!items.length&&<p className="ops-empty">{isAdmin?'No installation jobs yet. Schedule a new connection, upgrade or repair.':'No installation jobs are assigned to you yet.'}</p>}
     </div>}
