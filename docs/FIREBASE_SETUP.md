@@ -35,6 +35,7 @@ Copy `.env.example` to `.env.local` and fill in the Firebase Web App values. The
 ## 5. GitHub Actions deployment secrets
 For Firebase Hosting / Functions deployment, add these in GitHub repository Settings > Secrets and variables > Actions:
 - `FIREBASE_SERVICE_ACCOUNT_KANDB_NET_SEVICE`: service-account JSON with the minimum required Firebase deploy permissions.
+- `ANDROID_GOOGLE_SERVICES_JSON_BASE64`: Base64-encoded `google-services.json` for the Firebase Android app with package ID `in.kandbnetservice.management`. Register that Android app in Firebase Project Settings, download its `google-services.json`, encode the file, and save the encoded value as this GitHub Actions secret. Without it, the APK can still build, but push notifications while the app is fully closed will not work.
 - `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_STORAGE_BUCKET`, `VITE_FIREBASE_MESSAGING_SENDER_ID`, `VITE_FIREBASE_APP_ID`: public Firebase Web App config values for the Hosting build.
 
 The Android debug APK workflow already uses the public Firebase Web App config supplied in its workflow as a fallback; it does not need a service-account key. Never paste service-account JSON or private credentials into ChatGPT or commit them to Git.
