@@ -1,5 +1,4 @@
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'firebase/auth';
-import type { User } from 'firebase/auth';
 import { firebaseAuth } from './firebase';
 
 const API_BASE = import.meta.env.VITE_FIREBASE_FUNCTIONS_URL || 'https://asia-south1-kandb-net-service.cloudfunctions.net/api';
@@ -66,16 +65,6 @@ export async function signInAppUser(userId: string, password: string) {
   if (!id) throw new Error('Enter your user ID.');
   await signInWithEmailAndPassword(firebaseAuth, id + '@' + ACCOUNT_DOMAIN, password);
   const token = await firebaseAuth.currentUser!.getIdToken();
-  const profile = await api.get<{ user: { id: string; userId: string; displayName: string; role: 'admin' | 'staff'; active: boolean } }>('/api/auth/me');
-  return { token, expiresAt: Date.now() + 3600000, user: profile.data.user };
-}
-export async function restoreAppSession() {
-  if (!firebaseAuth) return null;
-  const user = await new Promise<User | null>(resolve => {
-    const unsubscribe = onAuthStateChanged(firebaseAuth, current => { unsubscribe(); resolve(current); });
-  });
-  if (!user) return null;
-  const token = await user.getIdToken();
   const profile = await api.get<{ user: { id: string; userId: string; displayName: string; role: 'admin' | 'staff'; active: boolean } }>('/api/auth/me');
   return { token, expiresAt: Date.now() + 3600000, user: profile.data.user };
 }
