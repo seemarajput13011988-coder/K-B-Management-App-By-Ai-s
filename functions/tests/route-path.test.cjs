@@ -105,3 +105,16 @@ test('inventory stock movements never allow invalid or negative stock', () => {
   assert.equal(calculateInventoryBalance(10, 'OUT', 0), null);
   assert.equal(calculateInventoryBalance(10, 'ADJUST', 2), null);
 });
+
+
+test('GPS grace period starts only for confirmed location permission or service loss', () => {
+  const { isConfirmedGpsLossReason } = require('../lib/route-path.js');
+  assert.equal(isConfirmedGpsLossReason('Location permission denied'), true);
+  assert.equal(isConfirmedGpsLossReason('GPS location unavailable'), true);
+  assert.equal(isConfirmedGpsLossReason('Location permission was turned off'), true);
+  assert.equal(isConfirmedGpsLossReason('Phone location services are unavailable'), true);
+  assert.equal(isConfirmedGpsLossReason('GPS location request timed out'), false);
+  assert.equal(isConfirmedGpsLossReason('Network connection lost'), false);
+  assert.equal(isConfirmedGpsLossReason(''), false);
+  assert.equal(isConfirmedGpsLossReason(null), false);
+});
