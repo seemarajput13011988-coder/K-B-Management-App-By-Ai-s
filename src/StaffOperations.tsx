@@ -10,6 +10,7 @@ const BackgroundGeolocation = registerPlugin<BackgroundGeolocationPlugin>('Backg
 type Session = { token: string; user: { id: string; displayName: string; role: 'admin' | 'staff'; isSuperAdmin?: boolean } };
 type Attendance = { id: string; userId: string; displayName: string; workDate: string; checkInAt: string; checkOutAt?: string; dayType?: 'Full day' | 'Half day'; correctionReason?: string; gpsRestartRequired?: boolean; gpsCancelled?: boolean; status?: string };
 type HolidayRequest = { id: string; userId: string; displayName: string; startDate: string; endDate: string; reason: string; status: 'pending'|'approved'|'rejected'; createdAt: string };
+type StaffRegistrationRequest = { id: string; userId: string; displayName: string; phone?: string; reason?: string; status: 'pending'|'approved'|'rejected'; createdAt: string };
 type Visit = { id: string; customerName: string; purpose: string; notes: string; visitedAt: string; staffName: string };
 type Announcement = { id: string; title: string; message: string; createdAt: string; createdByName: string };
 type Message = { id: string; senderName: string; recipientName: string; message: string; createdAt: string };
@@ -65,6 +66,8 @@ export default function StaffOperations({ session, customers, flash, compact = f
   const [locationHistory, setLocationHistory] = useState<Location[]>([]);
   const [admins, setAdmins] = useState<Array<{id:string;userId:string;displayName:string;active:boolean}>>([]);
   const [adminForm, setAdminForm] = useState({userId:'',displayName:'',password:''});
+  const [registrationRequests, setRegistrationRequests] = useState<StaffRegistrationRequest[]>([]);
+  const [registrationPasswords, setRegistrationPasswords] = useState<Record<string,string>>({});
   const [dayType, setDayType] = useState<'Full day'|'Half day'>('Full day');
   const [attendanceCorrection, setAttendanceCorrection] = useState<{id:string;dayType:'Full day'|'Half day';reason:string}|null>(null);
   const [staff, setStaff] = useState<Array<{ id: string; displayName: string; active: boolean }>>([]);
@@ -139,10 +142,11 @@ export default function StaffOperations({ session, customers, flash, compact = f
       setGroups(availableGroups);
       setSelectedGroupId(current => current && availableGroups.some(group => group.id === current) ? current : availableGroups[0]?.id || '');
       if (admin) {
-        const [l, s, h] = await Promise.all([request('get', '/api/locations'), request('get', '/api/staff'), request('get', '/api/locations/history')]);
+        const [l, s, h, rr] = await Promise.all([request('get', '/api/locations'), request('get', '/api/staff'), request('get', '/api/locations/history'), request('get', '/api/staff-registration-requests')]);
         setLocations(l.data.items || []);
         setStaff(s.data.items || []);
         setLocationHistory(h.data.items || []);
+        setRegistrationRequests(rr.data.items || []);
       }
       if (superAdmin) {
         const ad = await request('get', '/api/admins');
@@ -409,6 +413,21 @@ export default function StaffOperations({ session, customers, flash, compact = f
     } finally { setBusy(false); }
   }
 
+  async function reviewStaffRegistration(item: StaffRegistrationRequest, status: 'approved' | 'rejected') {
+    const password = registrationPasswords[item.id] || '';
+    if (status === 'approved' && password.length < 10) { flash('Set a temporary password with at least 10 characters before approving.'); return; }
+    if (!window.confirm(status === 'approved' ? 'Approve this request and create a staff login for ' + item.displayName + '?' : 'Reject this staff registration request?')) return;
+    setBusy(true);
+    try {
+      await request('put', '/api/staff-registration-requests/' + item.id, { status, ...(status === 'approved' ? { password } : {}) });
+      setRegistrationPasswords(current => { const next = { ...current }; delete next[item.id]; return next; });
+      await refresh();
+      flash(status === 'approved' ? 'Staff request approved. Share the staff ID and temporary password securely.' : 'Staff registration request rejected.');
+    } catch (err) {
+      flash(err instanceof Error ? err.message : 'Could not review this registration request.');
+    } finally { setBusy(false); }
+  }
+
   async function createAdmin(event: FormEvent) {
     event.preventDefault();
     setBusy(true);
@@ -499,6 +518,15 @@ export default function StaffOperations({ session, customers, flash, compact = f
         <button className="btn primary" disabled={busy}>Add administrator</button>
       </form>
       <div className="ops-location-list">{admins.map(item=><article className="ops-location-card" key={item.id}><div className="ops-person"><span className="avatar">{item.displayName.slice(0,2).toUpperCase()}</span><div><b>{item.displayName}</b><small>{item.userId} · {item.userId.toLowerCase()==='brajraj'?'Primary owner':'Administrator'}</small></div></div><div className="ops-location-detail"><span className={item.active?'ops-pill is-live':'ops-pill is-idle'}>{item.active?'ACTIVE':'DISABLED'}</span>{item.userId.toLowerCase()!=='brajraj' && <button className={'btn compact '+(item.active?'danger':'secondary')} disabled={busy} onClick={()=>updateAdminAccount(item,!item.active)}>{item.active?'Deactivate':'Reactivate'}</button>}</div></article>)}</div>
+    </section>}
+
+    {admin && <section className="panel ops-panel">
+      <div className="ops-panel-head"><div><span className="eyebrow">STAFF ONBOARDING</span><h2>Registration requests</h2><p>Approve requests to create staff accounts, or reject them. No account can sign in before approval.</p></div><span className="ops-pill">{registrationRequests.filter(item=>item.status==='pending').length} PENDING</span></div>
+      <div className="ops-feed">{registrationRequests.filter(item=>item.status==='pending').map(item=><article className="ops-feed-item" key={item.id}>
+        <div className="ops-message-top"><b>{item.displayName} · {item.userId}</b><span className="ops-pill">PENDING</span></div>
+        <p>{item.reason || 'No additional note provided.'}</p><small>{item.phone ? 'Phone: '+item.phone+' · ' : ''}Requested {stamp(item.createdAt)}</small>
+        <div className="ops-form"><input type="password" minLength={10} autoComplete="new-password" placeholder="Set temporary password (10+ characters)" value={registrationPasswords[item.id] || ''} onChange={e=>setRegistrationPasswords(current=>({...current,[item.id]:e.target.value}))}/><div className="ops-actions"><button className="btn primary compact" disabled={busy || (registrationPasswords[item.id] || '').length<10} onClick={()=>reviewStaffRegistration(item,'approved')}>Approve & create account</button><button className="btn danger compact" disabled={busy} onClick={()=>reviewStaffRegistration(item,'rejected')}>Reject</button></div></div>
+      </article>)}{!registrationRequests.some(item=>item.status==='pending') && <p className="ops-empty">No pending staff registration requests.</p>}</div>
     </section>}
 
     {admin && <section className="panel ops-panel team-summary-panel">
