@@ -58,7 +58,7 @@ Record the Android version, phone model, permission settings, observed update in
 The app now registers Android FCM device tokens and the Functions backend sends a push notification whenever a document is created in `staff_notifications`. Direct and group message previews are not included in lock-screen notification text.
 
 Before push delivery can work:
-1. In Firebase project `kandb-net-sevice`, register an Android app with package name `in.kandbnetservice.management`.
+1. In Firebase project `kandb-net-sevice`, register an Android app with package name `kandbnet.service2010`.
 2. Download that Android app's `google-services.json` file.
 3. Base64-encode the file locally and add the resulting value as the GitHub Actions repository secret `ANDROID_GOOGLE_SERVICES_JSON_BASE64`. Do not commit the JSON file to this public repository.
 4. Deploy the updated Functions after the Firebase owner has confirmed project permissions and billing.
