@@ -44,7 +44,11 @@ export async function nativeApiPost<T = any>(path: string, payload: Record<strin
     readTimeout: 15000
   });
   const data: any = response.data || {};
-  if (response.status < 200 || response.status >= 300) throw new Error(typeof data.error === 'string' ? data.error : 'The location update could not be sent.');
+  if (response.status < 200 || response.status >= 300) {
+    const error = new Error(typeof data.error === 'string' ? data.error : 'The location update could not be sent.') as Error & { status?: number };
+    error.status = response.status;
+    throw error;
+  }
   return { data: data as T };
 }
 export const api = {
