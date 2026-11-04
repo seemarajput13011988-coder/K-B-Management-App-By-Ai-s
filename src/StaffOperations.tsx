@@ -164,6 +164,21 @@ export default function StaffOperations({ session, customers, flash, compact = f
   useEffect(() => {
     if (!admin) return;
     let stopped = false;
+    const pollRegistrationRequests = async () => {
+      try {
+        const result = await request('get', '/api/staff-registration-requests');
+        if (!stopped) setRegistrationRequests(result.data.items || []);
+      } catch {
+        // Keep the last known request list if a poll briefly fails.
+      }
+    };
+    const timer = window.setInterval(pollRegistrationRequests, 15000);
+    return () => { stopped = true; window.clearInterval(timer); };
+  }, [admin, request]);
+
+  useEffect(() => {
+    if (!admin) return;
+    let stopped = false;
     let pending = false;
     const updateLiveLocations = async () => {
       if (stopped || pending || document.visibilityState !== 'visible') return;
