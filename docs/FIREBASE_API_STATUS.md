@@ -27,7 +27,7 @@ The Cloud Functions HTTP entry point is `functions/src/index.ts`; the React API 
 - Replace the temporary no-op realtime transport; group messages currently require API refresh.
 - Review and test every route against the legacy behavior, including field-level permissions and edge cases.
 - Validate the new administrator and attendance correction workflows against Firebase Auth / Firestore Emulator.
-- GPS is foreground browser tracking, not background Android tracking; a native background mode would require a separate consent and permission design.
+- Native Android background GPS code is now added, but it still needs a successful APK build and real-device acceptance tests (screen locked, app backgrounded, GPS off/on, permission revoked, network loss, shift checkout and admin-start consent).
 - Add emulator-based API tests for admin and staff roles.
 - Run the Android APK workflow after the required GitHub Firebase config secrets are added.
 - Review and test the complete data migration process before importing any production records.
