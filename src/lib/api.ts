@@ -1,7 +1,7 @@
 import { EmailAuthProvider, onAuthStateChanged, reauthenticateWithCredential, signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import { firebaseAuth } from './firebase';
 
-const API_BASE = import.meta.env.VITE_FIREBASE_FUNCTIONS_URL || 'https://asia-south1-kandb-net-service.cloudfunctions.net/api';
+const API_BASE = import.meta.env.VITE_FIREBASE_FUNCTIONS_URL || 'https://asia-south1-kandb-net-sevice.cloudfunctions.net/api';
 const ACCOUNT_DOMAIN = 'accounts.kandbnetservice.in';
 type ApiResult<T = any> = { data: T };
 
