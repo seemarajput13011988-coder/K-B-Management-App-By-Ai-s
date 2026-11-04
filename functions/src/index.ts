@@ -2,6 +2,7 @@ import { initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import { onRequest } from 'firebase-functions/v2/https';
+import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { logger } from 'firebase-functions';
 import { defineSecret } from 'firebase-functions/params';
 
@@ -507,7 +508,7 @@ export const api = onRequest(
         if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || Math.abs(latitude) > 90 || Math.abs(longitude) > 180) { send(res, 403, { error: 'Enable location permission and obtain a GPS fix before starting your shift.' }); return; }
         const checkInAt = now();
         const dayType = body.dayType === 'Half day' ? 'Half day' : 'Full day';
-        const record = { userId: user.uid, displayName: user.displayName, workDate, checkInAt, status: 'Checked in', dayType, gpsStatus: 'active' };
+        const record = { userId: user.uid, displayName: user.displayName, workDate, checkInAt, status: 'Checked in', dayType, gpsStatus: 'active', shiftEvents: [] };
         const ref = await db.collection('attendance').add(record);
         await db.collection('locations').add({ userId: user.uid, displayName: user.displayName, latitude, longitude, accuracy: Number(body.accuracy) || 0, capturedAt: checkInAt });
         send(res, 201, { id: ref.id, ...record }); return;
@@ -551,14 +552,17 @@ export const api = onRequest(
         if (!allow(user, ['staff'], res)) return;
         const workDate = indiaDate(), shifts = await list('attendance');
         const active = shifts.find(item => item.userId === user.uid && item.workDate === workDate && !item.checkOutAt && !item.gpsRestartRequired);
-        if (!active) { send(res, 200, { cancelled: false, reason: 'no-active-shift' }); return; }
+        if (!active) { send(res, 200, { monitoring: false, reason: 'no-active-shift' }); return; }
         const requests = await list('holiday_requests');
         const exempt = requests.some(item => item.userId === user.uid && ['pending','approved'].includes(String(item.status)) && String(item.startDate) <= workDate && String(item.endDate) >= workDate);
-        if (exempt) { send(res, 200, { cancelled: false, reason: 'holiday-exempt' }); return; }
-        const cancelledAt = now();
-        await db.collection('attendance').doc(active.id).update({ checkOutAt: cancelledAt, status: 'Cancelled - GPS unavailable', gpsStatus: 'disabled', gpsCancelled: true, gpsRestartRequired: true, gpsCancelledAt: cancelledAt, gpsCancellationReason: clean(body.reason, 160) || 'Location permission denied', shiftEvents: FieldValue.arrayUnion({ type: 'gps-cancelled', at: cancelledAt, reason: clean(body.reason, 160) || 'GPS unavailable' }) });
-        await audit(user, 'GPS_CANCEL_SHIFT', 'attendance', active.id, 'Automatically cancelled active shift because location permission was disabled');
-        send(res, 200, { cancelled: true, adminRestartRequired: true }); return;
+        if (exempt) { send(res, 200, { monitoring: false, reason: 'holiday-exempt' }); return; }
+        const startedAt = active.gpsIssueStartedAt || now();
+        if (!active.gpsIssueStartedAt) {
+          await db.collection('attendance').doc(active.id).update({ gpsIssueStartedAt: startedAt, gpsStatus: 'grace-period', gpsIssueReason: clean(body.reason, 160) || 'GPS signal unavailable', gpsReminderStage: 0 });
+          await db.collection('staff_notifications').doc(active.id + '-gps-0').set({ recipientId: user.uid, type: 'gps-reminder', title: 'Turn your GPS back on', message: 'Your shift is still active. Turn GPS/location back on within 15 minutes to avoid automatic shift cancellation.', createdAt: startedAt, read: false, attendanceId: active.id }, { merge: true });
+        }
+        const deadlineAt = new Date(new Date(startedAt).getTime() + 15 * 60 * 1000).toISOString();
+        send(res, 200, { monitoring: true, cancelled: false, startedAt, deadlineAt, remainingSeconds: Math.max(0, Math.ceil((new Date(deadlineAt).getTime() - Date.now()) / 1000)) }); return;
       }
       if (path === '/api/locations/history' && method === 'GET') {
         if (!allow(user, ['admin'], res)) return;
@@ -581,10 +585,15 @@ export const api = onRequest(
         const latitude = Number(body.latitude), longitude = Number(body.longitude);
         if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || Math.abs(latitude) > 90 || Math.abs(longitude) > 180) { send(res, 400, { error: 'A valid GPS location is required.' }); return; }
         const shifts = await list('attendance'), today = indiaDate();
-        if (!shifts.some(item => item.userId === user.uid && item.workDate === today && !item.checkOutAt && !item.gpsRestartRequired)) { send(res, 403, { error: 'Location can be shared only during an active, authorized shift.' }); return; }
+        const active = shifts.find(item => item.userId === user.uid && item.workDate === today && !item.checkOutAt && !item.gpsRestartRequired);
+        if (!active) { send(res, 403, { error: 'Location can be shared only during an active, authorized shift.' }); return; }
         const record = { userId: user.uid, displayName: user.displayName, latitude, longitude, accuracy: Math.min(Math.max(Number(body.accuracy) || 0, 0), 100000), capturedAt: now() };
         const ref = await db.collection('locations').add(record);
-        send(res, 201, { id: ref.id, saved: true }); return;
+        if (active.gpsIssueStartedAt) {
+          await db.collection('attendance').doc(active.id).update({ gpsIssueStartedAt: FieldValue.delete(), gpsStatus: 'active', gpsIssueReason: FieldValue.delete(), gpsReminderStage: FieldValue.delete(), gpsRestoredAt: now(), shiftEvents: FieldValue.arrayUnion({ type: 'gps-restored', at: now() }) });
+          await db.collection('staff_notifications').add({ recipientId: user.uid, type: 'gps-restored', title: 'GPS restored', message: 'Your location is back on. Your shift continues normally.', createdAt: now(), read: false, attendanceId: active.id });
+        }
+        send(res, 201, { id: ref.id, saved: true, gpsRestored: !!active.gpsIssueStartedAt }); return;
       }
 
       if (path === '/api/announcements' && method === 'GET') {
@@ -790,3 +799,29 @@ export const api = onRequest(
     }
   },
 );
+export const enforceGpsGracePeriod = onSchedule({ schedule: 'every 1 minutes', timeZone: 'Asia/Kolkata', region: 'asia-south1' }, async () => {
+  const records = await list('attendance');
+  const requests = await list('holiday_requests');
+  const currentTime = Date.now();
+  for (const item of records) {
+    if (!item.gpsIssueStartedAt || item.checkOutAt || item.gpsRestartRequired) continue;
+    const issueTime = new Date(item.gpsIssueStartedAt).getTime();
+    if (!Number.isFinite(issueTime)) continue;
+    const elapsed = currentTime - issueTime;
+    const exempt = requests.some(request => request.userId === item.userId && ['pending','approved'].includes(String(request.status)) && String(request.startDate) <= String(item.workDate) && String(request.endDate) >= String(item.workDate));
+    if (exempt) continue;
+    const reminderStages = [{ minute: 5, stage: 1, message: 'GPS is still unavailable. Please turn it back on within 10 minutes.' }, { minute: 10, stage: 2, message: 'Only 5 minutes remain. Turn GPS/location back on to keep your shift active.' }, { minute: 14, stage: 3, message: 'Final reminder: your shift will be cancelled in about 1 minute if GPS is not restored.' }];
+    for (const reminder of reminderStages) {
+      if (elapsed >= reminder.minute * 60000 && Number(item.gpsReminderStage || 0) < reminder.stage) {
+        await db.collection('staff_notifications').doc(item.id + '-gps-' + reminder.stage).set({ recipientId: item.userId, type: 'gps-reminder', title: 'GPS reminder', message: reminder.message, createdAt: now(), read: false, attendanceId: item.id }, { merge: true });
+        await db.collection('attendance').doc(item.id).update({ gpsReminderStage: reminder.stage });
+      }
+    }
+    if (elapsed >= 15 * 60000) {
+      const cancelledAt = now();
+      await db.collection('attendance').doc(item.id).update({ checkOutAt: cancelledAt, status: 'Cancelled - GPS unavailable', gpsStatus: 'disabled', gpsCancelled: true, gpsRestartRequired: true, gpsCancelledAt: cancelledAt, gpsCancellationReason: item.gpsIssueReason || 'GPS was not restored within 15 minutes', shiftEvents: FieldValue.arrayUnion({ type: 'gps-cancelled', at: cancelledAt, reason: 'GPS was not restored within 15 minutes' }) });
+      await db.collection('staff_notifications').add({ recipientId: item.userId, type: 'gps-cancelled', title: 'Shift cancelled', message: 'Your shift was cancelled because GPS was not restored within 15 minutes. Contact an admin to restart it.', createdAt: cancelledAt, read: false, attendanceId: item.id });
+      await db.collection('audit_logs').add({ actorId: 'system', actorName: 'K&B Attendance Monitor', action: 'GPS_CANCEL_SHIFT', entityType: 'attendance', entityId: item.id, description: 'Automatically cancelled shift after the 15-minute GPS grace period', createdAt: cancelledAt, serverCreatedAt: FieldValue.serverTimestamp() });
+    }
+  }
+});
