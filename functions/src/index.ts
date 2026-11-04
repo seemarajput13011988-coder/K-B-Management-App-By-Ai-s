@@ -163,8 +163,13 @@ export const api = onRequest(
         const existing = (await list('users')).some(item => item.id !== user.uid && String(item.userId).toLowerCase() === userId.toLowerCase());
         if (existing) { send(res, 409, { error: 'That user ID is already in use.' }); return; }
         const email = userId.toLowerCase() + '@accounts.kandbnetservice.in';
+        // Preserve the primary Super Admin flag when the legacy Brajraj ID is renamed.
+        const preserveSuperAdmin = isSuperAdminAccount(user);
         await auth.updateUser(user.uid, { email });
-        await db.collection('users').doc(user.uid).update({ userId });
+        await db.collection('users').doc(user.uid).update({
+          userId,
+          ...(preserveSuperAdmin ? { isSuperAdmin: true } : {}),
+        });
         await audit(user, 'CHANGE_USER_ID', user.role, user.uid, 'Changed own user ID');
         send(res, 200, { changed: true, userId }); return;
       }
