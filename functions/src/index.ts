@@ -409,6 +409,38 @@ export const api = onRequest(
         send(res,201,{id:ref.id,...record}); return;
       }
 
+      if (path.startsWith('/api/complaints/') && (method === 'PUT' || method === 'DELETE')) {
+        if (!allow(user, ['admin'], res)) return;
+        const id = routeId(path, '/api/complaints');
+        const existing = await getDoc('complaints', id);
+        if (!existing) { send(res, 404, { error: 'Complaint not found.' }); return; }
+
+        if (method === 'PUT') {
+          const status = clean(body.status, 30);
+          if (status && !['Open', 'In progress', 'Resolved'].includes(status)) {
+            send(res, 400, { error: 'Choose a valid complaint status.' }); return;
+          }
+          const patch: Data = { updatedAt: now() };
+          if (status) patch.status = status;
+          if (Object.prototype.hasOwnProperty.call(body, 'assignedTo')) {
+            const assignedTo = clean(body.assignedTo, 128);
+            const staff = assignedTo ? await staffFor(assignedTo) : null;
+            if (assignedTo && (!staff || staff.role !== 'staff' || staff.active !== true)) {
+              send(res, 400, { error: 'Choose an active staff member for this ticket.' }); return;
+            }
+            patch.assignedTo = assignedTo;
+            patch.assignedToName = staff ? clean(staff.displayName, 80) : '';
+          }
+          await db.collection('complaints').doc(id).update(patch);
+          await audit(user, 'UPDATE', 'complaint', id, 'Updated service ticket: ' + String(existing.subject || 'Complaint'));
+          send(res, 200, { updated: true }); return;
+        }
+
+        await db.collection('complaints').doc(id).delete();
+        await audit(user, 'DELETE', 'complaint', id, 'Deleted service ticket: ' + String(existing.subject || 'Complaint'));
+        send(res, 200, { deleted: true }); return;
+      }
+
       if (path === '/api/tasks' && method === 'GET') {
         const items = await list('tasks');
         send(res,200,{items:user.role === 'admin' ? items : items.filter(item => item.assignedTo === user.uid)}); return;
