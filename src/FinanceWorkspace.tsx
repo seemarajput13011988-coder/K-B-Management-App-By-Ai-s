@@ -9,6 +9,8 @@ type Expense = { id: string; title: string; category: string; amount: number; sp
 type Invoice = { id: string; customerId: string; customerName: string; period: string; dueDate: string; amount: number; status: string; paidAmount: number };
 type StaffMember = { id: string; displayName: string; userId: string; role: string; active: boolean };
 type PayrollRecord = { id: string; staffUserId: string; staffName: string; period: string; amount: number; paidAt: string; method: string; notes?: string };
+type LedgerEntry = { id: string; date: string; type: 'Invoice' | 'Payment'; description: string; debit: number; credit: number; balance: number; reference: string };
+type CustomerLedger = { customer: { id: string; name: string; phone?: string; plan?: string }; items: LedgerEntry[]; totalBilled: number; totalPaid: number; balance: number };
 
 const money = (value: number) => '₹' + Number(value || 0).toLocaleString('en-IN');
 const monthName = (period: string) => new Date(period + '-01T12:00:00').toLocaleString('en-IN', { month: 'long', year: 'numeric' });
@@ -52,6 +54,9 @@ export default function FinanceWorkspace({ session, customers, payments, flash }
   const [audit, setAudit] = useState<Array<{ id: string; action: string; entityType: string; description: string; actorName: string; createdAt: string }>>([]);
   const [staff, setStaff] = useState<StaffMember[]>([]);
   const [payroll, setPayroll] = useState<PayrollRecord[]>([]);
+  const [ledgerCustomerId, setLedgerCustomerId] = useState(customers[0]?.id || '');
+  const [ledger, setLedger] = useState<CustomerLedger | null>(null);
+  const [ledgerLoading, setLedgerLoading] = useState(false);
   const [salaryStaffId, setSalaryStaffId] = useState('');
   const [salaryAmount, setSalaryAmount] = useState('');
   const [salaryPaidAt, setSalaryPaidAt] = useState(today());
@@ -81,6 +86,17 @@ export default function FinanceWorkspace({ session, customers, payments, flash }
     setPayroll(pr.data.items || []);
   };
   useEffect(() => { load().catch(() => flash('Could not load finance records.')); }, [period]);
+  useEffect(() => { if (!ledgerCustomerId && customers.length) setLedgerCustomerId(customers[0].id); }, [customers, ledgerCustomerId]);
+  useEffect(() => {
+    if (!ledgerCustomerId) { setLedger(null); return; }
+    let cancelled = false;
+    setLedgerLoading(true);
+    client.get('/api/customer-ledger?customerId=' + encodeURIComponent(ledgerCustomerId) + '&sessionToken=' + encodeURIComponent(session.token))
+      .then(result => { if (!cancelled) setLedger(result.data as CustomerLedger); })
+      .catch(() => { if (!cancelled) { setLedger(null); flash('Could not load the selected customer ledger.'); } })
+      .finally(() => { if (!cancelled) setLedgerLoading(false); });
+    return () => { cancelled = true; };
+  }, [ledgerCustomerId, session.token]);
   const monthPayments = payments.filter(item => item.month === monthName(period) || item.paidAt?.slice(0, 7) === period);
   const monthExpenses = expenses.filter(item => item.spentAt?.slice(0, 7) === period);
   const collected = monthPayments.reduce((sum, item) => sum + Number(item.amount || 0), 0);
@@ -195,6 +211,24 @@ export default function FinanceWorkspace({ session, customers, payments, flash }
       <div className="finance-foot"><span>{invoices.length} invoices · {activeCustomers.length} active customers</span><button className="btn secondary compact" onClick={() => downloadCsv('kb-invoices-' + period + '.csv', [['Customer','Period','Due date','Amount','Paid','Balance','Status'], ...invoices.map(i => [i.customerName, monthName(i.period), i.dueDate, i.amount, i.paidAmount, Math.max(0, i.amount-i.paidAmount), i.status])])}><Download size={14}/> Export invoices</button></div>
     </section>
     <section className="panel finance-panel">
+      <div className="finance-head"><div><span className="eyebrow">CUSTOMER ACCOUNT</span><h2>Customer transaction ledger</h2><p>View billed invoices, received payments and the running balance for one customer.</p></div><div className="finance-actions"><select aria-label="Select customer ledger" value={ledgerCustomerId} onChange={event => setLedgerCustomerId(event.target.value)}><option value="">Select customer</option>{customers.map(customer => <option key={customer.id} value={customer.id}>{customer.name}</option>)}</select></div></div>
+      {ledgerLoading ? <p className="finance-note">Loading customer ledger…</p> : ledger ? <>
+        <div className="finance-metrics ledger-metrics">
+          <article><span>Total billed</span><strong>{money(ledger.totalBilled)}</strong></article>
+          <article><span>Payments received</span><strong>{money(ledger.totalPaid)}</strong></article>
+          <article><span>Outstanding balance</span><strong className={ledger.balance > 0 ? 'negative' : ''}>{money(ledger.balance)}</strong></article>
+        </div>
+        <div className="finance-table-wrap"><table><thead><tr><th>DATE</th><th>TRANSACTION</th><th>DESCRIPTION</th><th>DEBIT</th><th>CREDIT</th><th>RUNNING BALANCE</th></tr></thead><tbody>
+          {ledger.items.map(item => <tr key={item.id}><td>{item.date}</td><td><b>{item.type}</b></td><td>{item.description}</td><td className="amount">{item.debit ? money(item.debit) : '—'}</td><td className="amount">{item.credit ? money(item.credit) : '—'}</td><td className="amount"><b>{money(item.balance)}</b></td></tr>)}
+          {!ledger.items.length && <tr><td colSpan={6}>No invoices or payments have been recorded for this customer.</td></tr>}
+        </tbody></table></div>
+        <div className="finance-foot"><span>{ledger.customer.name}{ledger.customer.phone ? ' · ' + ledger.customer.phone : ''}</span><div className="finance-actions">
+          <button className="btn secondary compact" disabled={!ledger.items.length} onClick={() => downloadCsv('kb-ledger-' + ledger.customer.name.replace(/[^a-z0-9]+/gi, '-').toLowerCase() + '.csv', [['Date','Type','Description','Debit','Credit','Running balance','Reference'], ...ledger.items.map(item => [item.date,item.type,item.description,item.debit,item.credit,item.balance,item.reference])])}><Download size={14}/> Export ledger</button>
+          <button className="btn secondary compact" disabled={!ledger.items.length} onClick={() => printReport('Customer ledger · ' + ledger.customer.name, [['Date','Type','Description','Debit','Credit','Running balance'], ...ledger.items.map(item => [item.date,item.type,item.description,money(item.debit),money(item.credit),money(item.balance)]), ['TOTAL','', '', money(ledger.totalBilled), money(ledger.totalPaid), money(ledger.balance)]])}><ReceiptText size={14}/> Print / Save PDF</button>
+        </div></div>
+      </> : <p className="finance-note">Select a customer to view their ledger.</p>}
+    </section>
+    <section className="panel finance-panel">
       <div className="finance-head"><div><span className="eyebrow">CASH BOOK</span><h2>Record business expense</h2><p>Track provider bills, fuel, equipment, salaries and other operating costs.</p></div></div>
       <form className="finance-expense-form" onSubmit={addExpense}>
         <label>Expense title<input required maxLength={120} value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. Monthly upstream payment"/></label>
@@ -216,7 +250,7 @@ export default function FinanceWorkspace({ session, customers, payments, flash }
       <div className="finance-report-actions">
         <button className="btn secondary" onClick={() => printReport('Finance summary · ' + monthName(period), [['Metric','Amount'],['Collections',money(collected)],['Expenses',money(spent)],['Cash operating balance',money(cashResult)],['Outstanding invoices',money(outstanding)],['Payroll paid',money(payroll.reduce((sum,item)=>sum+Number(item.amount||0),0))]])}><ReceiptText size={15}/> Print / Save PDF</button>
         <button className="btn secondary" onClick={() => downloadCsv('kb-payments-' + period + '.csv', [['Date','Customer','Billing month','Method','Amount','Recorded by'], ...monthPayments.map(p => [p.paidAt,p.customerName,p.month,p.method,p.amount,p.recordedByName])])}><Download size={15}/> Export monthly collections</button>
-        <button className="btn secondary" onClick={() => downloadCsv('kb-customer-ledger.csv', [['Customer','Phone','Plan','Monthly fee','Status','Assigned to'], ...customers.map(c => [c.name,(c as any).phone,(c as any).plan,c.monthlyFee,c.status,(c as any).assignedToName])])}><Download size={15}/> Export customer list</button>
+        <button className="btn secondary" onClick={() => downloadCsv('kb-customer-register.csv', [['Customer','Phone','Plan','Monthly fee','Status','Assigned to'], ...customers.map(c => [c.name,(c as any).phone,(c as any).plan,c.monthlyFee,c.status,(c as any).assignedToName])])}><Download size={15}/> Export customer register</button>
         <button className="btn secondary" onClick={() => downloadCsv('kb-finance-summary-' + period + '.csv', [['Metric','Amount'],['Collections',collected],['Expenses',spent],['Cash operating balance',cashResult],['Outstanding invoices',outstanding]])}><Download size={15}/> Export finance summary</button>
       </div>
       <p className="finance-disclaimer">Cash operating balance is a simple management figure: recorded collections minus recorded expenses. It is not a statutory profit figure and does not include taxes, unpaid supplier bills, depreciation or other unrecorded liabilities.</p>
