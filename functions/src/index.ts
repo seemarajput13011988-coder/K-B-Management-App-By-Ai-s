@@ -573,12 +573,29 @@ export const api = onRequest(
               type, quantity, quantityBefore: currentQuantity, quantityAfter: nextQuantity,
               reason, createdAt, createdBy: user.uid, createdByName: user.displayName
             });
-            return { ok: true, quantityAfter: nextQuantity };
+            return { ok: true, quantityAfter: nextQuantity, minimumQuantity: Number(current.minimumQuantity || 0), itemName: String(current.name || item.name), unit: String(current.unit || item.unit || 'units') };
           });
           if (outcome.missing) { send(res, 404, { error: 'This inventory item is no longer active.' }); return; }
           if (outcome.insufficient) { send(res, 409, { error: 'Not enough stock is available for this issue.' }); return; }
           await audit(user, 'STOCK_' + type, 'inventory-item', id, type + ' ' + quantity + ' ' + String(item.unit || 'units') + ': ' + reason);
-          send(res, 201, { id: movementRef.id, quantityAfter: outcome.quantityAfter }); return;
+          if (outcome.quantityAfter <= outcome.minimumQuantity) {
+            const admins = (await list('users')).filter(entry => entry.role === 'admin' && entry.active === true);
+            const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
+            for (const recipient of admins) {
+              const notificationRef = db.collection('staff_notifications').doc('inventory-low-' + id + '-' + today + '-' + String(recipient.id));
+              await db.runTransaction(async transaction => {
+                const existing = await transaction.get(notificationRef);
+                if (existing.exists) return;
+                transaction.create(notificationRef, {
+                  recipientId: recipient.id, recipientRole: 'admin', type: 'inventory-low-stock',
+                  title: 'Low stock alert: ' + outcome.itemName,
+                  message: outcome.itemName + ' is down to ' + outcome.quantityAfter + ' ' + outcome.unit + '. Minimum stock is ' + outcome.minimumQuantity + '. Please arrange replenishment.',
+                  createdAt: now(), read: false, relatedId: id
+                });
+              });
+            }
+          }
+          send(res, 201, { id: movementRef.id, quantityAfter: outcome.quantityAfter, lowStock: outcome.quantityAfter <= outcome.minimumQuantity }); return;
         }
         if (parts.length === 3 && method === 'PUT') {
           if (!allow(user, ['admin'], res)) return;
