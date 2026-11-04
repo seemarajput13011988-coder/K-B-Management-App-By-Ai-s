@@ -43,12 +43,13 @@ test('task reminders distinguish tomorrow, due today, overdue and future tasks',
 });
 
 
-test('only the designated super admin can manage administrator accounts', () => {
+test('only an explicitly server-designated admin is Super Admin', () => {
   const { isSuperAdminAccount } = require('../lib/route-path.js');
-  assert.equal(isSuperAdminAccount({ role: 'admin', userId: 'Brajraj' }), true, 'preserves the existing primary owner account');
-  assert.equal(isSuperAdminAccount({ role: 'admin', userId: 'other-admin', isSuperAdmin: true }), true, 'allows an explicitly designated super admin');
+  assert.equal(isSuperAdminAccount({ role: 'admin', userId: 'Brajraj' }), false, 'username alone must never grant Super Admin');
+  assert.equal(isSuperAdminAccount({ role: 'admin', userId: 'other-admin', isSuperAdmin: true }), true, 'allows the server-designated Super Admin');
+  assert.equal(isSuperAdminAccount({ role: 'admin', userId: 'Brajraj', isSuperAdmin: false }), false, 'a regular admin cannot claim the owner username');
   assert.equal(isSuperAdminAccount({ role: 'admin', userId: 'other-admin' }), false, 'regular admins cannot manage admin accounts');
-  assert.equal(isSuperAdminAccount({ role: 'staff', userId: 'Brajraj', isSuperAdmin: true }), false, 'staff cannot become super admin by setting a flag');
+  assert.equal(isSuperAdminAccount({ role: 'staff', userId: 'Brajraj', isSuperAdmin: true }), false, 'staff cannot become Super Admin by setting a flag');
   assert.equal(isSuperAdminAccount({ role: 'staff', userId: 'employee' }), false);
 });
 
