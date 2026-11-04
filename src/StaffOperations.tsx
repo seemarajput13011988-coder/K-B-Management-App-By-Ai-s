@@ -52,6 +52,7 @@ export default function StaffOperations({ session, customers, flash, compact = f
   const selectedGroupRef = useRef('');
   const today = localDay();
   const myToday = attendance.find(item => item.userId === session.user.id && item.workDate === today);
+  const gpsRemainingMinutes = gpsDeadline ? Math.max(0, Math.ceil((new Date(gpsDeadline).getTime() - Date.now()) / 60000)) : null;
   const activeShift = !!myToday && !myToday.checkOutAt;
 
   const request = useCallback((method: 'get' | 'post' | 'put' | 'delete', path: string, data?: Record<string, unknown>) => {
@@ -196,16 +197,15 @@ export default function StaffOperations({ session, customers, flash, compact = f
       inFlight = true;
       navigator.geolocation.getCurrentPosition(async position => {
         try {
-          await request('post', '/api/locations', {
+          const saved = await request('post', '/api/locations', {
             latitude: position.coords.latitude,
             longitude: position.coords.longitude,
             accuracy: position.coords.accuracy,
             capturedAt: new Date().toISOString()
           });
           if (!cancelled) {
-            setGpsMessage('Work location sharing is active. Last update: ' + new Date().toLocaleTimeString());
-            setGpsDeadline(null);
-            if ((await Promise.resolve(true)) && activeShift) await refresh();
+            setGpsMessage(saved.data.gpsRestored ? 'GPS restored. Your shift continues normally.' : 'Work location sharing is active. Last update: ' + new Date().toLocaleTimeString());
+            if (saved.data.gpsRestored) { setGpsDeadline(null); await refresh(); }
           }
         } catch {
           if (!cancelled) setGpsMessage('Location update failed. Check your connection and location permission.');
@@ -393,7 +393,7 @@ export default function StaffOperations({ session, customers, flash, compact = f
       <div className="ops-panel-head"><div><span className="eyebrow">ATTENDANCE</span><h2>My workday</h2><p>Record your shift start and finish. Work location is shared with Admin during an active shift while this app is open and location permission is granted. Sharing stops at checkout.</p></div><span className={'ops-pill ' + (activeShift ? 'is-live' : 'is-idle')}>{activeShift ? 'ON SHIFT' : myToday?.checkOutAt ? 'SHIFT COMPLETE' : 'OFF SHIFT'}</span></div>
       <div className="ops-clock-row"><div><small>CHECK IN</small><strong>{myToday ? stamp(myToday.checkInAt) : 'Not checked in'}</strong></div><div><small>CHECK OUT</small><strong>{myToday?.checkOutAt ? stamp(myToday.checkOutAt) : '—'}</strong></div></div>
       <div className="ops-actions"><label className="ops-day-type">Attendance type <select value={dayType} disabled={!!myToday} onChange={e=>setDayType(e.target.value as 'Full day'|'Half day')}><option>Full day</option><option>Half day</option></select></label>{!myToday ? <button className="btn primary" disabled={busy} onClick={() => shift('check-in')}>Check in and start shift</button> : activeShift ? <button className="btn danger" disabled={busy} onClick={() => shift('check-out')}>Check out and end shift</button> : <span className="ops-complete">Today’s attendance is complete.</span>}</div>
-      <p className="ops-gps-note">{gpsMessage}</p>
+      <p className="ops-gps-note">{gpsMessage}{gpsRemainingMinutes !== null ? ' Time remaining: about ' + gpsRemainingMinutes + ' minute(s).' : ''}</p>
     </section>}
 
     {admin && <section className="panel ops-panel finance-chart-panel">
