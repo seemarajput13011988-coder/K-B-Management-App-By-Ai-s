@@ -40,7 +40,10 @@ Authentication and staff accounts; customers; plans; payments; dashboards; atten
 - [x] Verify repository is private/public as configured and connected with push access.
 - [x] Preserve all 16 source files from the current AppDeploy snapshot on `main`.
 - [x] Create a separate `firebase-migration` working branch.
-- [ ] Configure the confirmed Firebase project.
+- [x] Add Firebase browser SDK initialization scaffold with a project-ID guard.
+- [x] Add deny-by-default Firestore rules and Firebase Hosting configuration.
+- [x] Add Capacitor Android app configuration and dependencies.
+- [ ] Configure the confirmed Firebase project and register its web app.
 - [ ] Port backend APIs and authentication.
 - [ ] Migrate and verify data.
 - [ ] Add Capacitor Android build and CI.
