@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import StaffOperations from './StaffOperations';
 import FinanceWorkspace from './FinanceWorkspace';
@@ -143,6 +143,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   const [showComplaint, setShowComplaint] = useState(false);
   const [notice, setNotice] = useState('');
   const [mobileNav, setMobileNav] = useState(false);
+  const seenNotifications = useRef<Set<string> | null>(null);
 
   useEffect(() => {
     if (!mobileNav) return;
@@ -186,6 +187,35 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   useEffect(() => {
     load();
   }, []);
+
+  useEffect(() => {
+    let stopped = false;
+    const pollNotifications = async () => {
+      try {
+        const result = await api.get('/api/notifications');
+        if (stopped) return;
+        const items = (result.data.items || []) as Array<{id:string;title:string;message:string;read?:boolean}>;
+        if (seenNotifications.current === null) {
+          seenNotifications.current = new Set(items.map(item => item.id));
+          await Promise.all(items.filter(item => !item.read).map(item => api.put('/api/notifications/' + item.id, { read: true }).catch(() => undefined)));
+          return;
+        }
+        for (const item of items.slice().reverse()) {
+          if (seenNotifications.current.has(item.id)) continue;
+          seenNotifications.current.add(item.id);
+          if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+            new Notification(item.title || 'K&B update', { body: item.message || 'You have a new update.' });
+          } else {
+            setNotice((item.title || 'K&B update') + ': ' + (item.message || 'You have a new update.'));
+          }
+          await api.put('/api/notifications/' + item.id, { read: true }).catch(() => undefined);
+        }
+      } catch { /* Notification polling must not interrupt normal app use. */ }
+    };
+    void pollNotifications();
+    const timer = window.setInterval(pollNotifications, 12000);
+    return () => { stopped = true; window.clearInterval(timer); };
+  }, [session.user.id, isAdmin]);
 
   const active = customers.filter(c => c.status === 'Active').length;
   const collected = payments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
@@ -434,6 +464,9 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
           ))}
         </nav>
         <div className="sidebar-bottom">
+          <button className="btn secondary compact" style={{width:'100%',marginBottom:12}} onClick={async()=>{if(typeof Notification==='undefined'){flash('This browser does not support desktop notifications.');return;}const permission=await Notification.requestPermission();flash(permission==='granted'?'Notifications enabled. You will receive new messages, assigned work and reminders.': 'Notifications are blocked. Enable them in your browser settings.');}}>
+            <Bell size={15}/> Enable notifications
+          </button>
           <div className="help-card">
             <div className="help-icon">
               <CircleHelp size={18} />
