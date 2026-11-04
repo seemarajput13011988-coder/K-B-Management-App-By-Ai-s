@@ -8,7 +8,7 @@ import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { onDocumentCreated } from 'firebase-functions/v2/firestore';
 import { logger } from 'firebase-functions';
 import { defineSecret } from 'firebase-functions/params';
-import { gpsGracePeriodExpired, hasOverlappingSubscription, isSuperAdminAccount, isValidDateKey, isValidDateRange, routePath, taskReminderKind } from './route-path.js';
+import { gpsGracePeriodExpired, hasOverlappingSubscription, isSuperAdminAccount, isValidDateKey, isValidDateRange, routePath, subscriptionExpiryKind, taskReminderKind } from './route-path.js';
 
 initializeApp();
 const auth = getAuth();
@@ -1272,6 +1272,53 @@ export const sendTaskDueReminders = onSchedule({ schedule: '0 9 * * *', timeZone
         relatedId: String(task.id)
       });
     });
+  }
+});
+
+
+// Notify admins and the assigned employee before a customer subscription expires.
+// Expired subscriptions are marked once, while reminders use deterministic IDs to avoid duplicates.
+export const sendSubscriptionExpiryReminders = onSchedule({ schedule: '0 9 * * *', timeZone: 'Asia/Kolkata', region: 'asia-south1' }, async () => {
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+  const [year, month, day] = today.split('-').map(Number);
+  const threeDaysAhead = new Date(Date.UTC(year, month - 1, day + 3)).toISOString().slice(0, 10);
+  const [subscriptions, customers, users] = await Promise.all([list('subscriptions'), list('customers'), list('users')]);
+  const admins = users.filter(item => item.role === 'admin' && item.active === true);
+  for (const subscription of subscriptions) {
+    if (!subscription.id || subscription.status !== 'Active' || !isValidDateKey(subscription.endDate)) continue;
+    const kind = subscriptionExpiryKind(String(subscription.endDate), today, threeDaysAhead);
+    if (!kind) continue;
+    const customer = customers.find(item => item.id === subscription.customerId);
+    const assignedStaff = customer?.assignedTo ? users.find(item => item.id === customer.assignedTo && item.role === 'staff' && item.active === true) : null;
+    const recipients = [...admins, ...(assignedStaff ? [assignedStaff] : [])];
+    const uniqueRecipients = Array.from(new Map(recipients.map(item => [String(item.id), item])).values());
+    const customerName = String(subscription.customerName || customer?.name || 'Customer');
+    const message = kind === 'due-soon'
+      ? customerName + ' subscription expires in 3 days (' + subscription.endDate + '). Please arrange renewal.'
+      : kind === 'due-today'
+        ? customerName + ' subscription expires today. Please arrange renewal.'
+        : customerName + ' subscription expired on ' + subscription.endDate + '. Update the customer after checking renewal.';
+    if (kind === 'overdue') {
+      await db.collection('subscriptions').doc(subscription.id).update({ status: 'Expired', expiredAt: now() });
+    }
+    for (const recipient of uniqueRecipients) {
+      const notificationId = 'subscription-' + subscription.id + '-' + kind + '-' + String(subscription.endDate) + '-' + String(recipient.id);
+      const notificationRef = db.collection('staff_notifications').doc(notificationId);
+      await db.runTransaction(async transaction => {
+        const existing = await transaction.get(notificationRef);
+        if (existing.exists) return;
+        transaction.create(notificationRef, {
+          recipientId: recipient.id,
+          recipientRole: recipient.role,
+          type: 'subscription-' + kind,
+          title: kind === 'due-soon' ? 'Subscription expires soon' : kind === 'due-today' ? 'Subscription expires today' : 'Subscription expired',
+          message,
+          createdAt: now(),
+          read: false,
+          relatedId: subscription.id
+        });
+      });
+    }
   }
 });
 
