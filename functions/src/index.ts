@@ -535,8 +535,8 @@ export const api = onRequest(
         const inventoryRef = db.collection('inventory').doc();
         const skuKey = sku.toLowerCase();
         const outcome = await db.runTransaction(async transaction => {
-          const existing = await transaction.get(db.collection('inventory').where('skuKey', '==', skuKey));
-          if (!existing.empty) return false;
+          const existing = await transaction.get(db.collection('inventory'));
+          if (existing.docs.some(document => String(document.data().sku || '').toLowerCase() === skuKey)) return false;
           transaction.create(inventoryRef, { ...record, skuKey });
           return true;
         });
@@ -592,10 +592,10 @@ export const api = onRequest(
           const outcome = await db.runTransaction(async transaction => {
             const [latest, duplicate] = await Promise.all([
               transaction.get(itemRef),
-              transaction.get(db.collection('inventory').where('skuKey', '==', skuKey))
+              transaction.get(db.collection('inventory'))
             ]);
             if (!latest.exists) return 'missing';
-            if (duplicate.docs.some(document => document.id !== id)) return 'duplicate';
+            if (duplicate.docs.some(document => document.id !== id && String(document.data().sku || '').toLowerCase() === skuKey)) return 'duplicate';
             transaction.update(itemRef, {
               name, sku, skuKey, category, unit, minimumQuantity, unitCost, supplier: clean(body.supplier, 100),
               location: clean(body.location, 100), notes: clean(body.notes, 500), active: body.active !== false, updatedAt
