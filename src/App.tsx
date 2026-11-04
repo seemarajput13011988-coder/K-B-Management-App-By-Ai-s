@@ -68,7 +68,7 @@ type Payment = {
   recordedByName?: string;
 };
 type Staff = { id: string; userId: string; displayName: string; role: 'staff'; active: boolean };
-type AttendanceRecord = { id: string; userId: string; displayName: string; workDate: string; checkInAt: string; checkOutAt?: string };
+type AttendanceRecord = { id: string; userId: string; displayName: string; workDate: string; checkInAt: string; checkOutAt?: string; dayType?: 'Full day' | 'Half day' };
 type Task = { id: string; title: string; details: string; assignedTo: string; assignedToName: string; priority: 'Low' | 'Normal' | 'High'; dueDate: string; status: 'Pending' | 'In progress' | 'Completed'; createdAt: string; createdByName: string };
 type Complaint = {
   id: string;
@@ -212,6 +212,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   const selectedStaffProfile = staff.find(member => member.id === selectedStaffProfileId);
   const selectedStaffPayments = payments.filter(payment => payment.recordedBy === selectedStaffProfileId).sort((a, b) => b.paidAt.localeCompare(a.paidAt));
   const selectedStaffAttendance = attendanceRecords.filter(record => record.userId === selectedStaffProfileId).sort((a, b) => b.workDate.localeCompare(a.workDate));
+  const selectedStaffAttendanceEquivalent = selectedStaffAttendance.reduce((sum, record) => sum + (record.dayType === 'Half day' ? 0.5 : 1), 0);
   const selectedStaffTasks = tasks.filter(task => task.assignedTo === selectedStaffProfileId);
   const selectedStaffCollected = selectedStaffPayments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
   const visiblePlans = plans.filter(plan => {
@@ -716,7 +717,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                 <div className="staff-record-heading"><div><span className="eyebrow">INDIVIDUAL STAFF FILE</span><h2>{selectedStaffProfile.displayName}</h2><p>{selectedStaffProfile.userId} · {selectedStaffProfile.active ? 'Active account' : 'Access disabled'}</p></div><button className="btn secondary compact" onClick={() => setSelectedStaffProfileId('')}>Close record</button></div>
                 <div className="staff-record-metrics">
                   <article><small>Total collected</small><strong>{money(selectedStaffCollected)}</strong><span>{selectedStaffPayments.length} payment records</span></article>
-                  <article><small>Attendance days</small><strong>{selectedStaffAttendance.length}</strong><span>{selectedStaffAttendance.filter(record => !!record.checkOutAt).length} completed shifts</span></article>
+                  <article><small>Attendance days</small><strong>{selectedStaffAttendanceEquivalent.toLocaleString('en-IN')}</strong><span>{selectedStaffAttendance.filter(record => !!record.checkOutAt).length} completed shifts</span></article>
                   <article><small>Assigned customers</small><strong>{customers.filter(customer => customer.assignedTo === selectedStaffProfile.id).length}</strong><span>Currently assigned</span></article>
                   <article><small>Assigned tasks</small><strong>{selectedStaffTasks.length}</strong><span>{selectedStaffTasks.filter(task => task.status === 'Completed').length} completed</span></article>
                 </div>
@@ -724,8 +725,8 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                   <section className="staff-record-section"><div className="staff-record-section-head"><h3>Payment history</h3><span>{selectedStaffPayments.length} records</span></div>
                     {selectedStaffPayments.length ? <div className="table-wrap"><table><thead><tr><th>DATE</th><th>CUSTOMER</th><th>AMOUNT</th><th>METHOD</th><th>MONTH</th></tr></thead><tbody>{selectedStaffPayments.map(payment => <tr key={payment.id}><td>{dateLabel(payment.paidAt)}</td><td>{payment.customerName}</td><td className="amount">{money(payment.amount)}</td><td>{payment.method}</td><td>{payment.month}</td></tr>)}</tbody></table></div> : <p className="staff-record-empty">No payments have been recorded by this staff member yet.</p>}
                   </section>
-                  <section className="staff-record-section"><div className="staff-record-section-head"><h3>Attendance history</h3><span>{selectedStaffAttendance.length} days</span></div>
-                    {selectedStaffAttendance.length ? <div className="table-wrap"><table><thead><tr><th>WORK DATE</th><th>CHECK IN</th><th>CHECK OUT</th><th>STATUS</th></tr></thead><tbody>{selectedStaffAttendance.map(record => <tr key={record.id}><td>{dateLabel(record.workDate)}</td><td>{dateLabel(record.checkInAt)} {record.checkInAt ? new Date(record.checkInAt).toLocaleTimeString('en-IN', {hour:'2-digit',minute:'2-digit'}) : ''}</td><td>{record.checkOutAt ? new Date(record.checkOutAt).toLocaleTimeString('en-IN', {hour:'2-digit',minute:'2-digit'}) : 'Not checked out'}</td><td><span className={'status ' + (record.checkOutAt ? 'active' : 'inactive')}>{record.checkOutAt ? 'Completed' : 'Open shift'}</span></td></tr>)}</tbody></table></div> : <p className="staff-record-empty">No attendance records are available for this staff member.</p>}
+                  <section className="staff-record-section"><div className="staff-record-section-head"><h3>Attendance history</h3><span>{selectedStaffAttendanceEquivalent.toLocaleString('en-IN')} day equivalents</span></div>
+                    {selectedStaffAttendance.length ? <div className="table-wrap"><table><thead><tr><th>WORK DATE</th><th>CHECK IN</th><th>CHECK OUT</th><th>STATUS</th></tr></thead><tbody>{selectedStaffAttendance.map(record => <tr key={record.id}><td>{dateLabel(record.workDate)}</td><td>{dateLabel(record.checkInAt)} {record.checkInAt ? new Date(record.checkInAt).toLocaleTimeString('en-IN', {hour:'2-digit',minute:'2-digit'}) : ''}</td><td>{record.checkOutAt ? new Date(record.checkOutAt).toLocaleTimeString('en-IN', {hour:'2-digit',minute:'2-digit'}) : 'Not checked out'}</td><td><span className={'status ' + (record.checkOutAt ? 'active' : 'inactive')}>{record.dayType === 'Half day' ? 'Half day · ' : ''}{record.checkOutAt ? 'Completed' : 'Open shift'}</span></td></tr>)}</tbody></table></div> : <p className="staff-record-empty">No attendance records are available for this staff member.</p>}
                   </section>
                 </div>
                 <section className="staff-record-section staff-record-work"><div className="staff-record-section-head"><h3>Assigned customer list</h3><span>{customers.filter(customer => customer.assignedTo === selectedStaffProfile.id).length} customers</span></div>
