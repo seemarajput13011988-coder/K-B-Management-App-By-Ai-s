@@ -118,3 +118,27 @@ test('GPS grace period starts only for confirmed location permission or service 
   assert.equal(isConfirmedGpsLossReason(''), false);
   assert.equal(isConfirmedGpsLossReason(null), false);
 });
+
+
+test('customer ledger posts invoices on creation date and computes chronological balances', () => {
+  const { buildCustomerLedger } = require('../lib/route-path.js');
+  const result = buildCustomerLedger(
+    [
+      { id: 'inv-1', customerId: 'c1', amount: 549, createdAt: '2026-11-02T08:00:00.000Z', dueDate: '2026-11-10', period: '2026-11' },
+      { id: 'inv-void', customerId: 'c1', amount: 100, createdAt: '2026-11-01', voidedAt: '2026-11-03' },
+      { id: 'inv-other', customerId: 'c2', amount: 999, createdAt: '2026-11-01' },
+    ],
+    [
+      { id: 'pay-1', customerId: 'c1', amount: 200, paidAt: '2026-11-03', method: 'UPI' },
+      { id: 'pay-other', customerId: 'c2', amount: 999, paidAt: '2026-11-03' },
+    ],
+    'c1',
+  );
+  assert.deepEqual(result.items.map(item => [item.type, item.date, item.balance]), [
+    ['Invoice', '2026-11-02', 549],
+    ['Payment', '2026-11-03', 349],
+  ]);
+  assert.equal(result.totalBilled, 549);
+  assert.equal(result.totalPaid, 200);
+  assert.equal(result.outstandingBalance, 349);
+});
