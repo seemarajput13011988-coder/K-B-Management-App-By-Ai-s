@@ -32,11 +32,12 @@ The complete 16-file source snapshot from AppDeploy version 1793770810412 is pre
 Authentication and staff accounts; customers; plans; payments; dashboards; attendance and admin corrections; consent-based shift-scoped GPS (native Android foreground service with persistent notification; browser foreground fallback); tasks; complaints; announcements; direct messages and group chat; field visits; finance and invoices; expenses; CSV exports; audit logs; language and theme preferences.
 
 ## Current blockers / inputs needed
-- Add the Firebase Web App config to local `.env.local` on the build machine (never commit it).
 - Enable Firebase Authentication Email/Password and verify Firestore in the confirmed project.
 - Set the Functions secrets `ADMIN_BOOTSTRAP_SECRET` and `ADMIN_RECOVERY_CODE`.
-- Add the six public Firebase config values as GitHub Actions secrets before requesting an APK build.
+- Add the `FIREBASE_SERVICE_ACCOUNT_KANDB_NET_SEVICE` GitHub Actions secret and the public Firebase Web App config secrets before deploying Hosting / Functions.
 - A secure export and reviewed backup of the current AppDeploy data are still required before live-data migration.
+- Install the debug APK on a test Android phone and complete the background GPS / notification acceptance tests.
+- A stable signing key is needed before shipping release APK updates; the current artifact is debug-signed.
 
 ## Status
 - [x] Preserve the AppDeploy source snapshot on `main`.
@@ -58,7 +59,9 @@ Authentication and staff accounts; customers; plans; payments; dashboards; atten
 - [ ] Configure Functions secrets and verify the API using emulators.
 - [ ] Finish password-change flow, realtime chat transport, and full role/edge-case review.
 - [ ] Migrate and verify data.
-- [ ] Verify the corrected Android APK workflow and download its debug APK artifact.
+- [x] Build and download a debug APK artifact from GitHub Actions (run #39, commit `b2adcc4f`).
+- [ ] Install the APK on a test phone and complete the Android GPS / notifications acceptance checklist.
 - [ ] Create a stable app-signing key through a secure local process before distributing updateable release APKs.
+- [ ] Configure FCM push notifications for delivery while the app is fully closed, if required.
 - [ ] Test web and Android flows for admin and staff.
 - [ ] Deploy Hosting and Functions only after approval and all safety checks.
