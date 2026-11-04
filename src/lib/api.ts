@@ -90,7 +90,7 @@ export async function signInAppUser(userId: string, password: string) {
   await signInWithEmailAndPassword(firebaseAuth, id + '@' + ACCOUNT_DOMAIN, password);
   try {
     const token = await firebaseAuth.currentUser!.getIdToken();
-    const profile = await api.get<{ user: { id: string; userId: string; displayName: string; role: 'admin' | 'staff'; active: boolean } }>('/api/auth/me');
+    const profile = await api.get<{ user: { id: string; userId: string; displayName: string; role: 'admin' | 'staff'; active: boolean; isSuperAdmin?: boolean } }>('/api/auth/me');
     return { token, expiresAt: Date.now() + 3600000, user: profile.data.user };
   } catch (error) {
     await signOut(firebaseAuth);

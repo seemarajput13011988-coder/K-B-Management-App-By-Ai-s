@@ -20,3 +20,9 @@ export function taskReminderKind(dueDate: string, today: string, tomorrow: strin
   if (dueDate < today) return 'overdue';
   return null;
 }
+
+
+export function isSuperAdminAccount(user: { role?: unknown; userId?: unknown; isSuperAdmin?: unknown }): boolean {
+  if (user.role !== 'admin') return false;
+  return user.isSuperAdmin === true || (typeof user.userId === 'string' && user.userId.trim().toLowerCase() === 'brajraj');
+}

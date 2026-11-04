@@ -7,7 +7,7 @@ import { api as client, nativeApiPost } from './lib/api';
 
 const BackgroundGeolocation = registerPlugin<BackgroundGeolocationPlugin>('BackgroundGeolocation');
 
-type Session = { token: string; user: { id: string; displayName: string; role: 'admin' | 'staff' } };
+type Session = { token: string; user: { id: string; displayName: string; role: 'admin' | 'staff'; isSuperAdmin?: boolean } };
 type Attendance = { id: string; userId: string; displayName: string; workDate: string; checkInAt: string; checkOutAt?: string; dayType?: 'Full day' | 'Half day'; correctionReason?: string; gpsRestartRequired?: boolean; gpsCancelled?: boolean; status?: string };
 type HolidayRequest = { id: string; userId: string; displayName: string; startDate: string; endDate: string; reason: string; status: 'pending'|'approved'|'rejected'; createdAt: string };
 type Visit = { id: string; customerName: string; purpose: string; notes: string; visitedAt: string; staffName: string };
@@ -53,6 +53,7 @@ function AttendanceCalendar({ staffId, staffName, records, holidays }: { staffId
 
 export default function StaffOperations({ session, customers, flash, compact = false }: { session: Session; customers: Array<{ id: string; name: string }>; flash: (message: string) => void; compact?: boolean }) {
   const admin = session.user.role === 'admin';
+  const superAdmin = admin && session.user.isSuperAdmin === true;
   const [attendance, setAttendance] = useState<Attendance[]>([]);
   const [holidays, setHolidays] = useState<HolidayRequest[]>([]);
   const [holidayForm, setHolidayForm] = useState({ startDate: localDay(), endDate: localDay(), reason: '' });
@@ -137,10 +138,13 @@ export default function StaffOperations({ session, customers, flash, compact = f
       setGroups(availableGroups);
       setSelectedGroupId(current => current && availableGroups.some(group => group.id === current) ? current : availableGroups[0]?.id || '');
       if (admin) {
-        const [l, s, h, ad] = await Promise.all([request('get', '/api/locations'), request('get', '/api/staff'), request('get', '/api/locations/history'), request('get', '/api/admins')]);
+        const [l, s, h] = await Promise.all([request('get', '/api/locations'), request('get', '/api/staff'), request('get', '/api/locations/history')]);
         setLocations(l.data.items || []);
         setStaff(s.data.items || []);
         setLocationHistory(h.data.items || []);
+      }
+      if (superAdmin) {
+        const ad = await request('get', '/api/admins');
         setAdmins(ad.data.items || []);
       }
     } catch {
@@ -148,7 +152,7 @@ export default function StaffOperations({ session, customers, flash, compact = f
     } finally {
       setLoading(false);
     }
-  }, [admin, request, flash]);
+  }, [admin, superAdmin, request, flash]);
 
   useEffect(() => { refresh(); }, [refresh]);
 
@@ -485,8 +489,8 @@ export default function StaffOperations({ session, customers, flash, compact = f
       <article className="ops-summary"><span>{admin ? 'Field visits' : 'Messages'}</span><strong>{admin ? visits.length : messages.length}</strong><small>{admin ? 'Service visits submitted by the team' : 'Your conversation with administration'}</small></article>
     </section>
 
-    {admin && <section className="panel ops-panel">
-      <div className="ops-panel-head"><div><span className="eyebrow">ACCESS CONTROL</span><h2>Administrator accounts</h2><p>Create additional admin logins. Actions are audited and the primary owner account is protected.</p></div><span className="ops-pill is-live">{admins.filter(a=>a.active).length} ACTIVE</span></div>
+    {superAdmin && <section className="panel ops-panel">
+      <div className="ops-panel-head"><div><span className="eyebrow">SUPER ADMIN ACCESS CONTROL</span><h2>Administrator accounts</h2><p>Only you can create, deactivate or reactivate administrator accounts. Other administrators cannot grant admin access.</p></div><span className="ops-pill is-live">{admins.filter(a=>a.active).length} ACTIVE</span></div>
       <form className="ops-form" onSubmit={createAdmin}>
         <input required minLength={3} maxLength={32} pattern="[A-Za-z0-9_-]+" placeholder="Admin login ID" value={adminForm.userId} onChange={e=>setAdminForm({...adminForm,userId:e.target.value})}/>
         <input required maxLength={80} placeholder="Administrator name" value={adminForm.displayName} onChange={e=>setAdminForm({...adminForm,displayName:e.target.value})}/>

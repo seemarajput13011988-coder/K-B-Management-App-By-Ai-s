@@ -41,3 +41,13 @@ test('task reminders distinguish tomorrow, due today, overdue and future tasks',
   assert.equal(taskReminderKind('2026-11-03', '2026-11-04', '2026-11-05'), 'overdue');
   assert.equal(taskReminderKind('2026-11-06', '2026-11-04', '2026-11-05'), null);
 });
+
+
+test('only the designated super admin can manage administrator accounts', () => {
+  const { isSuperAdminAccount } = require('../lib/route-path.js');
+  assert.equal(isSuperAdminAccount({ role: 'admin', userId: 'Brajraj' }), true, 'preserves the existing primary owner account');
+  assert.equal(isSuperAdminAccount({ role: 'admin', userId: 'other-admin', isSuperAdmin: true }), true, 'allows an explicitly designated super admin');
+  assert.equal(isSuperAdminAccount({ role: 'admin', userId: 'other-admin' }), false, 'regular admins cannot manage admin accounts');
+  assert.equal(isSuperAdminAccount({ role: 'staff', userId: 'Brajraj', isSuperAdmin: true }), false, 'staff cannot become super admin by setting a flag');
+  assert.equal(isSuperAdminAccount({ role: 'staff', userId: 'employee' }), false);
+});

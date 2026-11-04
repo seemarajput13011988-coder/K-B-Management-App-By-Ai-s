@@ -8,7 +8,7 @@ import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { onDocumentCreated } from 'firebase-functions/v2/firestore';
 import { logger } from 'firebase-functions';
 import { defineSecret } from 'firebase-functions/params';
-import { gpsGracePeriodExpired, routePath, taskReminderKind } from './route-path.js';
+import { gpsGracePeriodExpired, isSuperAdminAccount, routePath, taskReminderKind } from './route-path.js';
 
 initializeApp();
 const auth = getAuth();
@@ -17,7 +17,7 @@ const adminRecoveryCode = defineSecret('ADMIN_RECOVERY_CODE');
 const adminBootstrapSecret = defineSecret('ADMIN_BOOTSTRAP_SECRET');
 
 type Role = 'admin' | 'staff';
-type AppUser = { uid: string; id: string; userId: string; displayName: string; role: Role; active: boolean; authTime: number };
+type AppUser = { uid: string; id: string; userId: string; displayName: string; role: Role; active: boolean; authTime: number; isSuperAdmin?: boolean };
 type Data = Record<string, any>;
 
 const clean = (value: unknown, max = 300): string =>
@@ -46,12 +46,18 @@ async function requireUser(req: any): Promise<AppUser | null> {
     if (!snap.exists) return null;
     const data = snap.data()!;
     if (data.active !== true || !['admin', 'staff'].includes(data.role)) return null;
-    return { uid: decoded.uid, id: decoded.uid, userId: clean(data.userId, 40),
-      displayName: clean(data.displayName, 80), role: data.role, active: true, authTime: Number(decoded.auth_time || 0) };
+    const userId = clean(data.userId, 40);
+    return { uid: decoded.uid, id: decoded.uid, userId,
+      displayName: clean(data.displayName, 80), role: data.role, active: true, authTime: Number(decoded.auth_time || 0),
+      isSuperAdmin: isSuperAdminAccount({ role: data.role, userId, isSuperAdmin: data.isSuperAdmin }) };
   } catch { return null; }
 }
 function allow(user: AppUser, roles: Role[], res: any): boolean {
   if (!roles.includes(user.role)) { send(res, 403, { error: 'You do not have permission to perform this action.' }); return false; }
+  return true;
+}
+function allowSuperAdmin(user: AppUser, res: any): boolean {
+  if (user.isSuperAdmin !== true) { send(res, 403, { error: 'Only the primary Super Admin can create or manage administrator accounts.' }); return false; }
   return true;
 }
 async function list(collection: string): Promise<Data[]> {
@@ -104,7 +110,7 @@ export const api = onRequest(
       const email = 'brajraj@accounts.kandbnetservice.in';
       const account = await auth.createUser({ email, password, displayName: 'Brajraj', disabled: false });
       await db.collection('users').doc(account.uid).set({
-        userId: 'Brajraj', displayName: 'Brajraj', role: 'admin', active: true, createdAt: now(),
+        userId: 'Brajraj', displayName: 'Brajraj', role: 'admin', isSuperAdmin: true, active: true, createdAt: now(),
       });
       send(res, 201, { initialized: true, userId: 'Brajraj' }); return;
     }
@@ -147,19 +153,19 @@ export const api = onRequest(
       }
 
       if (method === 'GET' && path === '/api/auth/me') {
-        send(res, 200, { user: { id: user.uid, userId: user.userId, displayName: user.displayName, role: user.role, active: true } }); return;
+        send(res, 200, { user: { id: user.uid, userId: user.userId, displayName: user.displayName, role: user.role, active: true, isSuperAdmin: user.isSuperAdmin === true } }); return;
       }
       if (method === 'POST' && path === '/api/auth/logout') { send(res, 200, { ok: true }); return; }
 
-      // Additional administrator accounts. The original Brajraj owner account cannot be removed here.
+      // Only the primary Super Admin may view, create, update or disable administrator accounts.
       if (path === '/api/admins' && method === 'GET') {
-        if (!allow(user, ['admin'], res)) return;
+        if (!allowSuperAdmin(user, res)) return;
         const admins = (await list('users')).filter(item => item.role === 'admin')
           .map(({ passwordHash, salt, ...safe }) => safe);
         send(res, 200, { items: admins }); return;
       }
       if (path === '/api/admins' && method === 'POST') {
-        if (!allow(user, ['admin'], res)) return;
+        if (!allowSuperAdmin(user, res)) return;
         const userId = clean(body.userId, 32);
         const displayName = clean(body.displayName, 80);
         const password = typeof body.password === 'string' ? body.password : '';
@@ -170,13 +176,13 @@ export const api = onRequest(
         if (existing) { send(res, 409, { error: 'That account ID is already in use.' }); return; }
         const email = userId.toLowerCase() + '@accounts.kandbnetservice.in';
         const account = await auth.createUser({ email, password, displayName, disabled: false });
-        const record = { userId, displayName, role: 'admin', active: true, createdAt: now(), createdBy: user.uid };
+        const record = { userId, displayName, role: 'admin', isSuperAdmin: false, active: true, createdAt: now(), createdBy: user.uid };
         await db.collection('users').doc(account.uid).set(record);
         await audit(user, 'CREATE', 'admin', account.uid, 'Created administrator account ' + userId);
         send(res, 201, { user: { id: account.uid, ...record } }); return;
       }
       if (path.startsWith('/api/admins/')) {
-        if (!allow(user, ['admin'], res)) return;
+        if (!allowSuperAdmin(user, res)) return;
         const id = routeId(path, '/api/admins');
         const target = await getDoc('users', id);
         if (!target || target.role !== 'admin') { send(res, 404, { error: 'Administrator account not found.' }); return; }
