@@ -5,9 +5,16 @@ on:
       - firebase-migration
     paths:
       - "src/**"
+      - "public/**"
+      - "index.html"
       - "package.json"
+      - "package-lock.json"
       - "capacitor.config.ts"
       - "vite.config.ts"
+      - "firebase.json"
+      - ".firebaserc"
+      - "functions/**"
+      - "docs/ANDROID_TRACKING_AND_RELEASE.md"
       - ".github/workflows/android-apk.yml"
   workflow_dispatch:
 jobs:
@@ -40,7 +47,7 @@ jobs:
           VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID || '1:847932976304:web:87148565df2a329a5f9f75' }}
           VITE_FIREBASE_FUNCTIONS_URL: https://asia-south1-kandb-net-sevice.cloudfunctions.net/api
         run: |
-          npm install
+          npm ci
           npm run build
           npx cap add android
           npx cap sync android
