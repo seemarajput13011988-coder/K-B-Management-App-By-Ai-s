@@ -1,21 +1,40 @@
 # Firebase API migration status
 
-The Cloud Functions HTTP entry point is in `functions/src/index.ts`.
+The Cloud Functions HTTP entry point is `functions/src/index.ts`; the React API adapter is `src/lib/api.ts`.
 
-## Implemented
-- Firebase Admin initialization.
-- Asia South (Mumbai) Functions region.
+## Implemented in the migration branch
+- Firebase Admin initialization and Asia South Functions region.
 - CORS and no-store response headers.
-- Firebase ID-token verification.
-- Server-side user profile and active-account checks.
-- Health check and authenticated current-user endpoint.
-- Audit helper for future write operations.
-- Explicit 501 responses for legacy route groups not migrated yet; no accidental open data access.
+- Firebase ID-token verification and server-side active-account / role checks.
+- Health check, current-user profile, and logout compatibility endpoint.
+- Secret-protected one-time admin bootstrap and admin password recovery.
+- Firebase Authentication staff provisioning, activation/deactivation and password reset.
+- Firestore-backed staff, plans, customers, payments, complaints, tasks, attendance, foreground shift-scoped GPS, announcements, direct messages, groups, group messages, visits, expenses, invoices and audit endpoints.
+- Admin/staff role restrictions and server-side record scoping for the major collections.
+- Audit entries for the main create/update/delete and administrative operations.
+- React modules now use the Firebase API adapter instead of `@appdeploy/client`.
+- Firebase Hosting rewrites `/api/**` to the Cloud Function.
+- GitHub Actions workflow added to typecheck the Functions package on migration-branch changes.
 
-## Not yet implemented
-The existing 59 AppDeploy routes still need their Firestore implementations, validation, role scoping, and tests. Authentication login/account provisioning also needs the secure bootstrap flow. The React app has not yet been switched from AppDeploy API calls.
+## Remaining engineering work
+- Complete the password-change flow through Firebase reauthentication and updatePassword.
+- Replace the temporary no-op realtime transport; group messages currently require API refresh.
+- Review and test every route against the legacy behavior, including field-level permissions and edge cases.
+- Run the GitHub Actions typecheck and the frontend production build, then fix all compile errors.
+- Add emulator-based API tests for admin and staff roles.
+- Add Android build automation and produce the private APK only after the web/backend flows pass.
 
-## Compatibility decision
-The existing frontend passes a `sessionToken`. During migration the API accepts that field only if it is a valid Firebase ID token; the frontend adapter must be updated to acquire and refresh Firebase ID tokens before traffic is switched. Legacy random session tokens are not accepted.
+## Important setup requirements
+- Project ID is fixed to `kandb-net-service`; the browser client refuses to initialize against a different project.
+- Enable Firebase Authentication Email/Password.
+- Add the Firebase Web App configuration locally in `.env.local`.
+- Configure Functions secrets `ADMIN_BOOTSTRAP_SECRET` and `ADMIN_RECOVERY_CODE` before deploying Functions.
+- The first admin must be initialized through the one-time secret-protected bootstrap endpoint. Staff accounts are then created by an authenticated admin.
+- Firestore rules remain deny-by-default for direct browser access; Functions use the Admin SDK.
 
-Do not deploy or change production traffic until the full route inventory has been implemented and tested in the Firebase Emulator Suite.
+## Data and production status
+- No Firebase deployment has been performed.
+- No APK has been built.
+- No AppDeploy customer, payment, staff, attendance or finance data has been imported.
+- The old AppDeploy app and its backend source remain available. Do not disable them until backup, migration and acceptance tests are complete.
+- The backend has not yet been verified by a successful build or emulator test; code written is not equivalent to a tested production service.
