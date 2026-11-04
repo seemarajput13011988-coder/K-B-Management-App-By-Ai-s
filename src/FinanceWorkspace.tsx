@@ -60,6 +60,16 @@ export default function FinanceWorkspace({ session, customers, payments, flash }
   const activeCustomers = customers.filter(item => item.status === 'Active');
   const unpaidInvoices = invoices.filter(item => item.status !== 'Paid');
   const sortedExpenses = useMemo(() => [...expenses].sort((a, b) => b.spentAt.localeCompare(a.spentAt)), [expenses]);
+  const monthlyTrend = Array.from({length:6},(_,index)=>{
+    const date=new Date(); date.setDate(1); date.setMonth(date.getMonth()-(5-index));
+    const key=date.getFullYear()+'-'+String(date.getMonth()+1).padStart(2,'0');
+    const label=date.toLocaleString('en-IN',{month:'short'});
+    const income=payments.filter(item=>String(item.paidAt||'').slice(0,7)===key).reduce((sum,item)=>sum+Number(item.amount||0),0);
+    const cost=expenses.filter(item=>String(item.spentAt||'').slice(0,7)===key).reduce((sum,item)=>sum+Number(item.amount||0),0);
+    return {key,label,income,cost};
+  });
+  const trendMax=Math.max(1,...monthlyTrend.flatMap(item=>[item.income,item.cost]));
+
 
   async function generateInvoices() {
     if (!window.confirm('Generate monthly invoices for ' + monthName(period) + ' for all active customers? Existing invoices will not be duplicated.')) return;
@@ -102,6 +112,18 @@ export default function FinanceWorkspace({ session, customers, payments, flash }
       <article><span><TrendingDown size={17}/> Expenses</span><strong>{money(spent)}</strong><small>{monthExpenses.length} expense records</small></article>
       <article><span><Wallet size={17}/> Cash operating balance</span><strong className={cashResult < 0 ? 'negative' : ''}>{money(cashResult)}</strong><small>Collections minus recorded expenses</small></article>
       <article><span><ReceiptText size={17}/> Unpaid invoice balance</span><strong>{money(outstanding)}</strong><small>{unpaidInvoices.length} unpaid / partial invoices</small></article>
+    </section>
+    <section className="panel finance-panel finance-chart-panel">
+      <div className="finance-head"><div><span className="eyebrow">FINANCIAL ANALYTICS</span><h2>Six-month collection and expense trend</h2><p>Monthly recorded collections compared with recorded operating expenses.</p></div><div className="finance-chart-legend"><span><i className="income-dot"/> Collections</span><span><i className="expense-dot"/> Expenses</span></div></div>
+      <div className="finance-chart" role="img" aria-label="Six month collections and expenses bar chart">
+        {monthlyTrend.map(item=><div className="finance-chart-month" key={item.key}>
+          <div className="finance-chart-bars">
+            <div className="finance-chart-bar income-bar" style={{height:Math.max(3,item.income/trendMax*100)+'%'}} title={item.label+' collections '+money(item.income)}><span>{item.income?money(item.income):'₹0'}</span></div>
+            <div className="finance-chart-bar expense-bar" style={{height:Math.max(3,item.cost/trendMax*100)+'%'}} title={item.label+' expenses '+money(item.cost)}><span>{item.cost?money(item.cost):'₹0'}</span></div>
+          </div><b>{item.label}</b>
+        </div>)}
+      </div>
+      <div className="finance-chart-foot"><span>Highest month: {monthlyTrend.reduce((best,item)=>item.income>best.income?item:best,monthlyTrend[0]).label}</span><span>Chart uses recorded transactions only</span></div>
     </section>
     <section className="panel finance-panel">
       <div className="finance-head"><div><span className="eyebrow">MONTHLY BILLING</span><h2>Customer invoices</h2><p>Generate a monthly bill for every active customer. Existing invoices for the same customer and month are skipped.</p></div><div className="finance-actions"><input aria-label="Billing month" type="month" value={period} onChange={e => setPeriod(e.target.value)}/><button className="btn primary" disabled={busy || !activeCustomers.length} onClick={generateInvoices}>Generate invoices</button></div></div>
