@@ -17,12 +17,12 @@ The Cloud Functions HTTP entry point is `functions/src/index.ts`; the React API 
 - GitHub Actions workflow added to typecheck the Functions package on migration-branch changes.
 
 ## Remaining engineering work
-- Complete the password-change flow through Firebase reauthentication and updatePassword.
+- Password changes now require client-side reauthentication and a recent Firebase auth timestamp before the server updates the password.
 - Replace the temporary no-op realtime transport; group messages currently require API refresh.
 - Review and test every route against the legacy behavior, including field-level permissions and edge cases.
 - Run the GitHub Actions typecheck and the frontend production build, then fix all compile errors.
 - Add emulator-based API tests for admin and staff roles.
-- Add Android build automation and produce the private APK only after the web/backend flows pass.
+- Android debug-APK workflow is ready but has not been run; add the required Firebase web config secrets first.
 
 ## Important setup requirements
 - Project ID is fixed to `kandb-net-service`; the browser client refuses to initialize against a different project.
