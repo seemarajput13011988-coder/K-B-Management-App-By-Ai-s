@@ -4,7 +4,7 @@ import { Download, Plus, RefreshCw, ReceiptText, TrendingDown, TrendingUp, Walle
 
 type Session = { token: string; user: { id: string; displayName: string; role: 'admin' | 'staff' } };
 type Customer = { id: string; name: string; monthlyFee: number; status: string; dueDate?: string };
-type Payment = { id: string; customerId: string; customerName: string; amount: number; paidAt: string; month: string; method: string };
+type Payment = { id: string; customerId: string; customerName: string; amount: number; paidAt: string; month: string; method: string; recordedByName?: string };
 type Expense = { id: string; title: string; category: string; amount: number; spentAt: string; method: string; notes?: string; createdByName: string };
 type Invoice = { id: string; customerId: string; customerName: string; period: string; dueDate: string; amount: number; status: string; paidAmount: number };
 type StaffMember = { id: string; displayName: string; userId: string; role: string; active: boolean };
