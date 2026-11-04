@@ -6,7 +6,7 @@ import { PushNotifications } from '@capacitor/push-notifications';
 import StaffOperations from './StaffOperations';
 import FinanceWorkspace from './FinanceWorkspace';
 import { useAppPreferences } from './appPreferences';
-import { api as client, signInAppUser, signOutAppUser } from './lib/api';
+import { api as client, changeAppPassword, changeAppUserId, signInAppUser, signOutAppUser } from './lib/api';
 import {
   Activity,
   ArrowDownRight,
@@ -133,6 +133,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   const [showTask, setShowTask] = useState(false);
   const [showStaff, setShowStaff] = useState(false);
   const [resetStaff, setResetStaff] = useState<Staff | null>(null);
+  const [showAccountSettings, setShowAccountSettings] = useState(false);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [showCustomer, setShowCustomer] = useState(false);
@@ -600,7 +601,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                 {!notifications.length && <p className="notification-empty">You’re all caught up.</p>}
               </div>}
             </div>
-            <div className="avatar small-avatar">{session.user.displayName.slice(0, 2).toUpperCase()}</div>
+            <button type="button" className="icon-button account-trigger" title="Account settings" aria-label="Account settings" onClick={() => setShowAccountSettings(true)}><div className="avatar small-avatar">{session.user.displayName.slice(0, 2).toUpperCase()}</div></button>
           </div>
         </header>
         <div className="content">
@@ -1065,6 +1066,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
         />
       )}
       {showStaff && <StaffModal onClose={() => setShowStaff(false)} onSave={createStaff} />}
+      {showAccountSettings && <AccountSettingsModal session={session} onClose={() => setShowAccountSettings(false)} onChangeUserId={async (currentPassword, userId) => { await changeAppUserId(currentPassword, userId); onLogout(); }} onChangePassword={async (currentPassword, newPassword) => { await changeAppPassword(currentPassword, newPassword); onLogout(); }} />}
       {showTask && <TaskModal staff={staff.filter(member => member.active)} onClose={() => setShowTask(false)} onSave={saveTask} />}
       {resetStaff && <StaffPasswordModal staff={resetStaff} onClose={() => setResetStaff(null)} onSave={password => saveStaffPassword(resetStaff, password)} />}
       {selected && (
@@ -1486,6 +1488,38 @@ function TaskModal({ staff, onClose, onSave }: any) {
     {!staff.length && <p className="form-hint">Create an active staff account before assigning work.</p>}
     <div className="form-actions"><button type="button" className="btn secondary" onClick={onClose}>Cancel</button><button className="btn primary" disabled={busy || !staff.length}>{busy ? 'Assigning…' : 'Assign task'}</button></div>
   </form></Modal>;
+}
+function AccountSettingsModal({ session, onClose, onChangeUserId, onChangePassword }: any) {
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newUserId, setNewUserId] = useState(session.user.userId);
+  const [newPassword, setNewPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState('');
+  async function submitUserId(e: FormEvent) {
+    e.preventDefault(); setBusy(true); setMessage('');
+    try { await onChangeUserId(currentPassword, newUserId); }
+    catch (err) { setMessage(err instanceof Error ? err.message : 'Could not change user ID.'); setBusy(false); }
+  }
+  async function submitPassword(e: FormEvent) {
+    e.preventDefault(); setBusy(true); setMessage('');
+    try { await onChangePassword(currentPassword, newPassword); }
+    catch (err) { setMessage(err instanceof Error ? err.message : 'Could not change password.'); setBusy(false); }
+  }
+  return <Modal title="My account" subtitle={'Signed in as ' + session.user.displayName + ' · ' + session.user.role} onClose={onClose}>
+    <div className="form-grid">
+      <form className="form-grid" onSubmit={submitUserId}>
+        <Field label="Current password"><input type="password" required value={currentPassword} onChange={e => setCurrentPassword(e.target.value)} autoComplete="current-password" /></Field>
+        <Field label="New user ID"><input required minLength={3} maxLength={32} pattern="[a-zA-Z0-9_-]{3,32}" value={newUserId} onChange={e => setNewUserId(e.target.value)} /></Field>
+        <div className="form-actions"><button className="btn primary" disabled={busy || newUserId.trim().toLowerCase() === session.user.userId.toLowerCase()}>{busy ? 'Saving…' : 'Change username'}</button></div>
+      </form>
+      <div className="form-hint">Changing your username signs you out. Sign in again with the new ID.</div>
+      <form className="form-grid" onSubmit={submitPassword}>
+        <Field label="New password"><input type="password" required minLength={10} value={newPassword} onChange={e => setNewPassword(e.target.value)} autoComplete="new-password" /></Field>
+        {message && <div className="auth-message">{message}</div>}
+        <div className="form-actions"><button className="btn primary" disabled={busy || !newPassword}>{busy ? 'Saving…' : 'Change password'}</button><button type="button" className="btn secondary" onClick={onClose}>Close</button></div>
+      </form>
+    </div>
+  </Modal>;
 }
 function StaffPasswordModal({ staff, onClose, onSave }: any) {
   const [password, setPassword] = useState('');
