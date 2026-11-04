@@ -47,7 +47,7 @@ The Cloud Functions HTTP entry point is `functions/src/index.ts`; the React API 
 
 ## Data and production status
 - No Firebase deployment has been performed.
-- No APK has been built.
+- No successful APK build or physical-device test has been confirmed yet.
 - No AppDeploy customer, payment, staff, attendance or finance data has been imported.
 - The old AppDeploy app and its backend source remain available. Do not disable them until backup, migration and acceptance tests are complete.
 - Emulator tests, end-to-end tests, and live Firebase verification are still pending.
