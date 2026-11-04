@@ -280,6 +280,17 @@ export const api = onRequest(
         if (!existing) { send(res, 404, { error: 'Customer not found.' }); return; }
         if (user.role === 'staff' && existing.assignedTo !== user.uid) { send(res, 403, { error: 'You can access only customers assigned to you.' }); return; }
         if (method === 'PUT') {
+          if (user.role === 'staff') {
+            const staffPatch = {
+              phone: clean(body.phone, 30),
+              address: clean(body.address, 300),
+              notes: clean(body.notes, 1000),
+              updatedAt: now(),
+            };
+            await db.collection('customers').doc(id).update(staffPatch);
+            await audit(user, 'UPDATE', 'customer', id, 'Updated contact details for assigned customer ' + String(existing.name));
+            send(res, 200, { updated: true }); return;
+          }
           const patch: Data = {};
           const allowed = ['name','phone','address','plan','monthlyFee','status','joinedAt','dueDate','notes'];
           for (const key of allowed) if (body[key] !== undefined) patch[key] = key === 'monthlyFee' ? money(body[key]) : key === 'notes' ? clean(body[key],1000) : clean(body[key], key === 'address' ? 300 : 120);
