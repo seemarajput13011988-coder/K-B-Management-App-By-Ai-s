@@ -17,6 +17,7 @@ The Cloud Functions HTTP entry point is `functions/src/index.ts`; the React API 
 - Audit entries for the main create/update/delete and administrative operations.
 - React modules now use the Firebase API adapter instead of `@appdeploy/client`.
 - Firebase Hosting rewrites `/api/**` to the Cloud Function.
+- Notifications are stored server-side and polled while the app is open. Android local notifications display newly received alerts while the app is running. FCM push delivery when the app is fully closed is not configured yet.
 - GitHub Actions workflow added to typecheck the Functions package on migration-branch changes.
 - Firebase Web App registration and project identity have been confirmed as `kandb-net-sevice`.
 - Android build workflow uses the confirmed project ID and app display name K&B Management Nexus; debug APK builds successfully in GitHub Actions run #39.
