@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { getMessaging } from 'firebase-admin/messaging';
@@ -151,11 +151,13 @@ export const api = onRequest(
         send(res, 409, { error: 'This staff ID is already registered. Contact your administrator.' }); return;
       }
       const createdAt = now();
+      const trackingCode = randomBytes(24).toString('hex');
+      const trackingHash = createHash('sha256').update(trackingCode).digest('hex');
       const ref = db.collection('staff_registration_requests').doc(userIdLower);
       const submitted = await db.runTransaction(async transaction => {
         const previous = await transaction.get(ref);
         if (previous.exists && previous.data()?.status === 'pending') return false;
-        transaction.set(ref, { userId, userIdLower, displayName, phone, reason, status: 'pending', createdAt });
+        transaction.set(ref, { userId, userIdLower, displayName, phone, reason, status: 'pending', createdAt, trackingHash });
         return true;
       });
       if (!submitted) {
@@ -166,7 +168,21 @@ export const api = onRequest(
         recipientId: member.id, recipientRole: 'admin', type: 'staff-registration', title: 'New staff access request',
         message: displayName + ' requested staff access with ID ' + userId + '.', createdAt, read: false, relatedId: ref.id
       }, { merge: true })));
-      send(res, 201, { id: ref.id, status: 'pending', message: 'Your request has been submitted. An administrator must approve it before you can sign in.' }); return;
+      send(res, 201, { id: ref.id, trackingCode, status: 'pending', message: 'Your request has been submitted. An administrator must approve it before you can sign in.' }); return;
+    }
+
+    if (method === 'GET' && path === '/api/staff-registration-requests/status') {
+      const requestId = clean(req.query.requestId, 64).toLowerCase();
+      const trackingCode = clean(req.query.trackingCode, 128);
+      if (!requestId || !trackingCode) { send(res, 400, { error: 'A request ID and tracking code are required.' }); return; }
+      const request = await getDoc('staff_registration_requests', requestId);
+      const storedHash = String(request?.trackingHash || '');
+      const suppliedHash = createHash('sha256').update(trackingCode).digest('hex');
+      const stored = Buffer.from(storedHash, 'hex'), supplied = Buffer.from(suppliedHash, 'hex');
+      if (!request || stored.length !== supplied.length || !timingSafeEqual(stored, supplied)) {
+        send(res, 404, { error: 'Registration request not found.' }); return;
+      }
+      send(res, 200, { status: request.status, createdAt: request.createdAt, reviewedAt: request.reviewedAt || null, reviewedByName: request.reviewedByName || null }); return;
     }
 
     try {
