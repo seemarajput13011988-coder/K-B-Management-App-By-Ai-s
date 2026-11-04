@@ -8,6 +8,7 @@ import FinanceWorkspace from './FinanceWorkspace';
 import SubscriptionWorkspace from './SubscriptionWorkspace';
 import InventoryWorkspace from './InventoryWorkspace';
 import InstallationsWorkspace from './InstallationsWorkspace';
+import CalendarWorkspace from './CalendarWorkspace';
 import { useAppPreferences } from './appPreferences';
 import { api as client, changeAppPassword, changeAppUserId, signInAppUser, signOutAppUser, submitStaffRegistrationRequest, getStaffRegistrationStatus } from './lib/api';
 import {
@@ -499,6 +500,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
 
   const nav = [
     { label: 'Overview', icon: LayoutDashboard },
+    { label: 'Calendar', icon: CalendarDays },
     { label: taskPage, icon: ClipboardList, count: pendingTasks || undefined },
     ...(isAdmin ? [{ label: 'Team Operations', icon: Activity }] : [{ label: 'My Day', icon: CalendarDays }]),
     { label: 'Customers', icon: Users, count: customers.length },
@@ -638,6 +640,8 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                         ? 'Track customer collections and payment history.'
                         : page === 'Staff'
                           ? 'Manage staff accounts, assignments and collection performance.'
+                          : page === 'Calendar'
+                            ? 'View task deadlines and team attendance by date.'
                           : page === taskPage
                             ? (isAdmin ? 'Assign work, set priorities and monitor team progress.' : 'Your assigned work, priorities and due dates.')
                             : page === 'My Day' || page === 'Team Operations'
@@ -682,6 +686,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
             </div>
           </div>
 
+          {page === 'Calendar' && <CalendarWorkspace tasks={tasks} attendance={attendanceRecords} isAdmin={isAdmin} />}
           {page === (isAdmin ? 'Team Operations' : 'My Day') && <StaffOperations session={session} customers={customers} flash={flash} />}
           {page === 'Finance & Billing' && isAdmin && <FinanceWorkspace session={session} customers={customers} payments={payments} flash={flash} />}
           {page === 'Subscriptions' && <SubscriptionWorkspace customers={customers} plans={plans} isAdmin={isAdmin} flash={flash} />}
