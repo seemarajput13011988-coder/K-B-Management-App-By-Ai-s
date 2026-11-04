@@ -161,6 +161,11 @@ export const api = onRequest(
       if (!submitted) {
         send(res, 409, { error: 'A registration request for this staff ID is already pending. Please wait for the administrator to review it.' }); return;
       }
+      const admins = (await list('users')).filter(member => member.active === true && member.role === 'admin');
+      await Promise.all(admins.map(member => db.collection('staff_notifications').doc('staff-registration-' + ref.id + '-' + member.id).set({
+        recipientId: member.id, recipientRole: 'admin', type: 'staff-registration', title: 'New staff access request',
+        message: displayName + ' requested staff access with ID ' + userId + '.', createdAt, read: false, relatedId: ref.id
+      }, { merge: true })));
       send(res, 201, { id: ref.id, status: 'pending', message: 'Your request has been submitted. An administrator must approve it before you can sign in.' }); return;
     }
 
@@ -291,7 +296,14 @@ export const api = onRequest(
           await audit(user, 'APPROVE_STAFF_REGISTRATION', 'staff_registration_request', id, 'Approved staff registration and created account ' + userId);
           send(res, 200, { updated: true, status: 'approved', user: { id: account.uid, ...record } }); return;
         } catch (error) {
-          if (account?.uid) await auth.deleteUser(account.uid).catch(() => undefined);
+          if (account?.uid) {
+            await db.collection('users').doc(account.uid).delete().catch(() => undefined);
+            await auth.deleteUser(account.uid).catch(() => undefined);
+          }
+          await db.collection('staff_registration_requests').doc(id).update({
+            status: 'pending', reviewedAt: FieldValue.delete(), reviewedBy: FieldValue.delete(),
+            reviewedByName: FieldValue.delete(), approvedUserId: FieldValue.delete()
+          }).catch(() => undefined);
           throw error;
         }
       }
