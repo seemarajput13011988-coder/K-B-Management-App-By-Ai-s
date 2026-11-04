@@ -24,6 +24,22 @@ function downloadCsv(name: string, rows: unknown[][]) {
   URL.revokeObjectURL(url);
 }
 
+function printReport(title: string, rows: unknown[][]) {
+  const popup = window.open('', '_blank');
+  if (!popup) return;
+  const escapeHtml = (value: unknown) => String(value ?? '').replace(/[&<>"']/g, character => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  })[character] || character);
+  const table = rows.map((row, index) => '<tr>' + row.map(cell => index === 0
+    ? '<th>' + escapeHtml(cell) + '</th>'
+    : '<td>' + escapeHtml(cell) + '</td>').join('') + '</tr>').join('');
+  popup.document.open();
+  popup.document.write('<!doctype html><html><head><meta charset="utf-8"><title>' + escapeHtml(title) + '</title><style>body{font:14px Arial,sans-serif;color:#172033;padding:28px}h1{font-size:22px;margin:0 0 6px}p{color:#64748b;margin:0 0 22px}table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:10px;border:1px solid #dbe2ec}th{background:#f1f5f9;font-size:12px;text-transform:uppercase}tr:nth-child(even) td{background:#f8fafc}.brand{font-weight:700;color:#315fbd;margin-bottom:18px}@media print{body{padding:0}}</style></head><body><div class="brand">K&amp;B NET SERVICE · MANAGEMENT NEXUS</div><h1>' + escapeHtml(title) + '</h1><p>Generated on ' + escapeHtml(new Date().toLocaleString('en-IN')) + '</p><table>' + table + '</table></body></html>');
+  popup.document.close();
+  popup.focus();
+  popup.print();
+}
+
 export default function FinanceWorkspace({ session, customers, payments, flash }: {
   session: Session;
   customers: Customer[];
@@ -197,6 +213,7 @@ export default function FinanceWorkspace({ session, customers, payments, flash }
     <section className="panel finance-panel">
       <div className="finance-head"><div><span className="eyebrow">MANAGEMENT REPORTS</span><h2>Business reports</h2><p>Download your current payment and collection data for spreadsheet analysis.</p></div></div>
       <div className="finance-report-actions">
+        <button className="btn secondary" onClick={() => printReport('Finance summary · ' + monthName(period), [['Metric','Amount'],['Collections',money(collected)],['Expenses',money(spent)],['Cash operating balance',money(cashResult)],['Outstanding invoices',money(outstanding)],['Payroll paid',money(payroll.reduce((sum,item)=>sum+Number(item.amount||0),0))]])}><ReceiptText size={15}/> Print / Save PDF</button>
         <button className="btn secondary" onClick={() => downloadCsv('kb-payments-' + period + '.csv', [['Date','Customer','Billing month','Method','Amount','Recorded by'], ...monthPayments.map(p => [p.paidAt,p.customerName,p.month,p.method,p.amount,p.recordedByName])])}><Download size={15}/> Export monthly collections</button>
         <button className="btn secondary" onClick={() => downloadCsv('kb-customer-ledger.csv', [['Customer','Phone','Plan','Monthly fee','Status','Assigned to'], ...customers.map(c => [c.name,(c as any).phone,(c as any).plan,c.monthlyFee,c.status,(c as any).assignedToName])])}><Download size={15}/> Export customer list</button>
         <button className="btn secondary" onClick={() => downloadCsv('kb-finance-summary-' + period + '.csv', [['Metric','Amount'],['Collections',collected],['Expenses',spent],['Cash operating balance',cashResult],['Outstanding invoices',outstanding]])}><Download size={15}/> Export finance summary</button>
