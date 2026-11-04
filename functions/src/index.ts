@@ -457,10 +457,6 @@ export const api = onRequest(
       }
 
       const indiaDate = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
-      const holidayExempt = async (staffId: string, date: string) => {
-        const requests = await list('holiday_requests');
-        return requests.some(item => item.userId === staffId && ['pending', 'approved'].includes(String(item.status)) && String(item.startDate) <= date && String(item.endDate) >= date);
-      };
       if (path === '/api/holidays' && method === 'GET') {
         const requests = await list('holiday_requests');
         const items = user.role === 'admin' ? requests : requests.filter(item => item.userId === user.uid);
