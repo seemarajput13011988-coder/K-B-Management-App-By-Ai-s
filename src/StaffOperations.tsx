@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
-import { api as client, ws } from './lib/api';
+import { Capacitor, registerPlugin } from '@capacitor/core';
+import { LocalNotifications } from '@capacitor/local-notifications';
+import type { BackgroundGeolocationPlugin } from '@capacitor-community/background-geolocation';
+import { api as client, nativeApiPost, ws } from './lib/api';
+
+const BackgroundGeolocation = registerPlugin<BackgroundGeolocationPlugin>('BackgroundGeolocation');
 
 type Session = { token: string; user: { id: string; displayName: string; role: 'admin' | 'staff' } };
 type Attendance = { id: string; userId: string; displayName: string; workDate: string; checkInAt: string; checkOutAt?: string; dayType?: 'Full day' | 'Half day'; correctionReason?: string; gpsRestartRequired?: boolean; gpsCancelled?: boolean; status?: string };
@@ -216,7 +221,66 @@ export default function StaffOperations({ session, customers, flash, compact = f
   }, [selectedGroupId, request]);
 
   useEffect(() => {
-    if (!activeShift || admin || !navigator.geolocation) return;
+    if (!activeShift || admin || !Capacitor.isNativePlatform()) return;
+    let cancelled = false;
+    let watcherId: string | null = null;
+    const startBackgroundTracking = async () => {
+      try {
+        const watcher = await BackgroundGeolocation.addWatcher({
+          backgroundTitle: 'K&B work location active',
+          backgroundMessage: 'Your location is shared with K&B admin only during this active shift. Tracking stops when you check out.',
+          requestPermissions: true,
+          stale: false,
+          distanceFilter: 10
+        }, (location, error) => {
+          if (cancelled) return;
+          if (error || !location) {
+            const reason = error?.code === 'NOT_AUTHORIZED' ? 'Location permission was turned off' : 'Phone location services are unavailable';
+            void nativeApiPost<{monitoring?:boolean;deadlineAt?:string;remainingSeconds?:number;reason?:string}>('/api/attendance/gps-lost', { reason })
+              .then(result => {
+                if (cancelled) return;
+                if (result.data.monitoring && result.data.deadlineAt) {
+                  setGpsDeadline(result.data.deadlineAt);
+                  const minutes = Math.max(0, Math.ceil(Number(result.data.remainingSeconds || 0) / 60));
+                  setGpsMessage('GPS is unavailable. Turn it back on within 15 minutes. About ' + minutes + ' minutes remain. Your shift stays active during this grace period.');
+                } else if (result.data.reason === 'holiday-exempt') setGpsMessage('GPS monitoring is paused for your pending/approved holiday date.');
+              })
+              .catch(() => { if (!cancelled) setGpsMessage('GPS status could not be checked. Restore location and internet access; contact an admin if this continues.'); });
+            return;
+          }
+          void nativeApiPost<{gpsRestored?:boolean}>('/api/locations', {
+            latitude: location.latitude,
+            longitude: location.longitude,
+            accuracy: location.accuracy,
+            capturedAt: new Date(location.time || Date.now()).toISOString(),
+            source: 'android-background-service'
+          }).then(async result => {
+            if (cancelled) return;
+            if (result.data.gpsRestored) {
+              setGpsDeadline(null);
+              setGpsMessage('GPS restored. Your shift continues normally, including while the screen is locked.');
+              await refresh();
+            } else setGpsMessage('Background GPS tracking is active. Android shows a persistent location notification while your shift is open.');
+          }).catch(() => { if (!cancelled) setGpsMessage('Background GPS is active, but the latest point could not reach the server. Check your internet connection.'); });
+        });
+        if (cancelled) await BackgroundGeolocation.removeWatcher({ id: watcher });
+        else {
+          watcherId = watcher;
+          setGpsMessage('Background GPS tracking is active. A persistent Android notification shows when your location is being shared.');
+        }
+      } catch {
+        if (!cancelled) setGpsMessage('Background GPS could not start. Allow precise location and notifications in Android settings, then reopen the app.');
+      }
+    };
+    void startBackgroundTracking();
+    return () => {
+      cancelled = true;
+      if (watcherId) void BackgroundGeolocation.removeWatcher({ id: watcherId });
+    };
+  }, [activeShift, admin, refresh]);
+
+  useEffect(() => {
+    if (!activeShift || admin || Capacitor.isNativePlatform() || !navigator.geolocation) return;
     let cancelled = false;
     let inFlight = false;
     const captureLocation = () => {
@@ -267,6 +331,11 @@ export default function StaffOperations({ session, customers, flash, compact = f
     setBusy(true);
     try {
       let coords: Record<string, number> = {};
+      if (action === 'check-in' && !window.confirm('K&B will share your live work location with authorised administrators while your shift is active. Android will show a persistent tracking notification. Tracking stops when you check out. Do you agree and want to start your shift?')) return;
+      if (action === 'check-in' && Capacitor.isNativePlatform()) {
+        const notificationPermission = await LocalNotifications.requestPermissions();
+        if (notificationPermission.display !== 'granted') throw new Error('Allow Android notifications so the app can show its visible location-tracking notification during your shift.');
+      }
       if (action === 'check-in' && navigator.geolocation) {
         try {
           const p = await new Promise<GeolocationPosition>((resolve, reject) => navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 9000, maximumAge: 30000 }));
@@ -423,7 +492,7 @@ export default function StaffOperations({ session, customers, flash, compact = f
     </section>
 
     {!admin && <section className="panel ops-panel">
-      <div className="ops-panel-head"><div><span className="eyebrow">ATTENDANCE</span><h2>My workday</h2><p>Record your shift start and finish. Work location is shared with Admin during an active shift while this app is open and location permission is granted. Sharing stops at checkout.</p></div><span className={'ops-pill ' + (activeShift ? 'is-live' : 'is-idle')}>{activeShift ? 'ON SHIFT' : myToday?.checkOutAt ? 'SHIFT COMPLETE' : 'OFF SHIFT'}</span></div>
+      <div className="ops-panel-head"><div><span className="eyebrow">ATTENDANCE</span><h2>My workday</h2><p>Record your shift start and finish. Work location is shared with authorised Admins during an active shift. On Android, background tracking continues with a persistent notification and stops at checkout.</p></div><span className={'ops-pill ' + (activeShift ? 'is-live' : 'is-idle')}>{activeShift ? 'ON SHIFT' : myToday?.checkOutAt ? 'SHIFT COMPLETE' : 'OFF SHIFT'}</span></div>
       <div className="ops-clock-row"><div><small>CHECK IN</small><strong>{myToday ? stamp(myToday.checkInAt) : 'Not checked in'}</strong></div><div><small>CHECK OUT</small><strong>{myToday?.checkOutAt ? stamp(myToday.checkOutAt) : '—'}</strong></div></div>
       <div className="ops-actions"><label className="ops-day-type">Attendance type <select value={dayType} disabled={!!myToday} onChange={e=>setDayType(e.target.value as 'Full day'|'Half day')}><option>Full day</option><option>Half day</option></select></label>{!myToday ? <button className="btn primary" disabled={busy} onClick={() => shift('check-in')}>Check in and start shift</button> : activeShift ? <button className="btn danger" disabled={busy} onClick={() => shift('check-out')}>Check out and end shift</button> : <span className="ops-complete">Today’s attendance is complete.</span>}</div>
       <p className="ops-gps-note">{gpsMessage}{gpsRemainingMinutes !== null ? ' Time remaining: about ' + gpsRemainingMinutes + ' minute(s).' : ''}</p>
@@ -438,7 +507,7 @@ export default function StaffOperations({ session, customers, flash, compact = f
     </section>}
 
     {admin && <section className="panel ops-panel">
-      <div className="ops-panel-head"><div><span className="eyebrow">TEAM VISIBILITY · LIVE</span><h2>Live staff locations</h2><p>Admin locations refresh every 15 seconds. Staff locations update about every 30 seconds while their shift is active and this app is open with location permission granted.</p></div><label className="ops-day-type">New shift type <select value={dayType} onChange={e=>setDayType(e.target.value as 'Full day'|'Half day')}><option>Full day</option><option>Half day</option></select></label><button className="btn secondary compact" onClick={refresh}>Refresh now</button></div>
+      <div className="ops-panel-head"><div><span className="eyebrow">TEAM VISIBILITY · LIVE</span><h2>Live staff locations</h2><p>Admin locations refresh every 15 seconds. Android staff devices use a visible background location service during active shifts; browser tracking works only while the page is open.</p></div><label className="ops-day-type">New shift type <select value={dayType} onChange={e=>setDayType(e.target.value as 'Full day'|'Half day')}><option>Full day</option><option>Half day</option></select></label><button className="btn secondary compact" onClick={refresh}>Refresh now</button></div>
       <div className="ops-location-list">{staff.map(member => {
         const loc = locations.find(item => item.userId === member.id);
         const shiftRecord = sortedAttendance.find(item => item.userId === member.id && item.workDate === today);
