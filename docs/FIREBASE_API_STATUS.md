@@ -31,7 +31,7 @@ The Cloud Functions HTTP entry point is `functions/src/index.ts`; the React API 
 - Android debug-APK workflow is ready but has not been run; add the required Firebase web config secrets first.
 
 ## Important setup requirements
-- Project ID is fixed to `kandb-net-service`; the browser client refuses to initialize against a different project.
+- Project ID is fixed to `kandb-net-sevice`; the browser client refuses to initialize against a different project.
 - Enable Firebase Authentication Email/Password.
 - Add the Firebase Web App configuration locally in `.env.local`.
 - Configure Functions secrets `ADMIN_BOOTSTRAP_SECRET` and `ADMIN_RECOVERY_CODE` before deploying Functions.
