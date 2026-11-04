@@ -29,7 +29,7 @@ The Cloud Functions HTTP entry point is `functions/src/index.ts`; the React API 
 - Validate the new administrator and attendance correction workflows against Firebase Auth / Firestore Emulator.
 - Native Android background GPS code is now added, but it still needs a successful APK build and real-device acceptance tests (screen locked, app backgrounded, GPS off/on, permission revoked, network loss, shift checkout and admin-start consent).
 - Add emulator-based API tests for admin and staff roles.
-- Run the Android APK workflow after the required GitHub Firebase config secrets are added.
+- Android debug APK workflow now builds on migration-branch changes using the public Firebase Web App config; the latest SDK setup attempt failed because Google's retired `tools` SDK package was requested, and the workflow has been corrected to install current SDK packages. Confirm the new run and download artifact after it passes.
 - Review and test the complete data migration process before importing any production records.
 
 ## Build verification
