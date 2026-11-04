@@ -51,6 +51,7 @@ Authentication and staff accounts; customers; plans; payments; dashboards; atten
 - [ ] Finish password-change flow, realtime chat transport, and full role/edge-case review.
 - [ ] Migrate and verify data.
 - [x] Add a GitHub Actions Functions typecheck workflow.
-- [ ] Add Capacitor Android build and CI.
+- [x] Add a manual GitHub Actions workflow to build a private Android debug APK.
+- [ ] Run the Android APK workflow after Firebase web configuration secrets are added.
 - [ ] Run Functions and frontend builds; fix all reported errors.
 - [ ] Test web and Android flows for admin and staff.
