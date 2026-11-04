@@ -1096,11 +1096,79 @@ export const api = onRequest(
         send(res, 200, { deleted: true }); return;
       }
 
-      const notMigrated = ['/api/subscriptions'];
-      if (notMigrated.some(base => path === base || path.startsWith(base + '/'))) {
-        logger.warn('API route not migrated yet', { method, path, role: user.role });
-        send(res,501,{error:'This feature is being migrated and is not available yet.'}); return;
+      if (path === '/api/subscriptions' && method === 'GET') {
+        const subscriptions = await list('subscriptions');
+        if (user.role === 'admin') {
+          send(res, 200, { items: subscriptions.sort((a, b) => String(b.startDate || '').localeCompare(String(a.startDate || ''))) }); return;
+        }
+        const customers = await list('customers');
+        const assignedCustomerIds = new Set(customers.filter(item => item.assignedTo === user.uid).map(item => item.id));
+        send(res, 200, { items: subscriptions.filter(item => assignedCustomerIds.has(String(item.customerId))).sort((a, b) => String(b.startDate || '').localeCompare(String(a.startDate || ''))) }); return;
       }
+      if (path === '/api/subscriptions' && method === 'POST') {
+        if (!allow(user, ['admin', 'staff'], res)) return;
+        const customerId = clean(body.customerId, 128), customer = await getDoc('customers', customerId);
+        const plan = clean(body.plan, 100), startDate = clean(body.startDate, 10), endDate = clean(body.endDate, 10);
+        const amount = money(body.amount), paymentStatus = body.paymentStatus === 'Paid' ? 'Paid' : 'Pending';
+        const paidAt = clean(body.paidAt, 10), paymentMethod = clean(body.paymentMethod, 40);
+        if (!customer || !plan || !isValidDateKey(startDate) || !isValidDateKey(endDate) || endDate < startDate || !validMoney(amount) || amount <= 0) {
+          send(res, 400, { error: 'Choose a customer and plan, enter valid start/end dates and a renewal amount.' }); return;
+        }
+        if (user.role === 'staff' && customer.assignedTo !== user.uid) {
+          send(res, 403, { error: 'You can renew only customers assigned to you.' }); return;
+        }
+        if (paymentStatus === 'Paid' && (!isValidDateKey(paidAt) || !paymentMethod)) {
+          send(res, 400, { error: 'A paid renewal needs a valid payment date and payment method.' }); return;
+        }
+        const existing = (await list('subscriptions')).filter(item => item.customerId === customerId && !['Cancelled', 'Expired'].includes(String(item.status)));
+        if (existing.some(item => String(item.startDate) <= endDate && String(item.endDate) >= startDate)) {
+          send(res, 409, { error: 'This renewal overlaps an existing active subscription. Check the current expiry date first.' }); return;
+        }
+        const subscriptionRef = db.collection('subscriptions').doc();
+        const paymentRef = paymentStatus === 'Paid' ? db.collection('payments').doc() : null;
+        const createdAt = now();
+        const record = {
+          customerId, customerName: clean(customer.name, 100), plan, startDate, endDate, amount,
+          status: 'Active', paymentStatus, createdAt, createdBy: user.uid, createdByName: user.displayName,
+          paidAt: paymentStatus === 'Paid' ? paidAt : '', paymentMethod: paymentStatus === 'Paid' ? paymentMethod : ''
+        };
+        await db.runTransaction(async transaction => {
+          const customerRef = db.collection('customers').doc(customerId);
+          const latestCustomer = await transaction.get(customerRef);
+          if (!latestCustomer.exists) throw new Error('Customer no longer exists.');
+          transaction.create(subscriptionRef, record);
+          const currentDueDate = String(latestCustomer.data()?.dueDate || '');
+          const customerPatch: Data = { plan, updatedAt: createdAt };
+          if (!currentDueDate || endDate >= currentDueDate) customerPatch.dueDate = endDate;
+          transaction.update(customerRef, customerPatch);
+          if (paymentRef) transaction.create(paymentRef, {
+            customerId, customerName: clean(customer.name, 100), amount, method: paymentMethod, paidAt,
+            month: paidAt.slice(0, 7), recordedBy: user.uid, recordedByName: user.displayName,
+            createdAt, subscriptionId: subscriptionRef.id
+          });
+        });
+        await audit(user, 'CREATE', 'subscription', subscriptionRef.id, 'Created ' + plan + ' renewal for ' + clean(customer.name, 100));
+        send(res, 201, { id: subscriptionRef.id, ...record, paymentId: paymentRef?.id || null }); return;
+      }
+      if (path.startsWith('/api/subscriptions/')) {
+        if (!allow(user, ['admin'], res)) return;
+        const id = routeId(path, '/api/subscriptions'), existing = await getDoc('subscriptions', id);
+        if (!existing) { send(res, 404, { error: 'Subscription not found.' }); return; }
+        if (method === 'PUT') {
+          const status = clean(body.status, 20);
+          if (!['Active', 'Pending', 'Expired', 'Cancelled'].includes(status)) {
+            send(res, 400, { error: 'Choose Active, Pending, Expired or Cancelled.' }); return;
+          }
+          await db.collection('subscriptions').doc(id).update({ status, notes: clean(body.notes, 500), updatedAt: now(), updatedBy: user.uid });
+          await audit(user, 'UPDATE', 'subscription', id, 'Changed renewal status to ' + status);
+          send(res, 200, { updated: true }); return;
+        }
+        if (method === 'DELETE') {
+          send(res, 405, { error: 'Renewal history is preserved. Change the status to Cancelled instead.' }); return;
+        }
+      }
+
+      const notMigrated: string[] = [];
       send(res,404,{error:'This API route was not found.'});
     } catch (error: any) {
       logger.error('API request failed', { message: error?.message || String(error) });
