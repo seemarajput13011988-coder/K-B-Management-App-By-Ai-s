@@ -505,7 +505,7 @@ service cloud.firestore {
         && request.resource.data.actorId == request.auth.uid
         && request.resource.data.actorName is string
         && request.resource.data.action is string
-        && request.resource.data.entityType in ['inventory-item', 'expense', 'payroll', 'invoice_batch', 'invoice']
+        && request.resource.data.entityType in ['inventory-item', 'expense', 'payroll', 'invoice_batch', 'invoice', 'staff_registration_request']
         && request.resource.data.entityId is string
         && request.resource.data.description is string
         && request.resource.data.createdAt is string;
@@ -582,6 +582,99 @@ service cloud.firestore {
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['voidedAt', 'voidedBy'])
         && request.resource.data.voidedAt is string
         && request.resource.data.voidedBy == request.auth.uid;
+      allow delete: if false;
+    }
+
+
+    function validStaffRegistration(data, requestId) {
+      return data.keys().hasOnly([
+          'userId', 'userIdLower', 'displayName', 'phone', 'reason',
+          'status', 'createdAt', 'requestId', 'statusId',
+          'reviewedAt', 'reviewedBy', 'reviewedByName', 'approvedUserId'
+        ])
+        && data.userId is string && data.userId.matches('^[A-Za-z0-9_-]{3,32}
+    // Spark rules and direct Firestore data paths are implemented.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
+)
+        && data.userIdLower == requestId
+        && data.displayName is string && data.displayName.size() > 0 && data.displayName.size() <= 80
+        && data.phone is string && data.phone.size() <= 30
+        && data.reason is string && data.reason.size() <= 300
+        && data.status in ['pending', 'approved', 'rejected']
+        && data.createdAt is string
+        && data.requestId is string && data.requestId.matches('^[a-f0-9]{48}
+    // Spark rules and direct Firestore data paths are implemented.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
+)
+        && data.statusId is string && data.statusId.matches('^[a-f0-9]{48}
+    // Spark rules and direct Firestore data paths are implemented.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
+);
+    }
+
+    match /staff_registration_requests/{requestId} {
+      allow get, list: if isAdmin();
+      allow create: if request.auth == null
+        && validStaffRegistration(request.resource.data, requestId)
+        && request.resource.data.status == 'pending';
+      allow update: if (
+          request.auth == null
+          && resource.data.status == 'rejected'
+          && validStaffRegistration(request.resource.data, requestId)
+          && request.resource.data.status == 'pending'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'userId', 'userIdLower', 'displayName', 'phone', 'reason', 'status',
+            'createdAt', 'requestId', 'statusId', 'reviewedAt', 'reviewedBy',
+            'reviewedByName', 'approvedUserId'
+          ])
+        ) || (
+          isAdmin()
+          && resource.data.status == 'pending'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'status', 'reviewedAt', 'reviewedBy', 'reviewedByName', 'approvedUserId'
+          ])
+          && request.resource.data.status in ['approved', 'rejected']
+          && request.resource.data.reviewedAt is string
+          && request.resource.data.reviewedBy == request.auth.uid
+          && request.resource.data.reviewedByName is string
+          && (request.resource.data.status != 'approved' || request.resource.data.approvedUserId is string)
+        );
+      allow delete: if false;
+    }
+
+    match /staff_registration_status/{trackingCode} {
+      allow get: if true;
+      allow list: if false;
+      allow create: if request.auth == null
+        && request.resource.data.keys().hasOnly(['requestId', 'status', 'createdAt'])
+        && request.resource.data.requestId is string
+        && request.resource.data.requestId.matches('^[a-f0-9]{48}
+    // Spark rules and direct Firestore data paths are implemented.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
+)
+        && request.resource.data.status == 'pending'
+        && request.resource.data.createdAt is string;
+      allow update: if isAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'reviewedAt', 'reviewedByName'])
+        && request.resource.data.status in ['approved', 'rejected']
+        && request.resource.data.reviewedAt is string
+        && request.resource.data.reviewedByName is string;
       allow delete: if false;
     }
 
