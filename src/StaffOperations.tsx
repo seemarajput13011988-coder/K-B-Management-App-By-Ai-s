@@ -53,7 +53,7 @@ function AttendanceCalendar({ staffId, staffName, records, holidays }: { staffId
   </div>;
 }
 
-export default function StaffOperations({ session, customers, flash, compact = false, onDataChanged }: { session: Session; customers: Array<{ id: string; name: string }>; flash: (message: string) => void; compact?: boolean; onDataChanged?: () => void }) {
+export default function StaffOperations({ session, customers, flash, compact = false, onDataChanged }: { session: Session; customers: Array<{ id: string; name: string; assignedTo?: string }>; flash: (message: string) => void; compact?: boolean; onDataChanged?: () => void }) {
   const admin = session.user.role === 'admin';
   const superAdmin = admin && session.user.isSuperAdmin === true;
   const [attendance, setAttendance] = useState<Attendance[]>([]);
@@ -592,7 +592,24 @@ export default function StaffOperations({ session, customers, flash, compact = f
 
     {admin && <section className="panel ops-panel">
       <div className="ops-panel-head"><div><span className="eyebrow">TEAM ATTENDANCE</span><h2>Individual staff calendars</h2><p>Green is full day, yellow is half day, red is absent. Sundays are weekly off by default; pending and approved holidays are marked separately.</p></div></div>
-      <div className="attendance-calendar-list">{staff.map(member=><details className="staff-calendar-accordion" key={member.id}><summary><span className="avatar">{member.displayName.slice(0,2).toUpperCase()}</span><span><b>{member.displayName}</b><small>{attendance.filter(item=>item.userId===member.id).length} attendance records · Tap to view calendar</small></span><span className="staff-calendar-chevron">⌄</span></summary><AttendanceCalendar staffId={member.id} staffName={member.displayName} records={attendance} holidays={holidays}/></details>)}</div>
+      <div className="attendance-calendar-list">{staff.map(member=>{
+        const memberRecords=attendance.filter(item=>item.userId===member.id);
+        const memberDays=memberRecords.filter(item=>item.dayType!=='Absent').reduce((sum,item)=>sum+(item.dayType==='Half day'?0.5:1),0);
+        const memberPayments=payments.filter(item=>item.recordedBy===member.id);
+        const memberCollected=memberPayments.reduce((sum,item)=>sum+Number(item.amount||0),0);
+        const todayRecord=memberRecords.find(item=>item.workDate===today);
+        const todayStatus=todayRecord?.dayType==='Absent'?'Absent':todayRecord?.checkOutAt?'Completed':todayRecord?'On shift':'Not started';
+        return <details className="staff-calendar-accordion" key={member.id}>
+          <summary><span className="avatar">{member.displayName.slice(0,2).toUpperCase()}</span><span><b>{member.displayName}</b><small>{memberRecords.length} attendance records · Tap to view staff details</small></span><span className="staff-calendar-chevron">⌄</span></summary>
+          <div className="staff-calendar-profile">
+            <span><small>Assigned customers</small><b>{customers.filter(item=>item.assignedTo===member.id).length}</b></span>
+            <span><small>Attendance days</small><b>{memberDays.toLocaleString('en-IN')}</b></span>
+            <span><small>Collections recorded</small><b>₹{memberCollected.toLocaleString('en-IN')}</b></span>
+            <span><small>Today's attendance</small><b>{todayStatus}</b></span>
+          </div>
+          <AttendanceCalendar staffId={member.id} staffName={member.displayName} records={attendance} holidays={holidays}/>
+        </details>;
+      })}</div>
       {!staff.length && <p className="ops-empty">Staff calendars will appear after staff accounts are added.</p>}
     </section>}
 
