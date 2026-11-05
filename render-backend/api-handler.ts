@@ -606,7 +606,7 @@ export export async function apiHandler(req: any, res: any) {
       if (path.startsWith('/api/inventory/') && path.endsWith('/movements') && ['GET','POST'].includes(method)) {
         const user=await requireUser(req);
         if (!user) { send(res,401,{error:'Your session has expired. Please sign in again.'}); return; }
-        const id=decodeURIComponent(path.slice('/api/inventory/'.length,-'/movements'.length).replace(/\\/$/,''));
+        const id=decodeURIComponent(path.slice('/api/inventory/'.length,-'/movements'.length).replace(/\/$/,''));
         const itemRef=db.collection('inventory').doc(id), itemSnap=await itemRef.get();
         if (!itemSnap.exists) { send(res,404,{error:'Inventory item not found.'}); return; }
         if (method==='GET') {
