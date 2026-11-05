@@ -71,6 +71,30 @@ jobs:
             echo "::error::Expected GPS-loss route to exist and require authentication (401), received HTTP $status."
             exit 1
           fi
+          status=$(curl --silent --show-error --max-time 30 -o /tmp/kb-registration.json -w '%{http_code}' -X POST "$base/api/staff-registration-requests" -H 'Content-Type: application/json' --data '{}')
+          if [ "$status" != "400" ]; then
+            cat /tmp/kb-registration.json
+            echo "::error::Expected public staff registration route to validate input (400), received HTTP $status."
+            exit 1
+          fi
+          status=$(curl --silent --show-error --max-time 30 -o /tmp/kb-registration.json -w '%{http_code}' "$base/api/staff-registration-requests/status")
+          if [ "$status" != "400" ]; then
+            cat /tmp/kb-registration.json
+            echo "::error::Expected registration status route to require a tracking code (400), received HTTP $status."
+            exit 1
+          fi
+          status=$(curl --silent --show-error --max-time 30 -o /tmp/kb-registration.json -w '%{http_code}' "$base/api/staff-registration-requests")
+          if [ "$status" != "401" ]; then
+            cat /tmp/kb-registration.json
+            echo "::error::Expected admin registration list to require authentication (401), received HTTP $status."
+            exit 1
+          fi
+          status=$(curl --silent --show-error --max-time 30 -o /tmp/kb-registration.json -w '%{http_code}' -X PUT "$base/api/staff-registration-requests/__smoke__" -H 'Content-Type: application/json' --data '{}')
+          if [ "$status" != "401" ]; then
+            cat /tmp/kb-registration.json
+            echo "::error::Expected registration review route to require admin authentication (401), received HTTP $status."
+            exit 1
+          fi
           status=$(curl --silent --show-error --retry 5 --retry-delay 5 --retry-all-errors --max-time 60 -o /tmp/kb-login-probe.json -w '%{http_code}' -X POST "$base/api/auth/login" -H 'Content-Type: application/json' --data '{"userId":"__kb_firestore_health_probe__","password":"not-a-real-password"}')
           if [ "$status" != "401" ]; then
             cat /tmp/kb-login-probe.json
