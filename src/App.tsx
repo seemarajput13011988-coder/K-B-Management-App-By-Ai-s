@@ -38,7 +38,7 @@ import {
   Pencil,
   Trash2,
   Eye,
-  ShieldCheck, KeyRound, BarChart3, LogOut, UserPlus, UserRound, LockKeyhole,
+  ShieldCheck, KeyRound, BarChart3, LogOut, UserPlus, UserRound, LockKeyhole, ReceiptText,
 } from 'lucide-react';
 
 type Session={token:string;expiresAt:number;user:{id:string;userId:string;displayName:string;role:'admin'|'staff';active:boolean;canManageAdmins?:boolean}};
