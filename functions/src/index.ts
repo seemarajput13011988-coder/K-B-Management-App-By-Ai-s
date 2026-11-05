@@ -8,7 +8,7 @@ import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { onDocumentCreated } from 'firebase-functions/v2/firestore';
 import { logger } from 'firebase-functions';
 import { defineSecret } from 'firebase-functions/params';
-import { buildCustomerLedger, calculateInventoryBalance, gpsGracePeriodExpired, hasOverlappingSubscription, isConfirmedGpsLossReason, hasAdminManagementAccess, isValidDateKey, isValidDateRange, routePath, subscriptionExpiryKind, taskReminderKind } from './route-path.js';
+import { buildCustomerLedger, calculateInventoryBalance, gpsGracePeriodExpired, hasOverlappingSubscription, isConfirmedGpsLossReason, hasAdminManagementAccess, isValidDateKey, isValidDateRange, routePath, subscriptionExpiryKind, taskReminderKind, isSixMonthReviewDue } from './route-path.js';
 
 initializeApp();
 const auth = getAuth();
@@ -78,6 +78,49 @@ async function audit(user: AppUser, action: string, entityType: string, entityId
 async function staffFor(userId: string): Promise<Data | null> {
   return getDoc('users', userId);
 }
+
+const RETENTION_REVIEW_COLLECTIONS: Record<string, string> = {
+  plans: 'Plans',
+  customers: 'Customers',
+  payments: 'Payments',
+  complaints: 'Complaints',
+  tasks: 'Tasks',
+  attendance: 'Attendance',
+  locations: 'Location records',
+  announcements: 'Announcements',
+  messages: 'Messages',
+  chat_groups: 'Chat groups',
+  group_messages: 'Group messages',
+  expenses: 'Expenses',
+  visits: 'Field visits',
+  invoices: 'Invoices',
+  payroll: 'Payroll records',
+  inventory: 'Inventory items',
+  inventory_movements: 'Inventory movements',
+  inventory_skus: 'Inventory SKUs',
+  installations: 'Installations',
+  subscriptions: 'Subscriptions',
+  holiday_requests: 'Holiday requests',
+};
+
+function retentionCreatedAt(data: Data, createTime?: any): string {
+  const raw = data.savedAt ?? data.createdAt ?? data.createdOn;
+  if (raw && typeof raw.toDate === 'function') {
+    const date = raw.toDate();
+    if (date instanceof Date && Number.isFinite(date.getTime())) return date.toISOString();
+  }
+  if (typeof raw === 'string' && Number.isFinite(Date.parse(raw))) return new Date(raw).toISOString();
+  const fallback = createTime && typeof createTime.toDate === 'function' ? createTime.toDate() : null;
+  return fallback instanceof Date && Number.isFinite(fallback.getTime()) ? fallback.toISOString() : '';
+}
+
+function retentionRecordLabel(data: Data, id: string): string {
+  for (const key of ['name', 'title', 'customerName', 'subject', 'itemName', 'sku', 'description']) {
+    if (typeof data[key] === 'string' && data[key].trim()) return clean(data[key], 100);
+  }
+  return id;
+}
+
 const defaultPlans = [
   { id: 'default-plan-1', name: 'RailWire 30 Mbps', provider: 'RailWire', speed: '30 Mbps', data: '1.5 TB', price: 549, note: 'Popular home plan', connectionType: 'Fiber', featured: true, active: true },
   { id: 'default-plan-2', name: 'RailWire 50 Mbps', provider: 'RailWire', speed: '50 Mbps', data: '2 TB', price: 699, note: 'For multiple devices', connectionType: 'Fiber', featured: false, active: true },
@@ -492,6 +535,51 @@ export const api = onRequest(
           await audit(user, 'DELETE', 'plan', id, 'Deleted plan ' + String(existing.name));
           send(res, 200, { deleted: true }); return;
         }
+      }
+
+
+      // Six-month retention is review-only: nothing is deleted by a scheduled job.
+      // System identity, session, notification and audit collections are intentionally excluded.
+      if (path === '/api/retention/review' && method === 'GET') {
+        if (!allow(user, ['admin'], res)) return;
+        const collections = Object.entries(RETENTION_REVIEW_COLLECTIONS);
+        const groups = await Promise.all(collections.map(async ([collection, collectionLabel]) => {
+          const snapshot = await db.collection(collection).limit(1000).get();
+          return snapshot.docs.flatMap(document => {
+            const data = document.data();
+            const createdAt = retentionCreatedAt(data, document.createTime);
+            if (!isSixMonthReviewDue(createdAt)) return [];
+            return [{
+              id: document.id,
+              collection,
+              collectionLabel,
+              recordLabel: retentionRecordLabel(data, document.id),
+              createdAt,
+            }];
+          });
+        }));
+        const items = groups.flat().sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+        send(res, 200, { items, count: items.length, automaticDeletion: false }); return;
+      }
+      if (path === '/api/retention/review/delete' && method === 'POST') {
+        if (!allow(user, ['admin'], res)) return;
+        const collection = clean(body.collection, 60);
+        const id = clean(body.id, 160);
+        if (!Object.prototype.hasOwnProperty.call(RETENTION_REVIEW_COLLECTIONS, collection) || !id || body.confirmDelete !== true) {
+          send(res, 400, { error: 'Choose a listed record and explicitly confirm its deletion.' }); return;
+        }
+        const ref = db.collection(collection).doc(id);
+        const snapshot = await ref.get();
+        if (!snapshot.exists) { send(res, 404, { error: 'This record no longer exists.' }); return; }
+        const data = snapshot.data() || {};
+        const createdAt = retentionCreatedAt(data, snapshot.createTime);
+        if (!isSixMonthReviewDue(createdAt)) {
+          send(res, 409, { error: 'This record has not reached the six-month review date.' }); return;
+        }
+        const label = retentionRecordLabel(data, id);
+        await ref.delete();
+        await audit(user, 'DELETE_AFTER_ADMIN_REVIEW', collection, id, 'Admin confirmed deletion of ' + RETENTION_REVIEW_COLLECTIONS[collection] + ' record: ' + label);
+        send(res, 200, { deleted: true, collection, id }); return;
       }
 
       if (path === '/api/customers' && method === 'GET') {
