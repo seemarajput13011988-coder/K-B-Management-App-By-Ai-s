@@ -816,6 +816,14 @@ export const handler = router({
     return json({ items: Array.from(latestLocationByStaff.values()) });
   }),
 
+  'GET /api/locations/history': protectedRoute(['admin'], async () => {
+    const result = await db.list<Record<string, unknown>>('locations', { limit: 1000 });
+    const items = result.items
+      .sort((a, b) => String(b.capturedAt || '').localeCompare(String(a.capturedAt || '')))
+      .slice(0, 300);
+    return json({ items });
+  }),
+
   'POST /api/locations': protectedRoute(['staff'], async ({ body }, user) => {
     const input = (body || {}) as Record<string, unknown>;
     const latitude = Number(input.latitude);
