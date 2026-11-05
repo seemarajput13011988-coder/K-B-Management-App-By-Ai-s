@@ -73,9 +73,10 @@ export default function CalendarWorkspace({ tasks, attendance, isAdmin }: Props)
       <div className="calendar-toolbar">
         <div><span className="calendar-eyebrow"><CalendarDays size={14}/> WORK PLANNER</span><h2>{monthLabel}</h2><p>Tasks due dates and recorded team attendance in one calendar.</p></div>
         <div className="calendar-controls">
-          <button type="button" onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))} aria-label="Previous month"><ChevronLeft size={18}/></button>
+          <button type="button" onClick={() => { const next = new Date(month.getFullYear(), month.getMonth() - 1, 1); setMonth(next); setSelected(keyOf(next)); }} aria-label="Previous month"><ChevronLeft size={18}/></button>
+          <input className="calendar-month-picker" type="month" aria-label="Choose calendar month and year" value={month.getFullYear() + '-' + String(month.getMonth() + 1).padStart(2, '0')} onChange={event => { if (!event.target.value) return; const [year, monthNumber] = event.target.value.split('-').map(Number); const next = new Date(year, monthNumber - 1, 1); setMonth(next); setSelected(keyOf(next)); }} />
           <button type="button" onClick={() => { const now = new Date(); setMonth(new Date(now.getFullYear(), now.getMonth(), 1)); setSelected(keyOf(now)); }}>Today</button>
-          <button type="button" onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))} aria-label="Next month"><ChevronRight size={18}/></button>
+          <button type="button" onClick={() => { const next = new Date(month.getFullYear(), month.getMonth() + 1, 1); setMonth(next); setSelected(keyOf(next)); }} aria-label="Next month"><ChevronRight size={18}/></button>
         </div>
       </div>
       <div className="calendar-summary"><span><i className="calendar-dot task-dot"/> {monthTaskCount} task due dates</span><span><i className="calendar-dot attendance-dot"/> {monthAttendanceCount} attendance records</span></div>
