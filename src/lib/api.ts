@@ -126,14 +126,16 @@ function firebaseSignInError(error: unknown): Error {
   return result;
 }
 
-export async function signInAppUser(userId: string, password: string) {
+export async function signInAppUser(userId: string, password: string, role: 'admin' | 'staff') {
   if (!firebaseAuth) throw new Error('Firebase is not configured in this APK. Rebuild it with the Web App settings for project kandb-net-sevice.');
-  const id = userId.trim().toLowerCase();
-  if (!id) throw new Error('Enter your user ID.');
+  // Admins enter their complete Firebase Authentication email. Do not alter it.
+  // Staff keep the existing username-to-email mapping for backward compatibility.
+  const email = role === 'admin' ? userId : userId.trim().toLowerCase() + '@' + ACCOUNT_DOMAIN;
+  if (!email) throw new Error(role === 'admin' ? 'Enter your admin email address.' : 'Enter your staff user ID.');
   try {
     // Keep the Firebase session available after Android closes and reopens the app.
     await setPersistence(firebaseAuth, browserLocalPersistence);
-    await signInWithEmailAndPassword(firebaseAuth, id + '@' + ACCOUNT_DOMAIN, password);
+    await signInWithEmailAndPassword(firebaseAuth, email, password);
   } catch (error) {
     throw firebaseSignInError(error);
   }
