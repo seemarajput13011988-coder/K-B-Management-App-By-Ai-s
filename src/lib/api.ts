@@ -1,7 +1,8 @@
 import { CapacitorHttp } from '@capacitor/core';
-import { browserLocalPersistence, EmailAuthProvider, onAuthStateChanged, reauthenticateWithCredential, setPersistence, signInWithEmailAndPassword, signOut } from 'firebase/auth';
+import { deleteApp, initializeApp } from 'firebase/app';
+import { browserLocalPersistence, createUserWithEmailAndPassword, deleteUser, EmailAuthProvider, getAuth, onAuthStateChanged, reauthenticateWithCredential, setPersistence, signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, limit, orderBy, query, runTransaction, setDoc, updateDoc, where, writeBatch } from 'firebase/firestore';
-import { firebaseAuth, firestore } from './firebase';
+import { firebaseApp, firebaseAuth, firestore } from './firebase';
 
 const API_BASE = import.meta.env.VITE_FIREBASE_FUNCTIONS_URL || 'https://asia-south1-kandb-net-sevice.cloudfunctions.net/api';
 const ACCOUNT_DOMAIN = 'accounts.kandbnetservice.in';
@@ -672,6 +673,105 @@ async function requestInstallations<T = any>(path: string, method: string, paylo
 }
 
 
+
+async function requestStaff<T = any>(path: string, method: string, payload?: Record<string, unknown>): Promise<ApiResult<T>> {
+  if (!firebaseAuth?.currentUser || !firestore) throw new Error('Please sign in again to continue.');
+  const db = firestore;
+  const user = firebaseAuth.currentUser;
+  const profile = await getAppUserProfile();
+  if (profile.role !== 'admin') throw new Error('Only administrators can manage staff accounts.');
+  const base = '/api/staff';
+  const clean = (value: unknown, max: number) => String(value ?? '').trim().slice(0, max);
+  const p = path.split('?')[0];
+  const suffix = p.startsWith(base + '/') ? p.slice(base.length + 1) : '';
+  const reset = suffix.endsWith('/reset-password');
+  const id = reset ? suffix.slice(0, -'/reset-password'.length) : suffix;
+  const users = collection(db, 'users');
+
+  if (method === 'GET' && p === base) {
+    const snapshot = await getDocs(query(users, where('role', '==', 'staff')));
+    const items = snapshot.docs.map(item => ({ id: item.id, ...item.data() }))
+      .sort((a: any, b: any) => String(a.displayName || '').localeCompare(String(b.displayName || '')));
+    return { data: { items } as T };
+  }
+
+  if (method === 'POST' && p === base) {
+    const userId = clean(payload?.userId, 32), displayName = clean(payload?.displayName, 80);
+    const password = typeof payload?.password === 'string' ? payload.password : '';
+    if (!/^[a-zA-Z0-9_-]{3,32}$/.test(userId) || !displayName || password.length < 10) {
+      throw new Error('Enter a 3–32 character staff ID, name and password of at least 10 characters.');
+    }
+    const existing = await getDocs(users);
+    if (existing.docs.some(item => String(item.data().userId || '').toLowerCase() === userId.toLowerCase())) {
+      throw new Error('That staff ID is already in use.');
+    }
+    if (!firebaseApp) throw new Error('Firebase is not configured in this app.');
+    const email = userId.toLowerCase() + '@' + ACCOUNT_DOMAIN;
+    const secondaryApp = initializeApp(firebaseApp.options, 'kb-staff-create-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8));
+    const secondaryAuth = getAuth(secondaryApp);
+    let createdUser: Awaited<ReturnType<typeof createUserWithEmailAndPassword>>['user'] | null = null;
+    const record = {
+      userId, displayName, role: 'staff', active: true,
+      createdAt: new Date().toISOString(), createdBy: user.uid,
+    };
+    try {
+      const credential = await createUserWithEmailAndPassword(secondaryAuth, email, password);
+      createdUser = credential.user;
+      await setDoc(doc(db, 'users', createdUser.uid), record);
+      await signOut(secondaryAuth);
+      return { data: { user: { id: createdUser.uid, ...record } } as T };
+    } catch (error) {
+      if (createdUser) await deleteUser(createdUser).catch(() => undefined);
+      throw error;
+    } finally {
+      await deleteApp(secondaryApp).catch(() => undefined);
+    }
+  }
+
+  if (!id) throw new Error('Choose a valid staff account.');
+  const staffRef = doc(db, 'users', id);
+  const staffSnapshot = await getDoc(staffRef);
+  if (!staffSnapshot.exists() || staffSnapshot.data().role !== 'staff') throw new Error('Staff account not found.');
+  const target = staffSnapshot.data();
+
+  if (reset && method === 'POST') {
+    throw new Error('Firebase Spark cannot reset another user’s password from this app. The account owner must change it, or an authorized project owner must use Firebase Authentication.');
+  }
+
+  if (method === 'PUT') {
+    if (payload?.userId !== undefined) {
+      throw new Error('Changing another staff member’s login ID requires privileged Firebase Authentication access, which is not available on the Spark client-only plan.');
+    }
+    const patch: Record<string, unknown> = {};
+    if (payload?.displayName !== undefined) {
+      const displayName = clean(payload.displayName, 80);
+      if (!displayName) throw new Error('Enter a valid staff name.');
+      patch.displayName = displayName;
+    }
+    if (typeof payload?.active === 'boolean') patch.active = payload.active;
+    if (!Object.keys(patch).length) throw new Error('There are no supported staff profile changes to save.');
+    await updateDoc(staffRef, patch);
+    return { data: { updated: true } as T };
+  }
+
+  if (method === 'DELETE') {
+    const assigned = await getDocs(query(collection(db, 'customers'), where('assignedTo', '==', id)));
+    const records = assigned.docs;
+    const firstBatch = writeBatch(db);
+    firstBatch.update(staffRef, { active: false });
+    records.slice(0, 450).forEach(customer => firstBatch.update(customer.ref, { assignedTo: '', assignedToName: '' }));
+    await firstBatch.commit();
+    for (let offset = 450; offset < records.length; offset += 450) {
+      const batch = writeBatch(db);
+      records.slice(offset, offset + 450).forEach(customer => batch.update(customer.ref, { assignedTo: '', assignedToName: '' }));
+      await batch.commit();
+    }
+    return { data: { deleted: true, unassignedCustomers: records.length, historyPreserved: true, authenticationAccountRetained: true } as T };
+  }
+
+  throw new Error('Unsupported staff account request.');
+}
+
 async function requestInventory<T = any>(path: string, method: string, payload?: Record<string, unknown>): Promise<ApiResult<T>> {
   if (!firebaseAuth?.currentUser || !firestore) throw new Error('Please sign in again to continue.');
   const user = firebaseAuth.currentUser;
@@ -860,6 +960,7 @@ async function request<T = any>(path: string, method: string, payload?: Record<s
   if (path.split('?')[0] === '/api/complaints' || path.split('?')[0].startsWith('/api/complaints/')) return requestComplaints<T>(path, method, payload);
   if (path.split('?')[0] === '/api/subscriptions' || path.split('?')[0].startsWith('/api/subscriptions/')) return requestSubscriptions<T>(path, method, payload);
   if (path.split('?')[0] === '/api/installations' || path.split('?')[0].startsWith('/api/installations/')) return requestInstallations<T>(path, method, payload);
+  if (path.split('?')[0] === '/api/staff' || path.split('?')[0].startsWith('/api/staff/')) return requestStaff<T>(path, method, payload);
   if (path.split('?')[0] === '/api/inventory' || path.split('?')[0].startsWith('/api/inventory/')) return requestInventory<T>(path, method, payload);
   if (path.split('?')[0] === '/api/holidays' || path.split('?')[0].startsWith('/api/holidays/')) return requestHolidays<T>(path, method, payload);
   if (path.split('?')[0].startsWith('/api/attendance') || path.split('?')[0] === '/api/locations' || path.split('?')[0] === '/api/locations/history') return requestAttendance<T>(path, method, payload);
