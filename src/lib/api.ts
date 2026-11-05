@@ -732,7 +732,6 @@ async function requestStaff<T = any>(path: string, method: string, payload?: Rec
   const staffRef = doc(db, 'users', id);
   const staffSnapshot = await getDoc(staffRef);
   if (!staffSnapshot.exists() || staffSnapshot.data().role !== 'staff') throw new Error('Staff account not found.');
-  const target = staffSnapshot.data();
 
   if (reset && method === 'POST') {
     throw new Error('Firebase Spark cannot reset another user’s password from this app. The account owner must change it, or an authorized project owner must use Firebase Authentication.');
