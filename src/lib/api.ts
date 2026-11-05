@@ -1098,6 +1098,73 @@ async function requestTeamOperations<T = any>(path: string, method: string, payl
   throw new Error('Unsupported team operations request.');
 }
 
+
+async function requestAdmins<T = any>(path: string, method: string, payload?: Record<string, unknown>): Promise<ApiResult<T>> {
+  if (!firebaseAuth?.currentUser || !firestore || !firebaseApp) throw new Error('Please sign in again to continue.');
+  const db = firestore, user = firebaseAuth.currentUser, profile = await getAppUserProfile();
+  if (profile.role !== 'admin' || profile.isSuperAdmin !== true) {
+    throw new Error('Only the primary Super Admin can create or manage administrator accounts.');
+  }
+  const base = '/api/admins', route = path.split('?')[0];
+  const id = route.startsWith(base + '/') ? decodeURIComponent(route.slice(base.length + 1)) : '';
+  const clean = (value: unknown, max: number) => String(value ?? '').trim().slice(0, max);
+  if (method === 'GET' && route === base) {
+    const snapshot = await getDocs(query(collection(db, 'users'), where('role', '==', 'admin')));
+    const items = snapshot.docs.map(item => ({ id: item.id, ...item.data() }))
+      .sort((x: any, y: any) => String(x.displayName || '').localeCompare(String(y.displayName || '')));
+    return { data: { items } as T };
+  }
+  if (method === 'POST' && route === base) {
+    const userId = clean(payload?.userId, 32), displayName = clean(payload?.displayName, 80);
+    const password = typeof payload?.password === 'string' ? payload.password : '';
+    if (!/^[a-zA-Z0-9_-]{3,32}$/.test(userId) || userId.toLowerCase() === 'brajraj' || !displayName || password.length < 12) {
+      throw new Error('Enter a unique admin ID, name and password with at least 12 characters.');
+    }
+    const users = await getDocs(collection(db, 'users'));
+    if (users.docs.some(item => String(item.data().userId || '').toLowerCase() === userId.toLowerCase())) {
+      throw new Error('That account ID is already in use.');
+    }
+    const email = userId.toLowerCase() + '@' + ACCOUNT_DOMAIN;
+    const secondaryApp = initializeApp(firebaseApp.options, 'kb-admin-create-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8));
+    const secondaryAuth = getAuth(secondaryApp);
+    let createdUser: Awaited<ReturnType<typeof createUserWithEmailAndPassword>>['user'] | null = null;
+    try {
+      const credential = await createUserWithEmailAndPassword(secondaryAuth, email, password);
+      createdUser = credential.user;
+      const record = {
+        userId, displayName, role: 'admin', isSuperAdmin: false,
+        active: true, createdAt: new Date().toISOString(), createdBy: user.uid,
+      };
+      await setDoc(doc(db, 'users', createdUser.uid), record);
+      await signOut(secondaryAuth);
+      return { data: { user: { id: createdUser.uid, ...record } } as T };
+    } catch (error) {
+      if (createdUser) await deleteUser(createdUser).catch(() => undefined);
+      throw error;
+    } finally {
+      await deleteApp(secondaryApp).catch(() => undefined);
+    }
+  }
+  if (!id) throw new Error('Choose an administrator account.');
+  const ref = doc(db, 'users', id), snapshot = await getDoc(ref);
+  if (!snapshot.exists() || snapshot.data().role !== 'admin') throw new Error('Administrator account not found.');
+  if (snapshot.data().isSuperAdmin === true || id === user.uid) {
+    throw new Error('The primary Super Admin account and your current account are protected.');
+  }
+  if (method === 'PUT') {
+    const displayName = payload?.displayName === undefined ? String(snapshot.data().displayName || '') : clean(payload.displayName, 80);
+    if (!displayName) throw new Error('Enter a valid administrator name.');
+    const active = typeof payload?.active === 'boolean' ? payload.active : snapshot.data().active === true;
+    await updateDoc(ref, { displayName, active });
+    return { data: { updated: true } as T };
+  }
+  if (method === 'DELETE') {
+    await updateDoc(ref, { active: false });
+    return { data: { deleted: true, authenticationAccountRetained: true } as T };
+  }
+  throw new Error('Unsupported administrator request.');
+}
+
 async function requestStaffRegistrations<T = any>(path: string, method: string, payload?: Record<string, unknown>): Promise<ApiResult<T>> {
   if (!firebaseAuth?.currentUser || !firestore) throw new Error('Please sign in again to continue.');
   const db = firestore, user = firebaseAuth.currentUser, profile = await getAppUserProfile();
@@ -1471,6 +1538,7 @@ async function request<T = any>(path: string, method: string, payload?: Record<s
   if (path.split('?')[0] === '/api/installations' || path.split('?')[0].startsWith('/api/installations/')) return requestInstallations<T>(path, method, payload);
   if (['/api/expenses', '/api/payroll', '/api/invoices', '/api/customer-ledger', '/api/audit'].some(route => path.split('?')[0] === route || path.split('?')[0].startsWith(route + '/'))) return requestFinance<T>(path, method, payload);
   if (['/api/announcements', '/api/messages', '/api/groups', '/api/visits', '/api/notifications'].some(route => path.split('?')[0] === route || path.split('?')[0].startsWith(route + '/'))) return requestTeamOperations<T>(path, method, payload);
+  if (path.split('?')[0] === '/api/admins' || path.split('?')[0].startsWith('/api/admins/')) return requestAdmins<T>(path, method, payload);
   if (path.split('?')[0] === '/api/staff-registration-requests' || path.split('?')[0].startsWith('/api/staff-registration-requests/')) return requestStaffRegistrations<T>(path, method, payload);
   if (path.split('?')[0] === '/api/staff' || path.split('?')[0].startsWith('/api/staff/')) return requestStaff<T>(path, method, payload);
   if (path.split('?')[0] === '/api/inventory' || path.split('?')[0].startsWith('/api/inventory/')) return requestInventory<T>(path, method, payload);
