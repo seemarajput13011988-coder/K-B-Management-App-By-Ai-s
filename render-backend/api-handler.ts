@@ -144,9 +144,13 @@ export async function apiHandler(req: any, res: any) {
       if (!userId || !password) { send(res, 400, { error: 'Enter your user ID and password.' }); return; }
       let matches = (await list('users')).filter(item => String(item.userId || '').toLowerCase() === userId.toLowerCase());
       const authPrincipal = userId.toLowerCase() === 'brajraj' ? 'primary-admin' : 'staff-or-secondary-admin';
-      const authTrace = (result: string, matchedAccounts = matches.length, bootstrapConfigured = Boolean((process.env.ADMIN_INITIAL_PASSWORD || '').length >= 10)) => {
+      const authTrace = (result: string, matchedAccounts = matches.length, bootstrapConfigured = Boolean((process.env.ADMIN_INITIAL_PASSWORD || '').length >= 10), existingAdminPresent?: boolean) => {
         // Never log usernames, passwords, hashes, salts, or request bodies.
-        console.info('[AUTH_DIAGNOSTIC]', JSON.stringify({ principal: authPrincipal, matchedAccounts, bootstrapConfigured, result }));
+        console.info('[AUTH_DIAGNOSTIC]', JSON.stringify({
+          principal: authPrincipal, matchedAccounts, bootstrapConfigured,
+          ...(typeof existingAdminPresent === 'boolean' ? { existingAdminPresent } : {}),
+          result,
+        }));
       };
 
       // Bootstrap the fixed owner account from a private one-time secret when it does not exist.
@@ -159,7 +163,8 @@ export async function apiHandler(req: any, res: any) {
           send(res, 503, { error: 'The primary admin account is not initialized. Complete the one-time owner password setup in the Render service environment.' }); return;
         }
         if (!equalSecret(password, initialPassword)) {
-          authTrace('owner-setup-password-mismatch', 0, true);
+          const existingAdmins = await db.collection('users').where('role', '==', 'admin').limit(1).get();
+          authTrace('owner-setup-password-mismatch', 0, true, !existingAdmins.empty);
           send(res, 401, { error: 'The admin username or password is incorrect.' }); return;
         }
         const ownerRef = db.collection('users').doc('admin-primary');
