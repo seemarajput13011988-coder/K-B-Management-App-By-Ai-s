@@ -38,9 +38,9 @@ jobs:
 
       - name: Configure Google service account
         env:
-          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_KANDB_NET_SEVICE }}
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_KANDB_NET_SEVICE || secrets.FIREBASE_SERVICE_ACCOUNT_KANDB_NET_SERVICE }}
         run: |
-          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON" || (echo "Missing GitHub secret: FIREBASE_SERVICE_ACCOUNT_KANDB_NET_SEVICE" && exit 1)
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON" || (echo "Missing or unavailable GitHub Actions secret. Expected FIREBASE_SERVICE_ACCOUNT_KANDB_NET_SEVICE or FIREBASE_SERVICE_ACCOUNT_KANDB_NET_SERVICE." && exit 1)
           printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/firebase-service-account.json"
           echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/firebase-service-account.json" >> "$GITHUB_ENV"
 
