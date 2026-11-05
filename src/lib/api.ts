@@ -1,6 +1,6 @@
 import { CapacitorHttp } from '@capacitor/core';
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_FIREBASE_FUNCTIONS_URL || 'https://asia-south1-kandb-net-sevice.cloudfunctions.net/api';
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'https://kandb-management-nexus-api-zv7f.onrender.com';
 type ApiResult<T = any> = { data: T };
 type LocalSession = { token: string; expiresAt: number; user: { id: string; userId: string; displayName: string; role: 'admin'|'staff'; active: boolean; canManageAdmins?: boolean } };
 function storedToken(): string {
@@ -26,7 +26,7 @@ async function request<T = any>(path: string, method: string, payload?: Record<s
   try { data = responseText ? JSON.parse(responseText) : {}; } catch { data = {}; }
   if (!response.ok) {
     if (typeof data.error === 'string' && data.error.trim()) throw new Error(data.error);
-    throw new Error(`K&B server returned HTTP ${response.status}. Check the Cloud Functions deployment.`);
+    throw new Error(`K&B server returned HTTP ${response.status}. Check that the K&B API service is available.`);
   }
   return { data };
 }
