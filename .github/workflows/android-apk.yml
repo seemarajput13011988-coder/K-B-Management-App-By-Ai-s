@@ -1,4 +1,5 @@
 name: Build private Android APK
+# Layout and frontend changes must always produce a fresh installable APK.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
