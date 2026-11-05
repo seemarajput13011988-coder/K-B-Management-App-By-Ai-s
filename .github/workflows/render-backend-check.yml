@@ -111,6 +111,14 @@ jobs:
             echo "::error::Expected a 404 unknown-account response from the Firestore-backed login lookup probe, received HTTP $status."
             exit 1
           fi
+          # A deliberately wrong password checks only whether the fixed owner record exists.
+          # The API logs a credential-free diagnostic branch; this probe can never authenticate.
+          status=$(curl --silent --show-error --max-time 30 -o /tmp/kb-owner-probe.json -w '%{http_code}' -X POST "$base/api/auth/login" -H 'Content-Type: application/json' --data '{"userId":"Brajraj","password":"__kb_nonmatching_probe__"}')
+          if [ "$status" != "401" ]; then
+            cat /tmp/kb-owner-probe.json
+            echo "::error::Expected the fixed owner lookup probe to reject the deliberately wrong test password (401), received HTTP $status."
+            exit 1
+          fi
           echo "API health check, Firestore-backed login lookup, GPS/attendance guards, and staff registration request/status routes passed their live HTTP checks."
 
   keepalive:
