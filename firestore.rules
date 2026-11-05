@@ -247,15 +247,64 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // Attendance is readable by admins and by the staff member named on each record.
-    // Client-side attendance mutations remain closed until the complete GPS workflow
-    // and its server-side grace-period enforcement are migrated.
+    function validAttendanceRecord(data) {
+      return data.userId is string && data.displayName is string
+        && data.workDate is string && data.checkInAt is string
+        && data.status in ['Checked in', 'Completed']
+        && data.dayType in ['Full day', 'Half day'];
+    }
+
+    // Attendance is owner-scoped. Staff may create their own shift and update
+    // only checkout/GPS fields; admins manage shifts and corrections.
     match /attendance/{attendanceId} {
       allow get, list: if isAdmin()
+        || (hasActiveProfile() && resource.data.userId == request.auth.uid);
+      allow create: if isAdmin()
         || (hasActiveProfile()
           && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'staff'
-          && resource.data.userId == request.auth.uid);
-      allow create, update, delete: if false;
+          && request.resource.data.userId == request.auth.uid
+          && validAttendanceRecord(request.resource.data)
+          && request.resource.data.workDate.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}    // All remaining collections stay closed until their own ownership-checked
+    // Spark rules and direct Firestore data paths are implemented.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
+));
+      allow update: if isAdmin()
+        || (hasActiveProfile()
+          && resource.data.userId == request.auth.uid
+          && request.resource.data.userId == resource.data.userId
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'checkOutAt', 'status', 'gpsStatus', 'gpsIssueStartedAt',
+            'gpsIssueReason', 'gpsRestoredAt'
+          ])
+          && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['status'])
+            || request.resource.data.status in ['Checked in', 'Completed'])
+          && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['gpsStatus'])
+            || request.resource.data.gpsStatus in ['active', 'grace-period', 'stopped']));
+      allow delete: if isAdmin();
+    }
+
+    // Location points are visible only to admins. A staff device may write
+    // its own point only while its referenced shift is active.
+    match /locations/{locationId} {
+      allow get, list: if isAdmin();
+      allow create: if hasActiveProfile()
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'staff'
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.latitude is number
+        && request.resource.data.latitude >= -90 && request.resource.data.latitude <= 90
+        && request.resource.data.longitude is number
+        && request.resource.data.longitude >= -180 && request.resource.data.longitude <= 180
+        && request.resource.data.accuracy is number
+        && request.resource.data.capturedAt is string
+        && request.resource.data.attendanceId is string
+        && get(/databases/$(database)/documents/attendance/$(request.resource.data.attendanceId)).data.userId == request.auth.uid
+        && get(/databases/$(database)/documents/attendance/$(request.resource.data.attendanceId)).data.checkOutAt == null
+        && get(/databases/$(database)/documents/attendance/$(request.resource.data.attendanceId)).data.gpsRestartRequired != true;
+      allow update, delete: if false;
     }
 
     // All remaining collections stay closed until their own ownership-checked
