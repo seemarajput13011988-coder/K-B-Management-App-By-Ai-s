@@ -257,7 +257,7 @@ async function requestTasks<T = any>(path: string, method: string, payload?: Rec
     }
     const status = clean(payload?.status, 30);
     if (status && !validStatus(status)) throw new Error('Choose a valid task status.');
-    if (!admin && Object.keys(payload || {}).some(key => key !== 'status')) throw new Error('Staff can update task status only.');
+    if (!admin && Object.keys(payload || {}).some(key => key !== 'status' && key !== 'sessionToken')) throw new Error('Staff can update task status only.');
     const patch: Record<string, unknown> = { updatedAt: new Date().toISOString() };
     if (status) patch.status = status;
     if (admin) {
@@ -277,8 +277,7 @@ async function requestTasks<T = any>(path: string, method: string, payload?: Rec
       const recipients: Array<{ id: string; role: string }> = [];
       if (admin && current.assignedTo) recipients.push({ id: String(current.assignedTo), role: 'staff' });
       if (!admin) {
-        const admins = await getDocs(query(collection(firestore, 'users'), where('role', '==', 'admin'), where('active', '==', true)));
-        admins.docs.forEach(item => recipients.push({ id: item.id, role: 'admin' }));
+        if (current.createdBy) recipients.push({ id: String(current.createdBy), role: 'admin' });
       }
       const title = statusChanged ? 'Work status updated' : 'Work details updated';
       const message = statusChanged ? String(current.title) + ' is now ' + status + '.' : String(patch.title || current.title) + ' was updated by ' + profile.displayName + '.';
