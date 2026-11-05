@@ -2,18 +2,18 @@ import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { api } from './lib/api';
 import { Download } from 'lucide-react';
+import { exportCsvFile } from './lib/file-export';
 
 type Customer={id:string;name:string;phone?:string;address:string};
 type Staff={id:string;displayName:string;active:boolean};
 type Installation={id:string;customerId:string;customerName:string;phone?:string;address:string;type:string;scheduledDate:string;assignedTo:string;assignedToName:string;status:'Scheduled'|'In progress'|'Completed'|'Cancelled';notes:string;createdAt:string};
 const dateToday=()=>{const d=new Date();return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-');};
 const prettyDate=(value:string)=>value?new Date(value+'T12:00:00').toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}):'—';
-function exportInstallations(items:Installation[]){
+async function exportInstallations(items:Installation[]){
   const rows=[['Customer','Phone','Address','Job type','Scheduled date','Assigned staff','Status','Notes'],
     ...items.map(item=>[item.customerName,item.phone||'',item.address,item.type,item.scheduledDate,item.assignedToName,item.status,item.notes||''])];
-  const csv='\uFEFF'+rows.map(row=>row.map(value=>'"'+String(value??'').replace(/"/g,'""')+'"').join(',')).join('\r\n');
-  const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
-  const link=document.createElement('a');link.href=url;link.download='kb-installations-'+dateToday()+'.csv';link.style.display='none';document.body.appendChild(link);link.click();window.setTimeout(()=>{link.remove();URL.revokeObjectURL(url);},2000);
+  try { await exportCsvFile('kb-installations-'+dateToday()+'.csv',rows); }
+  catch(error) { window.alert(error instanceof Error?error.message:'Could not export installation jobs.'); }
 }
 
 export default function InstallationsWorkspace({customers,staff,isAdmin,flash}:{customers:Customer[];staff:Staff[];isAdmin:boolean;flash:(message:string)=>void}) {
