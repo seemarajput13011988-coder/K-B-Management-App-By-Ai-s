@@ -1,17 +1,7 @@
 // Shared HTTP API handler used by the Spark-compatible Netlify deployment.
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
-import { cert, getApps, initializeApp } from 'firebase-admin/app';
-import { getAuth } from 'firebase-admin/auth';
-import { FieldValue, getFirestore } from 'firebase-admin/firestore';
+import { auth, db, FieldValue, list, now } from './admin.js';
 import { buildCustomerLedger, calculateInventoryBalance, gpsGracePeriodExpired, hasOverlappingSubscription, isConfirmedGpsLossReason, isSuperAdminAccount, isValidDateKey, isValidDateRange, routePath } from './route-path.js';
-
-const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
-if (!getApps().length) {
-  if (!serviceAccountJson) throw new Error('FIREBASE_SERVICE_ACCOUNT_JSON is not configured for the API function.');
-  initializeApp({ credential: cert(JSON.parse(serviceAccountJson)), projectId: 'kandb-net-sevice' });
-}
-const auth = getAuth();
-const db = getFirestore();
 
 type Role = 'admin' | 'staff';
 type AppUser = { uid: string; id: string; userId: string; displayName: string; role: Role; active: boolean; authTime: number; isSuperAdmin?: boolean };
@@ -24,7 +14,6 @@ const validMoney = (value: unknown): boolean =>
   typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1000000;
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
 const monthPattern = /^\d{4}-\d{2}$/;
-const now = () => new Date().toISOString();
 const send = (res: any, status: number, body: Data) => { res.status(status).json(body); };
 
 
@@ -56,10 +45,6 @@ function allow(user: AppUser, roles: Role[], res: any): boolean {
 function allowSuperAdmin(user: AppUser, res: any): boolean {
   if (user.isSuperAdmin !== true) { send(res, 403, { error: 'Only the primary Super Admin can create or manage administrator accounts.' }); return false; }
   return true;
-}
-async function list(collection: string): Promise<Data[]> {
-  const snap = await db.collection(collection).limit(1000).get();
-  return snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 }
 async function getDoc(collection: string, id: string): Promise<Data | null> {
   const snap = await db.collection(collection).doc(id).get();
