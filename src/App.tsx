@@ -12,6 +12,7 @@ import CalendarWorkspace from './CalendarWorkspace';
 import { useAppPreferences } from './appPreferences';
 import { api as client, changeAppPassword, changeAppUserId, signInAppUser, signOutAppUser, submitStaffRegistrationRequest, getStaffRegistrationStatus } from './lib/api';
 import {
+  Activity,
   Bell,
   ChevronDown,
   CircleHelp,
