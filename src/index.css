@@ -1508,3 +1508,193 @@ footer span {
   .staff-table-wrap .staff-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
   .staff-table-wrap .staff-actions .btn { min-height: 30px; }
 }
+
+
+/* K&B whole-app responsive layout: prevent sideways page and table scrolling. */
+html, body, #root {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: clip;
+}
+.shell, .main, .content {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+.main { min-width: 0; }
+.content { min-width: 0; }
+.content > *, .content section, .content article, .content .panel,
+.content .toolbar, .content .panel-head, .content .finance-head,
+.content .ops-panel-head, .content .installation-main {
+  min-width: 0;
+  max-width: 100%;
+}
+.content .table-wrap,
+.content .finance-table-wrap,
+.content .inventory-table-wrap,
+.content .subscription-table-wrap {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: clip;
+  overscroll-behavior-x: none;
+}
+.content table {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0 !important;
+  table-layout: fixed;
+  white-space: normal;
+}
+.content th, .content td {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: normal;
+  white-space: normal;
+}
+.content img, .content iframe, .content canvas, .content svg {
+  max-width: 100%;
+}
+.content input, .content select, .content textarea {
+  max-width: 100%;
+}
+.content .toolbar, .content .page-heading, .content .finance-head,
+.content .ops-panel-head, .content .calendar-toolbar,
+.content .calendar-agenda-head, .content .installation-footer {
+  flex-wrap: wrap;
+}
+.content .finance-actions, .content .inventory-toolbar,
+.content .installation-toolbar-actions, .content .heading-actions {
+  min-width: 0;
+  max-width: 100%;
+  flex-wrap: wrap;
+}
+.content .finance-chart, .content .calendar-grid, .content .attendance-calendar-grid {
+  min-width: 0;
+  max-width: 100%;
+}
+@media (max-width: 760px) {
+  .content { padding: 18px 12px 28px; }
+  .content .panel, .content .finance-panel, .content .ops-panel,
+  .content .calendar-panel { min-width: 0; max-width: 100%; }
+  .content .table-wrap, .content .finance-table-wrap,
+  .content .inventory-table-wrap, .content .subscription-table-wrap {
+    margin: 0;
+    overflow: visible;
+  }
+  .content table {
+    display: block;
+    border-collapse: separate;
+    border-spacing: 0;
+  }
+  .content table thead { display: none; }
+  .content table tbody {
+    display: grid;
+    width: 100%;
+    gap: 10px;
+  }
+  .content table tbody tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    width: 100%;
+    min-width: 0;
+    padding: 9px 12px;
+    border: 1px solid #e5eaf1;
+    border-radius: 13px;
+    background: var(--panel, #fff);
+    box-shadow: 0 4px 14px rgba(20, 35, 60, .045);
+  }
+  .content table tbody td {
+    display: grid;
+    grid-template-columns: minmax(88px, .78fr) minmax(0, 1.22fr);
+    align-items: start;
+    gap: 10px;
+    width: 100%;
+    padding: 8px 0;
+    border: 0;
+    border-bottom: 1px solid #eef1f5;
+    text-align: right;
+    font-size: 11px;
+    line-height: 1.45;
+  }
+  .content table tbody td::before {
+    content: attr(data-label);
+    min-width: 0;
+    color: #77869a;
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: .035em;
+    text-align: left;
+    overflow-wrap: anywhere;
+  }
+  .content table tbody td:last-child { border-bottom: 0; }
+  .content table tbody td[colspan] { display: block; text-align: left; }
+  .content table tbody td[colspan]::before { display: none; }
+  .content table tbody td > button,
+  .content table tbody td > .staff-actions,
+  .content table tbody td > .inventory-actions {
+    justify-self: end;
+    max-width: 100%;
+  }
+  .content .staff-actions, .content .inventory-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 6px;
+  }
+  .content .staff-actions .btn, .content .inventory-actions .btn {
+    max-width: 100%;
+    white-space: normal;
+  }
+  .content .stats-grid, .content .finance-metrics,
+  .content .ops-summary-grid, .content .staff-record-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .content .overview-grid, .content .calendar-workspace,
+  .content .staff-record-columns, .content .finance-expense-form,
+  .content .inventory-form, .content .inventory-movement-fields,
+  .content .installation-form, .content .subscription-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .content .attendance-calendar-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .content .page-heading {
+    align-items: flex-start;
+    gap: 10px;
+  }
+  .content .page-heading p { max-width: 100%; }
+  .content .toolbar, .content .finance-head { align-items: flex-start; }
+  .content .finance-actions input, .content .finance-actions select {
+    min-width: 0;
+    width: 100%;
+  }
+  .content .finance-foot { align-items: flex-start; flex-wrap: wrap; }
+  .content .calendar-day { min-width: 0; }
+  .content .ops-google-map iframe { width: 100%; }
+  .content .notification-popover {
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    width: auto;
+    max-width: calc(100vw - 24px);
+  }
+  [data-theme="dark"] .content table tbody tr {
+    background: #162235;
+    border-color: #2b3a50;
+  }
+  [data-theme="dark"] .content table tbody td {
+    border-color: #2b3a50;
+    color: #dbe5f2;
+  }
+  [data-theme="dark"] .content table tbody td::before { color: #a9b8cb; }
+}
+@media (max-width: 390px) {
+  .content { padding-left: 10px; padding-right: 10px; }
+  .content .stats-grid, .content .finance-metrics,
+  .content .ops-summary-grid, .content .staff-record-metrics {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .content .page-heading h1 { overflow-wrap: anywhere; }
+  .content .btn { max-width: 100%; white-space: normal; }
+}
