@@ -1,6 +1,6 @@
 # Firebase API migration status
 
-The Cloud Functions HTTP entry point is `functions/src/index.ts`; the React API adapter is `src/lib/api.ts`.
+The Spark-compatible HTTP API entry point is `netlify/functions/api.ts`, which calls the extracted shared API handler in `functions/src/http-api.ts`. The legacy Firebase Cloud Functions entry point remains in `functions/src/index.ts` for reference but is not the deployment target on the free plan. The React API adapter is `src/lib/api.ts`.
 
 ## Implemented in the migration branch
 - Firebase Admin initialization and Asia South Functions region.
@@ -54,3 +54,12 @@ The Cloud Functions HTTP entry point is `functions/src/index.ts`; the React API 
 - No AppDeploy customer, payment, staff, attendance or finance data has been imported.
 - The old AppDeploy app and its backend source remain available. Do not disable them until backup, migration and acceptance tests are complete.
 - Emulator tests, end-to-end tests, and live Firebase verification are still pending.
+
+
+## Zero-cost hosting migration
+- New working branch: `spark-free-backend`.
+- The API handler has been extracted for Netlify Functions and reads private setup values from Netlify environment variables.
+- The app API client now calls the Netlify Function path using `VITE_API_BASE_URL`.
+- Firebase Cloud Functions and Firebase Hosting deployment workflows are disabled on this branch to avoid accidental Blaze-plan deployment.
+- The Netlify site, service-account environment variable, public API URL, first-admin bootstrap, and live health check are not configured or verified yet.
+- The Netlify Free plan has a fixed monthly credit limit. If the limit is reached, the site can pause until the next billing cycle; keep auto-recharge disabled.
