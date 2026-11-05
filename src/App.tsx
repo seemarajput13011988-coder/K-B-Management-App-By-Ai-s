@@ -373,7 +373,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   const pending = customers
     .filter(c => c.status === 'Active')
     .reduce((sum, c) => sum + Number(c.monthlyFee || 0), 0);
-  const openComplaints = complaints.filter(c => c.status !== 'Resolved').length;
+  const openComplaints = complaints.filter(c => !['Solved', 'Resolved'].includes(c.status)).length;
   const pendingTasks = tasks.filter(task => task.status !== 'Completed').length;
   const currentBillingMonth = new Date().toLocaleString('en-IN', { month: 'long', year: 'numeric' });
   const paidByCustomer = new Map<string, number>();
@@ -1218,6 +1218,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
             <section className="panel table-panel complaints-workspace">
               <div className="toolbar">
                 <div><h2>Staff & customer complaints</h2><p className="subtle">Create a complaint, assign an owner and track it until it is solved.</p></div>
+                <div className="complaint-counts"><span><b>{complaints.filter(item => !['Solved','Resolved'].includes(item.status)).length}</b> Pending / active</span><span><b>{complaints.filter(item => item.status === 'Solved' || item.status === 'Resolved').length}</b> Solved</span><span><b>{complaints.filter(item => item.status === 'Not Solved').length}</b> Not solved</span></div>
                 <span className="result-count">{complaints.length} records</span>
               </div>
               <div className="complaint-list">
@@ -1417,7 +1418,7 @@ function MonthlyChart({ title, subtitle, items, dateKey, valueKey, moneyValue, c
   return <section className="panel chart-panel"><div className="panel-head"><div><h2>{title}</h2><p>{subtitle}</p></div><span className="chart-mark"><BarChart3 size={17} /></span></div><div className="chart-bars">{buckets.map(item => <div className="chart-column" key={item.label}><b>{item.value ? (moneyValue ? money(item.value) : item.value.toLocaleString('en-IN')) : '—'}</b><div className="chart-track"><i style={{ height: (item.value ? Math.max(5, item.value / max * 100) : 2) + '%' }} /></div><small>{item.label}</small></div>)}</div></section>;
 }
 function StatusChart({ complaints }: { complaints: Complaint[] }) {
-  const rows = [{ label: 'Open', count: complaints.filter(c => c.status === 'Open').length }, { label: 'In progress', count: complaints.filter(c => c.status === 'In progress').length }, { label: 'Resolved', count: complaints.filter(c => c.status === 'Resolved').length }];
+  const rows = [{ label: 'Pending', count: complaints.filter(c => c.status === 'Pending' || c.status === 'Open').length }, { label: 'Assigned', count: complaints.filter(c => c.status === 'Assigned').length }, { label: 'In progress', count: complaints.filter(c => c.status === 'In Progress' || c.status === 'In progress').length }, { label: 'Solved', count: complaints.filter(c => c.status === 'Solved' || c.status === 'Resolved').length }, { label: 'Not solved', count: complaints.filter(c => c.status === 'Not Solved').length }];
   const max = Math.max(1, ...rows.map(row => row.count));
   return <section className="panel chart-panel"><div className="panel-head"><div><h2>Complaint status</h2><p>Current service request distribution</p></div><span className="chart-mark"><BarChart3 size={17} /></span></div><div className="status-chart">{rows.map(row => <div className="status-chart-row" key={row.label}><span>{row.label}</span><div><i style={{ width: (row.count / max * 100) + '%' }} /></div><b>{row.count}</b></div>)}</div></section>;
 }
