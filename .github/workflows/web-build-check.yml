@@ -5,9 +5,12 @@ concurrency:
 on:
   push:
     branches:
-      - firebase-migration
+      - spark-free-backend
     paths:
       - "src/**"
+      - "netlify/**"
+      - "netlify.toml"
+      - "functions/src/http-api.ts"
       - "package.json"
       - "package-lock.json"
       - "vite.config.ts"
@@ -15,12 +18,13 @@ on:
       - "capacitor.config.ts"
       - "index.html"
       - ".env.example"
+      - "docs/FIREBASE_SETUP.md"
       - ".github/workflows/web-build-check.yml"
       - "firebase.json"
       - ".firebaserc"
   pull_request:
     branches:
-      - firebase-migration
+      - spark-free-backend
 jobs:
   build:
     runs-on: ubuntu-latest
