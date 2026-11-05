@@ -143,3 +143,22 @@ test('customer ledger posts invoices on creation date and computes chronological
   assert.equal(result.totalPaid, 200);
   assert.equal(result.outstandingBalance, 349);
 });
+
+
+test('six-month record review uses saved/created date and never treats invalid dates as due', () => {
+  const { isSixMonthReviewDue } = require('../lib/route-path.js');
+  const now = Date.parse('2026-11-05T12:00:00.000Z');
+  assert.equal(isSixMonthReviewDue('2026-05-05T12:00:00.000Z', now), true);
+  assert.equal(isSixMonthReviewDue('2026-05-04T12:00:00.000Z', now), true);
+  assert.equal(isSixMonthReviewDue('2026-05-06T12:00:00.000Z', now), false);
+  assert.equal(isSixMonthReviewDue('', now), false);
+  assert.equal(isSixMonthReviewDue('not-a-date', now), false);
+  assert.equal(isSixMonthReviewDue(undefined, now), false);
+});
+
+test('six-month review cutoff clamps end-of-month dates safely', () => {
+  const { isSixMonthReviewDue } = require('../lib/route-path.js');
+  const now = Date.parse('2026-08-31T12:00:00.000Z');
+  assert.equal(isSixMonthReviewDue('2026-02-28T12:00:00.000Z', now), true);
+  assert.equal(isSixMonthReviewDue('2026-03-01T12:00:00.000Z', now), false);
+});
