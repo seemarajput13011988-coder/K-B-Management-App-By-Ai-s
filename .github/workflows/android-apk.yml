@@ -42,11 +42,9 @@ jobs:
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
       - name: Validate required release secrets
         env:
-          VITE_GOOGLE_MAPS_API_KEY: ${{ secrets.VITE_GOOGLE_MAPS_API_KEY }}
           ANDROID_GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.ANDROID_GOOGLE_SERVICES_JSON_BASE64 }}
         run: |
           missing=()
-          if [ -z "$VITE_GOOGLE_MAPS_API_KEY" ]; then missing+=("VITE_GOOGLE_MAPS_API_KEY"); fi
           if [ -z "$ANDROID_GOOGLE_SERVICES_JSON_BASE64" ]; then missing+=("ANDROID_GOOGLE_SERVICES_JSON_BASE64"); fi
           if [ "${#missing[@]}" -gt 0 ]; then
             printf 'Missing required GitHub repository secrets: %s\\n' "${missing[@]}"
@@ -65,12 +63,7 @@ jobs:
           VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID || '847932976304' }}
           VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID || '1:847932976304:web:87148565df2a329a5f9f75' }}
           VITE_API_BASE_URL: https://kandb-management-nexus-api-zv7f.onrender.com
-          VITE_GOOGLE_MAPS_API_KEY: ${{ secrets.VITE_GOOGLE_MAPS_API_KEY }}
         run: |
-          if [ -z "$VITE_GOOGLE_MAPS_API_KEY" ]; then
-            echo "::error::Set the VITE_GOOGLE_MAPS_API_KEY repository secret. The admin live-staff Google Map is required for the final APK."
-            exit 1
-          fi
           npm install
           npx tsc --noEmit
           npm run build
