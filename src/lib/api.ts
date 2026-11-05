@@ -1,10 +1,9 @@
 import { CapacitorHttp } from '@capacitor/core';
 import { deleteApp, initializeApp } from 'firebase/app';
-import { browserLocalPersistence, createUserWithEmailAndPassword, deleteUser, EmailAuthProvider, getAuth, onAuthStateChanged, reauthenticateWithCredential, setPersistence, signInWithEmailAndPassword, signOut, updatePassword } from 'firebase/auth';
+import { browserLocalPersistence, createUserWithEmailAndPassword, deleteUser, EmailAuthProvider, getAuth, onAuthStateChanged, reauthenticateWithCredential, setPersistence, signInWithEmailAndPassword, signOut, updateEmail, updatePassword } from 'firebase/auth';
 import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, limit, orderBy, query, runTransaction, setDoc, updateDoc, where, writeBatch } from 'firebase/firestore';
 import { firebaseApp, firebaseAuth, firestore } from './firebase';
 
-const API_BASE = import.meta.env.VITE_FIREBASE_FUNCTIONS_URL || 'https://asia-south1-kandb-net-sevice.cloudfunctions.net/api';
 const ACCOUNT_DOMAIN = 'accounts.kandbnetservice.in';
 type ApiResult<T = any> = { data: T };
 
@@ -1544,51 +1543,11 @@ async function request<T = any>(path: string, method: string, payload?: Record<s
   if (path.split('?')[0] === '/api/inventory' || path.split('?')[0].startsWith('/api/inventory/')) return requestInventory<T>(path, method, payload);
   if (path.split('?')[0] === '/api/holidays' || path.split('?')[0].startsWith('/api/holidays/')) return requestHolidays<T>(path, method, payload);
   if (path.split('?')[0].startsWith('/api/attendance') || path.split('?')[0] === '/api/locations' || path.split('?')[0] === '/api/locations/history') return requestAttendance<T>(path, method, payload);
-  if (!firebaseAuth) throw new Error('Firebase is not configured yet. Add the K&B Firebase web app settings before signing in.');
-  const auth = firebaseAuth;
-  if (!auth.currentUser) await new Promise<void>(resolve => {
-    let unsubscribe = () => {};
-    unsubscribe = onAuthStateChanged(auth, () => { unsubscribe(); resolve(); });
-  });
-  const currentUser = auth.currentUser;
-  if (!currentUser) throw new Error('Please sign in again to continue.');
-  const token = await currentUser.getIdToken();
-  const url = new URL(path, API_BASE);
-  url.searchParams.delete('sessionToken');
-  const headers: Record<string, string> = { Authorization: 'Bearer ' + token };
-  let body: string | undefined;
-  if (payload) {
-    const safePayload = { ...payload };
-    delete safePayload.sessionToken;
-    headers['Content-Type'] = 'application/json';
-    body = JSON.stringify(safePayload);
-  }
-  const response = await fetch(url.toString(), { method, headers, body, cache: 'no-store' });
-  let data: any = {};
-  try { data = await response.json(); } catch { data = {}; }
-  if (!response.ok) throw new Error(typeof data.error === 'string' ? data.error : 'The request could not be completed. Please try again.');
-  return { data };
+  throw new Error('This API route has not been migrated to Firebase Spark yet: ' + path);
 }
 export async function nativeApiPost<T = any>(path: string, payload: Record<string, unknown>): Promise<ApiResult<T>> {
   if (path.startsWith('/api/attendance/') || path === '/api/locations') return requestAttendance<T>(path, 'POST', payload);
-  if (!firebaseAuth?.currentUser) throw new Error('Please sign in again to continue location sharing.');
-  const token = await firebaseAuth.currentUser.getIdToken();
-  const url = new URL(path, API_BASE);
-  url.searchParams.delete('sessionToken');
-  const response = await CapacitorHttp.post({
-    url: url.toString(),
-    headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
-    data: payload,
-    connectTimeout: 15000,
-    readTimeout: 15000
-  });
-  const data: any = response.data || {};
-  if (response.status < 200 || response.status >= 300) {
-    const error = new Error(typeof data.error === 'string' ? data.error : 'The location update could not be sent.') as Error & { status?: number };
-    error.status = response.status;
-    throw error;
-  }
-  return { data: data as T };
+  throw new Error('Unsupported native API route: ' + path);
 }
 export async function submitStaffRegistrationRequest(input: { userId: string; displayName: string; phone?: string; reason?: string }) {
   if (!firestore) throw new Error('Firebase is not configured in this app.');
@@ -1666,31 +1625,11 @@ export const api = {
   put: <T = any>(path: string, payload?: Record<string, unknown>) => request<T>(path, 'PUT', payload),
   delete: <T = any>(path: string) => request<T>(path, 'DELETE'),
 };
-export async function bootstrapAdmin(bootstrapSecret: string, password: string) {
-  const url = new URL('/api/auth/bootstrap-admin', API_BASE);
-  const response = await fetch(url.toString(), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ bootstrapSecret, password }),
-    cache: 'no-store',
-  });
-  let data: any = {};
-  try { data = await response.json(); } catch { data = {}; }
-  if (!response.ok) throw new Error(typeof data.error === 'string' ? data.error : 'Initial admin setup failed.');
-  return data;
+export async function bootstrapAdmin(_bootstrapSecret: string, _password: string) {
+  throw new Error('The first Super Admin must be provisioned by the Firebase project owner in Firebase Console. The Spark app cannot safely create its own first administrator.');
 }
-export async function recoverAdminPassword(recoveryCode: string, newPassword: string) {
-  const url = new URL('/api/auth/recover-admin', API_BASE);
-  const response = await fetch(url.toString(), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ userId: 'Brajraj', recoveryCode, newPassword }),
-    cache: 'no-store',
-  });
-  let data: any = {};
-  try { data = await response.json(); } catch { data = {}; }
-  if (!response.ok) throw new Error(typeof data.error === 'string' ? data.error : 'Admin password recovery failed.');
-  return data;
+export async function recoverAdminPassword(_recoveryCode: string, _newPassword: string) {
+  throw new Error('Admin password recovery must use Firebase Authentication password reset or the Firebase project owner. Secret-based Cloud Functions recovery is unavailable on the Spark-only setup.');
 }
 function firebaseSignInError(error: unknown): Error {
   const code = typeof error === 'object' && error !== null && 'code' in error
@@ -1747,7 +1686,21 @@ export async function changeAppUserId(currentPassword: string, newUserId: string
   if (!email) throw new Error('This account does not have a sign-in email. Contact an administrator.');
   const credential = EmailAuthProvider.credential(email, currentPassword);
   await reauthenticateWithCredential(user, credential);
-  await api.post('/api/auth/change-user-id', { userId });
+  const nextEmail = userId.toLowerCase() + '@' + ACCOUNT_DOMAIN;
+  await updateEmail(user, nextEmail);
+  await user.getIdToken(true);
+  try {
+    if (!firestore) throw new Error('Firestore is unavailable.');
+    await updateDoc(doc(firestore, 'users', user.uid), { userId });
+  } catch (error) {
+    try {
+      await updateEmail(user, email);
+      await user.getIdToken(true);
+    } catch {
+      throw new Error('Your sign-in email changed, but the profile update failed. Contact the project owner before signing out.');
+    }
+    throw error;
+  }
   await signOut(firebaseAuth);
 }
 export async function changeAppPassword(currentPassword: string, newPassword: string) {
