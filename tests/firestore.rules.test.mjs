@@ -65,12 +65,14 @@ test('regular admins cannot disable administrator accounts', async () => {
 
 test('staff can settle an expired GPS grace shift but cannot forge an ordinary cancellation', async () => {
   await env.withSecurityRulesDisabled(async context => {
-    await setDoc(doc(context.firestore(), 'attendance/shift-staff'), {
+    const seed = {
       userId: 'staff', displayName: 'Worker', workDate: '2026-11-05',
       checkInAt: '2026-11-05T08:00:00.000Z', status: 'Checked in',
       gpsStatus: 'grace-period', gpsIssueStartedAt: '2026-11-05T08:10:00.000Z',
       gpsIssueReason: 'GPS location unavailable',
-    });
+    };
+    await setDoc(doc(context.firestore(), 'attendance/shift-staff'), seed);
+    await setDoc(doc(context.firestore(), 'attendance/shift-forged'), seed);
   });
   const db = env.authenticatedContext('staff').firestore();
   await assertSucceeds(updateDoc(doc(db, 'attendance/shift-staff'), {
@@ -79,7 +81,7 @@ test('staff can settle an expired GPS grace shift but cannot forge an ordinary c
     gpsCancelledAt: '2026-11-05T08:26:00.000Z',
     gpsIssueDeadlineAt: '2026-11-05T08:25:00.000Z',
   }));
-  await assertFails(updateDoc(doc(db, 'attendance/shift-staff'), {
+  await assertFails(updateDoc(doc(db, 'attendance/shift-forged'), {
     status: 'GPS Cancelled', gpsStatus: 'cancelled', gpsCancelled: true,
     gpsRestartRequired: true,
   }));
