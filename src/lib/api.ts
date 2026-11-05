@@ -671,6 +671,46 @@ async function requestInstallations<T = any>(path: string, method: string, paylo
   throw new Error('Unsupported installations request.');
 }
 
+async function requestHolidays<T = any>(path: string, method: string, payload?: Record<string, unknown>): Promise<ApiResult<T>> {
+  if (!firebaseAuth?.currentUser || !firestore) throw new Error('Please sign in again to continue.');
+  const user = firebaseAuth.currentUser, profile = await getAppUserProfile(), admin = profile.role === 'admin';
+  const base='/api/holidays', p=path.split('?')[0], id=p.startsWith(base+'/')?decodeURIComponent(p.slice(base.length+1)):'';
+  const holidays=collection(firestore,'holiday_requests'), clean=(v:unknown,n:number)=>String(v??'').trim().slice(0,n);
+  const validDate=(v:string)=>/^\d{4}-\d{2}-\d{2}$/.test(v)&&!Number.isNaN(Date.parse(v+'T00:00:00'));
+  if(method==='GET'&&p===base){
+    const snap=await getDocs(admin?holidays:query(holidays,where('userId','==',user.uid)));
+    const items=snap.docs.map(d=>({id:d.id,...d.data()}));
+    items.sort((a:any,b:any)=>String(b.createdAt||'').localeCompare(String(a.createdAt||'')));
+    return {data:{items} as T};
+  }
+  if(method==='POST'&&p===base){
+    if(admin) throw new Error('Only staff can submit holiday requests.');
+    const startDate=clean(payload?.startDate,10),endDate=clean(payload?.endDate,10),reason=clean(payload?.reason,300);
+    if(!validDate(startDate)||!validDate(endDate)||endDate<startDate||!reason) throw new Error('Choose a valid holiday date range and enter a reason.');
+    const own=await getDocs(query(holidays,where('userId','==',user.uid)));
+    const duplicate=own.docs.some(d=>{const x=d.data();return ['pending','approved'].includes(String(x.status))&&String(x.startDate)<=endDate&&String(x.endDate)>=startDate;});
+    if(duplicate) throw new Error('A pending or approved holiday already covers part of these dates.');
+    const record={userId:user.uid,displayName:profile.displayName,startDate,endDate,reason,status:'pending',createdAt:new Date().toISOString()};
+    const ref=await addDoc(holidays,record);
+    return {data:{id:ref.id,...record} as T};
+  }
+  if(id&&method==='PUT'){
+    if(!admin) throw new Error('Only administrators can review holiday requests.');
+    const status=payload?.status==='approved'?'approved':payload?.status==='rejected'?'rejected':'';
+    if(!status) throw new Error('Choose approve or reject.');
+    const ref=doc(firestore,'holiday_requests',id),snap=await getDoc(ref);
+    if(!snap.exists()) throw new Error('Holiday request not found.');
+    const old=snap.data();
+    if(old.status!=='pending') throw new Error('This holiday request has already been reviewed.');
+    const note=clean(payload?.reviewNote,240),now=new Date().toISOString(),batch=writeBatch(firestore);
+    batch.update(ref,{status,reviewedAt:now,reviewedBy:user.uid,reviewedByName:profile.displayName,reviewNote:note});
+    batch.set(doc(collection(firestore,'staff_notifications')),{recipientId:old.userId,recipientRole:'staff',type:'holiday-decision',title:'Holiday request '+status,message:'Your holiday request from '+old.startDate+' to '+old.endDate+' was '+status+'.'+(note?' Note: '+note:''),createdAt:now,read:false,relatedId:id});
+    await batch.commit();
+    return {data:{updated:true,status} as T};
+  }
+  throw new Error('Unsupported holiday request.');
+}
+
 async function request<T = any>(path: string, method: string, payload?: Record<string, unknown>): Promise<ApiResult<T>> {
   if (path.split('?')[0] === '/api/plans' || path.split('?')[0].startsWith('/api/plans/')) return requestPlans<T>(path, method, payload);
   if (path.split('?')[0] === '/api/customers' || path.split('?')[0].startsWith('/api/customers/')) return requestCustomers<T>(path, method, payload);
@@ -679,6 +719,7 @@ async function request<T = any>(path: string, method: string, payload?: Record<s
   if (path.split('?')[0] === '/api/complaints' || path.split('?')[0].startsWith('/api/complaints/')) return requestComplaints<T>(path, method, payload);
   if (path.split('?')[0] === '/api/subscriptions' || path.split('?')[0].startsWith('/api/subscriptions/')) return requestSubscriptions<T>(path, method, payload);
   if (path.split('?')[0] === '/api/installations' || path.split('?')[0].startsWith('/api/installations/')) return requestInstallations<T>(path, method, payload);
+  if (path.split('?')[0] === '/api/holidays' || path.split('?')[0].startsWith('/api/holidays/')) return requestHolidays<T>(path, method, payload);
   if (path.split('?')[0].startsWith('/api/attendance') || path.split('?')[0] === '/api/locations' || path.split('?')[0] === '/api/locations/history') return requestAttendance<T>(path, method, payload);
   if (!firebaseAuth) throw new Error('Firebase is not configured yet. Add the K&B Firebase web app settings before signing in.');
   const auth = firebaseAuth;
