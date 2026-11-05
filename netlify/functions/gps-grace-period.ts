@@ -4,8 +4,12 @@ import { FieldValue, db, list, now } from '../../functions/src/admin.js';
 export const config = { schedule: '* * * * *' };
 
 export default async function enforceGpsGracePeriod() {
-  const records = await list('attendance');
-  const requests = await list('holiday_requests');
+  // Query only attendance records with an active GPS-loss timestamp; avoid scanning the full history every minute.
+  const recordSnapshot = await db.collection('attendance').where('gpsIssueStartedAt', '>', '').limit(1000).get();
+  const records = recordSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  if (!records.length) return;
+  const requestSnapshot = await db.collection('holiday_requests').where('status', 'in', ['pending', 'approved']).limit(1000).get();
+  const requests = requestSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
   const currentTime = Date.now();
   for (const item of records) {
     if (!item.gpsIssueStartedAt || item.checkOutAt || item.gpsRestartRequired) continue;
