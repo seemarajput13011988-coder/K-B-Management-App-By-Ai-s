@@ -16,6 +16,8 @@ type CalendarAttendance = {
   workDate: string;
   checkInAt: string;
   checkOutAt?: string;
+  dayType?: 'Full day' | 'Half day' | 'Absent';
+  status?: string;
 };
 type Props = { tasks: CalendarTask[]; attendance: CalendarAttendance[]; isAdmin: boolean };
 
@@ -94,7 +96,7 @@ export default function CalendarWorkspace({ tasks, attendance, isAdmin }: Props)
     <section className="calendar-panel calendar-agenda">
       <div className="calendar-agenda-head"><div><span className="calendar-eyebrow"><Clock3 size={14}/> DAILY AGENDA</span><h3>{labelDate(selected)}</h3></div><span className="calendar-agenda-count">{selectedTasks.length + selectedAttendance.length} records</span></div>
       {selectedTasks.map(task => <article className="calendar-event task-event" key={'task-' + task.id}><div className="calendar-event-icon"><ClipboardList size={17}/></div><div><b>{task.title}</b><p>{task.status}{task.priority ? ' · ' + task.priority + ' priority' : ''}{isAdmin && task.assignedToName ? ' · ' + task.assignedToName : ''}</p>{task.details && <small>{task.details}</small>}</div></article>)}
-      {selectedAttendance.map(record => <article className="calendar-event attendance-event" key={'attendance-' + record.id}><div className="calendar-event-icon"><Clock3 size={17}/></div><div><b>{record.displayName}</b><p>Shift started {record.checkInAt ? new Date(record.checkInAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '—'}{record.checkOutAt ? ' · Ended ' + new Date(record.checkOutAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : ' · No checkout recorded'}</p></div></article>)}
+      {selectedAttendance.map(record => <article className="calendar-event attendance-event" key={'attendance-' + record.id}><div className="calendar-event-icon"><Clock3 size={17}/></div><div><b>{record.displayName}</b><p>{record.dayType === 'Absent' || String(record.status || '').toLowerCase() === 'absent' ? 'Marked absent' : 'Shift started ' + (record.checkInAt ? new Date(record.checkInAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '—') + (record.checkOutAt ? ' · Ended ' + new Date(record.checkOutAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : ' · No checkout recorded')}</p></div></article>)}
       {!selectedTasks.length && !selectedAttendance.length && <div className="calendar-empty"><CalendarDays size={26}/><b>No records for this date</b><span>Assigned work and attendance records will appear here.</span></div>}
       <p className="calendar-note">Calendar data is read from saved tasks and attendance records. Creating or editing tasks remains in the Tasks workspace.</p>
     </section>
