@@ -762,8 +762,8 @@ async function requestFinance<T = any>(path: string, method: string, payload?: R
       const existing = await transaction.get(payrollRef);
       const existingExpense = await transaction.get(expenseRef);
       if (existing.exists() || existingExpense.exists()) throw new Error('Salary is already recorded for this staff member and month.');
-      transaction.create(payrollRef, record);
-      transaction.create(expenseRef, expense);
+      transaction.set(payrollRef, record);
+      transaction.set(expenseRef, expense);
       transaction.set(auditRef, {
         actorId: user.uid, actorName: profile.displayName, action: 'CREATE',
         entityType: 'payroll', entityId: id,
@@ -807,7 +807,7 @@ async function requestFinance<T = any>(path: string, method: string, payload?: R
       const wasCreated = await runTransaction(db, async transaction => {
         const current = await transaction.get(invoiceRef);
         if (current.exists()) return false;
-        transaction.create(invoiceRef, {
+        transaction.set(invoiceRef, {
           customerId: customer.id, customerName: clean(customer.name, 120), period, dueDate,
           amount: amount(customer.monthlyFee), createdAt: now(), createdBy: user.uid,
         });
