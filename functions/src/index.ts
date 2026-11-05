@@ -8,7 +8,7 @@ import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { onDocumentCreated } from 'firebase-functions/v2/firestore';
 import { logger } from 'firebase-functions';
 import { defineSecret } from 'firebase-functions/params';
-import { buildCustomerLedger, calculateInventoryBalance, gpsGracePeriodExpired, hasOverlappingSubscription, isConfirmedGpsLossReason, isSuperAdminAccount, isValidDateKey, isValidDateRange, routePath, subscriptionExpiryKind, taskReminderKind } from './route-path.js';
+import { buildCustomerLedger, calculateInventoryBalance, gpsGracePeriodExpired, hasOverlappingSubscription, isConfirmedGpsLossReason, hasAdminManagementAccess, isValidDateKey, isValidDateRange, routePath, subscriptionExpiryKind, taskReminderKind } from './route-path.js';
 
 initializeApp();
 const auth = getAuth();
@@ -17,7 +17,7 @@ const adminRecoveryCode = defineSecret('ADMIN_RECOVERY_CODE');
 const adminBootstrapSecret = defineSecret('ADMIN_BOOTSTRAP_SECRET');
 
 type Role = 'admin' | 'staff';
-type AppUser = { uid: string; id: string; userId: string; displayName: string; role: Role; active: boolean; authTime: number; isSuperAdmin?: boolean };
+type AppUser = { uid: string; id: string; userId: string; displayName: string; role: Role; active: boolean; authTime: number; canManageAdmins?: boolean };
 type Data = Record<string, any>;
 
 const clean = (value: unknown, max = 300): string =>
@@ -49,7 +49,7 @@ async function requireUser(req: any): Promise<AppUser | null> {
     const userId = clean(data.userId, 40);
     return { uid: decoded.uid, id: decoded.uid, userId,
       displayName: clean(data.displayName, 80), role: data.role, active: true, authTime: Number(decoded.auth_time || 0),
-      isSuperAdmin: isSuperAdminAccount({ role: data.role, userId, isSuperAdmin: data.isSuperAdmin }) };
+      canManageAdmins: hasAdminManagementAccess({ role: data.role, canManageAdmins: data.canManageAdmins, isSuperAdmin: data.isSuperAdmin }) };
   } catch { return null; }
 }
 function allow(user: AppUser, roles: Role[], res: any): boolean {
@@ -57,7 +57,7 @@ function allow(user: AppUser, roles: Role[], res: any): boolean {
   return true;
 }
 function allowSuperAdmin(user: AppUser, res: any): boolean {
-  if (user.isSuperAdmin !== true) { send(res, 403, { error: 'Only the primary Super Admin can create or manage administrator accounts.' }); return false; }
+  if (user.canManageAdmins !== true) { send(res, 403, { error: 'Only the primary administrator account can create or manage administrator accounts.' }); return false; }
   return true;
 }
 async function list(collection: string): Promise<Data[]> {
@@ -110,7 +110,7 @@ export const api = onRequest(
       const email = 'brajraj@accounts.kandbnetservice.in';
       const account = await auth.createUser({ email, password, displayName: 'Brajraj', disabled: false });
       await db.collection('users').doc(account.uid).set({
-        userId: 'Brajraj', displayName: 'Brajraj', role: 'admin', isSuperAdmin: true, active: true, createdAt: now(),
+        userId: 'Brajraj', displayName: 'Brajraj', role: 'admin', canManageAdmins: true, active: true, createdAt: now(),
       });
       send(res, 201, { initialized: true, userId: 'Brajraj' }); return;
     }
@@ -212,22 +212,22 @@ export const api = onRequest(
         const existing = (await list('users')).some(item => item.id !== user.uid && String(item.userId).toLowerCase() === userId.toLowerCase());
         if (existing) { send(res, 409, { error: 'That user ID is already in use.' }); return; }
         const email = userId.toLowerCase() + '@accounts.kandbnetservice.in';
-        // Preserve the primary Super Admin flag when the legacy Brajraj ID is renamed.
-        const preserveSuperAdmin = isSuperAdminAccount(user);
+        // Preserve the original account's server-assigned admin-management permission if its login ID changes.
+        const preserveAdminManagement = user.canManageAdmins === true;
         await auth.updateUser(user.uid, { email });
         await db.collection('users').doc(user.uid).update({
           userId,
-          ...(preserveSuperAdmin ? { isSuperAdmin: true } : {}),
+          ...(preserveAdminManagement ? { canManageAdmins: true } : {}),
         });
         await audit(user, 'CHANGE_USER_ID', user.role, user.uid, 'Changed own user ID');
         send(res, 200, { changed: true, userId }); return;
       }
       if (method === 'GET' && path === '/api/auth/me') {
-        send(res, 200, { user: { id: user.uid, userId: user.userId, displayName: user.displayName, role: user.role, active: true, isSuperAdmin: user.isSuperAdmin === true } }); return;
+        send(res, 200, { user: { id: user.uid, userId: user.userId, displayName: user.displayName, role: user.role, active: true, canManageAdmins: user.canManageAdmins === true } }); return;
       }
       if (method === 'POST' && path === '/api/auth/logout') { send(res, 200, { ok: true }); return; }
 
-      // Only the primary Super Admin may view, create, update or disable administrator accounts.
+      // Only the original primary administrator account may manage administrator accounts.
       if (path === '/api/admins' && method === 'GET') {
         if (!allowSuperAdmin(user, res)) return;
         const admins = (await list('users')).filter(item => item.role === 'admin')
@@ -239,14 +239,14 @@ export const api = onRequest(
         const userId = clean(body.userId, 32);
         const displayName = clean(body.displayName, 80);
         const password = typeof body.password === 'string' ? body.password : '';
-        if (!/^[a-zA-Z0-9_-]{3,32}$/.test(userId) || userId.toLowerCase() === 'brajraj' || !displayName || password.length < 12) {
-          send(res, 400, { error: 'Enter a unique admin ID, name and password with at least 12 characters.' }); return;
+        if (!/^[a-zA-Z0-9_-]{3,32}$/.test(userId) || userId.toLowerCase() === 'brajraj' || !displayName || password.length < 8) {
+          send(res, 400, { error: 'Enter a unique admin ID, name and password with at least 8 characters.' }); return;
         }
         const existing = (await list('users')).some(item => String(item.userId).toLowerCase() === userId.toLowerCase());
         if (existing) { send(res, 409, { error: 'That account ID is already in use.' }); return; }
         const email = userId.toLowerCase() + '@accounts.kandbnetservice.in';
         const account = await auth.createUser({ email, password, displayName, disabled: false });
-        const record = { userId, displayName, role: 'admin', isSuperAdmin: false, active: true, createdAt: now(), createdBy: user.uid };
+        const record = { userId, displayName, role: 'admin', canManageAdmins: false, active: true, createdAt: now(), createdBy: user.uid };
         await db.collection('users').doc(account.uid).set(record);
         await audit(user, 'CREATE', 'admin', account.uid, 'Created administrator account ' + userId);
         send(res, 201, { user: { id: account.uid, ...record } }); return;
