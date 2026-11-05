@@ -1,6 +1,6 @@
 import { CapacitorHttp } from '@capacitor/core';
 import { deleteApp, initializeApp } from 'firebase/app';
-import { browserLocalPersistence, createUserWithEmailAndPassword, deleteUser, EmailAuthProvider, getAuth, onAuthStateChanged, reauthenticateWithCredential, setPersistence, signInWithEmailAndPassword, signOut } from 'firebase/auth';
+import { browserLocalPersistence, createUserWithEmailAndPassword, deleteUser, EmailAuthProvider, getAuth, onAuthStateChanged, reauthenticateWithCredential, setPersistence, signInWithEmailAndPassword, signOut, updatePassword } from 'firebase/auth';
 import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, limit, orderBy, query, runTransaction, setDoc, updateDoc, where, writeBatch } from 'firebase/firestore';
 import { firebaseApp, firebaseAuth, firestore } from './firebase';
 
@@ -1150,8 +1150,7 @@ export async function changeAppPassword(currentPassword: string, newPassword: st
   if (!email) throw new Error('This account does not have a sign-in email. Contact an administrator.');
   const credential = EmailAuthProvider.credential(email, currentPassword);
   await reauthenticateWithCredential(user, credential);
-  await user.getIdToken(true);
-  await api.post('/api/auth/change-password', { newPassword });
+  await updatePassword(user, newPassword);
   await signOut(firebaseAuth);
 }
 export async function signOutAppUser() { if (firebaseAuth) await signOut(firebaseAuth); }
