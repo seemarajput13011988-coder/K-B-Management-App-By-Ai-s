@@ -671,6 +671,146 @@ async function requestInstallations<T = any>(path: string, method: string, paylo
   throw new Error('Unsupported installations request.');
 }
 
+
+async function requestInventory<T = any>(path: string, method: string, payload?: Record<string, unknown>): Promise<ApiResult<T>> {
+  if (!firebaseAuth?.currentUser || !firestore) throw new Error('Please sign in again to continue.');
+  const user = firebaseAuth.currentUser;
+  const profile = await getAppUserProfile();
+  const admin = profile.role === 'admin';
+  const base = '/api/inventory';
+  const clean = (value: unknown, max: number) => String(value ?? '').trim().slice(0, max);
+  const p = path.split('?')[0];
+  const parts = p.split('/').filter(Boolean);
+  const id = parts.length > 2 ? decodeURIComponent(parts[2]) : '';
+  const inventory = collection(firestore, 'inventory');
+  const skuDocumentId = (value: string) => encodeURIComponent(value.trim().toLowerCase());
+  const validMoney = (value: number) => Number.isFinite(value) && value >= 0 && value <= 100000000;
+  const audit = async (action: string, entityId: string, description: string) => {
+    await addDoc(collection(firestore, 'audit_logs'), {
+      actorId: user.uid, actorName: profile.displayName, action,
+      entityType: 'inventory-item', entityId, description: clean(description, 240),
+      createdAt: new Date().toISOString(),
+    });
+  };
+
+  if (method === 'GET' && p === base) {
+    const snapshot = await getDocs(admin ? inventory : query(inventory, where('active', '==', true)));
+    const items = snapshot.docs.map(item => {
+      const data: any = { id: item.id, ...item.data() };
+      if (!admin) { delete data.unitCost; delete data.supplier; delete data.skuKey; }
+      return data;
+    }).sort((a: any, b: any) => String(a.name || '').localeCompare(String(b.name || '')));
+    return { data: { items } as T };
+  }
+
+  if (method === 'POST' && p === base) {
+    if (!admin) throw new Error('Only administrators can add inventory items.');
+    const name = clean(payload?.name, 100), sku = clean(payload?.sku, 50), category = clean(payload?.category, 60);
+    const unit = clean(payload?.unit, 24) || 'pcs';
+    const quantity = Number(payload?.quantity), minimumQuantity = Number(payload?.minimumQuantity);
+    const unitCost = Number(payload?.unitCost);
+    if (!name || !sku || !category || !Number.isInteger(quantity) || quantity < 0
+      || !Number.isInteger(minimumQuantity) || minimumQuantity < 0 || !validMoney(unitCost)) {
+      throw new Error('Enter an item name, SKU, category, whole-number stock quantities and a valid unit cost.');
+    }
+    const itemRef = doc(inventory), skuKey = sku.trim().toLowerCase();
+    const reservationRef = doc(firestore, 'inventory_skus', skuDocumentId(skuKey));
+    const now = new Date().toISOString();
+    const record = {
+      name, sku, skuKey, category, unit, quantity, minimumQuantity, unitCost,
+      supplier: clean(payload?.supplier, 100), location: clean(payload?.location, 100),
+      notes: clean(payload?.notes, 500), active: true, createdAt: now, updatedAt: now, createdBy: user.uid,
+    };
+    await runTransaction(firestore, async transaction => {
+      const reservation = await transaction.get(reservationRef);
+      if (reservation.exists()) throw new Error('An inventory item with this SKU already exists.');
+      transaction.set(reservationRef, { itemId: itemRef.id, skuKey, createdAt: now });
+      transaction.set(itemRef, record);
+    });
+    await audit('CREATE', itemRef.id, 'Added inventory item ' + name);
+    return { data: { id: itemRef.id, ...record } as T };
+  }
+
+  if (id && parts[3] === 'movements' && method === 'GET') {
+    const itemSnapshot = await getDoc(doc(inventory, id));
+    if (!itemSnapshot.exists()) throw new Error('Inventory item not found.');
+    const snapshot = await getDocs(query(collection(firestore, 'inventory_movements'), where('itemId', '==', id)));
+    const items = snapshot.docs.map(item => ({ id: item.id, ...item.data() }))
+      .sort((a: any, b: any) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))
+      .slice(0, 100);
+    return { data: { items } as T };
+  }
+
+  if (id && parts[3] === 'movements' && method === 'POST') {
+    const type = clean(payload?.type, 12), quantity = Number(payload?.quantity), reason = clean(payload?.reason, 240);
+    if (!['IN', 'OUT'].includes(type) || !Number.isInteger(quantity) || quantity <= 0 || quantity > 100000 || !reason) {
+      throw new Error('Choose stock in/out, enter a whole-number quantity and a reason.');
+    }
+    if (!admin && type !== 'OUT') throw new Error('Staff can record stock issued to a job. Only administrators can add received stock.');
+    const itemRef = doc(inventory, id), movementRef = doc(collection(firestore, 'inventory_movements'));
+    const createdAt = new Date().toISOString();
+    const outcome = await runTransaction(firestore, async transaction => {
+      const latest = await transaction.get(itemRef);
+      if (!latest.exists() || latest.data().active === false) throw new Error('This inventory item is no longer active.');
+      const current = latest.data();
+      const before = Number(current.quantity);
+      let after: number;
+      if (type === 'IN') after = before + quantity;
+      else {
+        if (!Number.isInteger(before) || before < quantity) throw new Error('Not enough stock is available for this issue.');
+        after = before - quantity;
+      }
+      if (!Number.isSafeInteger(after) || after < 0) throw new Error('The resulting stock quantity is invalid.');
+      transaction.update(itemRef, { quantity: after, updatedAt: createdAt, lastMovementId: movementRef.id });
+      transaction.set(movementRef, {
+        itemId: id, itemName: String(current.name || ''), sku: String(current.sku || ''),
+        type, quantity, quantityBefore: before, quantityAfter: after, reason,
+        createdAt, createdBy: user.uid, createdByName: profile.displayName,
+      });
+      return { quantityAfter: after, minimumQuantity: Number(current.minimumQuantity || 0), unit: String(current.unit || 'units') };
+    });
+    await audit('STOCK_' + type, id, type + ' ' + quantity + ' ' + outcome.unit + ': ' + reason);
+    return { data: { id: movementRef.id, quantityAfter: outcome.quantityAfter, lowStock: outcome.quantityAfter <= outcome.minimumQuantity } as T };
+  }
+
+  if (id && parts.length === 3 && method === 'PUT') {
+    if (!admin) throw new Error('Only administrators can edit inventory items.');
+    const name = clean(payload?.name, 100), sku = clean(payload?.sku, 50), category = clean(payload?.category, 60);
+    const unit = clean(payload?.unit, 24) || 'pcs';
+    const minimumQuantity = Number(payload?.minimumQuantity), unitCost = Number(payload?.unitCost);
+    if (!name || !sku || !category || !Number.isInteger(minimumQuantity) || minimumQuantity < 0 || !validMoney(unitCost)) {
+      throw new Error('Enter valid item details, minimum stock and unit cost.');
+    }
+    const itemRef = doc(inventory, id), skuKey = sku.trim().toLowerCase();
+    const newReservationRef = doc(firestore, 'inventory_skus', skuDocumentId(skuKey));
+    const now = new Date().toISOString();
+    await runTransaction(firestore, async transaction => {
+      const latest = await transaction.get(itemRef);
+      if (!latest.exists()) throw new Error('Inventory item no longer exists.');
+      const current = latest.data();
+      const oldSkuKey = String(current.skuKey || current.sku || '').trim().toLowerCase();
+      const oldReservationRef = doc(firestore, 'inventory_skus', skuDocumentId(oldSkuKey));
+      const newReservation = await transaction.get(newReservationRef);
+      if (newReservation.exists() && newReservation.data().itemId !== id) {
+        throw new Error('Another inventory item already uses this SKU.');
+      }
+      if (oldSkuKey !== skuKey) {
+        const oldReservation = await transaction.get(oldReservationRef);
+        if (oldReservation.exists() && oldReservation.data().itemId === id) transaction.delete(oldReservationRef);
+      }
+      transaction.set(newReservationRef, { itemId: id, skuKey, updatedAt: now });
+      transaction.update(itemRef, {
+        name, sku, skuKey, category, unit, minimumQuantity, unitCost,
+        supplier: clean(payload?.supplier, 100), location: clean(payload?.location, 100),
+        notes: clean(payload?.notes, 500), active: payload?.active !== false, updatedAt: now,
+      });
+    });
+    await audit('UPDATE', id, 'Updated inventory item ' + name);
+    return { data: { updated: true } as T };
+  }
+  throw new Error('Unsupported inventory request.');
+}
+
 async function requestHolidays<T = any>(path: string, method: string, payload?: Record<string, unknown>): Promise<ApiResult<T>> {
   if (!firebaseAuth?.currentUser || !firestore) throw new Error('Please sign in again to continue.');
   const user = firebaseAuth.currentUser, profile = await getAppUserProfile(), admin = profile.role === 'admin';
@@ -719,6 +859,7 @@ async function request<T = any>(path: string, method: string, payload?: Record<s
   if (path.split('?')[0] === '/api/complaints' || path.split('?')[0].startsWith('/api/complaints/')) return requestComplaints<T>(path, method, payload);
   if (path.split('?')[0] === '/api/subscriptions' || path.split('?')[0].startsWith('/api/subscriptions/')) return requestSubscriptions<T>(path, method, payload);
   if (path.split('?')[0] === '/api/installations' || path.split('?')[0].startsWith('/api/installations/')) return requestInstallations<T>(path, method, payload);
+  if (path.split('?')[0] === '/api/inventory' || path.split('?')[0].startsWith('/api/inventory/')) return requestInventory<T>(path, method, payload);
   if (path.split('?')[0] === '/api/holidays' || path.split('?')[0].startsWith('/api/holidays/')) return requestHolidays<T>(path, method, payload);
   if (path.split('?')[0].startsWith('/api/attendance') || path.split('?')[0] === '/api/locations' || path.split('?')[0] === '/api/locations/history') return requestAttendance<T>(path, method, payload);
   if (!firebaseAuth) throw new Error('Firebase is not configured yet. Add the K&B Firebase web app settings before signing in.');
