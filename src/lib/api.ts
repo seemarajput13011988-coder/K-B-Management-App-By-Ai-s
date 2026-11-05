@@ -1,6 +1,6 @@
 import { CapacitorHttp } from '@capacitor/core';
 import { browserLocalPersistence, EmailAuthProvider, onAuthStateChanged, reauthenticateWithCredential, setPersistence, signInWithEmailAndPassword, signOut } from 'firebase/auth';
-import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, query, updateDoc, where, writeBatch } from 'firebase/firestore';
+import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, query, runTransaction, updateDoc, where, writeBatch } from 'firebase/firestore';
 import { firebaseAuth, firestore } from './firebase';
 
 const API_BASE = import.meta.env.VITE_FIREBASE_FUNCTIONS_URL || 'https://asia-south1-kandb-net-sevice.cloudfunctions.net/api';
@@ -369,12 +369,106 @@ async function requestComplaints<T = any>(path: string, method: string, payload?
   throw new Error('Unsupported complaints request.');
 }
 
+
+async function requestSubscriptions<T = any>(path: string, method: string, payload?: Record<string, unknown>): Promise<ApiResult<T>> {
+  if (!firebaseAuth?.currentUser || !firestore) throw new Error('Please sign in again to continue.');
+  const profile = await getAppUserProfile();
+  const admin = profile.role === 'admin';
+  const uid = firebaseAuth.currentUser.uid;
+  const subscriptions = collection(firestore, 'subscriptions');
+  const base = '/api/subscriptions';
+  const id = path.startsWith(base + '/') ? decodeURIComponent(path.slice(base.length + 1).split('?')[0]) : '';
+  const clean = (value: unknown, max: number) => String(value ?? '').trim().slice(0, max);
+  const validDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value + 'T00:00:00'));
+  if (method === 'GET' && path.split('?')[0] === base) {
+    if (admin) {
+      const snap = await getDocs(subscriptions);
+      const items = snap.docs.map(item => ({ id: item.id, ...item.data() }));
+      items.sort((a: any, b: any) => String(b.startDate || '').localeCompare(String(a.startDate || '')));
+      return { data: { items } as T };
+    }
+    const assigned = await getDocs(query(collection(firestore, 'customers'), where('assignedTo', '==', uid)));
+    const customerIds = assigned.docs.map(item => item.id);
+    const all: any[] = [];
+    for (let i = 0; i < customerIds.length; i += 30) {
+      const group = customerIds.slice(i, i + 30);
+      if (!group.length) continue;
+      const snap = await getDocs(query(subscriptions, where('customerId', 'in', group)));
+      all.push(...snap.docs.map(item => ({ id: item.id, ...item.data() })));
+    }
+    all.sort((a, b) => String(b.startDate || '').localeCompare(String(a.startDate || '')));
+    return { data: { items: all } as T };
+  }
+  if (method === 'POST' && path.split('?')[0] === base) {
+    const customerId = clean(payload?.customerId, 128);
+    const plan = clean(payload?.plan, 100), startDate = clean(payload?.startDate, 10), endDate = clean(payload?.endDate, 10);
+    const amount = Number(payload?.amount), paymentStatus = payload?.paymentStatus === 'Paid' ? 'Paid' : 'Pending';
+    const paidAt = clean(payload?.paidAt, 10), paymentMethod = clean(payload?.paymentMethod, 40);
+    if (!customerId || !plan || !validDate(startDate) || !validDate(endDate) || endDate < startDate || !Number.isFinite(amount) || amount <= 0) {
+      throw new Error('Choose a customer and plan, enter valid start/end dates and a renewal amount.');
+    }
+    if (paymentStatus === 'Paid' && (!validDate(paidAt) || !paymentMethod)) throw new Error('A paid renewal needs a valid payment date and payment method.');
+    const customerRef = doc(firestore, 'customers', customerId);
+    const customer = await getDoc(customerRef);
+    if (!customer.exists()) throw new Error('Customer not found.');
+    if (!admin && customer.data().assignedTo !== uid) throw new Error('You can renew only customers assigned to you.');
+    const customerName = clean(customer.data().name, 100);
+    const createdAt = new Date().toISOString();
+    const subscriptionRef = doc(subscriptions);
+    const paymentRef = paymentStatus === 'Paid' ? doc(collection(firestore, 'payments')) : null;
+    const record = {
+      customerId, customerName, plan, startDate, endDate, amount,
+      status: 'Active', paymentStatus, createdAt, createdBy: uid, createdByName: profile.displayName,
+      paidAt: paymentStatus === 'Paid' ? paidAt : '',
+      paymentMethod: paymentStatus === 'Paid' ? paymentMethod : ''
+    };
+    await runTransaction(firestore, async transaction => {
+      const [latestCustomer, existingSubscriptions] = await Promise.all([
+        transaction.get(customerRef),
+        transaction.get(query(subscriptions, where('customerId', '==', customerId)))
+      ]);
+      if (!latestCustomer.exists()) throw new Error('Customer no longer exists.');
+      const overlaps = existingSubscriptions.docs.some(item => {
+        const data = item.data();
+        return !['Cancelled', 'Expired'].includes(String(data.status))
+          && typeof data.startDate === 'string' && typeof data.endDate === 'string'
+          && data.startDate <= endDate && data.endDate >= startDate;
+      });
+      if (overlaps) throw new Error('This renewal overlaps an existing active subscription. Check the current expiry date first.');
+      transaction.set(subscriptionRef, record);
+      const currentDueDate = String(latestCustomer.data().dueDate || '');
+      const customerPatch: Record<string, unknown> = { plan, monthlyFee: amount, updatedAt: createdAt };
+      if (!currentDueDate || endDate >= currentDueDate) customerPatch.dueDate = endDate;
+      transaction.update(customerRef, customerPatch);
+      if (paymentRef) transaction.set(paymentRef, {
+        customerId, customerName, amount, method: paymentMethod, paidAt,
+        month: paidAt.slice(0, 7), recordedBy: uid, recordedByName: profile.displayName,
+        createdAt, subscriptionId: subscriptionRef.id
+      });
+    });
+    return { data: { id: subscriptionRef.id, ...record, paymentId: paymentRef?.id || null } as T };
+  }
+  if (id && (method === 'PUT' || method === 'DELETE')) {
+    if (!admin) throw new Error('Only administrators can manage renewal status.');
+    const ref = doc(firestore, 'subscriptions', id);
+    const existing = await getDoc(ref);
+    if (!existing.exists()) throw new Error('Subscription not found.');
+    if (method === 'DELETE') throw new Error('Renewal history is preserved. Change the status to Cancelled instead.');
+    const status = clean(payload?.status, 20);
+    if (!['Active', 'Pending', 'Expired', 'Cancelled'].includes(status)) throw new Error('Choose Active, Pending, Expired or Cancelled.');
+    await updateDoc(ref, { status, notes: clean(payload?.notes, 500), updatedAt: new Date().toISOString(), updatedBy: uid });
+    return { data: { updated: true } as T };
+  }
+  throw new Error('Unsupported subscriptions request.');
+}
+
 async function request<T = any>(path: string, method: string, payload?: Record<string, unknown>): Promise<ApiResult<T>> {
   if (path.split('?')[0] === '/api/plans' || path.split('?')[0].startsWith('/api/plans/')) return requestPlans<T>(path, method, payload);
   if (path.split('?')[0] === '/api/customers' || path.split('?')[0].startsWith('/api/customers/')) return requestCustomers<T>(path, method, payload);
   if (path.split('?')[0] === '/api/payments' || path.split('?')[0].startsWith('/api/payments/')) return requestPayments<T>(path, method, payload);
   if (path.split('?')[0] === '/api/tasks' || path.split('?')[0].startsWith('/api/tasks/')) return requestTasks<T>(path, method, payload);
   if (path.split('?')[0] === '/api/complaints' || path.split('?')[0].startsWith('/api/complaints/')) return requestComplaints<T>(path, method, payload);
+  if (path.split('?')[0] === '/api/subscriptions' || path.split('?')[0].startsWith('/api/subscriptions/')) return requestSubscriptions<T>(path, method, payload);
   if (!firebaseAuth) throw new Error('Firebase is not configured yet. Add the K&B Firebase web app settings before signing in.');
   const auth = firebaseAuth;
   if (!auth.currentUser) await new Promise<void>(resolve => {
