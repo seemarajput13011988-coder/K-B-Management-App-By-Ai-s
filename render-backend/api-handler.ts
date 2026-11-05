@@ -134,7 +134,7 @@ export async function apiHandler(req: any, res: any) {
     const path = routePath(req.path);
     if (method === 'OPTIONS') { res.status(204).send(''); return; }
     if (method === 'GET' && path === '/api/_healthcheck') {
-      send(res, 200, { message: 'Success', service: 'kandb-firebase-api' }); return;
+      send(res, 200, { message: 'Success', service: 'kandb-management-nexus-render-api' }); return;
     }
 
     if (method === 'POST' && path === '/api/auth/login') {
@@ -271,22 +271,6 @@ export async function apiHandler(req: any, res: any) {
         send(res, 200, { items: dueItems, count: dueItems.length }); return;
       }
 
-      if (path === '/api/retention/review/delete' && method === 'POST') {
-        if (!allow(user, ['admin'], res)) return;
-        const collection = clean(body.collection, 80);
-        const id = clean(body.id, 160);
-        if (body.confirmDelete !== true) { send(res, 400, { error: 'Explicit administrator confirmation is required.' }); return; }
-        if (!Object.prototype.hasOwnProperty.call(RETENTION_REVIEW_COLLECTIONS, collection) || !id) {
-          send(res, 400, { error: 'This record cannot be deleted through retention review.' }); return;
-        }
-        const ref = db.collection(collection).doc(id);
-        const record = await ref.get();
-        if (!record.exists) { send(res, 404, { error: 'The record no longer exists.' }); return; }
-        await ref.delete();
-        await audit(user, 'RETENTION_DELETE', collection, id, 'Administrator confirmed deletion of ' + RETENTION_REVIEW_COLLECTIONS[collection] + ' record');
-        send(res, 200, { deleted: true }); return;
-      }
-
       if (method === 'POST' && path === '/api/auth/change-password') {
         const currentPassword = typeof body.currentPassword === 'string' ? body.currentPassword : '';
         const newPassword = typeof body.newPassword === 'string' ? body.newPassword : '';
@@ -324,7 +308,14 @@ export async function apiHandler(req: any, res: any) {
       if (method === 'GET' && path === '/api/auth/me') {
         send(res, 200, { user: { id: user.uid, userId: user.userId, displayName: user.displayName, role: user.role, active: true, canManageAdmins: user.canManageAdmins === true } }); return;
       }
-      if (method === 'POST' && path === '/api/auth/logout') { send(res, 200, { ok: true }); return; }
+      if (method === 'POST' && path === '/api/auth/logout') {
+        const authorization = clean(req.headers.authorization, 4096);
+        const token = authorization.startsWith('Bearer ')
+          ? authorization.slice(7)
+          : clean(body.sessionToken, 4096) || clean(req.query?.sessionToken, 4096);
+        if (token) await db.collection('sessions').doc(sessionTokenId(token)).delete();
+        send(res, 200, { ok: true }); return;
+      }
 
       // Only the original primary administrator account may manage administrator accounts.
       if (path === '/api/admins' && method === 'GET') {
