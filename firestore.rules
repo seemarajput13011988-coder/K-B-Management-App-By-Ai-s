@@ -88,6 +88,34 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // Payments are visible to admins and to the staff member who recorded them.
+    // A staff member may record a payment only for an assigned customer.
+    match /payments/{paymentId} {
+      allow get: if isAdmin()
+        || (hasActiveProfile() && resource.data.recordedBy == request.auth.uid);
+      allow list: if isAdmin()
+        || (hasActiveProfile() && resource.data.recordedBy == request.auth.uid);
+      allow create: if hasActiveProfile()
+        && request.resource.data.keys().hasOnly([
+          'customerId', 'customerName', 'amount', 'method', 'paidAt',
+          'month', 'recordedBy', 'recordedByName', 'createdAt'
+        ])
+        && request.resource.data.customerId is string
+        && request.resource.data.customerName is string
+        && request.resource.data.amount is number
+        && request.resource.data.amount > 0
+        && request.resource.data.method is string
+        && request.resource.data.paidAt is string
+        && request.resource.data.month is string
+        && request.resource.data.recordedBy == request.auth.uid
+        && request.resource.data.recordedByName is string
+        && request.resource.data.createdAt is string
+        && (isAdmin()
+          || get(/databases/$(database)/documents/customers/$(request.resource.data.customerId)).data.assignedTo == request.auth.uid);
+      allow update: if false;
+      allow delete: if isAdmin();
+    }
+
     // All remaining collections stay closed until their own ownership-checked
     // Spark rules and direct Firestore data paths are implemented.
     match /{document=**} {
