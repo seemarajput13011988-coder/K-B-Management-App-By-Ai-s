@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { api } from './lib/api';
 import { Download } from 'lucide-react';
+import { exportCsvFile } from './lib/file-export';
 
 type InventoryItem = {
   id: string; name: string; sku: string; category: string; unit: string; quantity: number;
@@ -13,12 +14,11 @@ type Movement = {
 };
 const money=(value:number)=>'₹'+Number(value||0).toLocaleString('en-IN');
 const stamp=(value:string)=>value?new Date(value).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'}):'—';
-function exportInventory(items:InventoryItem[],isAdmin:boolean){
+async function exportInventory(items:InventoryItem[],isAdmin:boolean){
   const rows=[['Item','SKU','Category','Quantity','Unit','Minimum stock',...(isAdmin?['Unit cost','Supplier']:[]),'Storage location','Active'],
     ...items.map(item=>[item.name,item.sku,item.category,item.quantity,item.unit,item.minimumQuantity,...(isAdmin?[item.unitCost||0,item.supplier||'']:[]),item.location||'',item.active?'Yes':'No'])];
-  const csv='\uFEFF'+rows.map(row=>row.map(value=>'"'+String(value??'').replace(/"/g,'""')+'"').join(',')).join('\r\n');
-  const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
-  const link=document.createElement('a');link.href=url;link.download='kb-inventory-'+new Date().toISOString().slice(0,10)+'.csv';link.style.display='none';document.body.appendChild(link);link.click();window.setTimeout(()=>{link.remove();URL.revokeObjectURL(url);},2000);
+  try { await exportCsvFile('kb-inventory-'+new Date().toISOString().slice(0,10)+'.csv',rows); }
+  catch(error) { window.alert(error instanceof Error?error.message:'Could not export inventory.'); }
 }
 
 export default function InventoryWorkspace({isAdmin,flash}:{isAdmin:boolean;flash:(message:string)=>void}) {
