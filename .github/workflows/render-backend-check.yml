@@ -55,7 +55,7 @@ jobs:
           const audit = require('/tmp/kb-npm-audit.json');
           console.log('Dependency vulnerability totals:', JSON.stringify(audit.metadata?.vulnerabilities || {}));
           for (const [name, item] of Object.entries(audit.vulnerabilities || {})) {
-            console.log(JSON.stringify({ package: name, severity: item.severity, range: item.range, fixAvailable: item.fixAvailable }));
+            console.log(JSON.stringify({ package: name, severity: item.severity, range: item.range, via: item.via, effects: item.effects, isDirect: item.isDirect, fixAvailable: item.fixAvailable }));
           }
           NODE
           npx tsc --noEmit
