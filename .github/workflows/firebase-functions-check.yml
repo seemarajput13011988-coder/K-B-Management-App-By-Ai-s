@@ -11,7 +11,7 @@ on:
       - "functions/**"
   pull_request:
     branches:
-      - firebase-migration
+      - main
     paths:
       - "functions/**"
 jobs:
