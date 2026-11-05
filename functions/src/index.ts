@@ -102,8 +102,8 @@ export const api = onRequest(
       if (!configuredSecret || bootstrapSecret !== configuredSecret) {
         send(res, 401, { error: 'The one-time admin setup key is incorrect or has not been configured.' }); return;
       }
-      if (password.length < 12) {
-        send(res, 400, { error: 'Choose an admin password with at least 12 characters.' }); return;
+      if (password.length < 8) {
+        send(res, 400, { error: 'Choose an admin password with at least 8 characters.' }); return;
       }
       const existing = await db.collection('users').where('role', '==', 'admin').limit(1).get();
       if (!existing.empty) { send(res, 409, { error: 'The admin account is already initialized. Use admin sign in.' }); return; }
