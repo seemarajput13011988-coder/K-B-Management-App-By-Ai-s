@@ -11,8 +11,6 @@ app.use(express.json({limit:'2mb'}));
 const useFirestoreSessionApi=(path:string)=>
   /^\/api\/(auth|admins|staff-registration-requests|retention|customer-ledger|invoices|audit|visits|subscriptions|notifications|push-tokens|payroll|inventory|installations)(\/|$)/.test(path)||path==='/api/_healthcheck';
 app.use((req,res,next)=>{if(!useFirestoreSessionApi(req.path))return next();void apiHandler(req,res).catch(next);});
-app.use(legacyHandler);
-app.use((req,res)=>{void apiHandler(req,res);});
 app.post('/internal/jobs/tick', async (req,res) => {
   const expected=process.env.JOB_SECRET||'';
   const received=String(req.header('x-kb-job-secret')||'');
@@ -21,6 +19,9 @@ app.post('/internal/jobs/tick', async (req,res) => {
   try { const result=await runScheduledTick(); res.status(200).json({ok:true,...result,checkedAt:new Date().toISOString()}); }
   catch (error) { console.error('Scheduled tick failed:',error instanceof Error?error.message:String(error)); res.status(500).json({error:'Scheduled check failed.'}); }
 });
+app.use(legacyHandler);
+app.use((req,res)=>{void apiHandler(req,res);});
+
 
 const port=Number(process.env.PORT||10000);
 startBackgroundJobs();
