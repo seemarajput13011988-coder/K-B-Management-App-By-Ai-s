@@ -144,9 +144,9 @@ export default function FinanceWorkspace({ session, customers, payments, flash, 
   const monthPayments = payments.filter(item => item.month === monthName(period) || item.paidAt?.slice(0, 7) === period);
   const monthExpenses = expenses.filter(item => item.spentAt?.slice(0, 7) === period);
   const collected = monthPayments.reduce((sum, item) => sum + Number(item.amount || 0), 0);
-  const spent = monthExpenses.reduce((sum, item) => sum + Number(item.amount || 0), 0);
-  const outstanding = invoices.reduce((sum, item) => sum + Math.max(0, Number(item.amount || 0) - Number(item.paidAmount || 0)), 0);
   const payrollTotal = payroll.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+  const spent = monthExpenses.reduce((sum, item) => sum + Number(item.amount || 0), 0) + payrollTotal;
+  const outstanding = invoices.reduce((sum, item) => sum + Math.max(0, Number(item.amount || 0) - Number(item.paidAmount || 0)), 0);
   const cashResult = collected - spent;
   const activeCustomers = customers.filter(item => item.status === 'Active');
   const unpaidInvoices = invoices.filter(item => item.status !== 'Paid');
@@ -213,7 +213,7 @@ export default function FinanceWorkspace({ session, customers, payments, flash, 
 
   if (salaryOnly) return <div className="finance-workspace salary-workspace">
     <section className="panel finance-panel">
-      <div className="finance-head"><div><span className="eyebrow">STAFF PAYROLL</span><h2>Monthly salary records</h2><p>Record each staff member's salary once per month. Salary is also added to the expense ledger automatically.</p></div></div>
+      <div className="finance-head"><div><span className="eyebrow">STAFF PAYROLL</span><h2>Monthly salary records</h2><p>Record each staff member's salary once per month. Salary is tracked separately and included in monthly cash outflow and reports.</p></div></div>
       <form className="finance-expense-form" onSubmit={recordSalary}>
         <label>Staff member<select required value={salaryStaffId} onChange={e => setSalaryStaffId(e.target.value)}><option value="">Select staff member</option>{staff.map(item => <option key={item.id} value={item.id}>{item.displayName} ({item.userId})</option>)}</select></label>
         <label>Salary amount (₹)<input required type="number" min="0.01" max="1000000" step="0.01" value={salaryAmount} onChange={e => setSalaryAmount(e.target.value)}/></label>
@@ -233,7 +233,7 @@ export default function FinanceWorkspace({ session, customers, payments, flash, 
   return <div className="finance-workspace">
     <section className="finance-metrics">
       <article><span><TrendingUp size={17}/> Collections · {monthName(period)}</span><strong>{money(collected)}</strong><small>{monthPayments.length} payment records</small></article>
-      <article><span><TrendingDown size={17}/> Expenses</span><strong>{money(spent)}</strong><small>{monthExpenses.length} expense records</small></article>
+      <article><span><TrendingDown size={17}/> Expenses</span><strong>{money(spent)}</strong><small>{monthExpenses.length} expense records + {payroll.length} salary payments</small></article>
       <article><span><Wallet size={17}/> Cash operating balance</span><strong className={cashResult < 0 ? 'negative' : ''}>{money(cashResult)}</strong><small>Collections minus recorded expenses</small></article>
       <article><span><ReceiptText size={17}/> Unpaid invoice balance</span><strong>{money(outstanding)}</strong><small>{unpaidInvoices.length} unpaid / partial invoices</small></article>
     </section>
@@ -292,7 +292,7 @@ export default function FinanceWorkspace({ session, customers, payments, flash, 
       </> : <p className="finance-note">Select a customer to view their ledger.</p>}
     </section>
     <section className="panel finance-panel">
-      <div className="finance-head"><div><span className="eyebrow">CASH BOOK</span><h2>Record business expense</h2><p>Track provider bills, fuel, equipment, salaries and other operating costs.</p></div></div>
+      <div className="finance-head"><div><span className="eyebrow">CASH BOOK</span><h2>Record business expense</h2><p>Track provider bills, fuel, equipment and operating costs. Staff payroll is tracked separately and included in monthly outflow.</p></div></div>
       <form className="finance-expense-form" onSubmit={addExpense}>
         <label>Expense title<input required maxLength={120} value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. Monthly upstream payment"/></label>
         <label>Category<select value={category} onChange={e => setCategory(e.target.value)}><option>Network / provider</option><option>Salary</option><option>Equipment</option><option>Fuel / travel</option><option>Office</option><option>Installation</option><option>Other</option></select></label>
@@ -311,10 +311,10 @@ export default function FinanceWorkspace({ session, customers, payments, flash, 
     <section className="panel finance-panel">
       <div className="finance-head"><div><span className="eyebrow">MANAGEMENT REPORTS</span><h2>Business reports</h2><p>Download your current payment and collection data for spreadsheet analysis.</p></div></div>
       <div className="finance-report-actions">
-        <button className="btn secondary" onClick={() => printReport('Finance summary · ' + monthName(period), [['Metric','Amount'],['Collections',money(collected)],['Expenses',money(spent)],['Cash operating balance',money(cashResult)],['Outstanding invoices',money(outstanding)],['Payroll paid',money(payroll.reduce((sum,item)=>sum+Number(item.amount||0),0))]])}><ReceiptText size={15}/> Print / Save PDF</button>
+        <button className="btn secondary" onClick={() => printReport('Finance summary · ' + monthName(period), [['Metric','Amount'],['Collections',money(collected)],['Expenses including payroll',money(spent)],['Cash operating balance',money(cashResult)],['Outstanding invoices',money(outstanding)],['Payroll paid',money(payroll.reduce((sum,item)=>sum+Number(item.amount||0),0))]])}><ReceiptText size={15}/> Print / Save PDF</button>
         <button className="btn secondary" onClick={() => downloadCsv('kb-payments-' + period + '.csv', [['Date','Customer','Billing month','Method','Amount','Recorded by'], ...monthPayments.map(p => [p.paidAt,p.customerName,p.month,p.method,p.amount,p.recordedByName])])}><Download size={15}/> Export monthly collections</button><button className="btn secondary" onClick={() => printReport('Monthly collections · ' + monthName(period), [['Date','Customer','Billing month','Method','Amount','Recorded by'], ...monthPayments.map(p => [p.paidAt,p.customerName,p.month,p.method,money(p.amount),p.recordedByName||''])])}><ReceiptText size={15}/> Collections PDF</button>
         <button className="btn secondary" onClick={() => downloadCsv('kb-customer-register.csv', [['Customer','Phone','Plan','Monthly fee','Status','Assigned to'], ...customers.map(c => [c.name,(c as any).phone,(c as any).plan,c.monthlyFee,c.status,(c as any).assignedToName])])}><Download size={15}/> Export customer register</button><button className="btn secondary" onClick={() => printReport('Customer register', [['Customer','Phone','Plan','Monthly fee','Status','Assigned to'], ...customers.map(c => [c.name,(c as any).phone,(c as any).plan,money(c.monthlyFee),c.status,(c as any).assignedToName||''])])}><ReceiptText size={15}/> Customer PDF</button>
-        <button className="btn secondary" onClick={() => downloadCsv('kb-finance-summary-' + period + '.csv', [['Metric','Amount'],['Collections',collected],['Expenses',spent],['Cash operating balance',cashResult],['Outstanding invoices',outstanding]])}><Download size={15}/> Export finance summary</button><button className="btn secondary" onClick={() => printReport('Finance summary · ' + monthName(period), [['Metric','Amount'],['Collections',money(collected)],['Expenses',money(spent)],['Cash operating balance',money(cashResult)],['Outstanding invoices',money(outstanding)],['Payroll paid',money(payrollTotal)]])}><ReceiptText size={15}/> Summary PDF</button>
+        <button className="btn secondary" onClick={() => downloadCsv('kb-finance-summary-' + period + '.csv', [['Metric','Amount'],['Collections',collected],['Expenses including payroll',spent],['Cash operating balance',cashResult],['Outstanding invoices',outstanding]])}><Download size={15}/> Export finance summary</button><button className="btn secondary" onClick={() => printReport('Finance summary · ' + monthName(period), [['Metric','Amount'],['Collections',money(collected)],['Expenses',money(spent)],['Cash operating balance',money(cashResult)],['Outstanding invoices',money(outstanding)],['Payroll paid',money(payrollTotal)]])}><ReceiptText size={15}/> Summary PDF</button>
       </div>
       <p className="finance-disclaimer">Cash operating balance is a simple management figure: recorded collections minus recorded expenses. It is not a statutory profit figure and does not include taxes, unpaid supplier bills, depreciation or other unrecorded liabilities.</p>
     </section>
