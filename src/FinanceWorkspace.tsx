@@ -29,8 +29,6 @@ function downloadCsv(name: string, rows: unknown[][]) {
 }
 
 function printReport(title: string, rows: unknown[][]) {
-  const popup = window.open('', '_blank');
-  if (!popup) return;
   const escapeHtml = (value: unknown) => {
     const replacements: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
     return String(value ?? '').replace(/[&<>"']/g, character => replacements[character] || character);
@@ -38,8 +36,21 @@ function printReport(title: string, rows: unknown[][]) {
   const table = rows.map((row, index) => '<tr>' + row.map(cell => index === 0
     ? '<th>' + escapeHtml(cell) + '</th>'
     : '<td>' + escapeHtml(cell) + '</td>').join('') + '</tr>').join('');
+  const html = '<!doctype html><html><head><meta charset="utf-8"><title>' + escapeHtml(title) + '</title><style>body{font:14px Arial,sans-serif;color:#172033;padding:28px}h1{font-size:22px;margin:0 0 6px}p{color:#64748b;margin:0 0 22px}table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:10px;border:1px solid #dbe2ec}th{background:#f1f5f9;font-size:12px;text-transform:uppercase}tr:nth-child(even) td{background:#f8fafc}.brand{font-weight:700;color:#315fbd;margin-bottom:18px}@media print{body{padding:0}}</style></head><body><div class="brand">K&amp;B NET SERVICE · MANAGEMENT NEXUS</div><h1>' + escapeHtml(title) + '</h1><p>Generated on ' + escapeHtml(new Date().toLocaleString('en-IN')) + '</p><table>' + table + '</table></body></html>';
+  const popup = window.open('', '_blank');
+  if (!popup) {
+    const url = URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = title.toLowerCase().replace(/[^a-z0-9]+/g, '-') + '.html';
+    link.style.display = 'none';
+    document.body.appendChild(link);
+    link.click();
+    window.setTimeout(() => { link.remove(); URL.revokeObjectURL(url); }, 2000);
+    return;
+  }
   popup.document.open();
-  popup.document.write('<!doctype html><html><head><meta charset="utf-8"><title>' + escapeHtml(title) + '</title><style>body{font:14px Arial,sans-serif;color:#172033;padding:28px}h1{font-size:22px;margin:0 0 6px}p{color:#64748b;margin:0 0 22px}table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:10px;border:1px solid #dbe2ec}th{background:#f1f5f9;font-size:12px;text-transform:uppercase}tr:nth-child(even) td{background:#f8fafc}.brand{font-weight:700;color:#315fbd;margin-bottom:18px}@media print{body{padding:0}}</style></head><body><div class="brand">K&amp;B NET SERVICE · MANAGEMENT NEXUS</div><h1>' + escapeHtml(title) + '</h1><p>Generated on ' + escapeHtml(new Date().toLocaleString('en-IN')) + '</p><table>' + table + '</table></body></html>');
+  popup.document.write(html);
   popup.document.close();
   popup.focus();
   popup.print();
