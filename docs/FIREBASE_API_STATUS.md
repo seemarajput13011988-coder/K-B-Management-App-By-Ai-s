@@ -63,3 +63,10 @@ The Spark-compatible HTTP API entry point is `netlify/functions/api.ts`, which c
 - Firebase Cloud Functions and Firebase Hosting deployment workflows are disabled on this branch to avoid accidental Blaze-plan deployment.
 - The Netlify site, service-account environment variable, public API URL, first-admin bootstrap, and live health check are not configured or verified yet.
 - The Netlify Free plan has a fixed monthly credit limit. If the limit is reached, the site can pause until the next billing cycle; keep auto-recharge disabled.
+
+
+## Scheduled work on Netlify
+- GPS grace-period monitoring is migrated to `netlify/functions/gps-grace-period.ts` and runs every minute.
+- Task due and subscription expiry reminders are migrated to `netlify/functions/daily-reminders.ts` and run at 9:00 AM Asia/Kolkata.
+- Netlify Scheduled Functions run on UTC schedules and only execute automatically on published deployments.
+- Firestore-triggered FCM push delivery is not migrated; the existing in-app notification polling remains the current notification path. Closed-app push delivery is still not verified.
