@@ -98,7 +98,8 @@ type Plan = {
 };
 
 const money = (n: number) => '₹' + Number(n || 0).toLocaleString('en-IN');
-const customerStatusLabel = (value: unknown): Customer['status'] => { const status = String(value || 'Active').trim().toLowerCase(); return status === 'suspended' ? 'Suspended' : status === 'inactive' ? 'Inactive' : 'Active'; };\nconst dateLabel = (s: string) =>
+const customerStatusLabel = (value: unknown): Customer['status'] => { const status = String(value || 'Active').trim().toLowerCase(); return status === 'suspended' ? 'Suspended' : status === 'inactive' ? 'Inactive' : 'Active'; };
+const dateLabel = (s: string) =>
   s
     ? new Date(s).toLocaleDateString('en-IN', {
         day: '2-digit',
