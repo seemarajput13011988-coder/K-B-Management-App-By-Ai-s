@@ -5,7 +5,7 @@ import { firebaseAuth } from './firebase';
 const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
 function apiUrl(path: string) {
   if (!API_BASE) throw new Error('The K&B API address is not configured yet. The project owner must finish the Netlify setup.');
-  return new URL('/.netlify/functions/api' + path, API_BASE);
+  return new URL(path, API_BASE);
 }
 const ACCOUNT_DOMAIN = 'accounts.kandbnetservice.in';
 type ApiResult<T = any> = { data: T };
