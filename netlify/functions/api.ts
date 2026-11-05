@@ -40,7 +40,12 @@ export async function handler(event: NetlifyEvent) {
     query: Object.fromEntries(url.searchParams.entries()),
   };
   let statusCode = 200;
-  const responseHeaders: Record<string, string> = { 'content-type': 'application/json; charset=utf-8' };
+  const responseHeaders: Record<string, string> = {
+    'content-type': 'application/json; charset=utf-8',
+    'access-control-allow-origin': '*',
+    'access-control-allow-methods': 'GET, POST, PUT, DELETE, OPTIONS',
+    'access-control-allow-headers': 'Authorization, Content-Type',
+  };
   let responseBody = '';
   const res = {
     status(code: number) { statusCode = code; return this; },
