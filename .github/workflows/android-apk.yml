@@ -54,6 +54,10 @@ jobs:
           VITE_API_BASE_URL: https://kandb-management-nexus-api-zv7f.onrender.com
           VITE_GOOGLE_MAPS_API_KEY: ${{ secrets.VITE_GOOGLE_MAPS_API_KEY }}
         run: |
+          if [ -z "$VITE_GOOGLE_MAPS_API_KEY" ]; then
+            echo "::error::Set the VITE_GOOGLE_MAPS_API_KEY repository secret. The admin live-staff Google Map is required for the final APK."
+            exit 1
+          fi
           npm install
           npx tsc --noEmit
           npm run build
