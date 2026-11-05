@@ -70,6 +70,7 @@ type Payment = {
   recordedByName?: string;
 };
 type Staff = { id: string; userId: string; displayName: string; role: 'staff'; active: boolean };
+type AdminAccount = { id: string; userId: string; displayName: string; role: 'admin'; active: boolean; isSuperAdmin?: boolean };
 type AttendanceRecord = { id: string; userId: string; displayName: string; workDate: string; checkInAt: string; checkOutAt?: string; dayType?: 'Full day' | 'Half day' };
 type Task = { id: string; title: string; details: string; assignedTo: string; assignedToName: string; priority: 'Low' | 'Normal' | 'High'; dueDate: string; status: 'Pending' | 'In progress' | 'Completed'; createdAt: string; createdByName: string };
 type Complaint = {
@@ -107,6 +108,7 @@ const dateLabel = (s: string) =>
 
 function Workspace({ session, onLogout }: { session: Session; onLogout: () => void }) {
   const isAdmin = session.user.role === 'admin';
+  const canManageAdmins = session.user.isSuperAdmin === true;
   const { language, setLanguage, theme, toggleTheme } = useAppPreferences();
   const [localHour, setLocalHour] = useState(() => new Date().getHours());
   useEffect(() => {
@@ -126,6 +128,8 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   const [complaints, setComplaints] = useState<Complaint[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [staff, setStaff] = useState<Staff[]>([]);
+  const [adminAccounts, setAdminAccounts] = useState<AdminAccount[]>([]);
+  const [showAdminModal, setShowAdminModal] = useState(false);
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
   const [selectedStaffProfileId, setSelectedStaffProfileId] = useState('');
   const [showTask, setShowTask] = useState(false);
@@ -184,6 +188,10 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
       if (isAdmin) {
         const s = await api.get('/api/staff');
         setStaff(s.data.items || []);
+      }
+      if (canManageAdmins) {
+        const adminsResult = await api.get('/api/admins');
+        setAdminAccounts(adminsResult.data.items || []);
       }
     } catch (e) {
       setNotice('Could not load records. Please refresh and try again.');
@@ -400,6 +408,16 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
       flash('Could not delete customer');
     }
   }
+  async function createAdmin(data: { userId: string; displayName: string; password: string }) {
+    try {
+      await api.post('/api/admins', data);
+      setShowAdminModal(false);
+      await load();
+      flash('Admin account created successfully');
+    } catch (err) {
+      flash(err instanceof Error ? err.message : 'Could not create admin account');
+    }
+  }
   async function createStaff(data: { userId: string; displayName: string; password: string }) {
     try {
       await api.post('/api/staff', data);
@@ -509,6 +527,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
     { label: 'Installations', icon: MapPin },
     ...(isAdmin ? [{ label: 'Plans & Pricing', icon: Wifi }] : []),
     ...(isAdmin ? [{ label: 'Staff', icon: UserRound, count: staff.length }] : []),
+    ...(canManageAdmins ? [{ label: 'Admin Accounts', icon: ShieldCheck, count: adminAccounts.length || undefined }] : []),
     ...(isAdmin ? [{ label: 'Finance & Billing', icon: IndianRupee }] : []),
     { label: 'Payments', icon: CreditCard },
     {
@@ -640,6 +659,8 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                         ? 'Track customer collections and payment history.'
                         : page === 'Staff'
                           ? 'Manage staff accounts, assignments and collection performance.'
+                          : page === 'Admin Accounts'
+                            ? 'Create and view administrator sign-in accounts.'
                           : page === 'Calendar'
                             ? 'View task deadlines and team attendance by date.'
                           : page === taskPage
@@ -652,6 +673,9 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
             <div className="heading-actions">
               {page === 'Staff' && isAdmin && (
                 <button className="btn primary" onClick={() => setShowStaff(true)}><UserPlus size={17} /> Add staff member</button>
+              )}
+              {page === 'Admin Accounts' && canManageAdmins && (
+                <button className="btn primary" onClick={() => setShowAdminModal(true)}><UserPlus size={17} /> Add admin</button>
               )}
               {page === taskPage && isAdmin && (
                 <button className="btn primary" onClick={() => setShowTask(true)}><Plus size={17} /> Assign task</button>
@@ -836,6 +860,16 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                 <PaymentTable rows={payments.slice(0, 4)} />
               </section>
             </>
+          )}
+
+          {page === 'Admin Accounts' && canManageAdmins && (
+            <section className="panel table-panel">
+              <div className="toolbar"><div><h2>Admin accounts</h2><p className="subtle">Only the original Brajraj account can create additional admins.</p></div><span className="result-count">{adminAccounts.length} admins</span></div>
+              <div className="table-wrap"><table><thead><tr><th>ADMIN</th><th>USER ID</th><th>ACCESS</th><th>ACCOUNT TYPE</th></tr></thead><tbody>
+                {adminAccounts.map(account => <tr key={account.id}><td><strong>{account.displayName}</strong></td><td>{account.userId}</td><td><span className={'status ' + (account.active ? 'active' : 'inactive')}>{account.active ? 'Active' : 'Disabled'}</span></td><td>{account.isSuperAdmin ? 'Primary account' : 'Admin'}</td></tr>)}
+              </tbody></table></div>
+              {!adminAccounts.length && <Empty icon={<ShieldCheck />} title="No admin accounts" text="Create the first additional admin account when needed." />}
+            </section>
           )}
 
           {page === 'Staff' && isAdmin && (
@@ -1091,6 +1125,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
         />
       )}
       {showStaff && <StaffModal onClose={() => setShowStaff(false)} onSave={createStaff} />}
+      {showAdminModal && canManageAdmins && <AdminModal onClose={() => setShowAdminModal(false)} onSave={createAdmin} />}
       {showAccountSettings && <AccountSettingsModal session={session} onClose={() => setShowAccountSettings(false)} onChangeUserId={async (currentPassword: string, userId: string) => { await changeAppUserId(currentPassword, userId); onLogout(); }} onChangePassword={async (currentPassword: string, newPassword: string) => { await changeAppPassword(currentPassword, newPassword); onLogout(); }} />}
       {showTask && <TaskModal staff={staff.filter(member => member.active)} onClose={() => setShowTask(false)} onSave={saveTask} />}
       {editStaffUserId && <StaffUsernameModal staff={editStaffUserId} onClose={() => setEditStaffUserId(null)} onSave={(userId: string) => saveStaffUserId(editStaffUserId, userId)} />}
