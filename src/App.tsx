@@ -12,7 +12,6 @@ import CalendarWorkspace from './CalendarWorkspace';
 import { useAppPreferences } from './appPreferences';
 import { api as client, changeAppPassword, changeAppUserId, signInAppUser, signOutAppUser, submitStaffRegistrationRequest, getStaffRegistrationStatus } from './lib/api';
 import {
-  Activity,
   Bell,
   ChevronDown,
   CircleHelp,
@@ -866,6 +865,14 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                   <i />
                 </div>
               </div>
+
+              <section className="quick-actions" aria-label="Quick actions">
+                <button type="button" onClick={() => setPage('Customers')}><Users size={18}/><span>Customers</span><small>Find and manage</small></button>
+                <button type="button" onClick={() => setPage('Complaints')}><MessageSquare size={18}/><span>Complaints</span><small>Track issues</small></button>
+                {isAdmin && <button type="button" onClick={() => { setEditing(null); setShowCustomer(true); }}><Plus size={18}/><span>Add customer</span><small>Create a record</small></button>}
+                {isAdmin && <button type="button" onClick={() => setPage('Salary')}><IndianRupee size={18}/><span>Salary</span><small>Staff operations</small></button>}
+                {!isAdmin && <button type="button" onClick={() => setPage('My Work')}><ClipboardList size={18}/><span>My work</span><small>See assigned tasks</small></button>}
+              </section>
 
               {isAdmin && (
                 <section className="panel retention-review-panel">
