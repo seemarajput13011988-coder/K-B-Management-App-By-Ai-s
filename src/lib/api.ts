@@ -1,6 +1,7 @@
 import { CapacitorHttp } from '@capacitor/core';
 import { browserLocalPersistence, EmailAuthProvider, onAuthStateChanged, reauthenticateWithCredential, setPersistence, signInWithEmailAndPassword, signOut } from 'firebase/auth';
-import { firebaseAuth } from './firebase';
+import { doc, getDoc } from 'firebase/firestore';
+import { firebaseAuth, firestore } from './firebase';
 
 const API_BASE = import.meta.env.VITE_FIREBASE_FUNCTIONS_URL || 'https://asia-south1-kandb-net-sevice.cloudfunctions.net/api';
 const ACCOUNT_DOMAIN = 'accounts.kandbnetservice.in';
@@ -71,6 +72,29 @@ export async function getStaffRegistrationStatus(requestId: string, trackingCode
   if (!response.ok) throw new Error(typeof data.error === 'string' ? data.error : 'Could not check registration status.');
   return data as { status: 'pending'|'approved'|'rejected'; createdAt: string; reviewedAt?: string | null; reviewedByName?: string | null };
 }
+export type AppUserProfile = { id: string; userId: string; displayName: string; role: 'admin' | 'staff'; active: boolean; isSuperAdmin?: boolean };
+
+// Read the signed-in user's own profile directly from Firestore. This removes
+// the Cloud Functions dependency from the sign-in/profile bootstrap path.
+export async function getAppUserProfile(): Promise<AppUserProfile> {
+  const user = firebaseAuth?.currentUser;
+  if (!user || !firestore) throw new Error('Please sign in again to continue.');
+  const snapshot = await getDoc(doc(firestore, 'users', user.uid));
+  if (!snapshot.exists()) throw new Error('This Firebase account has no K&B staff profile yet. Ask the administrator to provision it.');
+  const data = snapshot.data();
+  if (data.active !== true || (data.role !== 'admin' && data.role !== 'staff')) {
+    throw new Error('This K&B account is not active. Contact the administrator.');
+  }
+  return {
+    id: user.uid,
+    userId: String(data.userId || ''),
+    displayName: String(data.displayName || ''),
+    role: data.role,
+    active: true,
+    isSuperAdmin: data.role === 'admin' && data.isSuperAdmin === true,
+  };
+}
+
 export const api = {
   get: <T = any>(path: string) => request<T>(path, 'GET'),
   post: <T = any>(path: string, payload?: Record<string, unknown>) => request<T>(path, 'POST', payload),
@@ -141,8 +165,8 @@ export async function signInAppUser(userId: string, password: string) {
     const currentUser = firebaseAuth.currentUser;
     if (!currentUser) throw new Error('Firebase sign-in completed but no authenticated user session was returned. Please sign in again.');
     const token = await currentUser.getIdToken();
-    const profile = await api.get<{ user: { id: string; userId: string; displayName: string; role: 'admin' | 'staff'; active: boolean; isSuperAdmin?: boolean } }>('/api/auth/me');
-    return { token, expiresAt: Date.now() + 3600000, user: profile.data.user };
+    const profile = await getAppUserProfile();
+    return { token, expiresAt: Date.now() + 3600000, user: profile };
   } catch (error) {
     await signOut(firebaseAuth);
     const detail = error instanceof Error ? error.message : 'Unknown server response.';
