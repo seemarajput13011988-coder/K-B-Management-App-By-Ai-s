@@ -34,7 +34,7 @@ function AttendanceCalendar({ staffId, staffName, records, holidays }: { staffId
   const mondayOffset = (new Date(year, monthIndex, 1).getDay() + 6) % 7;
   const today = localDay();
   const dateKey = (day: number) => [year, String(monthIndex + 1).padStart(2,'0'), String(day).padStart(2,'0')].join('-');
-  const recordsByDate = new Map(records.filter(item => item.userId === staffId).map(item => [item.workDate, item]));
+  const recordsByDate = new Map(records.filter(item => item.userId === staffId).sort((a, b) => a.checkInAt.localeCompare(b.checkInAt)).map(item => [item.workDate, item]));
   const holidayOn = (date: string) => holidays.some(item => item.userId === staffId && ['pending','approved'].includes(item.status) && item.startDate <= date && item.endDate >= date);
   const statusFor = (day: number) => {
     const date = dateKey(day), weekday = new Date(year, monthIndex, day).getDay(), record = recordsByDate.get(date);
@@ -91,7 +91,7 @@ export default function StaffOperations({ session, customers, flash, compact = f
   const [visitForm, setVisitForm] = useState({ customerId: customers[0]?.id || '', purpose: 'Installation / service visit', notes: '' });
   const selectedGroupRef = useRef('');
   const today = localDay();
-  const myToday = attendance.find(item => item.userId === session.user.id && item.workDate === today);
+  const myToday = attendance.filter(item => item.userId === session.user.id && item.workDate === today).sort((a, b) => b.checkInAt.localeCompare(a.checkInAt))[0];
   const gpsRemainingMinutes = gpsDeadline ? Math.max(0, Math.ceil((new Date(gpsDeadline).getTime() - Date.now()) / 60000)) : null;
   const activeShift = !!myToday && !myToday.checkOutAt;
 
