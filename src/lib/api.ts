@@ -1,6 +1,5 @@
-import { CapacitorHttp } from '@capacitor/core';
 import { deleteApp, initializeApp } from 'firebase/app';
-import { browserLocalPersistence, createUserWithEmailAndPassword, deleteUser, EmailAuthProvider, getAuth, onAuthStateChanged, reauthenticateWithCredential, setPersistence, signInWithEmailAndPassword, signOut, updateEmail, updatePassword } from 'firebase/auth';
+import { browserLocalPersistence, createUserWithEmailAndPassword, deleteUser, EmailAuthProvider, getAuth, reauthenticateWithCredential, setPersistence, signInWithEmailAndPassword, signOut, updateEmail, updatePassword } from 'firebase/auth';
 import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, limit, orderBy, query, runTransaction, setDoc, updateDoc, where, writeBatch } from 'firebase/firestore';
 import { firebaseApp, firebaseAuth, firestore } from './firebase';
 
