@@ -111,7 +111,7 @@ jobs:
             echo "::error::Expected a 401 invalid-credentials response from the Firestore-backed login lookup, received HTTP $status."
             exit 1
           fi
-          echo "API health check passed and Firestore-backed login lookup returned the expected 401 without writing data."
+          echo "API health check, Firestore-backed login lookup, GPS/attendance guards, and staff registration request/status routes passed their live HTTP checks."
 
   keepalive:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
