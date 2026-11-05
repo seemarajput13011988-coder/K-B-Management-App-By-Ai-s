@@ -264,7 +264,7 @@ export async function apiHandler(req: any, res: any) {
       const displayName = clean(input.displayName, 80);
       const phone = clean(input.phone, 30);
       const reason = clean(input.reason, 300);
-      if (!/^[a-zA-Z0-9_-]{3,32}$/.test(userId) || !displayName) {
+      if (!/^[a-zA-Z0-9_-]{3,32}$/.test(userId) || !displayName || (phone && !/^\d{10}$/.test(phone))) {
         send(res, 400, { error: 'Enter a valid staff ID and your full name.' }); return;
       }
       const userIdLower = userId.toLowerCase();
