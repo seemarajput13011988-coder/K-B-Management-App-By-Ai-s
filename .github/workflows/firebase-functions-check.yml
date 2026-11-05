@@ -5,7 +5,8 @@ concurrency:
 on:
   push:
     branches:
-      - firebase-migration
+      - main
+      - safe-firebase-migration-copilot-review
     paths:
       - "functions/**"
   pull_request:
