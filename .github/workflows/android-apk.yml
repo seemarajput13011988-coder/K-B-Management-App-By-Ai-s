@@ -6,6 +6,7 @@ on:
   push:
     branches:
       - firebase-migration
+      - safe-firebase-migration-copilot-review
     paths:
       - "src/**"
       - "public/**"
@@ -27,7 +28,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: firebase-migration
+          ref: ${{ github.ref_name }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
