@@ -775,10 +775,10 @@ export const handler = router({
     const todays = result.items.filter(item => item.userId === member.id && item.workDate === workDate)
       .sort((a, b) => String(b.checkInAt || '').localeCompare(String(a.checkInAt || '')));
     const latest = todays[0];
-    if (latest && !latest.checkOutAt) return error('End this staff member’s active shift before marking absent.', 409);
+    if (latest && !latest.checkOutAt && latest.dayType !== 'Absent') return error('End this staff member’s active shift before marking absent.', 409);
     const absence = {
       userId: member.id, displayName: member.displayName, workDate,
-      checkInAt: '', checkOutAt: '', status: 'Absent', dayType: 'Absent',
+      checkInAt: '', checkOutAt: new Date().toISOString(), status: 'Absent', dayType: 'Absent',
       absenceReason: reason, markedAbsentBy: admin.displayName, attendanceSource: 'Admin',
     };
     if (latest) {
