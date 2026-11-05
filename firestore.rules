@@ -36,12 +36,34 @@ service cloud.firestore {
         && data.featured is bool && data.active is bool;
     }
 
-    // A worker can read their own profile. Admins can read staff profiles.
-    // Profile creation, role changes and activation remain owner-controlled.
+    // Users can read their own profile; admins can manage staff profiles only.
+    // Client-side staff provisioning never permits creation or promotion of admins.
     match /users/{userId} {
       allow get: if signedIn() && (request.auth.uid == userId || isAdmin());
       allow list: if isAdmin();
-      allow create, update, delete: if false;
+      allow create: if isAdmin()
+        && request.resource.data.keys().hasOnly([
+          'userId', 'displayName', 'role', 'active', 'createdAt', 'createdBy'
+        ])
+        && request.resource.data.userId is string
+        && request.resource.data.userId.size() >= 3
+        && request.resource.data.userId.size() <= 32
+        && request.resource.data.displayName is string
+        && request.resource.data.displayName.size() > 0
+        && request.resource.data.displayName.size() <= 80
+        && request.resource.data.role == 'staff'
+        && request.resource.data.active == true
+        && request.resource.data.createdAt is string
+        && request.resource.data.createdBy == request.auth.uid;
+      allow update: if isAdmin()
+        && resource.data.role == 'staff'
+        && request.resource.data.role == 'staff'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'active'])
+        && request.resource.data.displayName is string
+        && request.resource.data.displayName.size() > 0
+        && request.resource.data.displayName.size() <= 80
+        && request.resource.data.active is bool;
+      allow delete: if false;
     }
 
     // Active plans are visible to active staff; admins manage the catalogue.
