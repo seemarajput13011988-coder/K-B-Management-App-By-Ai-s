@@ -674,6 +674,191 @@ async function requestInstallations<T = any>(path: string, method: string, paylo
 
 
 
+
+async function requestFinance<T = any>(path: string, method: string, payload?: Record<string, unknown>): Promise<ApiResult<T>> {
+  if (!firebaseAuth?.currentUser || !firestore) throw new Error('Please sign in again to continue.');
+  const db = firestore;
+  const user = firebaseAuth.currentUser;
+  const profile = await getAppUserProfile();
+  if (profile.role !== 'admin') throw new Error('Only administrators can access finance records.');
+  const clean = (value: unknown, max: number) => String(value ?? '').trim().slice(0, max);
+  const route = path.split('?')[0];
+  const queryString = new URLSearchParams(path.split('?')[1] || '');
+  const periodOk = (value: string) => /^\d{4}-(0[1-9]|1[0-2])$/.test(value);
+  const dateOk = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value + 'T00:00:00'));
+  const validAmount = (value: number) => Number.isFinite(value) && value > 0 && value <= 100000000;
+  const amount = (value: unknown) => Math.round(Number(value) * 100) / 100;
+  const now = () => new Date().toISOString();
+  const audit = async (action: string, entityType: string, entityId: string, description: string) => {
+    await addDoc(collection(db, 'audit_logs'), {
+      actorId: user.uid, actorName: profile.displayName, action, entityType,
+      entityId, description: clean(description, 240), createdAt: now(),
+    });
+  };
+  const list = async (name: string) => (await getDocs(collection(db, name))).docs.map(item => ({ id: item.id, ...item.data() } as any));
+
+  if (route === '/api/expenses' && method === 'GET') {
+    const items = (await list('expenses')).sort((x, y) => String(y.spentAt || '').localeCompare(String(x.spentAt || '')));
+    return { data: { items } as T };
+  }
+  if (route === '/api/expenses' && method === 'POST') {
+    const title = clean(payload?.title, 120), category = clean(payload?.category, 60);
+    const total = amount(payload?.amount), spentAt = clean(payload?.spentAt, 10), methodName = clean(payload?.method, 40);
+    if (!title || !category || !validAmount(total) || !dateOk(spentAt) || !methodName) {
+      throw new Error('Enter a valid expense title, category, amount, date and payment method.');
+    }
+    const record = {
+      title, category, amount: total, spentAt, method: methodName, notes: clean(payload?.notes, 300),
+      createdBy: user.uid, createdByName: profile.displayName, createdAt: now(),
+    };
+    const ref = await addDoc(collection(db, 'expenses'), record);
+    await audit('CREATE', 'expense', ref.id, 'Recorded ' + category + ' expense of ₹' + total);
+    return { data: { id: ref.id, ...record } as T };
+  }
+  if (route.startsWith('/api/expenses/') && method === 'DELETE') {
+    const id = decodeURIComponent(route.slice('/api/expenses/'.length));
+    if (!id || id.includes('/')) throw new Error('Choose a valid expense.');
+    const ref = doc(db, 'expenses', id), snapshot = await getDoc(ref);
+    if (!snapshot.exists()) throw new Error('Expense not found.');
+    if (snapshot.data().payrollId) throw new Error('Salary-linked expenses cannot be deleted from the general expense list.');
+    await deleteDoc(ref);
+    await audit('DELETE', 'expense', id, 'Deleted expense: ' + String(snapshot.data().title || 'Expense'));
+    return { data: { deleted: true } as T };
+  }
+
+  if (route === '/api/payroll' && method === 'GET') {
+    const period = clean(queryString.get('period'), 7);
+    if (!periodOk(period)) throw new Error('Select a valid payroll month.');
+    const items = (await getDocs(query(collection(db, 'payroll'), where('period', '==', period)))).docs
+      .map(item => ({ id: item.id, ...item.data() }))
+      .sort((x: any, y: any) => String(x.staffName || '').localeCompare(String(y.staffName || '')));
+    return { data: { items } as T };
+  }
+  if (route === '/api/payroll' && method === 'POST') {
+    const staffUserId = clean(payload?.staffUserId, 128), period = clean(payload?.period, 7);
+    const total = amount(payload?.amount), paidAt = clean(payload?.paidAt, 10), methodName = clean(payload?.method, 40);
+    if (!staffUserId || !periodOk(period) || !dateOk(paidAt) || paidAt.slice(0, 7) !== period || !validAmount(total) || !methodName) {
+      throw new Error('Enter a valid payroll month, payment date, amount and payment method.');
+    }
+    const staffSnapshot = await getDoc(doc(db, 'users', staffUserId));
+    if (!staffSnapshot.exists() || staffSnapshot.data().role !== 'staff' || staffSnapshot.data().active !== true) {
+      throw new Error('Choose an active staff member.');
+    }
+    const staffName = clean(staffSnapshot.data().displayName, 80);
+    const id = 'pay-' + encodeURIComponent(staffUserId) + '-' + period;
+    const payrollRef = doc(db, 'payroll', id), expenseRef = doc(db, 'expenses', 'salary-' + id);
+    const createdAt = now();
+    const record = {
+      staffUserId, staffName, period, amount: total, paidAt, method: methodName,
+      notes: clean(payload?.notes, 300), createdBy: user.uid, createdByName: profile.displayName, createdAt,
+    };
+    const expense = {
+      title: 'Salary - ' + staffName + ' (' + period + ')', category: 'Salary', amount: total,
+      spentAt: paidAt, method: methodName, notes: record.notes, createdBy: user.uid,
+      createdByName: profile.displayName, createdAt, payrollId: id, staffUserId,
+    };
+    const auditRef = doc(collection(db, 'audit_logs'));
+    await runTransaction(db, async transaction => {
+      const existing = await transaction.get(payrollRef);
+      const existingExpense = await transaction.get(expenseRef);
+      if (existing.exists() || existingExpense.exists()) throw new Error('Salary is already recorded for this staff member and month.');
+      transaction.create(payrollRef, record);
+      transaction.create(expenseRef, expense);
+      transaction.set(auditRef, {
+        actorId: user.uid, actorName: profile.displayName, action: 'CREATE',
+        entityType: 'payroll', entityId: id,
+        description: 'Recorded salary of ₹' + total + ' for ' + staffName + ' (' + period + ')',
+        createdAt,
+      });
+    });
+    return { data: { id, ...record } as T };
+  }
+
+  if (route === '/api/invoices' && method === 'GET') {
+    const period = clean(queryString.get('period'), 7);
+    if (!periodOk(period)) throw new Error('Select a valid billing month.');
+    const [invoiceItems, paymentItems] = await Promise.all([list('invoices'), list('payments')]);
+    const monthLabel = new Date(period + '-01T12:00:00').toLocaleString('en-IN', { month: 'long', year: 'numeric' });
+    const items = invoiceItems.filter(item => item.period === period).map(item => {
+      const paidAmount = item.voidedAt ? 0 : paymentItems.filter(payment =>
+        payment.customerId === item.customerId && (payment.month === monthLabel || String(payment.paidAt || '').slice(0, 7) === period)
+      ).reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+      const total = Number(item.amount || 0);
+      return { ...item, paidAmount, status: item.voidedAt ? 'Void' : paidAmount >= total ? 'Paid' : paidAmount > 0 ? 'Partially paid' : 'Unpaid' };
+    });
+    return { data: { items } as T };
+  }
+  if (route === '/api/invoices/generate' && method === 'POST') {
+    const period = clean(payload?.period, 7);
+    if (!periodOk(period)) throw new Error('Select a valid billing month.');
+    const [customerItems, invoiceItems] = await Promise.all([list('customers'), list('invoices')]);
+    const existing = new Set(invoiceItems.map(item => String(item.customerId) + '|' + String(item.period)));
+    const active = customerItems.filter(item => item.status === 'Active');
+    let created = 0;
+    for (const customer of active) {
+      const key = String(customer.id) + '|' + period;
+      if (existing.has(key)) continue;
+      const [year, month] = period.split('-').map(Number);
+      const rawDue = String(customer.dueDate || '');
+      const dueDay = dateOk(rawDue) ? Number(rawDue.slice(-2)) : 10;
+      const dueDate = period + '-' + String(Math.min(Math.max(dueDay, 1), new Date(year, month, 0).getDate())).padStart(2, '0');
+      const id = 'inv-' + encodeURIComponent(String(customer.id)) + '-' + period;
+      const invoiceRef = doc(db, 'invoices', id);
+      const wasCreated = await runTransaction(db, async transaction => {
+        const current = await transaction.get(invoiceRef);
+        if (current.exists()) return false;
+        transaction.create(invoiceRef, {
+          customerId: customer.id, customerName: clean(customer.name, 120), period, dueDate,
+          amount: amount(customer.monthlyFee), createdAt: now(), createdBy: user.uid,
+        });
+        return true;
+      });
+      if (wasCreated) created++;
+    }
+    if (created) await audit('GENERATE', 'invoice_batch', period, 'Generated ' + created + ' monthly invoices for ' + period);
+    return { data: { created, skippedExisting: Math.max(0, active.length - created) } as T };
+  }
+  if (route.startsWith('/api/invoices/') && route.endsWith('/void') && method === 'PUT') {
+    const id = decodeURIComponent(route.slice('/api/invoices/'.length, -'/void'.length));
+    if (!id || id.includes('/')) throw new Error('Choose a valid invoice.');
+    const ref = doc(db, 'invoices', id), snapshot = await getDoc(ref);
+    if (!snapshot.exists()) throw new Error('Invoice not found.');
+    const voidedAt = now();
+    await updateDoc(ref, { voidedAt, voidedBy: user.uid });
+    await audit('VOID', 'invoice', id, 'Voided invoice for ' + String(snapshot.data().customerName || 'customer') + ' (' + String(snapshot.data().period || '') + ')');
+    return { data: { voided: true } as T };
+  }
+  if (route === '/api/customer-ledger' && method === 'GET') {
+    const customerId = clean(queryString.get('customerId'), 128);
+    if (!customerId) throw new Error('Choose a customer.');
+    const customerSnapshot = await getDoc(doc(db, 'customers', customerId));
+    if (!customerSnapshot.exists()) throw new Error('Customer not found.');
+    const [invoiceItems, paymentItems] = await Promise.all([list('invoices'), list('payments')]);
+    const rows: Array<{ id: string; date: string; type: 'Invoice' | 'Payment'; description: string; debit: number; credit: number; reference: string }> = [];
+    for (const invoice of invoiceItems.filter(item => item.customerId === customerId && !item.voidedAt)) {
+      rows.push({ id: invoice.id, date: String(invoice.dueDate || invoice.createdAt || ''), type: 'Invoice', description: 'Monthly invoice · ' + String(invoice.period || ''), debit: Number(invoice.amount || 0), credit: 0, reference: String(invoice.id) });
+    }
+    for (const payment of paymentItems.filter(item => item.customerId === customerId)) {
+      rows.push({ id: payment.id, date: String(payment.paidAt || payment.createdAt || ''), type: 'Payment', description: 'Payment · ' + String(payment.method || 'Other'), debit: 0, credit: Number(payment.amount || 0), reference: String(payment.id) });
+    }
+    rows.sort((x, y) => x.date.localeCompare(y.date) || x.id.localeCompare(y.id));
+    let balance = 0, totalBilled = 0, totalPaid = 0;
+    const items = rows.map(item => {
+      totalBilled += item.debit; totalPaid += item.credit; balance += item.debit - item.credit;
+      return { ...item, balance: Math.round(balance * 100) / 100 };
+    });
+    return { data: {
+      customer: { id: customerId, name: String(customerSnapshot.data().name || ''), phone: String(customerSnapshot.data().phone || ''), plan: String(customerSnapshot.data().plan || '') },
+      items, totalBilled, totalPaid, balance: Math.round((totalBilled - totalPaid) * 100) / 100,
+    } as T };
+  }
+  if (route === '/api/audit' && method === 'GET') {
+    const items = (await list('audit_logs')).sort((x, y) => String(y.createdAt || '').localeCompare(String(x.createdAt || ''))).slice(0, 300);
+    return { data: { items } as T };
+  }
+  throw new Error('Unsupported finance request.');
+}
+
 async function requestStaff<T = any>(path: string, method: string, payload?: Record<string, unknown>): Promise<ApiResult<T>> {
   if (!firebaseAuth?.currentUser || !firestore) throw new Error('Please sign in again to continue.');
   const db = firestore;
@@ -959,6 +1144,7 @@ async function request<T = any>(path: string, method: string, payload?: Record<s
   if (path.split('?')[0] === '/api/complaints' || path.split('?')[0].startsWith('/api/complaints/')) return requestComplaints<T>(path, method, payload);
   if (path.split('?')[0] === '/api/subscriptions' || path.split('?')[0].startsWith('/api/subscriptions/')) return requestSubscriptions<T>(path, method, payload);
   if (path.split('?')[0] === '/api/installations' || path.split('?')[0].startsWith('/api/installations/')) return requestInstallations<T>(path, method, payload);
+  if (['/api/expenses', '/api/payroll', '/api/invoices', '/api/customer-ledger', '/api/audit'].some(route => path.split('?')[0] === route || path.split('?')[0].startsWith(route + '/'))) return requestFinance<T>(path, method, payload);
   if (path.split('?')[0] === '/api/staff' || path.split('?')[0].startsWith('/api/staff/')) return requestStaff<T>(path, method, payload);
   if (path.split('?')[0] === '/api/inventory' || path.split('?')[0].startsWith('/api/inventory/')) return requestInventory<T>(path, method, payload);
   if (path.split('?')[0] === '/api/holidays' || path.split('?')[0].startsWith('/api/holidays/')) return requestHolidays<T>(path, method, payload);
