@@ -10,7 +10,7 @@ import InventoryWorkspace from './InventoryWorkspace';
 import InstallationsWorkspace from './InstallationsWorkspace';
 import CalendarWorkspace from './CalendarWorkspace';
 import { useAppPreferences } from './appPreferences';
-import { api as client, changeAppPassword, changeAppUserId, signInAppUser, signOutAppUser, submitStaffRegistrationRequest, getStaffRegistrationStatus } from './lib/api';
+import { api as client, changeAppPassword, changeAppUserId, getAppUserProfile, signInAppUser, signOutAppUser, submitStaffRegistrationRequest, getStaffRegistrationStatus } from './lib/api';
 import {
   Activity,
   Bell,
@@ -1775,7 +1775,7 @@ function Modal({ title, subtitle, onClose, children }: any) {
 
 function App(){
  const [session,setSession]=useState<Session|null>(null);const [checking,setChecking]=useState(true);
- useEffect(()=>{let live=true;async function restore(){const raw=localStorage.getItem('kb-customer-session');if(!raw){setChecking(false);return;}try{const old=JSON.parse(raw) as Session;const r=await client.get('/api/auth/me?sessionToken='+encodeURIComponent(old.token));if(live)setSession({...old,user:r.data.user});}catch{localStorage.removeItem('kb-customer-session');}finally{if(live)setChecking(false);}}restore();return()=>{live=false;};},[]);
+ useEffect(()=>{let live=true;async function restore(){const raw=localStorage.getItem('kb-customer-session');if(!raw){setChecking(false);return;}try{const old=JSON.parse(raw) as Session;const user=await getAppUserProfile();if(live)setSession({...old,user});}catch{localStorage.removeItem('kb-customer-session');}finally{if(live)setChecking(false);}}restore();return()=>{live=false;};},[]);
  async function login(userId:string,password:string,expectedRole:'admin'|'staff'){const next=await signInAppUser(userId,password) as Session;if(next.user.role!==expectedRole){await signOutAppUser();throw new Error(expectedRole==='admin'?'This account is not an admin account. Choose Staff Sign In instead.':'This account is not a staff account. Choose Admin Sign In instead.');}localStorage.setItem('kb-customer-session',JSON.stringify(next));setSession(next);}
  if(checking)return <div className="loading-cover"><div className="loader"/><span>Preparing secure sign-in…</span></div>;
  return session?<Workspace session={session} onLogout={()=>{signOutAppUser().catch(()=>undefined);localStorage.removeItem('kb-customer-session');setSession(null);}}/>:<LoginScreen onLogin={login}/>;
