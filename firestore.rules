@@ -21,17 +21,52 @@ service cloud.firestore {
         && get(myProfilePath()).data.role == 'admin';
     }
 
+    function validPlan(data) {
+      return data.keys().hasOnly([
+          'name', 'provider', 'speed', 'data', 'price', 'note',
+          'connectionType', 'featured', 'active'
+        ])
+        && data.name is string && data.name.size() > 0 && data.name.size() <= 80
+        && data.provider is string && data.provider.size() > 0 && data.provider.size() <= 60
+        && data.speed is string && data.speed.size() > 0 && data.speed.size() <= 40
+        && data.data is string && data.data.size() > 0 && data.data.size() <= 40
+        && data.connectionType is string && data.connectionType.size() > 0 && data.connectionType.size() <= 40
+        && data.price is number && data.price >= 0 && data.price <= 1000000
+        && data.note is string && data.note.size() <= 180
+        && data.featured is bool && data.active is bool;
+    }
+
     // A worker can read their own profile. Admins can read staff profiles.
-    // Profile creation, role changes and activation remain administrator-only
-    // server/console operations until the corresponding Spark rules are added.
+    // Profile creation, role changes and activation remain owner-controlled.
     match /users/{userId} {
       allow get: if signedIn() && (request.auth.uid == userId || isAdmin());
       allow list: if isAdmin();
       allow create, update, delete: if false;
     }
 
-    // All other collections stay closed until each collection receives
-    // its own role- and ownership-checked rules during the Spark migration.
+    // Active plans are visible to active staff; admins manage the catalogue.
+    match /plans/{planId} {
+      allow get: if isAdmin() || (hasActiveProfile() && resource.data.active == true);
+      allow list: if isAdmin() || (hasActiveProfile() && resource.data.active == true);
+      allow create: if isAdmin() && validPlan(request.resource.data);
+      allow update: if isAdmin()
+        && validPlan(request.resource.data)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'name', 'provider', 'speed', 'data', 'price', 'note',
+          'connectionType', 'featured', 'active'
+        ]);
+      allow delete: if isAdmin();
+    }
+
+    // Admin-only read is used by the plan deletion guard. Staff customer
+    // access continues through the existing ownership-checked API until migrated.
+    match /customers/{customerId} {
+      allow get, list: if isAdmin();
+      allow create, update, delete: if false;
+    }
+
+    // All remaining collections stay closed until their own ownership-checked
+    // Spark rules and direct Firestore data paths are implemented.
     match /{document=**} {
       allow read, write: if false;
     }
