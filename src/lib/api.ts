@@ -422,19 +422,17 @@ async function requestSubscriptions<T = any>(path: string, method: string, paylo
       paidAt: paymentStatus === 'Paid' ? paidAt : '',
       paymentMethod: paymentStatus === 'Paid' ? paymentMethod : ''
     };
+    const existingSubscriptions = await getDocs(query(subscriptions, where('customerId', '==', customerId)));
+    const overlaps = existingSubscriptions.docs.some(item => {
+      const data = item.data();
+      return !['Cancelled', 'Expired'].includes(String(data.status))
+        && typeof data.startDate === 'string' && typeof data.endDate === 'string'
+        && data.startDate <= endDate && data.endDate >= startDate;
+    });
+    if (overlaps) throw new Error('This renewal overlaps an existing active subscription. Check the current expiry date first.');
     await runTransaction(firestore, async transaction => {
-      const [latestCustomer, existingSubscriptions] = await Promise.all([
-        transaction.get(customerRef),
-        transaction.get(query(subscriptions, where('customerId', '==', customerId)))
-      ]);
+      const latestCustomer = await transaction.get(customerRef);
       if (!latestCustomer.exists()) throw new Error('Customer no longer exists.');
-      const overlaps = existingSubscriptions.docs.some(item => {
-        const data = item.data();
-        return !['Cancelled', 'Expired'].includes(String(data.status))
-          && typeof data.startDate === 'string' && typeof data.endDate === 'string'
-          && data.startDate <= endDate && data.endDate >= startDate;
-      });
-      if (overlaps) throw new Error('This renewal overlaps an existing active subscription. Check the current expiry date first.');
       transaction.set(subscriptionRef, record);
       const currentDueDate = String(latestCustomer.data().dueDate || '');
       const customerPatch: Record<string, unknown> = { plan, monthlyFee: amount, updatedAt: createdAt, lastSubscriptionId: subscriptionRef.id };
