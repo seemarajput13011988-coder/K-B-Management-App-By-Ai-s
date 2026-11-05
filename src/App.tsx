@@ -784,12 +784,12 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
           </div>
 
           {page === 'Calendar' && <CalendarWorkspace tasks={tasks} attendance={attendanceRecords} isAdmin={isAdmin} />}
-          {page === (isAdmin ? 'Team Operations' : 'My Day') && <StaffOperations session={session} customers={customers} flash={flash} />}
+          {page === (isAdmin ? 'Team Operations' : 'My Day') && <StaffOperations session={session} customers={customers} flash={flash} onDataChanged={() => { void load(true); }} />}
           {page === 'Finance & Billing' && isAdmin && <FinanceWorkspace session={session} customers={customers} payments={payments} flash={flash} />}
           {page === 'Subscriptions' && <SubscriptionWorkspace customers={customers} plans={plans} isAdmin={isAdmin} flash={flash} />}
           {page === 'Inventory' && <InventoryWorkspace isAdmin={isAdmin} flash={flash} />}
           {page === 'Installations' && <InstallationsWorkspace customers={customers} staff={staff} isAdmin={isAdmin} flash={flash} />}
-          {page === 'Overview' && !isAdmin && <StaffOperations session={session} customers={customers} flash={flash} compact />}
+          {page === 'Overview' && !isAdmin && <StaffOperations session={session} customers={customers} flash={flash} compact onDataChanged={() => { void load(true); }} />}
 
           {page === 'Overview' && (
             <>
