@@ -343,25 +343,6 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
     window.setTimeout(() => setNotice(''), 3200);
   }
 
-  async function deleteRetentionItem(item: RetentionReviewItem) {
-    const confirmed = window.confirm(
-      'Delete this ' + item.collectionLabel.toLowerCase() + ' record permanently?\n\n' +
-      item.recordLabel + '\nSaved/created: ' + dateLabel(item.createdAt) +
-      '\n\nThis action happens only after your confirmation and cannot be undone.'
-    );
-    if (!confirmed) return;
-    try {
-      await api.post('/api/retention/review/delete', {
-        collection: item.collection,
-        id: item.id,
-        confirmDelete: true,
-      });
-      setRetentionItems(current => current.filter(record => !(record.collection === item.collection && record.id === item.id)));
-      flash('Record deleted after admin confirmation.');
-    } catch (error) {
-      flash(error instanceof Error ? error.message : 'Could not delete this record.');
-    }
-  }
 
   async function markNotificationsRead() {
     const unread = notifications.filter(item => !item.read);
@@ -785,9 +766,6 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                             <strong>{item.recordLabel}</strong>
                             <small>{item.collectionLabel} · Saved {dateLabel(item.createdAt)}</small>
                           </div>
-                          <button className="btn danger small" onClick={() => void deleteRetentionItem(item)}>
-                            <Trash2 size={14} /> Delete
-                          </button>
                         </div>
                       ))}
                     </div>
