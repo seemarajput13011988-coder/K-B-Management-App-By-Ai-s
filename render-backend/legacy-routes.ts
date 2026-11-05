@@ -195,7 +195,7 @@ export const handler = router({
     await firestore.runTransaction(async transaction => {
       const previous = await transaction.get(requestRef);
       if (previous.exists && previous.data()?.status === 'pending') return;
-      transaction.create(requestRef, {
+      transaction.set(requestRef, {
         userId, userIdLower, displayName, phone, reason,
         status: 'pending', createdAt, trackingHash,
       });
