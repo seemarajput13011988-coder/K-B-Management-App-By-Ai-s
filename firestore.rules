@@ -379,13 +379,14 @@ service cloud.firestore {
 
     function validInventoryItem(data) {
       return data.keys().hasOnly([
-          'name', 'sku', 'skuKey', 'category', 'unit', 'quantity', 'minimumQuantity',
+          'name', 'sku', 'skuKey', 'skuReservationId', 'category', 'unit', 'quantity', 'minimumQuantity',
           'unitCost', 'supplier', 'location', 'notes', 'active', 'createdAt',
           'updatedAt', 'createdBy', 'lastMovementId'
         ])
         && data.name is string && data.name.size() > 0 && data.name.size() <= 100
         && data.sku is string && data.sku.size() > 0 && data.sku.size() <= 50
         && data.skuKey is string && data.skuKey.size() > 0 && data.skuKey.size() <= 150
+        && data.skuReservationId is string && data.skuReservationId.size() > 0 && data.skuReservationId.size() <= 150
         && data.category is string && data.category.size() > 0 && data.category.size() <= 60
         && data.unit is string && data.unit.size() > 0 && data.unit.size() <= 24
         && data.quantity is int && data.quantity >= 0
@@ -413,11 +414,11 @@ service cloud.firestore {
         || (hasActiveProfile() && resource.data.active == true);
       allow create: if isAdmin()
         && validInventoryItem(request.resource.data)
-        && getAfter(/databases/$(database)/documents/inventory_skus/$(request.resource.data.skuKey)).data.itemId == itemId;
+        && getAfter(/databases/$(database)/documents/inventory_skus/$(request.resource.data.skuReservationId)).data.itemId == itemId;
       allow update: if (
           isAdmin()
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-            'name', 'sku', 'skuKey', 'category', 'unit', 'minimumQuantity', 'unitCost',
+            'name', 'sku', 'skuKey', 'skuReservationId', 'category', 'unit', 'minimumQuantity', 'unitCost',
             'supplier', 'location', 'notes', 'active', 'updatedAt'
           ])
           && request.resource.data.name is string
