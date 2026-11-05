@@ -9,6 +9,8 @@ type NetlifyEvent = {
   isBase64Encoded?: boolean;
 };
 
+export const config = { path: '/api/*' };
+
 export async function handler(event: NetlifyEvent) {
   const rawUrl = event.rawUrl || `https://netlify.local${event.path}`;
   const url = new URL(rawUrl);
