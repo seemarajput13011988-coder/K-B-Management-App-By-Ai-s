@@ -859,6 +859,93 @@ async function requestFinance<T = any>(path: string, method: string, payload?: R
   throw new Error('Unsupported finance request.');
 }
 
+
+async function requestStaffRegistrations<T = any>(path: string, method: string, payload?: Record<string, unknown>): Promise<ApiResult<T>> {
+  if (!firebaseAuth?.currentUser || !firestore) throw new Error('Please sign in again to continue.');
+  const db = firestore, user = firebaseAuth.currentUser, profile = await getAppUserProfile();
+  if (profile.role !== 'admin') throw new Error('Only administrators can review staff registration requests.');
+  const base = '/api/staff-registration-requests';
+  const route = path.split('?')[0];
+  const id = route.startsWith(base + '/') ? decodeURIComponent(route.slice(base.length + 1)) : '';
+  if (method === 'GET' && route === base) {
+    const snapshot = await getDocs(collection(db, 'staff_registration_requests'));
+    const items = snapshot.docs.map(item => ({ id: item.id, ...item.data() }))
+      .sort((x: any, y: any) => String(y.createdAt || '').localeCompare(String(x.createdAt || '')));
+    return { data: { items } as T };
+  }
+  if (method !== 'PUT' || !id || id.includes('/')) throw new Error('Unsupported staff registration request.');
+  const requestRef = doc(db, 'staff_registration_requests', id);
+  const requestSnapshot = await getDoc(requestRef);
+  if (!requestSnapshot.exists() || requestSnapshot.data().status !== 'pending') {
+    throw new Error('Pending registration request not found.');
+  }
+  const request = requestSnapshot.data();
+  const decision = payload?.status === 'approved' ? 'approved' : payload?.status === 'rejected' ? 'rejected' : '';
+  if (!decision) throw new Error('Choose approve or reject.');
+  const statusId = String(request.statusId || '');
+  if (!/^[a-f0-9]{48}$/.test(statusId)) throw new Error('This request has an invalid tracking record. Ask the applicant to submit again.');
+  const statusRef = doc(db, 'staff_registration_status', statusId);
+  const reviewedAt = new Date().toISOString();
+  const auditRef = doc(collection(db, 'audit_logs'));
+  if (decision === 'rejected') {
+    const batch = writeBatch(db);
+    batch.update(requestRef, { status: 'rejected', reviewedAt, reviewedBy: user.uid, reviewedByName: profile.displayName });
+    batch.update(statusRef, { status: 'rejected', reviewedAt, reviewedByName: profile.displayName });
+    batch.set(auditRef, {
+      actorId: user.uid, actorName: profile.displayName, action: 'REJECT_STAFF_REGISTRATION',
+      entityType: 'staff_registration_request', entityId: id,
+      description: 'Rejected staff registration for ' + String(request.userId || 'unknown user'),
+      createdAt: reviewedAt,
+    });
+    await batch.commit();
+    return { data: { updated: true, status: 'rejected' } as T };
+  }
+
+  const password = typeof payload?.password === 'string' ? payload.password : '';
+  if (password.length < 10) throw new Error('Set a temporary password with at least 10 characters before approving.');
+  const userId = String(request.userId || '').trim();
+  const userIdLower = userId.toLowerCase();
+  if (!/^[a-zA-Z0-9_-]{3,32}$/.test(userId)) throw new Error('The requested staff ID is invalid.');
+  const users = await getDocs(collection(db, 'users'));
+  if (users.docs.some(item => String(item.data().userId || '').toLowerCase() === userIdLower)) {
+    throw new Error('This staff ID has already been registered. Reject or close this duplicate request.');
+  }
+  if (!firebaseApp) throw new Error('Firebase is not configured in this app.');
+  const email = userIdLower + '@' + ACCOUNT_DOMAIN;
+  const secondaryApp = initializeApp(firebaseApp.options, 'kb-staff-approval-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8));
+  const secondaryAuth = getAuth(secondaryApp);
+  let createdUser: Awaited<ReturnType<typeof createUserWithEmailAndPassword>>['user'] | null = null;
+  try {
+    const credential = await createUserWithEmailAndPassword(secondaryAuth, email, password);
+    createdUser = credential.user;
+    const record = {
+      userId, displayName: String(request.displayName || '').trim().slice(0, 80),
+      role: 'staff', active: true, createdAt: reviewedAt, createdBy: user.uid,
+    };
+    const batch = writeBatch(db);
+    batch.set(doc(db, 'users', createdUser.uid), record);
+    batch.update(requestRef, {
+      status: 'approved', reviewedAt, reviewedBy: user.uid,
+      reviewedByName: profile.displayName, approvedUserId: createdUser.uid,
+    });
+    batch.update(statusRef, { status: 'approved', reviewedAt, reviewedByName: profile.displayName });
+    batch.set(auditRef, {
+      actorId: user.uid, actorName: profile.displayName, action: 'APPROVE_STAFF_REGISTRATION',
+      entityType: 'staff_registration_request', entityId: id,
+      description: 'Approved staff registration and created account ' + userId,
+      createdAt: reviewedAt,
+    });
+    await batch.commit();
+    await signOut(secondaryAuth);
+    return { data: { updated: true, status: 'approved', user: { id: createdUser.uid, ...record } } as T };
+  } catch (error) {
+    if (createdUser) await deleteUser(createdUser).catch(() => undefined);
+    throw error;
+  } finally {
+    await deleteApp(secondaryApp).catch(() => undefined);
+  }
+}
+
 async function requestStaff<T = any>(path: string, method: string, payload?: Record<string, unknown>): Promise<ApiResult<T>> {
   if (!firebaseAuth?.currentUser || !firestore) throw new Error('Please sign in again to continue.');
   const db = firestore;
@@ -1145,6 +1232,7 @@ async function request<T = any>(path: string, method: string, payload?: Record<s
   if (path.split('?')[0] === '/api/subscriptions' || path.split('?')[0].startsWith('/api/subscriptions/')) return requestSubscriptions<T>(path, method, payload);
   if (path.split('?')[0] === '/api/installations' || path.split('?')[0].startsWith('/api/installations/')) return requestInstallations<T>(path, method, payload);
   if (['/api/expenses', '/api/payroll', '/api/invoices', '/api/customer-ledger', '/api/audit'].some(route => path.split('?')[0] === route || path.split('?')[0].startsWith(route + '/'))) return requestFinance<T>(path, method, payload);
+  if (path.split('?')[0] === '/api/staff-registration-requests' || path.split('?')[0].startsWith('/api/staff-registration-requests/')) return requestStaffRegistrations<T>(path, method, payload);
   if (path.split('?')[0] === '/api/staff' || path.split('?')[0].startsWith('/api/staff/')) return requestStaff<T>(path, method, payload);
   if (path.split('?')[0] === '/api/inventory' || path.split('?')[0].startsWith('/api/inventory/')) return requestInventory<T>(path, method, payload);
   if (path.split('?')[0] === '/api/holidays' || path.split('?')[0].startsWith('/api/holidays/')) return requestHolidays<T>(path, method, payload);
@@ -1196,23 +1284,51 @@ export async function nativeApiPost<T = any>(path: string, payload: Record<strin
   return { data: data as T };
 }
 export async function submitStaffRegistrationRequest(input: { userId: string; displayName: string; phone?: string; reason?: string }) {
-  const url = new URL('/api/staff-registration-requests', API_BASE);
-  const response = await fetch(url.toString(), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input), cache: 'no-store' });
-  let data: any = {};
-  try { data = await response.json(); } catch { data = {}; }
-  if (!response.ok) throw new Error(typeof data.error === 'string' ? data.error : 'Could not submit your staff registration request.');
-  return data as { id: string; trackingCode: string; status: 'pending'; message: string };
+  if (!firestore) throw new Error('Firebase is not configured in this app.');
+  const userId = String(input.userId || '').trim();
+  const displayName = String(input.displayName || '').trim().slice(0, 80);
+  const phone = String(input.phone || '').trim().slice(0, 30);
+  const reason = String(input.reason || '').trim().slice(0, 300);
+  if (!/^[a-zA-Z0-9_-]{3,32}$/.test(userId) || !displayName) {
+    throw new Error('Enter a valid staff ID and your full name.');
+  }
+  const randomHex = (length: number) => {
+    const bytes = new Uint8Array(length);
+    globalThis.crypto.getRandomValues(bytes);
+    return Array.from(bytes, value => value.toString(16).padStart(2, '0')).join('');
+  };
+  const requestId = randomHex(24);
+  const trackingCode = randomHex(24);
+  const createdAt = new Date().toISOString();
+  const requestRef = doc(firestore, 'staff_registration_requests', userId.toLowerCase());
+  const statusRef = doc(firestore, 'staff_registration_status', trackingCode);
+  const batch = writeBatch(firestore);
+  batch.set(requestRef, {
+    userId, userIdLower: userId.toLowerCase(), displayName, phone, reason,
+    status: 'pending', createdAt, requestId, statusId: trackingCode,
+  });
+  batch.set(statusRef, { requestId, status: 'pending', createdAt });
+  try {
+    await batch.commit();
+  } catch {
+    throw new Error('This staff ID may already have a pending or approved request. Please contact the administrator if you need help.');
+  }
+  return { id: requestId, trackingCode, status: 'pending' as const, message: 'Your request has been submitted. An administrator must approve it before you can sign in.' };
 }
 
 export async function getStaffRegistrationStatus(requestId: string, trackingCode: string) {
-  const url = new URL('/api/staff-registration-requests/status', API_BASE);
-  url.searchParams.set('requestId', requestId);
-  url.searchParams.set('trackingCode', trackingCode);
-  const response = await fetch(url.toString(), { method: 'GET', cache: 'no-store' });
-  let data: any = {};
-  try { data = await response.json(); } catch { data = {}; }
-  if (!response.ok) throw new Error(typeof data.error === 'string' ? data.error : 'Could not check registration status.');
-  return data as { status: 'pending'|'approved'|'rejected'; createdAt: string; reviewedAt?: string | null; reviewedByName?: string | null };
+  if (!firestore || !/^[a-f0-9]{48}$/.test(requestId) || !/^[a-f0-9]{48}$/.test(trackingCode)) {
+    throw new Error('The saved registration tracking details are invalid.');
+  }
+  const snapshot = await getDoc(doc(firestore, 'staff_registration_status', trackingCode));
+  if (!snapshot.exists() || snapshot.data().requestId !== requestId) throw new Error('Registration request not found.');
+  const data = snapshot.data();
+  return {
+    status: data.status as 'pending'|'approved'|'rejected',
+    createdAt: String(data.createdAt || ''),
+    reviewedAt: data.reviewedAt ? String(data.reviewedAt) : null,
+    reviewedByName: data.reviewedByName ? String(data.reviewedByName) : null,
+  };
 }
 export type AppUserProfile = { id: string; userId: string; displayName: string; role: 'admin' | 'staff'; active: boolean; isSuperAdmin?: boolean };
 
