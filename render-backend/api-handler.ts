@@ -143,6 +143,11 @@ export async function apiHandler(req: any, res: any) {
       const password = typeof input.password === 'string' ? input.password : '';
       if (!userId || !password) { send(res, 400, { error: 'Enter your user ID and password.' }); return; }
       let matches = (await list('users')).filter(item => String(item.userId || '').toLowerCase() === userId.toLowerCase());
+      const authPrincipal = userId.toLowerCase() === 'brajraj' ? 'primary-admin' : 'staff-or-secondary-admin';
+      const authTrace = (result: string, matchedAccounts = matches.length, bootstrapConfigured = Boolean((process.env.ADMIN_INITIAL_PASSWORD || '').length >= 10)) => {
+        // Never log usernames, passwords, hashes, salts, or request bodies.
+        console.info('[AUTH_DIAGNOSTIC]', JSON.stringify({ principal: authPrincipal, matchedAccounts, bootstrapConfigured, result }));
+      };
 
       // Bootstrap the fixed owner account from a private one-time secret when it does not exist.
       // If an older Brajraj owner record exists with an incompatible password hash, permit that
@@ -150,9 +155,11 @@ export async function apiHandler(req: any, res: any) {
       const initialPassword = process.env.ADMIN_INITIAL_PASSWORD || '';
       if (matches.length === 0 && userId.toLowerCase() === 'brajraj') {
         if (initialPassword.length < 10) {
+          authTrace('owner-setup-secret-missing', 0, false);
           send(res, 503, { error: 'The primary admin account is not initialized. Complete the one-time owner password setup in the Render service environment.' }); return;
         }
         if (!equalSecret(password, initialPassword)) {
+          authTrace('owner-setup-password-mismatch', 0, true);
           send(res, 401, { error: 'The admin username or password is incorrect.' }); return;
         }
         const ownerRef = db.collection('users').doc('admin-primary');
@@ -172,13 +179,16 @@ export async function apiHandler(req: any, res: any) {
         });
         matches = (await list('users')).filter(item => String(item.userId || '').toLowerCase() === 'brajraj');
         if (matches.length === 0) {
+          authTrace('owner-initialization-blocked-by-existing-admin', 0, true);
           send(res, 409, { error: 'The primary admin account could not be initialized because another admin account already exists. Admin setup needs owner review.' }); return;
         }
       }
       if (matches.length === 0) {
+        authTrace('account-not-found', 0);
         send(res, 404, { error: 'No account exists with this user ID. A staff account must be created or approved by the admin before staff sign-in.' }); return;
       }
       if (matches.length > 1) {
+        authTrace('duplicate-account-records');
         send(res, 409, { error: 'More than one account uses this user ID. Ask the primary admin to resolve the duplicate account records.' }); return;
       }
       const userDoc = await db.collection('users').doc(String(matches[0].id)).get();
@@ -213,8 +223,10 @@ export async function apiHandler(req: any, res: any) {
         }
       }
       if (!passwordMatches) {
+        authTrace('stored-password-hash-mismatch');
         send(res, 401, { error: 'The user ID or password is incorrect, or this account needs an administrator password reset.' }); return;
       }
+      authTrace('success');
       const user = { id: userDoc.id, ...record };
       const session = await createSession(user);
       send(res, 200, { ...session, user: { id: userDoc.id, userId: clean(record.userId, 40), displayName: clean(record.displayName, 80), role: record.role, active: true, canManageAdmins: record.canManageAdmins === true } }); return;
