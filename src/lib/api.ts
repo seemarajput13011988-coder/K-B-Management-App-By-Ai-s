@@ -648,6 +648,7 @@ async function request<T = any>(path: string, method: string, payload?: Record<s
   return { data };
 }
 export async function nativeApiPost<T = any>(path: string, payload: Record<string, unknown>): Promise<ApiResult<T>> {
+  if (path.startsWith('/api/attendance/') || path === '/api/locations') return requestAttendance<T>(path, 'POST', payload);
   if (!firebaseAuth?.currentUser) throw new Error('Please sign in again to continue location sharing.');
   const token = await firebaseAuth.currentUser.getIdToken();
   const url = new URL(path, API_BASE);
