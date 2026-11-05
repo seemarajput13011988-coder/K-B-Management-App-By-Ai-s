@@ -1,7 +1,7 @@
 name: Web app build check
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 on:
   push:
     branches:
@@ -19,6 +19,7 @@ on:
       - ".github/workflows/web-build-check.yml"
       - "firebase.json"
       - "firestore.rules"
+      - "firestore.indexes.json"
       - ".firebaserc"
   pull_request:
     branches:
