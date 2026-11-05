@@ -63,6 +63,28 @@ test('regular admins cannot disable administrator accounts', async () => {
   await assertFails(updateDoc(doc(db, 'users/admin'), { active: false }));
 });
 
+test('staff can settle an expired GPS grace shift but cannot forge an ordinary cancellation', async () => {
+  await env.withSecurityRulesDisabled(async context => {
+    await setDoc(doc(context.firestore(), 'attendance/shift-staff'), {
+      userId: 'staff', displayName: 'Worker', workDate: '2026-11-05',
+      checkInAt: '2026-11-05T08:00:00.000Z', status: 'Checked in',
+      gpsStatus: 'grace-period', gpsIssueStartedAt: '2026-11-05T08:10:00.000Z',
+      gpsIssueReason: 'GPS location unavailable',
+    });
+  });
+  const db = env.authenticatedContext('staff').firestore();
+  await assertSucceeds(updateDoc(doc(db, 'attendance/shift-staff'), {
+    checkOutAt: '2026-11-05T08:25:00.000Z', status: 'GPS Cancelled',
+    gpsStatus: 'cancelled', gpsCancelled: true, gpsRestartRequired: true,
+    gpsCancelledAt: '2026-11-05T08:26:00.000Z',
+    gpsIssueDeadlineAt: '2026-11-05T08:25:00.000Z',
+  }));
+  await assertFails(updateDoc(doc(db, 'attendance/shift-staff'), {
+    status: 'GPS Cancelled', gpsStatus: 'cancelled', gpsCancelled: true,
+    gpsRestartRequired: true,
+  }));
+});
+
 test('announcement publishing is admin-only', async () => {
   const payload = { title: 'Office update', message: 'Team meeting at 10 AM', createdAt: '2026-11-05T00:00:00.000Z', createdBy: 'admin', createdByName: 'Manager' };
   await assertSucceeds(setDoc(doc(env.authenticatedContext('admin').firestore(), 'announcements/a1'), payload));
