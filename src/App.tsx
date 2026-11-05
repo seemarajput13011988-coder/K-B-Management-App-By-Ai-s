@@ -42,6 +42,7 @@ import {
 
 type Session={token:string;expiresAt:number;user:{id:string;userId:string;displayName:string;role:'admin'|'staff';active:boolean;canManageAdmins?:boolean}};
 type AppNotification={id:string;title:string;message:string;createdAt:string;read:boolean;type:string};
+type RetentionReviewItem={id:string;collection:string;collectionLabel:string;recordLabel:string;createdAt:string};
 const getToken=()=>{try{return (JSON.parse(localStorage.getItem('kb-customer-session')||'null') as Session|null)?.token||'';}catch{return '';}};
 const api={get:(url:string)=>client.get(url+(url.includes('?')?'&':'?')+'sessionToken='+encodeURIComponent(getToken())),post:(url:string,data?:Record<string,unknown>)=>client.post(url,{...(data||{}),sessionToken:getToken()}),put:(url:string,data?:Record<string,unknown>)=>client.put(url,{...(data||{}),sessionToken:getToken()}),delete:(url:string)=>client.delete(url+'?sessionToken='+encodeURIComponent(getToken()))};
 type Customer = {
@@ -151,6 +152,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   const [showComplaint, setShowComplaint] = useState(false);
   const [notice, setNotice] = useState('');
   const [mobileNav, setMobileNav] = useState(false);
+  const [retentionItems, setRetentionItems] = useState<RetentionReviewItem[]>([]);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const seenNotifications = useRef<Set<string> | null>(null);
@@ -188,6 +190,12 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
       if (isAdmin) {
         const s = await api.get('/api/staff');
         setStaff(s.data.items || []);
+        try {
+          const review = await api.get('/api/retention/review');
+          setRetentionItems((review.data.items || []) as RetentionReviewItem[]);
+        } catch {
+          setRetentionItems([]);
+        }
       }
       if (canManageAdmins) {
         const adminsResult = await api.get('/api/admins');
@@ -334,6 +342,27 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
     setNotice(message);
     window.setTimeout(() => setNotice(''), 3200);
   }
+
+  async function deleteRetentionItem(item: RetentionReviewItem) {
+    const confirmed = window.confirm(
+      'Delete this ' + item.collectionLabel.toLowerCase() + ' record permanently?\n\n' +
+      item.recordLabel + '\nSaved/created: ' + dateLabel(item.createdAt) +
+      '\n\nThis action happens only after your confirmation and cannot be undone.'
+    );
+    if (!confirmed) return;
+    try {
+      await api.post('/api/retention/review/delete', {
+        collection: item.collection,
+        id: item.id,
+        confirmDelete: true,
+      });
+      setRetentionItems(current => current.filter(record => !(record.collection === item.collection && record.id === item.id)));
+      flash('Record deleted after admin confirmation.');
+    } catch (error) {
+      flash(error instanceof Error ? error.message : 'Could not delete this record.');
+    }
+  }
+
   async function markNotificationsRead() {
     const unread = notifications.filter(item => !item.read);
     await Promise.all(unread.map(item => api.put('/api/notifications/' + item.id, { read: true }).catch(() => undefined)));
@@ -737,6 +766,38 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                   <i />
                 </div>
               </div>
+
+              {isAdmin && (
+                <section className="panel retention-review-panel">
+                  <div className="panel-head">
+                    <div>
+                      <h2>Six-month record review</h2>
+                      <p>Records saved or created at least six months ago. Nothing is deleted automatically.</p>
+                    </div>
+                    <span className="live-tag">{retentionItems.length} DUE</span>
+                  </div>
+                  {retentionItems.length ? (
+                    <div className="retention-review-list">
+                      {retentionItems.slice(0, 8).map(item => (
+                        <div className="snapshot-row" key={item.collection + ':' + item.id}>
+                          <div className="snapshot-icon orange-bg"><Clock3 /></div>
+                          <div className="retention-review-details">
+                            <strong>{item.recordLabel}</strong>
+                            <small>{item.collectionLabel} · Saved {dateLabel(item.createdAt)}</small>
+                          </div>
+                          <button className="btn danger small" onClick={() => void deleteRetentionItem(item)}>
+                            <Trash2 size={14} /> Delete
+                          </button>
+                        </div>
+                      ))}
+                      {retentionItems.length > 8 && <p className="retention-review-more">Showing 8 of {retentionItems.length} records due for review.</p>}
+                    </div>
+                  ) : (
+                    <p className="retention-review-empty">No records are currently due for review.</p>
+                  )}
+                </section>
+              )}
+
               <div className="stats-grid">
                 <Stat
                   icon={<Users />}
