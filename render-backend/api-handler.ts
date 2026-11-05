@@ -304,8 +304,14 @@ export async function apiHandler(req: any, res: any) {
           createdBy: user.uid,
         };
         const applied = await db.runTransaction(async transaction => {
-          const latest = await transaction.get(requestRef);
+          const [latest, duplicateUsers] = await Promise.all([
+            transaction.get(requestRef),
+            status === 'approved'
+              ? transaction.get(db.collection('users').where('userIdLower', '==', staffUserIdLower).limit(1))
+              : Promise.resolve(null),
+          ]);
           if (!latest.exists || latest.data()?.status !== 'pending') return false;
+          if (status === 'approved' && duplicateUsers && !duplicateUsers.empty) return false;
           if (status === 'approved') transaction.create(staffRef, staffRecord);
           transaction.update(requestRef, {
             status,
