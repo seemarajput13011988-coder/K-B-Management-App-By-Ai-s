@@ -135,7 +135,7 @@ function retentionRecordLabel(data: Data, id: string): string {
 
 
 
-export export async function apiHandler(req: any, res: any) {
+export async function apiHandler(req: any, res: any) {
     res.set('Cache-Control', 'no-store');
     const method = req.method.toUpperCase();
     const path = routePath(req.path);
