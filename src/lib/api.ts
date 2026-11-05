@@ -460,19 +460,158 @@ async function requestSubscriptions<T = any>(path: string, method: string, paylo
   throw new Error('Unsupported subscriptions request.');
 }
 
-async function requestAttendance<T = any>(path: string, method: string): Promise<ApiResult<T>> {
-  if (path.split('?')[0] !== '/api/attendance' || method !== 'GET') {
-    throw new Error('Attendance changes are not enabled on the Spark migration yet.');
-  }
+async function requestAttendance<T = any>(path: string, method: string, payload?: Record<string, unknown>): Promise<ApiResult<T>> {
   if (!firebaseAuth?.currentUser || !firestore) throw new Error('Please sign in again to continue.');
+  const user = firebaseAuth.currentUser;
   const profile = await getAppUserProfile();
-  const records = collection(firestore, 'attendance');
-  const snapshot = await getDocs(profile.role === 'admin'
-    ? records
-    : query(records, where('userId', '==', firebaseAuth.currentUser.uid)));
-  const items = snapshot.docs.map(item => ({ id: item.id, ...item.data() }));
-  items.sort((a: any, b: any) => String(b.workDate || '').localeCompare(String(a.workDate || '')));
-  return { data: { items } as T };
+  const admin = profile.role === 'admin';
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+  const stamp = new Date().toISOString();
+  const attendance = collection(firestore, 'attendance');
+  const locations = collection(firestore, 'locations');
+  const clean = (value: unknown, max: number) => String(value ?? '').trim().slice(0, max);
+  const validCoords = (p: Record<string, unknown>) => {
+    const latitude = Number(p.latitude), longitude = Number(p.longitude);
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || Math.abs(latitude) > 90 || Math.abs(longitude) > 180) {
+      throw new Error('Enable precise location and obtain a GPS fix before starting or updating your shift.');
+    }
+    return { latitude, longitude, accuracy: Math.min(Math.max(Number(p.accuracy) || 0, 0), 100000) };
+  };
+  const pathOnly = path.split('?')[0];
+  if (pathOnly === '/api/attendance' && method === 'GET') {
+    const snap = await getDocs(admin ? attendance : query(attendance, where('userId', '==', user.uid)));
+    const items = snap.docs.map(item => ({ id: item.id, ...item.data() }));
+    items.sort((a: any, b: any) => String(b.workDate || '').localeCompare(String(a.workDate || '')));
+    return { data: { items } as T };
+  }
+  if (pathOnly === '/api/attendance/check-in' && method === 'POST') {
+    if (admin) throw new Error('Staff must start their own shift.');
+    const coords = validCoords(payload || {});
+    const dayType = payload?.dayType === 'Half day' ? 'Half day' : 'Full day';
+    const todays = await getDocs(query(attendance, where('userId', '==', user.uid), where('workDate', '==', today)));
+    if (!todays.empty) throw new Error('Attendance already exists today. Ask an administrator if a GPS-cancelled shift needs restarting.');
+    const id = 'att-' + user.uid + '-' + today;
+    const shiftRef = doc(firestore, 'attendance', id);
+    const locationRef = doc(locations);
+    const batch = writeBatch(firestore);
+    batch.set(shiftRef, {
+      userId: user.uid, displayName: profile.displayName, workDate: today,
+      checkInAt: stamp, status: 'Checked in', dayType, gpsStatus: 'active',
+      attendanceSource: 'Staff', shiftEvents: []
+    });
+    batch.set(locationRef, { ...coords, userId: user.uid, displayName: profile.displayName, attendanceId: id, capturedAt: clean(payload?.capturedAt, 40) || stamp });
+    await batch.commit();
+    return { data: { id, userId: user.uid, displayName: profile.displayName, workDate: today, checkInAt: stamp, status: 'Checked in', dayType, gpsStatus: 'active' } as T };
+  }
+  if (pathOnly === '/api/attendance/check-out' && method === 'POST') {
+    if (admin) throw new Error('Only staff can check out their own shift.');
+    const snap = await getDocs(query(attendance, where('userId', '==', user.uid), where('workDate', '==', today)));
+    const current = snap.docs.find(item => !item.data().checkOutAt);
+    if (!current) throw new Error('There is no active shift to check out.');
+    await updateDoc(current.ref, { checkOutAt: stamp, status: 'Completed', gpsStatus: 'stopped' });
+    return { data: { updated: true } as T };
+  }
+  if ((pathOnly === '/api/attendance/admin-start' || pathOnly === '/api/attendance/admin-end') && method === 'POST') {
+    if (!admin) throw new Error('Only administrators can manage another staff member’s attendance.');
+    const staffId = clean(payload?.userId, 128);
+    const staffSnap = await getDoc(doc(firestore, 'users', staffId));
+    if (!staffSnap.exists() || staffSnap.data().role !== 'staff' || staffSnap.data().active !== true) throw new Error('Choose an active staff member.');
+    const todays = await getDocs(query(attendance, where('userId', '==', staffId), where('workDate', '==', today)));
+    const existing = todays.docs[0];
+    if (pathOnly.endsWith('admin-start')) {
+      const startedAt = stamp;
+      if (existing) {
+        if (!existing.data().gpsRestartRequired) throw new Error('Attendance is already recorded for this staff member today.');
+        await updateDoc(existing.ref, {
+          checkInAt: startedAt, checkOutAt: null, status: 'Checked in',
+          gpsCancelled: false, gpsRestartRequired: false, gpsStatus: 'active',
+          gpsIssueStartedAt: null, gpsIssueId: null, gpsIssueReason: null,
+          restartedByAdmin: profile.displayName, restartedAt: startedAt
+        });
+        return { data: { id: existing.id, restarted: true } as T };
+      }
+      const id = 'att-' + staffId + '-' + today;
+      const record = {
+        userId: staffId, displayName: clean(staffSnap.data().displayName, 80), workDate: today,
+        checkInAt: startedAt, status: 'Checked in', dayType: payload?.dayType === 'Half day' ? 'Half day' : 'Full day',
+        startedByAdmin: profile.displayName, attendanceSource: 'Admin', gpsStatus: 'active'
+      };
+      await setDoc(doc(firestore, 'attendance', id), record);
+      return { data: { id, ...record } as T };
+    }
+    if (!existing || existing.data().checkOutAt) throw new Error('There is no active shift to end for this staff member.');
+    await updateDoc(existing.ref, { checkOutAt: stamp, status: 'Completed', gpsStatus: 'stopped', endedByAdmin: profile.displayName });
+    return { data: { updated: true } as T };
+  }
+  if (pathOnly.startsWith('/api/attendance/') && pathOnly.endsWith('/day-type') && method === 'PUT') {
+    if (!admin) throw new Error('Only administrators can correct attendance.');
+    const id = decodeURIComponent(pathOnly.slice('/api/attendance/'.length, -'/day-type'.length));
+    const dayType = payload?.dayType === 'Half day' ? 'Half day' : payload?.dayType === 'Full day' ? 'Full day' : '';
+    const reason = clean(payload?.reason, 300);
+    if (!dayType || !reason) throw new Error('Choose Full day or Half day and enter a correction reason.');
+    await updateDoc(doc(firestore, 'attendance', id), { dayType, correctionReason: reason, correctedBy: user.uid, correctedAt: stamp });
+    return { data: { updated: true } as T };
+  }
+  if (pathOnly === '/api/attendance/gps-lost' && method === 'POST') {
+    if (admin) throw new Error('Only staff devices can report their own GPS status.');
+    const reason = clean(payload?.reason, 160);
+    if (!['Location permission denied', 'Phone location services are unavailable', 'GPS location unavailable', 'Location permission was turned off'].includes(reason)) {
+      throw new Error('GPS grace tracking starts only when location permission or phone location services are unavailable.');
+    }
+    const snap = await getDocs(query(attendance, where('userId', '==', user.uid), where('workDate', '==', today)));
+    const active = snap.docs.find(item => !item.data().checkOutAt && !item.data().gpsRestartRequired);
+    if (!active) return { data: { monitoring: false, reason: 'no-active-shift' } as T };
+    const startedAt = String(active.data().gpsIssueStartedAt || stamp);
+    const deadlineAt = new Date(new Date(startedAt).getTime() + 15 * 60 * 1000).toISOString();
+    if (!active.data().gpsIssueStartedAt) {
+      await updateDoc(active.ref, { gpsIssueStartedAt: startedAt, gpsStatus: 'grace-period', gpsIssueReason: reason });
+    }
+    return { data: { monitoring: true, cancelled: false, startedAt, deadlineAt, remainingSeconds: Math.max(0, Math.ceil((new Date(deadlineAt).getTime() - Date.now()) / 1000)), enforcement: 'foreground-only-on-spark' } as T };
+  }
+  if (pathOnly === '/api/locations' && method === 'GET') {
+    if (!admin) throw new Error('Only administrators can view team locations.');
+    const [locationSnap, shiftSnap] = await Promise.all([getDocs(locations), getDocs(query(attendance, where('workDate', '==', today)))]);
+    const activeIds = new Set(shiftSnap.docs.filter(item => !item.data().checkOutAt && !item.data().gpsRestartRequired).map(item => String(item.data().userId)));
+    const latest = new Map<string, any>();
+    for (const item of locationSnap.docs) {
+      const point = { id: item.id, ...item.data() } as any;
+      if (!activeIds.has(String(point.userId))) continue;
+      const old = latest.get(String(point.userId));
+      if (!old || String(point.capturedAt || '') > String(old.capturedAt || '')) latest.set(String(point.userId), point);
+    }
+    return { data: { items: Array.from(latest.values()) } as T };
+  }
+  if (pathOnly === '/api/locations/history' && method === 'GET') {
+    if (!admin) throw new Error('Only administrators can view location history.');
+    const snap = await getDocs(locations);
+    const items = snap.docs.map(item => ({ id: item.id, ...item.data() })).sort((a: any,b: any) => String(b.capturedAt || '').localeCompare(String(a.capturedAt || ''))).slice(0, 500);
+    return { data: { items } as T };
+  }
+  if (pathOnly === '/api/locations' && method === 'POST') {
+    if (admin) throw new Error('Only staff devices can share staff location.');
+    const coords = validCoords(payload || {});
+    const snap = await getDocs(query(attendance, where('userId', '==', user.uid), where('workDate', '==', today)));
+    const active = snap.docs.find(item => !item.data().checkOutAt && !item.data().gpsRestartRequired);
+    if (!active) throw new Error('Location can be shared only during an active shift.');
+    const issueStartedAt = active.data().gpsIssueStartedAt ? new Date(String(active.data().gpsIssueStartedAt)).getTime() : null;
+    if (issueStartedAt !== null && Date.now() - issueStartedAt >= 15 * 60 * 1000) {
+      throw new Error('The 15-minute GPS grace window has elapsed. Contact an administrator to review your shift.');
+    }
+    const locationRef = doc(locations);
+    const capturedAt = clean(payload?.capturedAt, 40) || stamp;
+    const batch = writeBatch(firestore);
+    batch.set(locationRef, { ...coords, userId: user.uid, displayName: profile.displayName, attendanceId: active.id, capturedAt });
+    const patch: Record<string, unknown> = { gpsStatus: 'active' };
+    if (issueStartedAt !== null) {
+      patch.gpsIssueStartedAt = null;
+      patch.gpsIssueReason = null;
+      patch.gpsRestoredAt = stamp;
+    }
+    batch.update(active.ref, patch);
+    await batch.commit();
+    return { data: { id: locationRef.id, saved: true, gpsRestored: issueStartedAt !== null } as T };
+  }
+  throw new Error('Unsupported attendance or location request.');
 }
 
 async function request<T = any>(path: string, method: string, payload?: Record<string, unknown>): Promise<ApiResult<T>> {
@@ -482,7 +621,7 @@ async function request<T = any>(path: string, method: string, payload?: Record<s
   if (path.split('?')[0] === '/api/tasks' || path.split('?')[0].startsWith('/api/tasks/')) return requestTasks<T>(path, method, payload);
   if (path.split('?')[0] === '/api/complaints' || path.split('?')[0].startsWith('/api/complaints/')) return requestComplaints<T>(path, method, payload);
   if (path.split('?')[0] === '/api/subscriptions' || path.split('?')[0].startsWith('/api/subscriptions/')) return requestSubscriptions<T>(path, method, payload);
-  if (path.split('?')[0] === '/api/attendance') return requestAttendance<T>(path, method);
+  if (path.split('?')[0].startsWith('/api/attendance') || path.split('?')[0] === '/api/locations' || path.split('?')[0] === '/api/locations/history') return requestAttendance<T>(path, method, payload);
   if (!firebaseAuth) throw new Error('Firebase is not configured yet. Add the K&B Firebase web app settings before signing in.');
   const auth = firebaseAuth;
   if (!auth.currentUser) await new Promise<void>(resolve => {
