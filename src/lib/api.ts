@@ -294,11 +294,87 @@ async function requestTasks<T = any>(path: string, method: string, payload?: Rec
   throw new Error('Unsupported tasks request.');
 }
 
+
+async function requestComplaints<T = any>(path: string, method: string, payload?: Record<string, unknown>): Promise<ApiResult<T>> {
+  if (!firebaseAuth?.currentUser || !firestore) throw new Error('Please sign in again to continue.');
+  const profile = await getAppUserProfile();
+  const admin = profile.role === 'admin';
+  const currentUid = firebaseAuth.currentUser.uid;
+  const base = '/api/complaints';
+  const complaints = collection(firestore, 'complaints');
+  const id = path.startsWith(base + '/') ? decodeURIComponent(path.slice(base.length + 1).split('?')[0]) : '';
+  const clean = (value: unknown, max: number) => String(value ?? '').trim().slice(0, max);
+  if (method === 'GET' && path.split('?')[0] === base) {
+    if (admin) {
+      const snap = await getDocs(complaints);
+      return { data: { items: snap.docs.map(item => ({ id: item.id, ...item.data() })) } as T };
+    }
+    const [assigned, created] = await Promise.all([
+      getDocs(query(complaints, where('assignedTo', '==', currentUid))),
+      getDocs(query(complaints, where('createdBy', '==', currentUid)))
+    ]);
+    const unique = new Map<string, any>();
+    [...assigned.docs, ...created.docs].forEach(item => unique.set(item.id, { id: item.id, ...item.data() }));
+    return { data: { items: [...unique.values()] } as T };
+  }
+  if (method === 'POST' && path.split('?')[0] === base) {
+    const subject = clean(payload?.subject, 120), details = clean(payload?.details, 1500);
+    const priority = ['Low', 'Normal', 'High', 'Urgent'].includes(String(payload?.priority)) ? payload?.priority : 'Normal';
+    if (!subject || !details) throw new Error('Enter a complaint subject and details.');
+    const customerId = clean(payload?.customerId, 128);
+    let customer: Record<string, any> | null = null;
+    if (customerId) {
+      const snapshot = await getDoc(doc(firestore, 'customers', customerId));
+      if (!snapshot.exists()) throw new Error('Customer not found.');
+      customer = snapshot.data();
+      if (!admin && customer.assignedTo !== currentUid) throw new Error('You can raise complaints only for assigned customers.');
+    }
+    const record = {
+      customerId, customerName: clean(payload?.customerName, 100) || clean(customer?.name, 100),
+      subject, details, priority, status: 'Open', createdAt: new Date().toISOString(),
+      createdBy: currentUid, createdByName: profile.displayName, assignedTo: '', assignedToName: ''
+    };
+    const ref = await addDoc(complaints, record);
+    return { data: { id: ref.id, ...record } as T };
+  }
+  if (id && (method === 'PUT' || method === 'DELETE')) {
+    if (!admin) throw new Error('Only administrators can manage service tickets.');
+    const ref = doc(firestore, 'complaints', id);
+    const existing = await getDoc(ref);
+    if (!existing.exists()) throw new Error('Complaint not found.');
+    if (method === 'DELETE') {
+      await deleteDoc(ref);
+      return { data: { deleted: true } as T };
+    }
+    const patch: Record<string, unknown> = { updatedAt: new Date().toISOString() };
+    const status = clean(payload?.status, 30);
+    if (status) {
+      if (!['Open', 'In progress', 'Resolved'].includes(status)) throw new Error('Choose a valid complaint status.');
+      patch.status = status;
+    }
+    if (Object.prototype.hasOwnProperty.call(payload || {}, 'assignedTo')) {
+      const assignedTo = clean(payload?.assignedTo, 128);
+      let assignedToName = '';
+      if (assignedTo) {
+        const staff = await getDoc(doc(firestore, 'users', assignedTo));
+        if (!staff.exists() || staff.data().role !== 'staff' || staff.data().active !== true) throw new Error('Choose an active staff member for this ticket.');
+        assignedToName = clean(staff.data().displayName, 80);
+      }
+      patch.assignedTo = assignedTo;
+      patch.assignedToName = assignedToName;
+    }
+    await updateDoc(ref, patch);
+    return { data: { updated: true } as T };
+  }
+  throw new Error('Unsupported complaints request.');
+}
+
 async function request<T = any>(path: string, method: string, payload?: Record<string, unknown>): Promise<ApiResult<T>> {
   if (path.split('?')[0] === '/api/plans' || path.split('?')[0].startsWith('/api/plans/')) return requestPlans<T>(path, method, payload);
   if (path.split('?')[0] === '/api/customers' || path.split('?')[0].startsWith('/api/customers/')) return requestCustomers<T>(path, method, payload);
   if (path.split('?')[0] === '/api/payments' || path.split('?')[0].startsWith('/api/payments/')) return requestPayments<T>(path, method, payload);
   if (path.split('?')[0] === '/api/tasks' || path.split('?')[0].startsWith('/api/tasks/')) return requestTasks<T>(path, method, payload);
+  if (path.split('?')[0] === '/api/complaints' || path.split('?')[0].startsWith('/api/complaints/')) return requestComplaints<T>(path, method, payload);
   if (!firebaseAuth) throw new Error('Firebase is not configured yet. Add the K&B Firebase web app settings before signing in.');
   const auth = firebaseAuth;
   if (!auth.currentUser) await new Promise<void>(resolve => {
