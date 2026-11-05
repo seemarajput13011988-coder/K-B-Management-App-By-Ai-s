@@ -1,6 +1,6 @@
 import { CapacitorHttp } from '@capacitor/core';
 import { browserLocalPersistence, EmailAuthProvider, onAuthStateChanged, reauthenticateWithCredential, setPersistence, signInWithEmailAndPassword, signOut } from 'firebase/auth';
-import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, query, runTransaction, setDoc, updateDoc, where, writeBatch } from 'firebase/firestore';
+import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, limit, query, runTransaction, setDoc, updateDoc, where, writeBatch } from 'firebase/firestore';
 import { firebaseAuth, firestore } from './firebase';
 
 const API_BASE = import.meta.env.VITE_FIREBASE_FUNCTIONS_URL || 'https://asia-south1-kandb-net-sevice.cloudfunctions.net/api';
@@ -734,7 +734,7 @@ async function requestInventory<T = any>(path: string, method: string, payload?:
   if (id && parts[3] === 'movements' && method === 'GET') {
     const itemSnapshot = await getDoc(doc(inventory, id));
     if (!itemSnapshot.exists()) throw new Error('Inventory item not found.');
-    const snapshot = await getDocs(query(collection(firestore, 'inventory_movements'), where('itemId', '==', id)));
+    const snapshot = await getDocs(query(collection(firestore, 'inventory_movements'), where('itemId', '==', id), limit(100)));
     const items = snapshot.docs.map(item => ({ id: item.id, ...item.data() }))
       .sort((a: any, b: any) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))
       .slice(0, 100);
