@@ -59,7 +59,8 @@ Authentication and staff accounts; customers; plans; payments; dashboards; atten
 - [ ] Configure Functions secrets and verify the API using emulators.
 - [ ] Finish password-change flow, realtime chat transport, and full role/edge-case review.
 - [ ] Migrate and verify data.
-- [x] Build and download a debug APK artifact from GitHub Actions (run #39, commit `b2adcc4f`).
+- [x] Build and download a debug APK artifact from GitHub Actions (run #41970912048, 5 Nov 2026, commit `0b80b424`). Latest workflow passed the web build, Functions build and 14 automated tests before assembling the APK.
+- [ ] Configure FCM for Android: add `ANDROID_GOOGLE_SERVICES_JSON_BASE64` after registering package `kandbnet.service2010`; the latest workflow confirmed this secret is currently missing.
 - [ ] Install the APK on a test phone and complete the Android GPS / notifications acceptance checklist.
 - [ ] Create a stable app-signing key through a secure local process before distributing updateable release APKs.
 - [ ] Configure FCM push notifications for delivery while the app is fully closed, if required.
