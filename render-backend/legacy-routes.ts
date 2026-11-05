@@ -1,7 +1,7 @@
-import { router, json, error, db, secrets } from '@appdeploy/sdk';
-import type { RouterMiddleware } from '@appdeploy/sdk';
+import { router, json, error, db, secrets } from './firestore-adapter.js';
+import type { RouterMiddleware } from './firestore-adapter.js';
 import { createHash, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
-import { notifySubscribers } from './realtime-subscribers';
+const notifySubscribers = async (..._args: unknown[]) => undefined; // Live updates are refreshed through the authenticated API.
 
 type Role = 'admin' | 'staff';
 type UserRecord = {
