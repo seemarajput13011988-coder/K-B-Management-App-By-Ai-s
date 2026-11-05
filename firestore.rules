@@ -313,6 +313,39 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    // Installation jobs: admins schedule and assign; staff see only their
+    // own jobs and can update progress notes/status, never assignment details.
+    match /installations/{installationId} {
+      allow get, list: if isAdmin()
+        || (hasActiveProfile() && resource.data.assignedTo == request.auth.uid);
+      allow create: if isAdmin()
+        && request.resource.data.customerId is string
+        && exists(/databases/$(database)/documents/customers/$(request.resource.data.customerId))
+        && request.resource.data.assignedTo is string
+        && get(/databases/$(database)/documents/users/$(request.resource.data.assignedTo)).data.role == 'staff'
+        && get(/databases/$(database)/documents/users/$(request.resource.data.assignedTo)).data.active == true
+        && request.resource.data.type in ['New connection', 'Upgrade', 'Repair', 'Relocation']
+        && request.resource.data.scheduledDate is string
+        && request.resource.data.status == 'Scheduled'
+        && request.resource.data.createdBy == request.auth.uid;
+      allow update: if isAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status', 'notes', 'updatedAt', 'updatedBy', 'completedAt',
+          'scheduledDate', 'address', 'assignedTo', 'assignedToName'
+        ])
+        && request.resource.data.status in ['Scheduled', 'In progress', 'Completed', 'Cancelled']
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['assignedTo'])
+          || (get(/databases/$(database)/documents/users/$(request.resource.data.assignedTo)).data.role == 'staff'
+            && get(/databases/$(database)/documents/users/$(request.resource.data.assignedTo)).data.active == true))
+        || (hasActiveProfile()
+          && resource.data.assignedTo == request.auth.uid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'status', 'notes', 'updatedAt', 'updatedBy', 'completedAt'
+          ])
+          && request.resource.data.status in ['Scheduled', 'In progress', 'Completed']);
+      allow delete: if isAdmin();
+    }
+
     // All remaining collections stay closed until their own ownership-checked
     // Spark rules and direct Firestore data paths are implemented.
     match /{document=**} {
