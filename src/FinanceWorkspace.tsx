@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api as client } from './lib/api';
 import { Download, Plus, RefreshCw, ReceiptText, TrendingDown, TrendingUp, Wallet } from 'lucide-react';
+import { jsPDF } from 'jspdf';
+import { exportCsvFile, exportPdfFile } from './lib/file-export';
 
 type Session = { token: string; user: { id: string; displayName: string; role: 'admin' | 'staff' } };
 type Customer = { id: string; name: string; monthlyFee: number; status: string; dueDate?: string };
@@ -16,44 +18,73 @@ const money = (value: number) => '₹' + Number(value || 0).toLocaleString('en-I
 const monthName = (period: string) => new Date(period + '-01T12:00:00').toLocaleString('en-IN', { month: 'long', year: 'numeric' });
 const today = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 const csvCell = (value: unknown) => '"' + String(value ?? '').replace(/"/g, '""') + '"';
-function downloadCsv(name: string, rows: unknown[][]) {
-  const content = '\uFEFF' + rows.map(row => row.map(csvCell).join(',')).join('\r\n');
-  const url = URL.createObjectURL(new Blob([content], { type: 'text/csv;charset=utf-8;' }));
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = name;
-  link.style.display = 'none';
-  document.body.appendChild(link);
-  link.click();
-  window.setTimeout(() => { link.remove(); URL.revokeObjectURL(url); }, 2000);
+async function downloadCsv(name: string, rows: unknown[][]) {
+  try {
+    await exportCsvFile(name, rows);
+  } catch (error) {
+    window.alert(error instanceof Error ? error.message : 'Could not export this CSV file.');
+  }
 }
 
-function printReport(title: string, rows: unknown[][]) {
-  const escapeHtml = (value: unknown) => {
-    const replacements: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
-    return String(value ?? '').replace(/[&<>"']/g, character => replacements[character] || character);
-  };
-  const table = rows.map((row, index) => '<tr>' + row.map(cell => index === 0
-    ? '<th>' + escapeHtml(cell) + '</th>'
-    : '<td>' + escapeHtml(cell) + '</td>').join('') + '</tr>').join('');
-  const html = '<!doctype html><html><head><meta charset="utf-8"><title>' + escapeHtml(title) + '</title><style>body{font:14px Arial,sans-serif;color:#172033;padding:28px}h1{font-size:22px;margin:0 0 6px}p{color:#64748b;margin:0 0 22px}table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:10px;border:1px solid #dbe2ec}th{background:#f1f5f9;font-size:12px;text-transform:uppercase}tr:nth-child(even) td{background:#f8fafc}.brand{font-weight:700;color:#315fbd;margin-bottom:18px}@media print{body{padding:0}}</style></head><body><div class="brand">K&amp;B NET SERVICE · MANAGEMENT NEXUS</div><h1>' + escapeHtml(title) + '</h1><p>Generated on ' + escapeHtml(new Date().toLocaleString('en-IN')) + '</p><table>' + table + '</table></body></html>';
-  const popup = window.open('', '_blank');
-  if (!popup) {
-    const url = URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' }));
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = title.toLowerCase().replace(/[^a-z0-9]+/g, '-') + '.html';
-    link.style.display = 'none';
-    document.body.appendChild(link);
-    link.click();
-    window.setTimeout(() => { link.remove(); URL.revokeObjectURL(url); }, 2000);
-    return;
+async function printReport(title: string, rows: unknown[][]) {
+  try {
+    const landscape = (rows[0]?.length || 0) >= 7;
+    const doc = new jsPDF({ orientation: landscape ? 'landscape' : 'portrait', unit: 'mm', format: 'a4' });
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const margin = 12;
+    const usableWidth = pageWidth - margin * 2;
+    const columnCount = Math.max(1, ...rows.map(row => row.length));
+    const columnWidth = usableWidth / columnCount;
+    const lineHeight = 4;
+    let y = 14;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(15);
+    doc.setTextColor(20, 59, 103);
+    doc.text('K&B NET SERVICE', margin, y);
+    y += 7;
+    doc.setFontSize(12);
+    doc.setTextColor(25, 38, 58);
+    doc.text(title, margin, y);
+    y += 5;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(100, 116, 139);
+    doc.text('Management Nexus · Generated ' + new Date().toLocaleString('en-IN'), margin, y);
+    y += 8;
+    rows.forEach((row, rowIndex) => {
+      const cells = Array.from({ length: columnCount }, (_, index) => String(row[index] ?? ''));
+      const wrapped = cells.map(value => doc.splitTextToSize(value, columnWidth - 4).slice(0, 5));
+      const height = Math.max(8, ...wrapped.map(lines => lines.length * lineHeight + 4));
+      if (y + height > pageHeight - margin) {
+        doc.addPage();
+        y = margin;
+      }
+      cells.forEach((_, colIndex) => {
+        const x = margin + colIndex * columnWidth;
+        if (rowIndex === 0) {
+          doc.setFillColor(21, 63, 105);
+          doc.setDrawColor(21, 63, 105);
+          doc.rect(x, y, columnWidth, height, 'FD');
+          doc.setTextColor(255, 255, 255);
+          doc.setFont('helvetica', 'bold');
+        } else {
+          doc.setFillColor(rowIndex % 2 ? 248 : 255, rowIndex % 2 ? 250 : 255, rowIndex % 2 ? 252 : 255);
+          doc.setDrawColor(220, 228, 237);
+          doc.rect(x, y, columnWidth, height, 'FD');
+          doc.setTextColor(40, 52, 70);
+          doc.setFont('helvetica', 'normal');
+        }
+        doc.setFontSize(7);
+        doc.text(wrapped[colIndex], x + 2, y + 4);
+      });
+      y += height;
+    });
+    const fileName = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') + '.pdf';
+    await exportPdfFile(fileName, doc.output('datauristring'));
+  } catch (error) {
+    window.alert(error instanceof Error ? error.message : 'Could not create this PDF report.');
   }
-  popup.document.open();
-  popup.document.write(html);
-  popup.document.close();
-  popup.focus();
-  popup.print();
 }
 
 export default function FinanceWorkspace({ session, customers, payments, flash, salaryOnly = false }: {
