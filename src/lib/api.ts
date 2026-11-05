@@ -74,7 +74,7 @@ async function requestPlans<T = any>(path: string, method: string, payload?: Rec
   }
   throw new Error('Unsupported plans request.');
 }
-async function allPlanCountTooSmall(snapshot: Awaited<ReturnType<typeof getDocs>>) { return snapshot.size <= 1; }
+function allPlanCountTooSmall(snapshot: Awaited<ReturnType<typeof getDocs>>) { return snapshot.size <= 1; }
 
 async function request<T = any>(path: string, method: string, payload?: Record<string, unknown>): Promise<ApiResult<T>> {
   if (path.split('?')[0] === '/api/plans' || path.split('?')[0].startsWith('/api/plans/')) return requestPlans<T>(path, method, payload);
