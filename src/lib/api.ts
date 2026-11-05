@@ -860,6 +860,244 @@ async function requestFinance<T = any>(path: string, method: string, payload?: R
 }
 
 
+
+async function requestTeamOperations<T = any>(path: string, method: string, payload?: Record<string, unknown>): Promise<ApiResult<T>> {
+  if (!firebaseAuth?.currentUser || !firestore) throw new Error('Please sign in again to continue.');
+  const db = firestore, user = firebaseAuth.currentUser, profile = await getAppUserProfile();
+  const admin = profile.role === 'admin';
+  const clean = (value: unknown, max: number) => String(value ?? '').trim().slice(0, max);
+  const route = path.split('?')[0], parts = route.split('/').filter(Boolean);
+  const now = () => new Date().toISOString();
+  const list = async (name: string) => (await getDocs(collection(db, name))).docs.map(item => ({ id: item.id, ...item.data() } as any));
+  const notify = async (recipientId: string, recipientRole: string, type: string, title: string, message: string, relatedId: string) => {
+    await addDoc(collection(db, 'staff_notifications'), {
+      recipientId, recipientRole, type, title: clean(title, 120), message: clean(message, 180),
+      createdAt: now(), read: false, relatedId, createdBy: user.uid,
+    });
+  };
+  const audit = async (action: string, entityType: string, entityId: string, description: string) => {
+    await addDoc(collection(db, 'audit_logs'), {
+      actorId: user.uid, actorName: profile.displayName, action, entityType,
+      entityId, description: clean(description, 240), createdAt: now(),
+    });
+  };
+
+  if (route === '/api/announcements' && method === 'GET') {
+    const items = (await list('announcements')).sort((x, y) => String(y.createdAt || '').localeCompare(String(x.createdAt || '')));
+    return { data: { items } as T };
+  }
+  if (route === '/api/announcements' && method === 'POST') {
+    if (!admin) throw new Error('Only administrators can publish announcements.');
+    const title = clean(payload?.title, 120), message = clean(payload?.message, 2000);
+    if (!title || !message) throw new Error('Enter an announcement title and message.');
+    const createdAt = now();
+    const ref = await addDoc(collection(db, 'announcements'), {
+      title, message, createdAt, createdBy: user.uid, createdByName: profile.displayName,
+    });
+    const members = (await getDocs(query(collection(db, 'users'), where('active', '==', true)))).docs
+      .filter(item => ['staff', 'admin'].includes(String(item.data().role)));
+    const batch = writeBatch(db);
+    members.forEach(member => {
+      const notificationRef = doc(collection(db, 'staff_notifications'));
+      batch.set(notificationRef, {
+        recipientId: member.id, recipientRole: member.data().role, type: 'announcement',
+        title, message: message.slice(0, 180), createdAt, read: false, relatedId: ref.id, createdBy: user.uid,
+      });
+    });
+    if (members.length) await batch.commit();
+    await audit('CREATE', 'announcement', ref.id, 'Published announcement: ' + title);
+    return { data: { id: ref.id, title, message, createdAt, createdBy: user.uid, createdByName: profile.displayName } as T };
+  }
+  if (route.startsWith('/api/announcements/') && method === 'DELETE') {
+    if (!admin) throw new Error('Only administrators can delete announcements.');
+    const id = decodeURIComponent(route.slice('/api/announcements/'.length));
+    if (!id || id.includes('/')) throw new Error('Choose a valid announcement.');
+    const ref = doc(db, 'announcements', id), snapshot = await getDoc(ref);
+    if (!snapshot.exists()) throw new Error('Announcement not found.');
+    await deleteDoc(ref);
+    await audit('DELETE', 'announcement', id, 'Deleted announcement');
+    return { data: { deleted: true } as T };
+  }
+
+  if (route === '/api/messages' && method === 'GET') {
+    let items: any[];
+    if (admin) items = await list('messages');
+    else {
+      const [sent, received] = await Promise.all([
+        getDocs(query(collection(db, 'messages'), where('senderId', '==', user.uid))),
+        getDocs(query(collection(db, 'messages'), where('recipientId', '==', user.uid))),
+      ]);
+      const merged = new Map<string, any>();
+      [...sent.docs, ...received.docs].forEach(item => merged.set(item.id, { id: item.id, ...item.data() }));
+      items = [...merged.values()];
+    }
+    items.sort((x, y) => String(y.createdAt || '').localeCompare(String(x.createdAt || '')));
+    return { data: { items } as T };
+  }
+  if (route === '/api/messages' && method === 'POST') {
+    const message = clean(payload?.message, 1500);
+    const recipientId = admin ? clean(payload?.recipientId, 128) : 'admin-primary';
+    if (!message) throw new Error('Write a message before sending.');
+    let recipientName = 'K&B Administrator';
+    let recipients: Array<{ id: string; role: string }> = [];
+    if (admin) {
+      const recipient = await getDoc(doc(db, 'users', recipientId));
+      if (!recipient.exists() || recipient.data().role !== 'staff' || recipient.data().active !== true) {
+        throw new Error('Choose an active staff member.');
+      }
+      recipientName = clean(recipient.data().displayName, 80);
+      recipients = [{ id: recipientId, role: 'staff' }];
+    } else {
+      const admins = await getDocs(query(collection(db, 'users'), where('role', '==', 'admin'), where('active', '==', true)));
+      recipients = admins.docs.map(item => ({ id: item.id, role: 'admin' }));
+    }
+    const record = {
+      senderId: user.uid, senderName: profile.displayName, recipientId, recipientName, message, createdAt: now(),
+    };
+    const ref = await addDoc(collection(db, 'messages'), record);
+    await Promise.all(recipients.map(recipient => notify(
+      recipient.id, recipient.role, 'direct-message', 'New message from ' + profile.displayName,
+      message, ref.id,
+    )));
+    return { data: { id: ref.id, ...record } as T };
+  }
+  if (route.startsWith('/api/messages/') && method === 'DELETE') {
+    if (!admin) throw new Error('Only administrators can delete messages.');
+    const id = decodeURIComponent(route.slice('/api/messages/'.length));
+    const ref = doc(db, 'messages', id), snapshot = await getDoc(ref);
+    if (!snapshot.exists()) throw new Error('Message not found.');
+    await deleteDoc(ref);
+    return { data: { deleted: true } as T };
+  }
+
+  if (route === '/api/groups' && method === 'GET') {
+    const snapshot = await getDocs(admin
+      ? collection(db, 'chat_groups')
+      : query(collection(db, 'chat_groups'), where('memberIds', 'array-contains', user.uid)));
+    const items = snapshot.docs.map(item => ({ id: item.id, ...item.data() }))
+      .sort((x: any, y: any) => String(x.name || '').localeCompare(String(y.name || '')));
+    return { data: { items } as T };
+  }
+  if (route === '/api/groups' && method === 'POST') {
+    if (!admin) throw new Error('Only administrators can create staff groups.');
+    const name = clean(payload?.name, 60);
+    const ids = Array.isArray(payload?.memberIds)
+      ? Array.from(new Set(payload.memberIds.filter((value): value is string => typeof value === 'string' && value.length > 0))).slice(0, 100)
+      : [];
+    if (!name || !ids.length) throw new Error('Enter a group name and select at least one staff member.');
+    const members = await Promise.all(ids.map(id => getDoc(doc(db, 'users', id))));
+    if (members.some(item => !item.exists() || item.data().role !== 'staff' || item.data().active !== true)) {
+      throw new Error('One or more selected staff accounts are unavailable. Refresh the staff list.');
+    }
+    const memberProfiles = members.map(item => item.data());
+    const record = {
+      name, memberIds: [user.uid, ...ids],
+      memberNames: [profile.displayName, ...memberProfiles.map(item => clean(item?.displayName, 80))],
+      createdAt: now(), createdBy: user.uid, createdByName: profile.displayName,
+    };
+    const ref = await addDoc(collection(db, 'chat_groups'), record);
+    return { data: { id: ref.id, ...record } as T };
+  }
+  if (route.startsWith('/api/groups/')) {
+    const groupId = decodeURIComponent(parts[2] || '');
+    if (!groupId) throw new Error('Choose a valid group.');
+    const groupRef = doc(db, 'chat_groups', groupId), groupSnapshot = await getDoc(groupRef);
+    if (!groupSnapshot.exists()) throw new Error('Group not found.');
+    const group = groupSnapshot.data();
+    if (parts.length === 3 && method === 'DELETE') {
+      if (!admin) throw new Error('Only administrators can delete groups.');
+      const messages = await getDocs(query(collection(db, 'group_messages'), where('groupId', '==', groupId)));
+      const docs = messages.docs;
+      for (let offset = 0; offset < docs.length; offset += 450) {
+        const batch = writeBatch(db);
+        docs.slice(offset, offset + 450).forEach(item => batch.delete(item.ref));
+        await batch.commit();
+      }
+      await deleteDoc(groupRef);
+      return { data: { deleted: true } as T };
+    }
+    const members = Array.isArray(group.memberIds) ? group.memberIds : [];
+    if (!admin && !members.includes(user.uid)) throw new Error('You are not a member of this group.');
+    if (parts[3] === 'messages' && parts.length === 4 && method === 'GET') {
+      const snapshot = await getDocs(query(collection(db, 'group_messages'), where('groupId', '==', groupId)));
+      const items = snapshot.docs.map(item => ({ id: item.id, ...item.data() }))
+        .sort((x: any, y: any) => String(x.createdAt || '').localeCompare(String(y.createdAt || '')));
+      return { data: { items } as T };
+    }
+    if (parts[3] === 'messages' && parts.length === 4 && method === 'POST') {
+      const message = clean(payload?.message, 1500);
+      if (!message) throw new Error('Write a message before sending.');
+      const record = { groupId, senderId: user.uid, senderName: profile.displayName, message, createdAt: now() };
+      const ref = await addDoc(collection(db, 'group_messages'), record);
+      const recipientIds = members.filter((id): id is string => typeof id === 'string' && id !== user.uid);
+      await Promise.all(recipientIds.map(async recipientId => {
+        const recipient = await getDoc(doc(db, 'users', recipientId));
+        if (recipient.exists() && recipient.data().active === true && ['staff', 'admin'].includes(String(recipient.data().role))) {
+          await notify(recipientId, String(recipient.data().role), 'group-message', 'New group message · ' + clean(group.name, 60), message, ref.id);
+        }
+      }));
+      return { data: { id: ref.id, ...record } as T };
+    }
+    if (parts[3] === 'messages' && parts.length === 5 && method === 'DELETE') {
+      if (!admin) throw new Error('Only administrators can delete group messages.');
+      const messageId = decodeURIComponent(parts[4]);
+      const ref = doc(db, 'group_messages', messageId), snapshot = await getDoc(ref);
+      if (!snapshot.exists() || snapshot.data().groupId !== groupId) throw new Error('Group message not found.');
+      await deleteDoc(ref);
+      return { data: { deleted: true } as T };
+    }
+  }
+
+  if (route === '/api/visits' && method === 'GET') {
+    const snapshot = await getDocs(admin ? collection(db, 'visits') : query(collection(db, 'visits'), where('staffId', '==', user.uid)));
+    return { data: { items: snapshot.docs.map(item => ({ id: item.id, ...item.data() })) } as T };
+  }
+  if (route === '/api/visits' && method === 'POST') {
+    if (admin) throw new Error('Only staff members can record customer visits.');
+    const customerId = clean(payload?.customerId, 128), purpose = clean(payload?.purpose, 120);
+    const customer = await getDoc(doc(db, 'customers', customerId));
+    if (!customer.exists() || customer.data().assignedTo !== user.uid) throw new Error('You can record visits only for your assigned customers.');
+    if (!purpose) throw new Error('Enter the visit purpose.');
+    const record = {
+      customerId, customerName: clean(customer.data().name, 100), purpose,
+      notes: clean(payload?.notes, 1200), visitedAt: clean(payload?.visitedAt, 40) || now(),
+      staffId: user.uid, staffName: profile.displayName,
+    };
+    const ref = await addDoc(collection(db, 'visits'), record);
+    return { data: { id: ref.id, ...record } as T };
+  }
+  if (route.startsWith('/api/visits/') && method === 'DELETE') {
+    if (!admin) throw new Error('Only administrators can delete visit records.');
+    const id = decodeURIComponent(route.slice('/api/visits/'.length));
+    const ref = doc(db, 'visits', id), snapshot = await getDoc(ref);
+    if (!snapshot.exists()) throw new Error('Visit record not found.');
+    await deleteDoc(ref);
+    await audit('DELETE', 'visit', id, 'Deleted field visit for ' + String(snapshot.data().customerName || 'customer'));
+    return { data: { deleted: true } as T };
+  }
+
+  if (route === '/api/notifications' && method === 'GET') {
+    const own = await getDocs(query(collection(db, 'staff_notifications'), where('recipientId', '==', user.uid)));
+    const adminItems = admin
+      ? await getDocs(query(collection(db, 'staff_notifications'), where('recipientRole', '==', 'admin')))
+      : null;
+    const merged = new Map<string, any>();
+    [...own.docs, ...(adminItems?.docs || [])].forEach(item => merged.set(item.id, { id: item.id, ...item.data() }));
+    const items = [...merged.values()].sort((x, y) => String(y.createdAt || '').localeCompare(String(x.createdAt || ''))).slice(0, 100);
+    return { data: { items } as T };
+  }
+  if (route.startsWith('/api/notifications/') && method === 'PUT') {
+    const id = decodeURIComponent(route.slice('/api/notifications/'.length));
+    const ref = doc(db, 'staff_notifications', id), snapshot = await getDoc(ref);
+    if (!snapshot.exists() || (snapshot.data().recipientId !== user.uid && !(admin && snapshot.data().recipientRole === 'admin'))) {
+      throw new Error('Notification not found.');
+    }
+    await updateDoc(ref, { read: true, readAt: now() });
+    return { data: { updated: true } as T };
+  }
+  throw new Error('Unsupported team operations request.');
+}
+
 async function requestStaffRegistrations<T = any>(path: string, method: string, payload?: Record<string, unknown>): Promise<ApiResult<T>> {
   if (!firebaseAuth?.currentUser || !firestore) throw new Error('Please sign in again to continue.');
   const db = firestore, user = firebaseAuth.currentUser, profile = await getAppUserProfile();
@@ -1232,6 +1470,7 @@ async function request<T = any>(path: string, method: string, payload?: Record<s
   if (path.split('?')[0] === '/api/subscriptions' || path.split('?')[0].startsWith('/api/subscriptions/')) return requestSubscriptions<T>(path, method, payload);
   if (path.split('?')[0] === '/api/installations' || path.split('?')[0].startsWith('/api/installations/')) return requestInstallations<T>(path, method, payload);
   if (['/api/expenses', '/api/payroll', '/api/invoices', '/api/customer-ledger', '/api/audit'].some(route => path.split('?')[0] === route || path.split('?')[0].startsWith(route + '/'))) return requestFinance<T>(path, method, payload);
+  if (['/api/announcements', '/api/messages', '/api/groups', '/api/visits', '/api/notifications'].some(route => path.split('?')[0] === route || path.split('?')[0].startsWith(route + '/'))) return requestTeamOperations<T>(path, method, payload);
   if (path.split('?')[0] === '/api/staff-registration-requests' || path.split('?')[0].startsWith('/api/staff-registration-requests/')) return requestStaffRegistrations<T>(path, method, payload);
   if (path.split('?')[0] === '/api/staff' || path.split('?')[0].startsWith('/api/staff/')) return requestStaff<T>(path, method, payload);
   if (path.split('?')[0] === '/api/inventory' || path.split('?')[0].startsWith('/api/inventory/')) return requestInventory<T>(path, method, payload);
