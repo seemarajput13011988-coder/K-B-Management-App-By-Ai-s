@@ -205,10 +205,101 @@ async function requestPayments<T = any>(path: string, method: string, payload?: 
   throw new Error('Unsupported payments request.');
 }
 
+
+async function requestTasks<T = any>(path: string, method: string, payload?: Record<string, unknown>): Promise<ApiResult<T>> {
+  if (!firebaseAuth?.currentUser || !firestore) throw new Error('Please sign in again to continue.');
+  const profile = await getAppUserProfile();
+  const admin = profile.role === 'admin';
+  const tasks = collection(firestore, 'tasks');
+  const base = '/api/tasks';
+  const id = path.startsWith(base + '/') ? decodeURIComponent(path.slice(base.length + 1).split('?')[0]) : '';
+  const clean = (value: unknown, max: number) => String(value ?? '').trim().slice(0, max);
+  const validStatus = (value: string) => ['Pending', 'In progress', 'Completed'].includes(value);
+  if (method === 'GET' && path.split('?')[0] === base) {
+    const snap = await getDocs(admin ? tasks : query(tasks, where('assignedTo', '==', firebaseAuth.currentUser.uid)));
+    return { data: { items: snap.docs.map(item => ({ id: item.id, ...item.data() })) } as T };
+  }
+  if (method === 'POST' && path.split('?')[0] === base) {
+    if (!admin) throw new Error('Only administrators can assign work.');
+    const title = clean(payload?.title, 120), assignedTo = clean(payload?.assignedTo, 128), dueDate = clean(payload?.dueDate, 10);
+    const staff = await getDoc(doc(firestore, 'users', assignedTo));
+    if (!title || !assignedTo || !staff.exists() || staff.data().role !== 'staff' || staff.data().active !== true || !/^\\d{4}-\\d{2}-\\d{2}$/.test(dueDate)) {
+      throw new Error('Enter a task title, select an active staff member and choose a valid due date.');
+    }
+    const record = {
+      title, details: clean(payload?.details, 1500), assignedTo,
+      assignedToName: clean(staff.data().displayName, 80),
+      priority: ['Low', 'Normal', 'High'].includes(String(payload?.priority)) ? payload?.priority : 'Normal',
+      dueDate, status: 'Pending', createdAt: new Date().toISOString(),
+      createdBy: firebaseAuth.currentUser.uid, createdByName: profile.displayName
+    };
+    const batch = writeBatch(firestore);
+    const taskRef = doc(tasks);
+    batch.set(taskRef, record);
+    batch.set(doc(collection(firestore, 'staff_notifications')), {
+      recipientId: assignedTo, recipientRole: 'staff', type: 'task-assigned',
+      title: 'New work assigned', message: title + ' · Due ' + dueDate,
+      createdAt: new Date().toISOString(), read: false, relatedId: taskRef.id
+    });
+    await batch.commit();
+    return { data: { id: taskRef.id, ...record } as T };
+  }
+  if (id && (method === 'PUT' || method === 'DELETE')) {
+    const ref = doc(firestore, 'tasks', id);
+    const existing = await getDoc(ref);
+    if (!existing.exists()) throw new Error('Task not found.');
+    const current = existing.data();
+    if (!admin && current.assignedTo !== firebaseAuth.currentUser.uid) throw new Error('You can update only your assigned tasks.');
+    if (method === 'DELETE') {
+      if (!admin) throw new Error('Only administrators can delete tasks.');
+      await deleteDoc(ref);
+      return { data: { deleted: true } as T };
+    }
+    const status = clean(payload?.status, 30);
+    if (status && !validStatus(status)) throw new Error('Choose a valid task status.');
+    if (!admin && Object.keys(payload || {}).some(key => key !== 'status')) throw new Error('Staff can update task status only.');
+    const patch: Record<string, unknown> = { updatedAt: new Date().toISOString() };
+    if (status) patch.status = status;
+    if (admin) {
+      if (payload?.title !== undefined) patch.title = clean(payload.title, 120);
+      if (payload?.details !== undefined) patch.details = clean(payload.details, 1500);
+      if (payload?.dueDate !== undefined) {
+        const dueDate = clean(payload.dueDate, 10);
+        if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(dueDate)) throw new Error('Choose a valid due date.');
+        patch.dueDate = dueDate;
+      }
+    }
+    const batch = writeBatch(firestore);
+    batch.update(ref, patch);
+    const statusChanged = !!status && status !== current.status;
+    const detailsChanged = admin && ['title', 'details', 'dueDate'].some(key => patch[key] !== undefined);
+    if (statusChanged || detailsChanged) {
+      const recipients: Array<{ id: string; role: string }> = [];
+      if (admin && current.assignedTo) recipients.push({ id: String(current.assignedTo), role: 'staff' });
+      if (!admin) {
+        const admins = await getDocs(query(collection(firestore, 'users'), where('role', '==', 'admin'), where('active', '==', true)));
+        admins.docs.forEach(item => recipients.push({ id: item.id, role: 'admin' }));
+      }
+      const title = statusChanged ? 'Work status updated' : 'Work details updated';
+      const message = statusChanged ? String(current.title) + ' is now ' + status + '.' : String(patch.title || current.title) + ' was updated by ' + profile.displayName + '.';
+      for (const recipient of recipients) {
+        batch.set(doc(collection(firestore, 'staff_notifications')), {
+          recipientId: recipient.id, recipientRole: recipient.role, type: 'task-update',
+          title, message: message.slice(0, 180), createdAt: new Date().toISOString(), read: false, relatedId: id
+        });
+      }
+    }
+    await batch.commit();
+    return { data: { updated: true } as T };
+  }
+  throw new Error('Unsupported tasks request.');
+}
+
 async function request<T = any>(path: string, method: string, payload?: Record<string, unknown>): Promise<ApiResult<T>> {
   if (path.split('?')[0] === '/api/plans' || path.split('?')[0].startsWith('/api/plans/')) return requestPlans<T>(path, method, payload);
   if (path.split('?')[0] === '/api/customers' || path.split('?')[0].startsWith('/api/customers/')) return requestCustomers<T>(path, method, payload);
   if (path.split('?')[0] === '/api/payments' || path.split('?')[0].startsWith('/api/payments/')) return requestPayments<T>(path, method, payload);
+  if (path.split('?')[0] === '/api/tasks' || path.split('?')[0].startsWith('/api/tasks/')) return requestTasks<T>(path, method, payload);
   if (!firebaseAuth) throw new Error('Firebase is not configured yet. Add the K&B Firebase web app settings before signing in.');
   const auth = firebaseAuth;
   if (!auth.currentUser) await new Promise<void>(resolve => {
