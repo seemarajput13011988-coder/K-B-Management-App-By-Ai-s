@@ -7,8 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "android:sync": "cap sync android",
-    "deploy:hosting": "npm run build && npx firebase-tools deploy --only hosting"
+    "android:sync": "cap sync android"
   },
   "dependencies": {
     "lucide-react": "^0.469.0",
