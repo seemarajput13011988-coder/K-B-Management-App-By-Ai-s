@@ -650,36 +650,22 @@ service cloud.firestore {
           'status', 'createdAt', 'requestId', 'statusId',
           'reviewedAt', 'reviewedBy', 'reviewedByName', 'approvedUserId'
         ])
-        && data.userId is string && data.userId.matches('^[A-Za-z0-9_-]{3,32}
-    // Spark rules and direct Firestore data paths are implemented.
-    match /{document=**} {
-      allow read, write: if false;
-    }
-  }
-}
-)
+        && data.userId is string
+        && data.userId.matches('^[A-Za-z0-9_-]{3,32}$')
         && data.userIdLower == requestId
-        && data.displayName is string && data.displayName.size() > 0 && data.displayName.size() <= 80
-        && data.phone is string && data.phone.size() <= 30
-        && data.reason is string && data.reason.size() <= 300
+        && data.displayName is string
+        && data.displayName.size() > 0
+        && data.displayName.size() <= 80
+        && data.phone is string
+        && data.phone.size() <= 30
+        && data.reason is string
+        && data.reason.size() <= 300
         && data.status in ['pending', 'approved', 'rejected']
         && data.createdAt is string
-        && data.requestId is string && data.requestId.matches('^[a-f0-9]{48}
-    // Spark rules and direct Firestore data paths are implemented.
-    match /{document=**} {
-      allow read, write: if false;
-    }
-  }
-}
-)
-        && data.statusId is string && data.statusId.matches('^[a-f0-9]{48}
-    // Spark rules and direct Firestore data paths are implemented.
-    match /{document=**} {
-      allow read, write: if false;
-    }
-  }
-}
-);
+        && data.requestId is string
+        && data.requestId.matches('^[a-f0-9]{48}$')
+        && data.statusId is string
+        && data.statusId.matches('^[a-f0-9]{48}$');
     }
 
     match /staff_registration_requests/{requestId} {
@@ -716,16 +702,10 @@ service cloud.firestore {
       allow get: if true;
       allow list: if false;
       allow create: if request.auth == null
+        && trackingCode.matches('^[a-f0-9]{48}$')
         && request.resource.data.keys().hasOnly(['requestId', 'status', 'createdAt'])
         && request.resource.data.requestId is string
-        && request.resource.data.requestId.matches('^[a-f0-9]{48}
-    // Spark rules and direct Firestore data paths are implemented.
-    match /{document=**} {
-      allow read, write: if false;
-    }
-  }
-}
-)
+        && request.resource.data.requestId.matches('^[a-f0-9]{48}$')
         && request.resource.data.status == 'pending'
         && request.resource.data.createdAt is string;
       allow update: if isAdmin()
@@ -735,7 +715,6 @@ service cloud.firestore {
         && request.resource.data.reviewedByName is string;
       allow delete: if false;
     }
-
 
     match /announcements/{announcementId} {
       allow get, list: if hasActiveProfile();
