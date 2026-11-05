@@ -44,7 +44,7 @@ The Spark-compatible HTTP API entry point is `netlify/functions/api.ts`, which c
 - Project ID is fixed to `kandb-net-sevice`; the browser client refuses to initialize against a different project.
 - Enable Firebase Authentication Email/Password.
 - Add the Firebase Web App configuration locally in `.env.local`; never commit it.
-- Configure Functions secrets `ADMIN_BOOTSTRAP_SECRET` and `ADMIN_RECOVERY_CODE` before deploying Functions.
+- Configure Netlify environment variables `FIREBASE_SERVICE_ACCOUNT_JSON`, `ADMIN_BOOTSTRAP_SECRET`, and `ADMIN_RECOVERY_CODE` before deploying the Netlify API function.
 - The first admin must be initialized through the one-time secret-protected bootstrap endpoint. Staff accounts are then created by an authenticated admin.
 - Firestore rules remain deny-by-default for direct browser access; Functions use the Admin SDK.
 
