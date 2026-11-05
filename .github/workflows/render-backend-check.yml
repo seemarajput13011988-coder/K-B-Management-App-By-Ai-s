@@ -43,6 +43,22 @@ jobs:
           npx tsc --noEmit
           npm run build
 
+  api-smoke-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify live API and Firestore-backed login lookup
+        run: |
+          set -euo pipefail
+          base="https://kandb-management-nexus-api-zv7f.onrender.com"
+          curl --fail --silent --show-error --retry 5 --retry-delay 5 --retry-all-errors --max-time 60 "$base/api/_healthcheck"
+          status=$(curl --silent --show-error --retry 5 --retry-delay 5 --retry-all-errors --max-time 60 -o /tmp/kb-login-probe.json -w '%{http_code}' -X POST "$base/api/auth/login" -H 'Content-Type: application/json' --data '{"userId":"__kb_firestore_health_probe__","password":"not-a-real-password"}')
+          if [ "$status" != "401" ]; then
+            cat /tmp/kb-login-probe.json
+            echo "::error::Expected a 401 invalid-credentials response from the Firestore-backed login lookup, received HTTP $status."
+            exit 1
+          fi
+          echo "API health check passed and Firestore-backed login lookup returned the expected 401 without writing data."
+
   keepalive:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
