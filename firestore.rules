@@ -22,7 +22,8 @@ service cloud.firestore {
     }
 
     function isSuperAdmin() {
-      return isAdmin() && get(myProfilePath()).data.isSuperAdmin == true;
+      return isAdmin()
+        && get(myProfilePath()).data.isSuperAdmin == true;
     }
 
     function validPlan(data) {
@@ -47,12 +48,9 @@ service cloud.firestore {
       allow list: if isAdmin();
       allow create: if (
           isAdmin()
-          && request.resource.data.keys().hasOnly([
-            'userId', 'displayName', 'role', 'active', 'createdAt', 'createdBy'
-          ])
+          && request.resource.data.keys().hasOnly(['userId', 'displayName', 'role', 'active', 'createdAt', 'createdBy'])
           && request.resource.data.userId is string
-          && request.resource.data.userId.size() >= 3
-          && request.resource.data.userId.size() <= 32
+          && request.resource.data.userId.matches('^[A-Za-z0-9_-]{3,32}$')
           && request.resource.data.displayName is string
           && request.resource.data.displayName.size() > 0
           && request.resource.data.displayName.size() <= 80
@@ -62,9 +60,7 @@ service cloud.firestore {
           && request.resource.data.createdBy == request.auth.uid
         ) || (
           isSuperAdmin()
-          && request.resource.data.keys().hasOnly([
-            'userId', 'displayName', 'role', 'isSuperAdmin', 'active', 'createdAt', 'createdBy'
-          ])
+          && request.resource.data.keys().hasOnly(['userId', 'displayName', 'role', 'isSuperAdmin', 'active', 'createdAt', 'createdBy'])
           && request.resource.data.userId is string
           && request.resource.data.userId.matches('^[A-Za-z0-9_-]{3,32}$')
           && request.resource.data.userId.lower() != 'brajraj'
@@ -103,10 +99,7 @@ service cloud.firestore {
           && request.auth.uid == userId
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['userId'])
           && request.resource.data.userId is string
-          && request.resource.data.userId.matches('^[A-Za-z0-9_-]{3,32}
-    }
-
-)
+          && request.resource.data.userId.matches('^[A-Za-z0-9_-]{3,32}$')
           && request.auth.token.email == request.resource.data.userId.lower() + '@accounts.kandbnetservice.in'
         );
       allow delete: if false;
