@@ -313,6 +313,36 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    // Holiday requests are private to the requester and administrators.
+    // Staff may submit requests; only admins may approve or reject them.
+    match /holiday_requests/{holidayId} {
+      allow get, list: if isAdmin()
+        || (hasActiveProfile() && resource.data.userId == request.auth.uid);
+      allow create: if hasActiveProfile()
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'staff'
+        && request.resource.data.keys().hasOnly([
+          'userId', 'displayName', 'startDate', 'endDate', 'reason', 'status', 'createdAt'
+        ])
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.displayName is string
+        && request.resource.data.startDate is string
+        && request.resource.data.endDate is string
+        && request.resource.data.endDate >= request.resource.data.startDate
+        && request.resource.data.reason is string
+        && request.resource.data.reason.size() > 0
+        && request.resource.data.reason.size() <= 300
+        && request.resource.data.status == 'pending'
+        && request.resource.data.createdAt is string;
+      allow update: if isAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status', 'reviewedAt', 'reviewedBy', 'reviewedByName', 'reviewNote'
+        ])
+        && resource.data.status == 'pending'
+        && request.resource.data.status in ['approved', 'rejected']
+        && request.resource.data.reviewedBy == request.auth.uid;
+      allow delete: if false;
+    }
+
     // Installation jobs: admins schedule and assign; staff see only their
     // own jobs and can update progress notes/status, never assignment details.
     match /installations/{installationId} {
