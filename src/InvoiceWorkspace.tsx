@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
-import { jsPDF } from 'jspdf';
 import { exportPdfFile } from './lib/file-export';
 
 type Customer = { id:string; name:string; phone:string; address:string; plan:string; monthlyFee:number; status:string };
@@ -85,6 +84,7 @@ export default function InvoiceWorkspace({customers,plans,flash}:{customers:Cust
     }
     setBusy(true);
     try {
+      const { jsPDF } = await import('jspdf');
       const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
       const pageWidth = doc.internal.pageSize.getWidth();
       const pageHeight = doc.internal.pageSize.getHeight();
