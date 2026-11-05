@@ -22,8 +22,11 @@ function downloadCsv(name: string, rows: unknown[][]) {
   const link = document.createElement('a');
   link.href = url;
   link.download = name;
+  link.style.display = 'none';
+  document.body.appendChild(link);
   link.click();
-  URL.revokeObjectURL(url);
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1500);
 }
 
 function printReport(title: string, rows: unknown[][]) {
