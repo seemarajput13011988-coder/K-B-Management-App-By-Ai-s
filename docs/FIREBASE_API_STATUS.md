@@ -18,10 +18,10 @@ The Cloud Functions HTTP entry point is `functions/src/index.ts`; the React API 
 - Audit entries for the main create/update/delete and administrative operations.
 - React modules now use the Firebase API adapter instead of `@appdeploy/client`.
 - Firebase Hosting rewrites `/api/**` to the Cloud Function.
-- Notifications are stored server-side and polled while the app is open. Android local notifications display newly received alerts while the app is running. FCM push delivery when the app is fully closed is not configured yet.
+- Notifications are stored server-side and polled while the app is open. Android local notifications display newly received alerts while the app is running. FCM push delivery while the app is fully closed is implemented in source but not configured in the latest APK: the workflow log reports the missing `ANDROID_GOOGLE_SERVICES_JSON_BASE64` secret. A successful APK build alone does not verify push delivery.
 - GitHub Actions workflow added to typecheck the Functions package on migration-branch changes.
 - Firebase Web App registration and project identity have been confirmed as `kandb-net-sevice`.
-- Android build workflow uses the confirmed project ID and app display name K&B Management Nexus; debug APK builds successfully in GitHub Actions run #39.
+- Android build workflow uses Firebase project `kandb-net-sevice` and package `kandbnet.service2010`. Latest run #41970912048 on 5 Nov 2026 built a debug APK from commit `0b80b424a394e235e5dca5d72c503f6efca6f5b9`.
 
 ## Remaining engineering work
 - Local `.env.local` still needs to be populated on the build machine with the six public Firebase Web App config values.
@@ -31,13 +31,13 @@ The Cloud Functions HTTP entry point is `functions/src/index.ts`; the React API 
 - Validate the new administrator and attendance correction workflows against Firebase Auth / Firestore Emulator.
 - A debug APK has been built successfully, but real-device acceptance tests are still required (screen locked, app backgrounded, GPS off/on, permission revoked, network loss, shift checkout and admin-start consent).
 - Add emulator-based API tests for admin and staff roles.
-- The Android debug APK artifact from run #39 / commit `b2adcc4f` was downloaded and verified. It is debug-signed for testing, not a stable release-signed APK.
+- The Android debug APK artifact from run #41970912048 / commit `0b80b424a394e235e5dca5d72c503f6efca6f5b9` was downloaded and its ZIP contents verified. It is debug-signed for internal validation, not a stable release-signed APK.
 - Review and test the complete data migration process before importing any production records.
 
 ## Build verification
-- Latest frontend production build passed in GitHub Actions run #41 (commit `b2adcc4f`).
-- Latest Firebase Functions TypeScript build passed in GitHub Actions run #42 (commit `3cfa0a5f`).
-- Android debug APK build and artifact upload passed in GitHub Actions run #39 (commit `b2adcc4f`).
+- Latest combined Android workflow run #41970912048 (5 Nov 2026, commit `0b80b424a394e235e5dca5d72c503f6efca6f5b9`) passed frontend TypeScript compilation, Vite production build, Functions TypeScript build and 14 Node tests, Firebase Android project/package validation, Android debug APK assembly and artifact upload.
+- The same workflow log explicitly warns that FCM is not configured because `ANDROID_GOOGLE_SERVICES_JSON_BASE64` is absent.
+- These are source/build checks only; they do not prove live Firebase connectivity, API correctness, emulator behavior, push delivery or production readiness.
 - These are compile/build checks only; they do not prove live Firebase connectivity, API correctness, emulator behavior, or production readiness.
 
 ## Important setup requirements
