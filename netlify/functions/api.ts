@@ -15,9 +15,12 @@ export async function handler(event: NetlifyEvent) {
   const rawUrl = event.rawUrl || `https://netlify.local${event.path}`;
   const url = new URL(rawUrl);
   const functionPrefix = '/.netlify/functions/api';
-  const path = url.pathname.startsWith(functionPrefix)
-    ? url.pathname.slice(functionPrefix.length) || '/'
+  const requestedPath = event.path && (event.path.startsWith('/api/') || event.path === '/api')
+    ? event.path
     : url.pathname;
+  const path = requestedPath.startsWith(functionPrefix)
+    ? requestedPath.slice(functionPrefix.length) || '/'
+    : requestedPath;
   const headers = Object.fromEntries(
     Object.entries(event.headers || {}).map(([key, value]) => [key.toLowerCase(), value || ''])
   );
