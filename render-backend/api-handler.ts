@@ -1,14 +1,7 @@
 import { createHash, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
-import { cert, initializeApp } from 'firebase-admin/app';
-import { FieldValue, getFirestore } from 'firebase-admin/firestore';
+import { firestore as db, FieldValue } from './firestore-adapter.js';
 import { buildCustomerLedger, hasOverlappingSubscription, hasAdminManagementAccess, isValidDateKey, isValidDateRange, routePath, subscriptionExpiryKind, taskReminderKind, isSixMonthReviewDue } from './route-path.js';
 
-const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON || '';
-if (!serviceAccountJson) throw new Error('FIREBASE_SERVICE_ACCOUNT_JSON is required on the Render backend.');
-const serviceAccount = JSON.parse(serviceAccountJson);
-if (serviceAccount.project_id !== 'kandb-net-sevice') throw new Error('Firebase service account must belong to project kandb-net-sevice.');
-initializeApp({ credential: cert(serviceAccount), projectId: 'kandb-net-sevice' });
-const db = getFirestore();
 
 type Role = 'admin' | 'staff';
 type AppUser = { uid: string; id: string; userId: string; displayName: string; role: Role; active: boolean; authTime: number; canManageAdmins?: boolean; salt: string; passwordHash: string };
@@ -556,7 +549,13 @@ export async function apiHandler(req: any, res: any) {
         const token = clean(req.body?.token,4096);
         if (token.length < 20) { send(res,400,{error:'A valid device notification token is required.'}); return; }
         const id = createHash('sha256').update(token).digest('hex');
-        await db.collection('push_tokens').doc(id).set({userId:user.uid,token,platform:clean(req.body?.platform,30)||'android',createdAt:now(),updatedAt:now()},{merge:true});
+        const tokenRef = db.collection('push_tokens').doc(id);
+        if (req.body?.action === 'unregister') {
+          const existingToken = await tokenRef.get();
+          if (existingToken.exists && String(existingToken.data()?.userId || '') === user.uid) await tokenRef.delete();
+          send(res,200,{unregistered:true}); return;
+        }
+        await tokenRef.set({userId:user.uid,token,platform:clean(req.body?.platform,30)||'android',createdAt:now(),updatedAt:now()},{merge:true});
         send(res,201,{registered:true}); return;
       }
       if (path === '/api/payroll' && method === 'GET') {
