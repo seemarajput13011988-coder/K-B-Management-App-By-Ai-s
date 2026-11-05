@@ -884,16 +884,32 @@ export const api = onRequest(
       }
       if (path === '/api/attendance/check-in' && method === 'POST') {
         if (!allow(user, ['staff'], res)) return;
-        const workDate = indiaDate(), items = await list('attendance');
-        if (items.some(item => item.userId === user.uid && item.workDate === workDate)) { send(res, 409, { error: 'Attendance already exists today. Ask an admin to restart a GPS-cancelled shift.' }); return; }
+        const workDate = indiaDate();
         const latitude = Number(body.latitude), longitude = Number(body.longitude);
         if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || Math.abs(latitude) > 90 || Math.abs(longitude) > 180) { send(res, 403, { error: 'Enable location permission and obtain a GPS fix before starting your shift.' }); return; }
         const checkInAt = now();
         const dayType = body.dayType === 'Half day' ? 'Half day' : 'Full day';
         const record = { userId: user.uid, displayName: user.displayName, workDate, checkInAt, status: 'Checked in', dayType, gpsStatus: 'active', shiftEvents: [] };
-        const ref = await db.collection('attendance').add(record);
-        await db.collection('locations').add({ userId: user.uid, displayName: user.displayName, latitude, longitude, accuracy: Number(body.accuracy) || 0, capturedAt: checkInAt });
-        send(res, 201, { id: ref.id, ...record }); return;
+        const attendanceRef = db.collection('attendance').doc('att-' + createHash('sha256').update(user.uid + '|' + workDate).digest('hex'));
+        const locationRef = db.collection('locations').doc();
+        // Check for legacy/random-ID attendance and create the new shift atomically.
+        // This prevents double taps or concurrent requests creating two shifts.
+        const created = await db.runTransaction(async transaction => {
+          const todaysRecords = await transaction.get(db.collection('attendance').where('workDate', '==', workDate).limit(1000));
+          if (todaysRecords.docs.some(document => document.data().userId === user.uid)) return false;
+          transaction.create(attendanceRef, record);
+          transaction.create(locationRef, {
+            userId: user.uid,
+            displayName: user.displayName,
+            latitude,
+            longitude,
+            accuracy: Number(body.accuracy) || 0,
+            capturedAt: checkInAt
+          });
+          return true;
+        });
+        if (!created) { send(res, 409, { error: 'Attendance already exists today. Ask an admin to restart a GPS-cancelled shift.' }); return; }
+        send(res, 201, { id: attendanceRef.id, ...record }); return;
       }
       if (path === '/api/attendance/check-out' && method === 'POST') {
         if (!allow(user, ['staff'], res)) return;
