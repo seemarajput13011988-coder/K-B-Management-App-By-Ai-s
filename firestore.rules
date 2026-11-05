@@ -376,6 +376,119 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+
+    function validInventoryItem(data) {
+      return data.keys().hasOnly([
+          'name', 'sku', 'skuKey', 'category', 'unit', 'quantity', 'minimumQuantity',
+          'unitCost', 'supplier', 'location', 'notes', 'active', 'createdAt',
+          'updatedAt', 'createdBy', 'lastMovementId'
+        ])
+        && data.name is string && data.name.size() > 0 && data.name.size() <= 100
+        && data.sku is string && data.sku.size() > 0 && data.sku.size() <= 50
+        && data.skuKey is string && data.skuKey.size() > 0 && data.skuKey.size() <= 150
+        && data.category is string && data.category.size() > 0 && data.category.size() <= 60
+        && data.unit is string && data.unit.size() > 0 && data.unit.size() <= 24
+        && data.quantity is int && data.quantity >= 0
+        && data.minimumQuantity is int && data.minimumQuantity >= 0
+        && data.unitCost is number && data.unitCost >= 0 && data.unitCost <= 100000000
+        && data.supplier is string && data.supplier.size() <= 100
+        && data.location is string && data.location.size() <= 100
+        && data.notes is string && data.notes.size() <= 500
+        && data.active is bool
+        && data.createdAt is string && data.updatedAt is string
+        && data.createdBy is string;
+    }
+
+    match /inventory_skus/{skuId} {
+      allow get, list: if isAdmin();
+      allow create, update: if isAdmin()
+        && request.resource.data.keys().hasOnly(['itemId', 'skuKey', 'createdAt', 'updatedAt'])
+        && request.resource.data.itemId is string
+        && request.resource.data.skuKey is string;
+      allow delete: if isAdmin();
+    }
+
+    match /inventory/{itemId} {
+      allow get, list: if isAdmin()
+        || (hasActiveProfile() && resource.data.active == true);
+      allow create: if isAdmin()
+        && validInventoryItem(request.resource.data)
+        && getAfter(/databases/$(database)/documents/inventory_skus/$(request.resource.data.skuKey)).data.itemId == itemId;
+      allow update: if (
+          isAdmin()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'name', 'sku', 'skuKey', 'category', 'unit', 'minimumQuantity', 'unitCost',
+            'supplier', 'location', 'notes', 'active', 'updatedAt'
+          ])
+          && request.resource.data.name is string
+          && request.resource.data.sku is string
+          && request.resource.data.skuKey is string
+          && getAfter(/databases/$(database)/documents/inventory_skus/$(request.resource.data.skuKey)).data.itemId == itemId
+        ) || (
+          hasActiveProfile()
+          && resource.data.active == true
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'quantity', 'updatedAt', 'lastMovementId'
+          ])
+          && request.resource.data.quantity is int
+          && request.resource.data.quantity >= 0
+          && request.resource.data.lastMovementId is string
+          && getAfter(/databases/$(database)/documents/inventory_movements/$(request.resource.data.lastMovementId)).data.itemId == itemId
+          && getAfter(/databases/$(database)/documents/inventory_movements/$(request.resource.data.lastMovementId)).data.createdBy == request.auth.uid
+          && getAfter(/databases/$(database)/documents/inventory_movements/$(request.resource.data.lastMovementId)).data.quantityBefore == resource.data.quantity
+          && getAfter(/databases/$(database)/documents/inventory_movements/$(request.resource.data.lastMovementId)).data.quantityAfter == request.resource.data.quantity
+          && (isAdmin()
+            || getAfter(/databases/$(database)/documents/inventory_movements/$(request.resource.data.lastMovementId)).data.type == 'OUT')
+        );
+      allow delete: if false;
+    }
+
+    match /inventory_movements/{movementId} {
+      allow get, list: if hasActiveProfile();
+      allow create: if hasActiveProfile()
+        && request.resource.data.keys().hasOnly([
+          'itemId', 'itemName', 'sku', 'type', 'quantity', 'quantityBefore',
+          'quantityAfter', 'reason', 'createdAt', 'createdBy', 'createdByName'
+        ])
+        && request.resource.data.itemId is string
+        && request.resource.data.itemName is string
+        && request.resource.data.sku is string
+        && request.resource.data.type in ['IN', 'OUT']
+        && request.resource.data.quantity is int
+        && request.resource.data.quantity > 0
+        && request.resource.data.quantity <= 100000
+        && request.resource.data.quantityBefore is int
+        && request.resource.data.quantityAfter is int
+        && request.resource.data.reason is string
+        && request.resource.data.reason.size() > 0
+        && request.resource.data.reason.size() <= 240
+        && request.resource.data.createdAt is string
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.createdByName is string
+        && getAfter(/databases/$(database)/documents/inventory/$(request.resource.data.itemId)).data.lastMovementId == movementId
+        && getAfter(/databases/$(database)/documents/inventory/$(request.resource.data.itemId)).data.quantity == request.resource.data.quantityAfter
+        && (request.resource.data.type == 'IN'
+          ? request.resource.data.quantityAfter == request.resource.data.quantityBefore + request.resource.data.quantity
+          : request.resource.data.quantityAfter == request.resource.data.quantityBefore - request.resource.data.quantity);
+      allow update, delete: if false;
+    }
+
+    match /audit_logs/{auditId} {
+      allow get, list: if isAdmin();
+      allow create: if hasActiveProfile()
+        && request.resource.data.keys().hasOnly([
+          'actorId', 'actorName', 'action', 'entityType', 'entityId', 'description', 'createdAt'
+        ])
+        && request.resource.data.actorId == request.auth.uid
+        && request.resource.data.actorName is string
+        && request.resource.data.action is string
+        && request.resource.data.entityType == 'inventory-item'
+        && request.resource.data.entityId is string
+        && request.resource.data.description is string
+        && request.resource.data.createdAt is string;
+      allow update, delete: if false;
+    }
+
     // All remaining collections stay closed until their own ownership-checked
     // Spark rules and direct Firestore data paths are implemented.
     match /{document=**} {
