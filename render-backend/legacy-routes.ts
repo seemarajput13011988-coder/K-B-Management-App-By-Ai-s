@@ -66,7 +66,7 @@ type Complaint = {
 };
 type SessionRecord = { userId: string; expiresAt: number };
 type TaskRecord = { title: string; details: string; assignedTo: string; assignedToName: string; priority: string; dueDate: string; status: string; createdAt: string; createdBy: string; createdByName: string };
-type PlanRecord = { id?: string; name: string; provider: string; speed: string; data: string; price: number; note: string; connectionType: string; featured: boolean; active: boolean };
+type PlanRecord = { id?: string; name: string; provider: string; speed: string; data: string; price: number; note: string; details?: string; connectionType: string; featured: boolean; active: boolean };
 const defaultPlans: PlanRecord[] = [
   { name: 'RailWire 30 Mbps', provider: 'RailWire', speed: '30 Mbps', data: '1.5 TB', price: 549, note: 'Popular home plan', connectionType: 'Fiber', featured: true, active: true },
   { name: 'RailWire 50 Mbps', provider: 'RailWire', speed: '50 Mbps', data: '2 TB', price: 699, note: 'For multiple devices', connectionType: 'Fiber', featured: false, active: true },
@@ -354,7 +354,7 @@ export const handler = router({
     if (!name || !provider || !speed || !data || !connectionType || !validMoney(price)) return error('Enter a plan name, provider, speed, data limit, connection type and valid monthly price.', 400);
     const existing = await db.list<PlanRecord>('plans', { limit: 200 });
     if (existing.items.some(plan => plan.name.toLowerCase() === name.toLowerCase())) return error('A plan with this name already exists.', 409);
-    const record: PlanRecord = { name, provider, speed, data, price, note: cleanText(input.note, 180), connectionType, featured: input.featured === true, active: true };
+    const record: PlanRecord = { name, provider, speed, data, price, note: cleanText(input.note, 180), details: cleanText(input.details, 1000), connectionType, featured: input.featured === true, active: true };
     const [id] = await db.add('plans', [record as unknown as Record<string, unknown>]);
     return id ? json({ id, ...record }, 201) : error('Could not create this plan.', 500);
   }),
@@ -372,7 +372,7 @@ export const handler = router({
     if (!name || !provider || !speed || !data || !connectionType || !validMoney(price)) return error('Enter valid plan details and monthly price.', 400);
     const others = await db.list<PlanRecord>('plans', { limit: 200 });
     if (others.items.some(plan => plan.id !== params.id && plan.name.toLowerCase() === name.toLowerCase())) return error('Another plan already uses this name.', 409);
-    const record = { name, provider, speed, data, price, note: cleanText(input.note, 180), connectionType, featured: input.featured === true, active: input.active !== false };
+    const record = { name, provider, speed, data, price, note: cleanText(input.note, 180), details: cleanText(input.details, 1000), connectionType, featured: input.featured === true, active: input.active !== false };
     const [updated] = await db.tx.update('plans', [{ id: params.id, record, }], { patch: true });
     return updated ? json({ updated: true }) : error('Could not update this plan.', 500);
   }),
