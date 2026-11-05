@@ -16,6 +16,8 @@ on:
       - "firebase.json"
       - ".firebaserc"
       - "functions/**"
+      - "firestore.rules"
+      - "tests/**"
       - "docs/ANDROID_TRACKING_AND_RELEASE.md"
       - ".github/workflows/android-apk.yml"
   workflow_dispatch:
