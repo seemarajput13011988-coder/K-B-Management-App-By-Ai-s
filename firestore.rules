@@ -254,8 +254,8 @@ service cloud.firestore {
         && data.dayType in ['Full day', 'Half day'];
     }
 
-    // Attendance is owner-scoped. Staff may create their own shift and update
-    // only checkout/GPS fields; admins manage shifts and corrections.
+    // Attendance is owner-scoped. Staff create only their own deterministic
+    // daily shift and may update only GPS state or complete an open shift.
     match /attendance/{attendanceId} {
       allow get, list: if isAdmin()
         || (hasActiveProfile() && resource.data.userId == request.auth.uid);
@@ -264,7 +264,55 @@ service cloud.firestore {
           && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'staff'
           && request.resource.data.userId == request.auth.uid
           && validAttendanceRecord(request.resource.data)
-          && request.resource.data.workDate.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}    // All remaining collections stay closed until their own ownership-checked
+          && request.resource.data.keys().hasOnly([
+            'userId', 'displayName', 'workDate', 'checkInAt', 'status',
+            'dayType', 'gpsStatus', 'attendanceSource', 'shiftEvents'
+          ])
+          && request.resource.data.workDate.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+          && attendanceId == 'att-' + request.auth.uid + '-' + request.resource.data.workDate);
+      allow update: if isAdmin()
+        || (hasActiveProfile()
+          && resource.data.userId == request.auth.uid
+          && request.resource.data.userId == resource.data.userId
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'checkOutAt', 'status', 'gpsStatus', 'gpsIssueStartedAt',
+            'gpsIssueReason', 'gpsRestoredAt'
+          ])
+          && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['status'])
+            || request.resource.data.status in ['Checked in', 'Completed'])
+          && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['checkOutAt'])
+            || (!resource.data.keys().hasAny(['checkOutAt'])
+              && request.resource.data.checkOutAt is string
+              && request.resource.data.status == 'Completed'))
+          && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['gpsStatus'])
+            || request.resource.data.gpsStatus in ['active', 'grace-period', 'stopped'])
+          && (!resource.data.keys().hasAny(['checkOutAt'])
+            || request.resource.data.checkOutAt == resource.data.checkOutAt));
+      allow delete: if isAdmin();
+    }
+
+    // Location points are visible only to admins. Staff can create points
+    // for their own active shift; updates and deletes are forbidden.
+    match /locations/{locationId} {
+      allow get, list: if isAdmin();
+      allow create: if hasActiveProfile()
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'staff'
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.latitude is number
+        && request.resource.data.latitude >= -90 && request.resource.data.latitude <= 90
+        && request.resource.data.longitude is number
+        && request.resource.data.longitude >= -180 && request.resource.data.longitude <= 180
+        && request.resource.data.accuracy is number
+        && request.resource.data.capturedAt is string
+        && request.resource.data.attendanceId is string
+        && getAfter(/databases/$(database)/documents/attendance/$(request.resource.data.attendanceId)).data.userId == request.auth.uid
+        && (!getAfter(/databases/$(database)/documents/attendance/$(request.resource.data.attendanceId)).data.keys().hasAny(['checkOutAt'])
+          || getAfter(/databases/$(database)/documents/attendance/$(request.resource.data.attendanceId)).data.checkOutAt == null)
+        && getAfter(/databases/$(database)/documents/attendance/$(request.resource.data.attendanceId)).data.gpsRestartRequired != true;
+      allow update, delete: if false;
+    }
+
+    // All remaining collections stay closed until their own ownership-checked
     // Spark rules and direct Firestore data paths are implemented.
     match /{document=**} {
       allow read, write: if false;
