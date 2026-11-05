@@ -1,24 +1,17 @@
 import { CapacitorHttp } from '@capacitor/core';
-import { browserLocalPersistence, EmailAuthProvider, onAuthStateChanged, reauthenticateWithCredential, setPersistence, signInWithEmailAndPassword, signOut } from 'firebase/auth';
-import { firebaseAuth } from './firebase';
 
 const API_BASE = import.meta.env.VITE_FIREBASE_FUNCTIONS_URL || 'https://asia-south1-kandb-net-sevice.cloudfunctions.net/api';
-const ACCOUNT_DOMAIN = 'accounts.kandbnetservice.in';
 type ApiResult<T = any> = { data: T };
-
+type LocalSession = { token: string; expiresAt: number; user: { id: string; userId: string; displayName: string; role: 'admin'|'staff'; active: boolean; canManageAdmins?: boolean } };
+function storedToken(): string {
+  try { return (JSON.parse(localStorage.getItem('kb-customer-session') || 'null') as LocalSession | null)?.token || ''; }
+  catch { return ''; }
+}
 async function request<T = any>(path: string, method: string, payload?: Record<string, unknown>): Promise<ApiResult<T>> {
-  if (!firebaseAuth) throw new Error('Firebase is not configured yet. Add the K&B Firebase web app settings before signing in.');
-  const auth = firebaseAuth;
-  if (!auth.currentUser) await new Promise<void>(resolve => {
-    let unsubscribe = () => {};
-    unsubscribe = onAuthStateChanged(auth, () => { unsubscribe(); resolve(); });
-  });
-  const currentUser = auth.currentUser;
-  if (!currentUser) throw new Error('Please sign in again to continue.');
-  const token = await currentUser.getIdToken();
   const url = new URL(path, API_BASE);
   url.searchParams.delete('sessionToken');
-  const headers: Record<string, string> = { Authorization: 'Bearer ' + token };
+  const token = storedToken();
+  const headers: Record<string, string> = {};
   let body: string | undefined;
   if (payload) {
     const safePayload = { ...payload };
@@ -26,23 +19,20 @@ async function request<T = any>(path: string, method: string, payload?: Record<s
     headers['Content-Type'] = 'application/json';
     body = JSON.stringify(safePayload);
   }
+  if (token) headers.Authorization = 'Bearer ' + token;
   const response = await fetch(url.toString(), { method, headers, body, cache: 'no-store' });
   const responseText = await response.text();
   let data: any = {};
   try { data = responseText ? JSON.parse(responseText) : {}; } catch { data = {}; }
   if (!response.ok) {
     if (typeof data.error === 'string' && data.error.trim()) throw new Error(data.error);
-    const contentType = response.headers.get('content-type') || 'unknown content type';
-    throw new Error(`K&B server returned HTTP ${response.status} (${contentType}). The Firebase API may not be deployed at the configured URL.`);
-  }
-  if (responseText && (!data || typeof data !== 'object')) {
-    throw new Error('K&B server returned an unexpected response. Check the Firebase Functions deployment.');
+    throw new Error(`K&B server returned HTTP ${response.status}. Check the Cloud Functions deployment.`);
   }
   return { data };
 }
 export async function nativeApiPost<T = any>(path: string, payload: Record<string, unknown>): Promise<ApiResult<T>> {
-  if (!firebaseAuth?.currentUser) throw new Error('Please sign in again to continue location sharing.');
-  const token = await firebaseAuth.currentUser.getIdToken();
+  const token = storedToken();
+  if (!token) throw new Error('Please sign in again to continue location sharing.');
   const url = new URL(path, API_BASE);
   url.searchParams.delete('sessionToken');
   const response = await CapacitorHttp.post({
@@ -85,118 +75,43 @@ export const api = {
   put: <T = any>(path: string, payload?: Record<string, unknown>) => request<T>(path, 'PUT', payload),
   delete: <T = any>(path: string) => request<T>(path, 'DELETE'),
 };
-export async function bootstrapAdmin(bootstrapSecret: string, password: string) {
-  const url = new URL('/api/auth/bootstrap-admin', API_BASE);
+export async function signInAppUser(userId: string, password: string, role: 'admin'|'staff') {
+  const url = new URL('/api/auth/login', API_BASE);
   const response = await fetch(url.toString(), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ bootstrapSecret, password }),
+    body: JSON.stringify({ userId: userId.trim(), password }),
     cache: 'no-store',
   });
   let data: any = {};
   try { data = await response.json(); } catch { data = {}; }
-  if (!response.ok) throw new Error(typeof data.error === 'string' ? data.error : 'Initial admin setup failed.');
-  return data;
-}
-export async function recoverAdminPassword(recoveryCode: string, newPassword: string) {
-  const url = new URL('/api/auth/recover-admin', API_BASE);
-  const response = await fetch(url.toString(), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ userId: 'Brajraj', recoveryCode, newPassword }),
-    cache: 'no-store',
-  });
-  let data: any = {};
-  try { data = await response.json(); } catch { data = {}; }
-  if (!response.ok) throw new Error(typeof data.error === 'string' ? data.error : 'Admin password recovery failed.');
-  return data;
-}
-function firebaseSignInError(error: unknown): Error {
-  const code = typeof error === 'object' && error !== null && 'code' in error
-    ? String((error as { code?: unknown }).code || '')
-    : '';
-  const messages: Record<string, string> = {
-    'auth/invalid-credential': 'Firebase rejected this user ID or password. Check the password, and confirm that the matching account has been created in Firebase Authentication. Old-system passwords are not automatically imported.',
-    'auth/user-not-found': 'This account does not exist in Firebase Authentication yet. The project owner must provision the existing Brajraj account, or an admin must create this staff account.',
-    'auth/wrong-password': 'The password is incorrect for this Firebase account.',
-    'auth/configuration-not-found': 'Firebase Authentication has not been initialized for project kandb-net-sevice, or it has no Email/Password provider configuration. The project owner must open Firebase Console → Authentication, choose Get started if shown, then enable Email/Password under Sign-in method.',
-    'auth/operation-not-allowed': 'Email/Password sign-in is disabled in Firebase Console. The project owner must enable Authentication → Sign-in method → Email/Password.',
-    'auth/invalid-api-key': 'The APK has an invalid Firebase API key. Rebuild it with the Web App configuration from project kandb-net-sevice.',
-    'auth/app-not-authorized': 'This Firebase app is not authorized for the configured API key. Check the Firebase project Web App configuration and API key restrictions.',
-    'auth/unauthorized-domain': 'Firebase rejected this app domain. Check Authentication → Settings → Authorized domains for the configured Firebase project.',
-    'auth/network-request-failed': 'Firebase could not be reached. Check the phone internet connection, date and time, then try again.',
-    'auth/too-many-requests': 'Firebase temporarily blocked sign-in attempts. Wait a while before trying again.',
-    'auth/invalid-email': 'The generated Firebase account email is invalid. Check the user ID and account configuration.',
-  };
-  const message = messages[code] || (error instanceof Error ? error.message : 'Firebase sign-in failed. Check the Firebase project configuration and account setup.');
-  const result = new Error(message) as Error & { code?: string };
-  if (code) result.code = code;
-  return result;
-}
-
-export async function signInAppUser(userId: string, password: string, role: 'admin' | 'staff') {
-  if (!firebaseAuth) throw new Error('Firebase is not configured in this APK. Rebuild it with the Web App settings for project kandb-net-sevice.');
-  // Admins enter their complete Firebase Authentication email. Do not alter it.
-  // Staff keep the existing username-to-email mapping for backward compatibility.
-  const email = role === 'admin' ? userId : userId.trim().toLowerCase() + '@' + ACCOUNT_DOMAIN;
-  if (!email) throw new Error(role === 'admin' ? 'Enter your admin email address.' : 'Enter your staff user ID.');
-  try {
-    // Keep the Firebase session available after Android closes and reopens the app.
-    await setPersistence(firebaseAuth, browserLocalPersistence);
-    await signInWithEmailAndPassword(firebaseAuth, email, password);
-  } catch (error) {
-    throw firebaseSignInError(error);
+  if (!response.ok) throw new Error(typeof data.error === 'string' ? data.error : 'Sign-in failed. Check your user ID and password.');
+  if (!data.user || data.user.role !== role) {
+    await fetch(new URL('/api/auth/logout', API_BASE).toString(), {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + data.token },
+      body: JSON.stringify({ sessionToken: data.token }), cache: 'no-store',
+    }).catch(() => undefined);
+    throw new Error(role === 'admin' ? 'This account is not an admin account. Choose Staff Sign In instead.' : 'This account is not a staff account. Choose Admin Sign In instead.');
   }
-  try {
-    const currentUser = firebaseAuth.currentUser;
-    if (!currentUser) throw new Error('Firebase sign-in completed but no authenticated user session was returned. Please sign in again.');
-    const token = await currentUser.getIdToken();
-    const loadProfile = () => api.get<{ user: { id: string; userId: string; displayName: string; role: 'admin' | 'staff'; active: boolean; isSuperAdmin?: boolean } }>('/api/auth/me');
-    let profile;
-    try {
-      profile = await loadProfile();
-    } catch (profileError) {
-      // A manually created Firebase owner account may not yet have its matching
-      // Firestore profile. Only the fixed primary-owner email can claim that profile,
-      // and the server refuses the claim if another admin profile already exists.
-      if (role !== 'admin' || currentUser.email?.toLowerCase() !== 'brajraj@accounts.kandbnetservice.in') {
-        throw profileError;
-      }
-      await api.post('/api/auth/claim-owner-profile');
-      profile = await loadProfile();
-    }
-    return { token, expiresAt: Date.now() + 3600000, user: profile.data.user };
-  } catch (error) {
-    await signOut(firebaseAuth);
-    const detail = error instanceof Error ? error.message : 'Unknown server response.';
-    throw new Error('Firebase accepted the sign-in, but the K&B account profile could not be loaded: ' + detail);
-  }
+  return data as LocalSession;
 }
 export async function changeAppUserId(currentPassword: string, newUserId: string) {
-  if (!firebaseAuth?.currentUser?.email) throw new Error('Please sign in again to change your user ID.');
   const userId = newUserId.trim();
   if (!/^[a-zA-Z0-9_-]{3,32}$/.test(userId)) throw new Error('Use 3–32 letters, numbers, underscores or hyphens.');
-  const user = firebaseAuth.currentUser;
-  const email = user.email;
-  if (!email) throw new Error('This account does not have a sign-in email. Contact an administrator.');
-  const credential = EmailAuthProvider.credential(email, currentPassword);
-  await reauthenticateWithCredential(user, credential);
-  await api.post('/api/auth/change-user-id', { userId });
-  await signOut(firebaseAuth);
+  await api.post('/api/auth/change-user-id', { currentPassword, userId });
+  localStorage.removeItem('kb-customer-session');
 }
 export async function changeAppPassword(currentPassword: string, newPassword: string) {
-  if (!firebaseAuth?.currentUser?.email) throw new Error('Please sign in again to change your password.');
   if (newPassword.length < 10) throw new Error('Choose a password with at least 10 characters.');
-  const user = firebaseAuth.currentUser;
-  const email = user.email;
-  if (!email) throw new Error('This account does not have a sign-in email. Contact an administrator.');
-  const credential = EmailAuthProvider.credential(email, currentPassword);
-  await reauthenticateWithCredential(user, credential);
-  await user.getIdToken(true);
-  await api.post('/api/auth/change-password', { newPassword });
-  await signOut(firebaseAuth);
+  await api.post('/api/auth/change-password', { currentPassword, newPassword });
+  localStorage.removeItem('kb-customer-session');
 }
-export async function signOutAppUser() { if (firebaseAuth) await signOut(firebaseAuth); }
+export async function signOutAppUser() {
+  const token = storedToken();
+  if (!token) return;
+  const url = new URL('/api/auth/logout', API_BASE);
+  await fetch(url.toString(), { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token }, body: JSON.stringify({ sessionToken: token }), cache: 'no-store' }).catch(() => undefined);
+}
 export const ws = {
   connect() {
     return { connectionId: undefined as string | undefined, ready: Promise.resolve(), onMessage(_callback: (message: any) => void) {}, disconnect() {} };
