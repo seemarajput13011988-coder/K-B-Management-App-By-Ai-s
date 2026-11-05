@@ -2,7 +2,11 @@ import { CapacitorHttp } from '@capacitor/core';
 import { browserLocalPersistence, EmailAuthProvider, onAuthStateChanged, reauthenticateWithCredential, setPersistence, signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import { firebaseAuth } from './firebase';
 
-const API_BASE = import.meta.env.VITE_FIREBASE_FUNCTIONS_URL || 'https://asia-south1-kandb-net-sevice.cloudfunctions.net/api';
+const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
+function apiUrl(path: string) {
+  if (!API_BASE) throw new Error('The K&B API address is not configured yet. The project owner must finish the Netlify setup.');
+  return new URL('/.netlify/functions/api' + path, API_BASE);
+}
 const ACCOUNT_DOMAIN = 'accounts.kandbnetservice.in';
 type ApiResult<T = any> = { data: T };
 
@@ -16,7 +20,7 @@ async function request<T = any>(path: string, method: string, payload?: Record<s
   const currentUser = auth.currentUser;
   if (!currentUser) throw new Error('Please sign in again to continue.');
   const token = await currentUser.getIdToken();
-  const url = new URL(path, API_BASE);
+  const url = apiUrl(path);
   url.searchParams.delete('sessionToken');
   const headers: Record<string, string> = { Authorization: 'Bearer ' + token };
   let body: string | undefined;
@@ -35,7 +39,7 @@ async function request<T = any>(path: string, method: string, payload?: Record<s
 export async function nativeApiPost<T = any>(path: string, payload: Record<string, unknown>): Promise<ApiResult<T>> {
   if (!firebaseAuth?.currentUser) throw new Error('Please sign in again to continue location sharing.');
   const token = await firebaseAuth.currentUser.getIdToken();
-  const url = new URL(path, API_BASE);
+  const url = apiUrl(path);
   url.searchParams.delete('sessionToken');
   const response = await CapacitorHttp.post({
     url: url.toString(),
@@ -53,7 +57,7 @@ export async function nativeApiPost<T = any>(path: string, payload: Record<strin
   return { data: data as T };
 }
 export async function submitStaffRegistrationRequest(input: { userId: string; displayName: string; phone?: string; reason?: string }) {
-  const url = new URL('/api/staff-registration-requests', API_BASE);
+  const url = apiUrl('/api/staff-registration-requests');
   const response = await fetch(url.toString(), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input), cache: 'no-store' });
   let data: any = {};
   try { data = await response.json(); } catch { data = {}; }
@@ -62,7 +66,7 @@ export async function submitStaffRegistrationRequest(input: { userId: string; di
 }
 
 export async function getStaffRegistrationStatus(requestId: string, trackingCode: string) {
-  const url = new URL('/api/staff-registration-requests/status', API_BASE);
+  const url = apiUrl('/api/staff-registration-requests/status');
   url.searchParams.set('requestId', requestId);
   url.searchParams.set('trackingCode', trackingCode);
   const response = await fetch(url.toString(), { method: 'GET', cache: 'no-store' });
@@ -78,7 +82,7 @@ export const api = {
   delete: <T = any>(path: string) => request<T>(path, 'DELETE'),
 };
 export async function bootstrapAdmin(bootstrapSecret: string, password: string) {
-  const url = new URL('/api/auth/bootstrap-admin', API_BASE);
+  const url = apiUrl('/api/auth/bootstrap-admin');
   const response = await fetch(url.toString(), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -91,7 +95,7 @@ export async function bootstrapAdmin(bootstrapSecret: string, password: string) 
   return data;
 }
 export async function recoverAdminPassword(recoveryCode: string, newPassword: string) {
-  const url = new URL('/api/auth/recover-admin', API_BASE);
+  const url = apiUrl('/api/auth/recover-admin');
   const response = await fetch(url.toString(), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
