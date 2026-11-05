@@ -168,16 +168,16 @@ export async function apiHandler(req: any, res: any) {
           send(res, 401, { error: 'The admin username or password is incorrect.' }); return;
         }
         const ownerRef = db.collection('users').doc('admin-primary');
+        // A valid private bootstrap secret proves owner setup authority. Older admin
+        // records must not permanently lock the configured primary owner out.
+        // Preserve those records; only create the reserved primary-owner document.
         await db.runTransaction(async transaction => {
-          const [ownerSnapshot, existingAdmins] = await Promise.all([
-            transaction.get(ownerRef),
-            transaction.get(db.collection('users').where('role', '==', 'admin').limit(1)),
-          ]);
-          if (!ownerSnapshot.exists && existingAdmins.empty) {
+          const ownerSnapshot = await transaction.get(ownerRef);
+          if (!ownerSnapshot.exists) {
             const bootstrapTime = now();
             transaction.create(ownerRef, {
               userId: 'Brajraj', userIdLower: 'brajraj', displayName: 'Brajraj',
-              role: 'admin', canManageAdmins: true, active: true,
+              role: 'admin', canManageAdmins: true, isSuperAdmin: true, active: true,
               ...newPasswordFields(password), bootstrapPasswordUsedAt: bootstrapTime, createdAt: bootstrapTime,
             });
           }
