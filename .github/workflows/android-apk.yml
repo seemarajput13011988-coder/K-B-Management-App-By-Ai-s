@@ -10,6 +10,7 @@ on:
       - render-backend-migration
     paths:
       - "src/**"
+      - "render-backend/**"
       - "public/**"
       - "index.html"
       - "package.json"
