@@ -675,6 +675,7 @@ async function requestInstallations<T = any>(path: string, method: string, paylo
 async function requestInventory<T = any>(path: string, method: string, payload?: Record<string, unknown>): Promise<ApiResult<T>> {
   if (!firebaseAuth?.currentUser || !firestore) throw new Error('Please sign in again to continue.');
   const user = firebaseAuth.currentUser;
+  const db = firestore;
   const profile = await getAppUserProfile();
   const admin = profile.role === 'admin';
   const base = '/api/inventory';
@@ -682,11 +683,11 @@ async function requestInventory<T = any>(path: string, method: string, payload?:
   const p = path.split('?')[0];
   const parts = p.split('/').filter(Boolean);
   const id = parts.length > 2 ? decodeURIComponent(parts[2]) : '';
-  const inventory = collection(firestore, 'inventory');
+  const inventory = collection(db, 'inventory');
   const skuDocumentId = (value: string) => encodeURIComponent(value.trim().toLowerCase());
   const validMoney = (value: number) => Number.isFinite(value) && value >= 0 && value <= 100000000;
   const audit = async (action: string, entityId: string, description: string) => {
-    await addDoc(collection(firestore, 'audit_logs'), {
+    await addDoc(collection(db, 'audit_logs'), {
       actorId: user.uid, actorName: profile.displayName, action,
       entityType: 'inventory-item', entityId, description: clean(description, 240),
       createdAt: new Date().toISOString(),
@@ -714,14 +715,14 @@ async function requestInventory<T = any>(path: string, method: string, payload?:
       throw new Error('Enter an item name, SKU, category, whole-number stock quantities and a valid unit cost.');
     }
     const itemRef = doc(inventory), skuKey = sku.trim().toLowerCase();
-    const reservationRef = doc(firestore, 'inventory_skus', skuDocumentId(skuKey));
+    const reservationRef = doc(db, 'inventory_skus', skuDocumentId(skuKey));
     const now = new Date().toISOString();
     const record = {
       name, sku, skuKey, skuReservationId: skuDocumentId(skuKey), category, unit, quantity, minimumQuantity, unitCost,
       supplier: clean(payload?.supplier, 100), location: clean(payload?.location, 100),
       notes: clean(payload?.notes, 500), active: true, createdAt: now, updatedAt: now, createdBy: user.uid,
     };
-    await runTransaction(firestore, async transaction => {
+    await runTransaction(db, async transaction => {
       const reservation = await transaction.get(reservationRef);
       if (reservation.exists()) throw new Error('An inventory item with this SKU already exists.');
       transaction.set(reservationRef, { itemId: itemRef.id, skuKey, createdAt: now });
@@ -734,7 +735,7 @@ async function requestInventory<T = any>(path: string, method: string, payload?:
   if (id && parts[3] === 'movements' && method === 'GET') {
     const itemSnapshot = await getDoc(doc(inventory, id));
     if (!itemSnapshot.exists()) throw new Error('Inventory item not found.');
-    const snapshot = await getDocs(query(collection(firestore, 'inventory_movements'), where('itemId', '==', id), limit(100)));
+    const snapshot = await getDocs(query(collection(db, 'inventory_movements'), where('itemId', '==', id), limit(100)));
     const items = snapshot.docs.map(item => ({ id: item.id, ...item.data() }))
       .sort((a: any, b: any) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))
       .slice(0, 100);
@@ -747,9 +748,9 @@ async function requestInventory<T = any>(path: string, method: string, payload?:
       throw new Error('Choose stock in/out, enter a whole-number quantity and a reason.');
     }
     if (!admin && type !== 'OUT') throw new Error('Staff can record stock issued to a job. Only administrators can add received stock.');
-    const itemRef = doc(inventory, id), movementRef = doc(collection(firestore, 'inventory_movements'));
+    const itemRef = doc(inventory, id), movementRef = doc(collection(db, 'inventory_movements'));
     const createdAt = new Date().toISOString();
-    const outcome = await runTransaction(firestore, async transaction => {
+    const outcome = await runTransaction(db, async transaction => {
       const latest = await transaction.get(itemRef);
       if (!latest.exists() || latest.data().active === false) throw new Error('This inventory item is no longer active.');
       const current = latest.data();
@@ -782,14 +783,14 @@ async function requestInventory<T = any>(path: string, method: string, payload?:
       throw new Error('Enter valid item details, minimum stock and unit cost.');
     }
     const itemRef = doc(inventory, id), skuKey = sku.trim().toLowerCase();
-    const newReservationRef = doc(firestore, 'inventory_skus', skuDocumentId(skuKey));
+    const newReservationRef = doc(db, 'inventory_skus', skuDocumentId(skuKey));
     const now = new Date().toISOString();
-    await runTransaction(firestore, async transaction => {
+    await runTransaction(db, async transaction => {
       const latest = await transaction.get(itemRef);
       if (!latest.exists()) throw new Error('Inventory item no longer exists.');
       const current = latest.data();
       const oldSkuKey = String(current.skuKey || current.sku || '').trim().toLowerCase();
-      const oldReservationRef = doc(firestore, 'inventory_skus', skuDocumentId(oldSkuKey));
+      const oldReservationRef = doc(db, 'inventory_skus', skuDocumentId(oldSkuKey));
       const newReservation = await transaction.get(newReservationRef);
       if (newReservation.exists() && newReservation.data().itemId !== id) {
         throw new Error('Another inventory item already uses this SKU.');
