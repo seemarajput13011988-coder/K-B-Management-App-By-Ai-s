@@ -236,7 +236,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
       setPlans(planResult.data.items || []);
       setPayments(p.data.items || []);
       setAttendanceRecords(a.data.items || []);
-      setComplaints(t.data.items || []);
+      setComplaints((t.data.items || []).map((item: Complaint) => ({ ...item, status: item.status === 'Open' ? 'Pending' : item.status === 'In progress' ? 'In Progress' : item.status === 'Resolved' ? 'Solved' : item.status })));
       setTasks(w.data.items || []);
       if (isAdmin) {
         const s = await api.get('/api/staff');
