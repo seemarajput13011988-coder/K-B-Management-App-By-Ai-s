@@ -578,7 +578,7 @@ service cloud.firestore {
         && request.resource.data.createdAt is string
         && request.resource.data.createdBy == request.auth.uid;
       allow update: if isAdmin()
-        && resource.data.voidedAt == null
+        && !('voidedAt' in resource.data)
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['voidedAt', 'voidedBy'])
         && request.resource.data.voidedAt is string
         && request.resource.data.voidedBy == request.auth.uid;
