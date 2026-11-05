@@ -170,70 +170,53 @@ export const api = onRequest(
     if (method === 'GET' && path === '/api/_healthcheck') {
       send(res, 200, { message: 'Success', service: 'kandb-firebase-api' }); return;
     }
-    // One-time recovery for the primary owner who created their Firebase Auth
-    // account manually. The exact owner email is required; no other account can
-    // grant itself an admin role. Existing, different admin profiles block claims.
-    if (method === 'POST' && path === '/api/auth/claim-owner-profile') {
-      const authorization = clean(req.headers.authorization, 4096);
-      const token = authorization.startsWith('Bearer ') ? authorization.slice(7) : '';
-      if (!token) { send(res, 401, { error: 'Sign in to the primary owner Firebase account first.' }); return; }
-      try {
-        const decoded = await auth.verifyIdToken(token, true);
-        if (String(decoded.email || '').toLowerCase() !== PRIMARY_ADMIN_EMAIL) {
-          send(res, 403, { error: 'Only the designated primary owner Firebase account can complete this setup.' }); return;
-        }
-        const account = await auth.getUser(decoded.uid);
-        if (account.disabled || String(account.email || '').toLowerCase() !== PRIMARY_ADMIN_EMAIL) {
-          send(res, 403, { error: 'The primary owner Firebase account is disabled or does not match the configured owner email.' }); return;
-        }
-        const [admins, existingProfile, duplicateOwnerId] = await Promise.all([
-          db.collection('users').where('role', '==', 'admin').limit(5).get(),
-          db.collection('users').doc(decoded.uid).get(),
-          db.collection('users').where('userId', '==', 'Brajraj').limit(5).get(),
-        ]);
-        const conflictingAdmin = admins.docs.find(doc => doc.id !== decoded.uid);
-        const conflictingOwnerId = duplicateOwnerId.docs.find(doc => doc.id !== decoded.uid);
-        if (conflictingAdmin || conflictingOwnerId) {
-          send(res, 409, { error: 'An existing K&B administrator profile uses a different Firebase UID. Ask the project owner to reconcile that profile before claiming this account.' }); return;
-        }
-        const previous = existingProfile.data() || {};
-        await db.collection('users').doc(decoded.uid).set({
-          userId: 'Brajraj',
-          displayName: clean(account.displayName, 80) || clean(previous.displayName, 80) || 'Brajraj',
-          role: 'admin',
-          canManageAdmins: true,
-          active: true,
-          createdAt: previous.createdAt || now(),
-          ownerProfileClaimedAt: now(),
-        }, { merge: true });
-        send(res, 200, { profileCreated: true, userId: 'Brajraj' }); return;
-      } catch (error) {
-        logger.error('Primary owner profile claim failed', error);
-        send(res, 401, { error: 'Firebase could not verify the primary owner session. Sign in again and retry.' }); return;
+
+    if (method === 'POST' && path === '/api/auth/login') {
+      const input: Data = req.body && typeof req.body === 'object' ? req.body : {};
+      const userId = clean(input.userId, 40);
+      const password = typeof input.password === 'string' ? input.password : '';
+      if (!userId || !password) { send(res, 400, { error: 'Enter your user ID and password.' }); return; }
+      const matches = await db.collection('users').where('userIdLower', '==', userId.toLowerCase()).limit(2).get();
+      let userDoc = matches.docs[0];
+      if (!userDoc) {
+        const legacy = await db.collection('users').where('userId', '==', userId).limit(2).get();
+        userDoc = legacy.docs[0];
       }
+      if (!userDoc && userId.toLowerCase() === 'brajraj') {
+        const fixed = await db.collection('users').doc('admin-primary').get();
+        if (fixed.exists) userDoc = fixed;
+      }
+      if (!userDoc || (matches.size > 1)) { send(res, 401, { error: 'The user ID or password is incorrect.' }); return; }
+      const record = userDoc.data()!;
+      if (record.active !== true || !['admin', 'staff'].includes(record.role) || !record.salt || !record.passwordHash ||
+          !equalSecret(hashPassword(password, String(record.salt)), String(record.passwordHash))) {
+        send(res, 401, { error: 'The user ID or password is incorrect, or this account needs an administrator password reset.' }); return;
+      }
+      const user = { id: userDoc.id, ...record };
+      const session = await createSession(user);
+      send(res, 200, { ...session, user: { id: userDoc.id, userId: clean(record.userId, 40), displayName: clean(record.displayName, 80), role: record.role, active: true, canManageAdmins: record.canManageAdmins === true } }); return;
     }
+
     if (method === 'POST' && path === '/api/auth/bootstrap-admin') {
       const input = req.body && typeof req.body === 'object' ? req.body : {};
       const bootstrapSecret = typeof input.bootstrapSecret === 'string' ? input.bootstrapSecret : '';
       const password = typeof input.password === 'string' ? input.password : '';
       const configuredSecret = adminBootstrapSecret.value();
-      if (!configuredSecret || bootstrapSecret !== configuredSecret) {
+      if (!configuredSecret || !equalSecret(bootstrapSecret, configuredSecret)) {
         send(res, 401, { error: 'The one-time admin setup key is incorrect or has not been configured.' }); return;
       }
-      if (password.length < 8) {
-        send(res, 400, { error: 'Choose an admin password with at least 8 characters.' }); return;
-      }
+      if (password.length < 10) { send(res, 400, { error: 'Choose an admin password with at least 10 characters.' }); return; }
       const existing = await db.collection('users').where('role', '==', 'admin').limit(1).get();
       if (!existing.empty) { send(res, 409, { error: 'The admin account is already initialized. Use admin sign in.' }); return; }
-      const email = PRIMARY_ADMIN_EMAIL;
-      const account = await auth.createUser({ email, password, displayName: 'Brajraj', disabled: false });
-      await db.collection('users').doc(account.uid).set({
-        userId: 'Brajraj', displayName: 'Brajraj', role: 'admin', canManageAdmins: true, active: true, createdAt: now(),
+      const fields = newPasswordFields(password);
+      await db.collection('users').doc('admin-primary').set({
+        userId: 'Brajraj', userIdLower: 'brajraj', displayName: 'Brajraj', role: 'admin',
+        canManageAdmins: true, active: true, ...fields, createdAt: now(),
       });
       send(res, 201, { initialized: true, userId: 'Brajraj' }); return;
     }
 
-    if (method === 'POST' && path === '/api/auth/recover-admin') {
+    if (method === 'POST' && path === '/api/auth/rec    if (method === 'POST' && path === '/api/auth/recover-admin') {
       const input = req.body && typeof req.body === 'object' ? req.body : {};
       const userId = clean(input.userId, 40);
       const recoveryCode = typeof input.recoveryCode === 'string' ? input.recoveryCode : '';
@@ -242,15 +225,15 @@ export const api = onRequest(
         send(res, 400, { error: 'Enter the admin recovery code and a password with at least 10 characters.' }); return;
       }
       const configuredCode = adminRecoveryCode.value();
-      if (!configuredCode || recoveryCode !== configuredCode) {
+      if (!configuredCode || !equalSecret(recoveryCode, configuredCode)) {
         send(res, 401, { error: 'The admin recovery code is incorrect or has not been configured.' }); return;
       }
-      const admins = await db.collection('users').where('userId', '==', 'Brajraj').where('role', '==', 'admin').limit(1).get();
+      const admins = await db.collection('users').where('userIdLower', '==', 'brajraj').where('role', '==', 'admin').limit(1).get();
       if (admins.empty) { send(res, 404, { error: 'The admin account has not been set up yet.' }); return; }
-      const adminId = admins.docs[0].id;
-      await auth.updateUser(adminId, { password: newPassword });
-      await auth.revokeRefreshTokens(adminId);
-      await audit({ uid: adminId, id: adminId, userId: 'Brajraj', displayName: 'Brajraj', role: 'admin', active: true, authTime: Math.floor(Date.now() / 1000) }, 'RECOVER_PASSWORD', 'admin', adminId, 'Admin password recovered');
+      const adminDoc = admins.docs[0];
+      await adminDoc.ref.update(newPasswordFields(newPassword));
+      await revokeUserSessions(adminDoc.id);
+      await audit({ uid: adminDoc.id, id: adminDoc.id, userId: 'Brajraj', displayName: 'Brajraj', role: 'admin', active: true, authTime: Math.floor(Date.now()/1000), salt:'', passwordHash:'' }, 'RECOVER_PASSWORD', 'admin', adminDoc.id, 'Admin password recovered');
       send(res, 200, { reset: true }); return;
     }
 
