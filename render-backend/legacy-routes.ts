@@ -1,6 +1,6 @@
 import { router, json, error, db, secrets, firestore, FieldValue } from './firestore-adapter.js';
 import type { RouterMiddleware } from './firestore-adapter.js';
-import { isConfirmedGpsLossReason } from './route-path.js';
+import { isConfirmedGpsLossReason, isValidDateRange } from './route-path.js';
 import { createHash, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 const notifySubscribers = async (..._args: unknown[]) => undefined; // Live updates are refreshed through the authenticated API.
 
@@ -624,6 +624,28 @@ export const handler = router({
     return json({ id, ...record }, 201);
   }),
 
+  'PUT /api/attendance/:id/day-type': protectedRoute(['admin'], async ({ body, params }, admin) => {
+    const input = (body || {}) as Record<string, unknown>;
+    const dayType = input.dayType === 'Half day' ? 'Half day' : input.dayType === 'Full day' ? 'Full day' : '';
+    const reason = cleanText(input.reason, 300);
+    if (!dayType || reason.length < 3) return error('Choose a day type and provide a correction reason.', 400);
+    const [attendance] = await db.get<Record<string, unknown>>('attendance', [params.id], { consistent: true });
+    if (!attendance) return error('Attendance record not found.', 404);
+    const [updated] = await db.tx.update('attendance', [{
+      id: params.id,
+      record: {
+        dayType,
+        correctionReason: reason,
+        correctedAt: new Date().toISOString(),
+        correctedBy: admin.id,
+        correctedByName: admin.displayName,
+      },
+    }], { patch: true });
+    if (!updated) return error('Could not save the attendance correction.', 500);
+    await writeAudit(admin, 'CORRECT_ATTENDANCE', 'attendance', params.id, 'Changed day type to ' + dayType + ': ' + reason);
+    return json({ updated: true });
+  }),
+
   'POST /api/attendance/gps-lost': protectedRoute(['staff'], async ({ body }, user) => {
     const reason = cleanText(body?.reason, 100);
     if (!isConfirmedGpsLossReason(reason)) {
@@ -781,6 +803,92 @@ export const handler = router({
       },
     }], { patch: true });
     return updated ? json({ updated: true }) : error('Could not end this staff shift.', 500);
+  }),
+
+  'GET /api/holidays': protectedRoute(['admin', 'staff'], async (_ctx, user) => {
+    const result = await db.list<Record<string, unknown>>('holiday_requests', { limit: 500 });
+    const items = user.role === 'admin'
+      ? result.items
+      : result.items.filter(item => item.userId === user.id);
+    items.sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+    return json({ items });
+  }),
+
+  'POST /api/holidays': protectedRoute(['staff'], async ({ body }, user) => {
+    const input = (body || {}) as Record<string, unknown>;
+    const startDate = cleanText(input.startDate, 10);
+    const endDate = cleanText(input.endDate, 10);
+    const reason = cleanText(input.reason, 300);
+    if (!isValidDateRange(startDate, endDate) || reason.length < 3) {
+      return error('Choose a valid holiday date range and provide a reason.', 400);
+    }
+    const current = await db.list<Record<string, unknown>>('holiday_requests', { limit: 500 });
+    const overlaps = current.items.some(item =>
+      item.userId === user.id &&
+      ['pending', 'approved'].includes(String(item.status)) &&
+      String(item.startDate || '') <= endDate &&
+      String(item.endDate || '') >= startDate
+    );
+    if (overlaps) return error('You already have a pending or approved holiday request for part of these dates.', 409);
+    const record = {
+      userId: user.id,
+      displayName: user.displayName,
+      startDate,
+      endDate,
+      reason,
+      status: 'pending',
+      createdAt: new Date().toISOString(),
+    };
+    const [id] = await db.add('holiday_requests', [record]);
+    if (!id) return error('Could not submit the holiday request.', 500);
+    const users = await db.list<UserRecord>('users', { limit: 500 });
+    const admins = users.items.filter(member => member.role === 'admin' && member.active === true);
+    await Promise.all(admins.map(admin => db.add('staff_notifications', [{
+      recipientId: admin.id,
+      recipientRole: 'admin',
+      type: 'holiday-request',
+      title: 'New holiday request',
+      message: user.displayName + ' requested leave from ' + startDate + ' to ' + endDate + '.',
+      relatedId: id,
+      createdAt: new Date().toISOString(),
+      read: false,
+    }])));
+    await writeAudit(user, 'CREATE', 'holiday_request', id, 'Submitted holiday request from ' + startDate + ' to ' + endDate);
+    return json({ id, ...record }, 201);
+  }),
+
+  'PUT /api/holidays/:id': protectedRoute(['admin'], async ({ body, params }, admin) => {
+    const status = cleanText(body?.status, 20).toLowerCase();
+    if (!['approved', 'rejected'].includes(status)) {
+      return error('Choose approve or reject for this holiday request.', 400);
+    }
+    const [existing] = await db.get<Record<string, unknown>>('holiday_requests', [params.id], { consistent: true });
+    if (!existing) return error('Holiday request not found.', 404);
+    if (existing.status !== 'pending') return error('This holiday request has already been reviewed.', 409);
+    const reviewedAt = new Date().toISOString();
+    const [updated] = await db.tx.update('holiday_requests', [{
+      id: params.id,
+      record: {
+        status,
+        reviewedAt,
+        reviewedBy: admin.id,
+        reviewedByName: admin.displayName,
+      },
+    }], { patch: true });
+    if (!updated) return error('Could not update this holiday request.', 500);
+    const label = status === 'approved' ? 'approved' : 'rejected';
+    await db.add('staff_notifications', [{
+      recipientId: String(existing.userId || ''),
+      recipientRole: 'staff',
+      type: 'holiday-' + status,
+      title: 'Holiday request ' + label,
+      message: 'Your holiday request for ' + String(existing.startDate || '') + ' to ' + String(existing.endDate || '') + ' was ' + label + '.',
+      relatedId: params.id,
+      createdAt: reviewedAt,
+      read: false,
+    }]);
+    await writeAudit(admin, 'UPDATE', 'holiday_request', params.id, 'Holiday request ' + label);
+    return json({ updated: true, status });
   }),
 
   'GET /api/locations': protectedRoute(['admin'], async () => {
