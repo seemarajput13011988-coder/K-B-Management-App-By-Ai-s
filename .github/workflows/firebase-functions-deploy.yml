@@ -24,8 +24,8 @@ jobs:
         run: npm install
         working-directory: functions
 
-      - name: Type-check Functions
-        run: npm run build
+      - name: Build and test Functions
+        run: npm test
         working-directory: functions
 
       - name: Configure Google service account
@@ -35,6 +35,10 @@ jobs:
           test -n "$FIREBASE_SERVICE_ACCOUNT_JSON" || (echo "Missing GitHub secret: FIREBASE_SERVICE_ACCOUNT_KANDB_NET_SEVICE" && exit 1)
           printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/firebase-service-account.json"
           echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/firebase-service-account.json" >> "$GITHUB_ENV"
+
+      - name: Validate service account project
+        run: |
+          node -e "const fs=require('node:fs'); const c=JSON.parse(fs.readFileSync(process.env.GOOGLE_APPLICATION_CREDENTIALS,'utf8')); if(c.type!=='service_account'||c.project_id!=='kandb-net-sevice') throw new Error('The deployment credential is not a service account for project kandb-net-sevice.'); console.log('Firebase deployment credential project validated.');"
 
       - name: Deploy Firebase Functions
         run: npx --yes firebase-tools deploy --only functions --project kandb-net-sevice --non-interactive
