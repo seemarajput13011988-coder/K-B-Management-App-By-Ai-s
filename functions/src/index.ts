@@ -405,20 +405,15 @@ export const api = onRequest(
         if (users.some(item => String(item.userId || '').toLowerCase() === userIdLower)) {
           send(res, 409, { error: 'This staff ID has already been registered. Reject or close this duplicate request.' }); return;
         }
-        const email = userIdLower + '@accounts.kandbnetservice.in';
-        let account: Awaited<ReturnType<typeof auth.createUser>> | undefined;
         try {
-          account = await auth.createUser({ email, password, displayName: clean(request.displayName, 80), disabled: false });
-          const record = { userId, displayName: clean(request.displayName, 80), role: 'staff', active: true, createdAt: now(), registrationRequestId: id };
-          await db.collection('users').doc(account.uid).set(record);
-          await db.collection('staff_registration_requests').doc(id).update({ status: 'approved', reviewedAt: now(), reviewedBy: user.uid, reviewedByName: user.displayName, approvedUserId: account.uid });
+          const accountId = 'staff-' + randomBytes(10).toString('hex');
+          const record = { userId, userIdLower, displayName: clean(request.displayName, 80), role: 'staff', active: true, ...newPasswordFields(password), createdAt: now(), registrationRequestId: id };
+          await db.collection('users').doc(accountId).set(record);
+          await db.collection('staff_registration_requests').doc(id).update({ status: 'approved', reviewedAt: now(), reviewedBy: user.uid, reviewedByName: user.displayName, approvedUserId: accountId });
           await audit(user, 'APPROVE_STAFF_REGISTRATION', 'staff_registration_request', id, 'Approved staff registration and created account ' + userId);
-          send(res, 200, { updated: true, status: 'approved', user: { id: account.uid, ...record } }); return;
+          const { passwordHash, salt, ...safe } = record;
+          send(res, 200, { updated: true, status: 'approved', user: { id: accountId, ...safe } }); return;
         } catch (error) {
-          if (account?.uid) {
-            await db.collection('users').doc(account.uid).delete().catch(() => undefined);
-            await auth.deleteUser(account.uid).catch(() => undefined);
-          }
           await db.collection('staff_registration_requests').doc(id).update({
             status: 'pending', reviewedAt: FieldValue.delete(), reviewedBy: FieldValue.delete(),
             reviewedByName: FieldValue.delete(), approvedUserId: FieldValue.delete()
@@ -427,7 +422,6 @@ export const api = onRequest(
         }
       }
 
-      // Staff accounts are Firebase Authentication users. Passwords never enter Firestore.
       if (path === '/api/staff' && method === 'GET') {
         if (!allow(user, ['admin'], res)) return;
         const users = (await list('users')).filter(item => item.role === 'staff')
@@ -444,12 +438,12 @@ export const api = onRequest(
         }
         const existing = (await list('users')).some(item => String(item.userId).toLowerCase() === userId.toLowerCase());
         if (existing) { send(res, 409, { error: 'That staff ID is already in use.' }); return; }
-        const email = userId.toLowerCase() + '@accounts.kandbnetservice.in';
-        const account = await auth.createUser({ email, password, displayName, disabled: false });
-        const record = { userId, displayName, role: 'staff', active: true, createdAt: now() };
-        await db.collection('users').doc(account.uid).set(record);
-        await audit(user, 'CREATE', 'staff', account.uid, 'Created staff account ' + userId);
-        send(res, 201, { user: { id: account.uid, ...record } }); return;
+        const accountId = 'staff-' + randomBytes(10).toString('hex');
+        const record = { userId, userIdLower: userId.toLowerCase(), displayName, role: 'staff', active: true, ...newPasswordFields(password), createdAt: now() };
+        await db.collection('users').doc(accountId).set(record);
+        await audit(user, 'CREATE', 'staff', accountId, 'Created staff account ' + userId);
+        const { passwordHash, salt, ...safe } = record;
+        send(res, 201, { user: { id: accountId, ...safe } }); return;
       }
       if (path.startsWith('/api/staff/')) {
         if (!allow(user, ['admin'], res)) return;
@@ -461,8 +455,8 @@ export const api = onRequest(
         if (reset && method === 'POST') {
           const password = typeof body.password === 'string' ? body.password : '';
           if (password.length < 10) { send(res, 400, { error: 'Choose a password with at least 10 characters.' }); return; }
-          await auth.updateUser(id, { password });
-          await auth.revokeRefreshTokens(id);
+          await db.collection('users').doc(id).update(newPasswordFields(password));
+          await revokeUserSessions(id);
           await audit(user, 'RESET_PASSWORD', 'staff', id, 'Reset staff password');
           send(res, 200, { reset: true }); return;
         }
@@ -470,7 +464,6 @@ export const api = onRequest(
           const displayName = clean(body.displayName, 80) || target.displayName;
           const active = typeof body.active === 'boolean' ? body.active : target.active === true;
           const updates: Data = { displayName, active };
-          const authUpdates: Data = { displayName, disabled: !active };
           if (body.userId !== undefined) {
             const userId = clean(body.userId, 32);
             if (!/^[a-zA-Z0-9_-]{3,32}$/.test(userId)) {
@@ -479,16 +472,16 @@ export const api = onRequest(
             const existing = (await list('users')).some(item => item.id !== id && String(item.userId).toLowerCase() === userId.toLowerCase());
             if (existing) { send(res, 409, { error: 'That user ID is already in use.' }); return; }
             updates.userId = userId;
-            authUpdates.email = userId.toLowerCase() + '@accounts.kandbnetservice.in';
+            updates.userIdLower = userId.toLowerCase();
           }
-          await auth.updateUser(id, authUpdates);
           await db.collection('users').doc(id).update(updates);
+          if (!active) await revokeUserSessions(id);
           await audit(user, 'UPDATE', 'staff', id, body.userId !== undefined ? 'Updated staff profile and user ID' : 'Updated staff profile/status');
           send(res, 200, { updated: true }); return;
         }
         if (method === 'DELETE') {
-          await auth.updateUser(id, { disabled: true });
           await db.collection('users').doc(id).update({ active: false, deletedAt: now() });
+          await revokeUserSessions(id);
           const customers = await list('customers');
           const batch = db.batch();
           let unassigned = 0;
