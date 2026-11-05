@@ -54,7 +54,8 @@ The HTTP API runs as a Netlify Function. Firebase Cloud Functions are not needed
 2. In Netlify site environment variables, set the private values `FIREBASE_SERVICE_ACCOUNT_JSON`, `ADMIN_BOOTSTRAP_SECRET`, and `ADMIN_RECOVERY_CODE`. Also set the public build-time values `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`, `VITE_FIREBASE_STORAGE_BUCKET`, `VITE_FIREBASE_MESSAGING_SENDER_ID`, `VITE_FIREBASE_APP_ID`, and `VITE_API_BASE_URL` (the site's own public URL).
 3. In GitHub repository Settings > Secrets and variables > Actions > Variables, add `VITE_API_BASE_URL` with the same Netlify site URL. The Android APK workflow uses it at build time.
 4. Redeploy after setting the variables. Netlify Functions run the existing HTTP API using Firebase Admin SDK; Firebase Auth and Firestore remain in project `kandb-net-sevice`.
-5. The first Super Admin bootstrap remains one-time and secret-protected. Do not create an admin profile from the browser or allow staff to choose an admin role.
-6. Keep Netlify auto-recharge disabled. The Free plan has a hard monthly credit limit and the site pauses when it reaches that limit rather than automatically adding paid usage.
+5. The GPS grace-period monitor runs once per minute. Task and subscription reminders run daily at 9:00 AM India time. These scheduled functions only run on the published Netlify deployment.
+6. The first Super Admin bootstrap remains one-time and secret-protected. Do not create an admin profile from the browser or allow staff to choose an admin role.
+7. Keep Netlify auto-recharge disabled. The Free plan has a hard monthly credit limit and the site pauses when it reaches that limit rather than automatically adding paid usage.
 
 This hosting path is not live until the Netlify site, environment variables, service-account access, and health check are verified. No production deployment is claimed by this repository change.
