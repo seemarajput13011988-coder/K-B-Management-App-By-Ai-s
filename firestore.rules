@@ -169,6 +169,45 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    // Service tickets can be raised by active staff/admins. Staff can read
+    // tickets they created or that are assigned to them; admins manage tickets.
+    match /complaints/{complaintId} {
+      allow get: if isAdmin()
+        || (hasActiveProfile()
+          && (resource.data.createdBy == request.auth.uid
+            || resource.data.assignedTo == request.auth.uid));
+      allow list: if isAdmin()
+        || (hasActiveProfile()
+          && (resource.data.createdBy == request.auth.uid
+            || resource.data.assignedTo == request.auth.uid));
+      allow create: if hasActiveProfile()
+        && request.resource.data.subject is string
+        && request.resource.data.subject.size() > 0
+        && request.resource.data.subject.size() <= 120
+        && request.resource.data.details is string
+        && request.resource.data.details.size() > 0
+        && request.resource.data.details.size() <= 1500
+        && request.resource.data.priority in ['Low', 'Normal', 'High', 'Urgent']
+        && request.resource.data.status == 'Open'
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.createdByName is string
+        && request.resource.data.assignedTo == ''
+        && (request.resource.data.customerId == ''
+          || isAdmin()
+          || get(/databases/$(database)/documents/customers/$(request.resource.data.customerId)).data.assignedTo == request.auth.uid);
+      allow update: if isAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status', 'assignedTo', 'assignedToName', 'updatedAt'
+        ])
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['status'])
+          || request.resource.data.status in ['Open', 'In progress', 'Resolved'])
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['assignedTo'])
+          || request.resource.data.assignedTo == ''
+          || (get(/databases/$(database)/documents/users/$(request.resource.data.assignedTo)).data.role == 'staff'
+            && get(/databases/$(database)/documents/users/$(request.resource.data.assignedTo)).data.active == true));
+      allow delete: if isAdmin();
+    }
+
     // All remaining collections stay closed until their own ownership-checked
     // Spark rules and direct Firestore data paths are implemented.
     match /{document=**} {
