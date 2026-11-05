@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
+import { jsPDF } from 'jspdf';
+import { exportPdfFile } from './lib/file-export';
 
 type Customer = { id:string; name:string; phone:string; address:string; plan:string; monthlyFee:number; status:string };
 type Plan = { id:string; name:string; provider:string; speed:string; data:string; price:number; note:string; details?:string; connectionType:string; active:boolean };
@@ -106,19 +108,99 @@ export default function InvoiceWorkspace({customers,plans,flash}:{customers:Cust
     let x=n, parts:string[]=[]; const crore=Math.floor(x/10000000);x%=10000000;const lakh=Math.floor(x/100000);x%=100000;const thousand=Math.floor(x/1000);x%=1000;const hundred=Math.floor(x/100);x%=100;
     if(crore)parts.push(under(crore)+' Crore');if(lakh)parts.push(under(lakh)+' Lakh');if(thousand)parts.push(under(thousand)+' Thousand');if(hundred)parts.push(one[hundred]+' Hundred');if(x)parts.push(under(x));return 'Rupees '+parts.join(' ')+' Only';
   }
-  function generate(e:FormEvent) {
+  async function generate(e:FormEvent) {
     e.preventDefault();
-    if(!customerName.trim()||!customerPhone.trim()||!items.length||items.some(i=>!i.description.trim()||Number(i.quantity)<=0||Number(i.rate)<0)||extraSummaryFields.some(f=>(f.label.trim()||f.details.trim()||f.amount.trim())&&(!f.label.trim()||!f.amount.trim()||Number(f.amount)<0))){flash('Enter customer details, valid service amounts, and a name plus amount for each optional summary field you use.');return;}
+    if(!customerName.trim()||!customerPhone.trim()||!items.length||items.some(i=>!i.description.trim()||!Number.isFinite(Number(i.quantity))||Number(i.quantity)<=0||!Number.isFinite(Number(i.rate))||Number(i.rate)<0)||extraSummaryFields.some(f=>(f.label.trim()||f.details.trim()||f.amount.trim())&&(!f.label.trim()||!f.amount.trim()||!Number.isFinite(Number(f.amount))||Number(f.amount)<0))){
+      flash('Enter customer details, valid service amounts, and a name plus amount for each optional summary field.');
+      return;
+    }
     setBusy(true);
     try {
-      const html=makeInvoiceHtml(), popup=window.open('','_blank');
-      if(!popup){flash('Allow pop-ups for K&B Management Nexus, then generate the invoice again.');return;}
-      popup.document.open();popup.document.write(html);popup.document.close();
-      flash('Invoice prepared. Choose Save as PDF in the print window.');
+      const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const left = 13, right = pageWidth - 13, width = right - left;
+      let y = 15;
+      const ensureSpace = (height:number) => { if(y + height > pageHeight - 14){doc.addPage();y=15;} };
+      const textLine = (value:string, x=left, size=9, color:[number,number,number]=[45,58,76], bold=false) => {
+        doc.setFont('helvetica',bold?'bold':'normal');doc.setFontSize(size);doc.setTextColor(...color);
+        const wrapped=doc.splitTextToSize(value,width-(x-left));
+        ensureSpace(wrapped.length*4+1);doc.text(wrapped,x,y);y+=wrapped.length*4;
+      };
+      doc.setFillColor(20,59,103);doc.rect(0,0,pageWidth,38,'F');
+      doc.setFont('helvetica','bold');doc.setFontSize(19);doc.setTextColor(255,255,255);
+      doc.text('K&B NET SERVICE',left,16);
+      doc.setFont('helvetica','normal');doc.setFontSize(8);doc.text('INTERNET  |  NETWORK  |  CONNECTIVITY',left,22);
+      doc.setFont('helvetica','bold');doc.setFontSize(16);doc.text('TAX INVOICE',right,16,{align:'right'});
+      doc.setFont('helvetica','normal');doc.setFontSize(8);
+      doc.text('Invoice: '+invoiceNo,right,22,{align:'right'});
+      doc.text('Date: '+fmtDate(invoiceDate)+'   Due: '+fmtDate(dueDate),right,27,{align:'right'});
+      y=44;
+      textLine(businessAddress, left, 8, [85,99,116]);
+      textLine('GSTIN: '+BUSINESS.gstin+'  |  Toll Free: '+BUSINESS.tollFree+'  |  IFSC: '+BUSINESS.ifsc,left,8,[85,99,116]);
+      textLine('Email: '+BUSINESS.email+(businessUpi?'  |  UPI: '+businessUpi:''),left,8,[85,99,116]);
+      y+=4;
+      const cardY=y;doc.setDrawColor(215,224,234);doc.setFillColor(246,249,252);doc.roundedRect(left,cardY,width,34,2,2,'FD');
+      doc.setFont('helvetica','bold');doc.setFontSize(8);doc.setTextColor(40,94,139);doc.text('BILL TO',left+4,cardY+6);
+      doc.setTextColor(30,43,62);doc.setFontSize(11);doc.text(doc.splitTextToSize(customerName,80),left+4,cardY+13);
+      doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(75,88,105);
+      const customerLines=[customerAddress, 'Phone: '+customerPhone, customerEmail?'Email: '+customerEmail:'', customerGstin?'GSTIN: '+customerGstin:''].filter(Boolean);
+      doc.text(doc.splitTextToSize(customerLines.join(' | '),width-10),left+4,cardY+19);
+      doc.setFont('helvetica','bold');doc.setTextColor(40,94,139);doc.text('INVOICE DETAILS',right-65,cardY+6);
+      doc.setFont('helvetica','normal');doc.setTextColor(55,68,86);
+      const detailLines=['Place of supply: '+placeOfSupply+' ('+supplyStateCode+')','Reverse charge: '+(reverseCharge?'Yes':'No'),'Reference: '+(reference||'—'),'Payment: '+paymentMode];
+      doc.text(detailLines,right-65,cardY+12);
+      y=cardY+41;
+      const tableHeaders=['#','SERVICE / DETAILS','QTY','RATE','TAXABLE','GST','TAX','TOTAL'];
+      const colWidths=[8,64,12,22,22,14,20,24];
+      const tableWidth=colWidths.reduce((a,b)=>a+b,0);
+      const drawTableRow=(cells:string[],header=false)=>{
+        const wrapped=cells.map((value,index)=>doc.splitTextToSize(value,Math.max(5,colWidths[index]-3)).slice(0,6));
+        const height=Math.max(8,...wrapped.map(lines=>lines.length*3.6+4));
+        ensureSpace(height);
+        let x=left;
+        cells.forEach((_,index)=>{
+          if(header){doc.setFillColor(21,63,105);doc.setDrawColor(21,63,105);doc.setTextColor(255,255,255);doc.setFont('helvetica','bold');}
+          else{doc.setFillColor(255,255,255);doc.setDrawColor(220,228,237);doc.setTextColor(40,52,70);doc.setFont('helvetica','normal');}
+          doc.rect(x,y,colWidths[index],height,'FD');doc.setFontSize(7);
+          doc.text(wrapped[index],x+1.5,y+4);x+=colWidths[index];
+        });
+        y+=height;
+      };
+      drawTableRow(tableHeaders,true);
+      const lineRows=items.map((item,index)=>{
+        const qty=Math.max(0,Number(item.quantity)||0),rate=Math.max(0,Number(item.rate)||0),disc=Math.min(100,Math.max(0,Number(item.discount)||0)),gst=Math.max(0,Number(item.gstRate)||0);
+        const gross=qty*rate,discount=gross*disc/100,after=gross-discount,taxable=item.taxMode==='inclusive'?after/(1+gst/100):after,tax=after-taxable,total=after+(item.taxMode==='exclusive'?tax:0);
+        return {item,index,qty,rate,taxable,tax,total,gst,discount};
+      });
+      lineRows.forEach(r=>drawTableRow([String(r.index+1),r.item.description+(r.item.details?'\\n'+r.item.details:'')+(r.item.sac?'\\nSAC: '+r.item.sac:''),String(r.qty),money(r.rate),money(r.taxable),r.gst+'%',money(r.tax),money(r.total)]));
+      extraSummaryFields.filter(f=>f.label.trim()||f.details.trim()||f.amount.trim()).forEach((f,index)=>{
+        const amount=Math.max(0,Number(f.amount)||0),gst=Math.max(0,Number(f.gstRate)||0),tax=amount*gst/100;
+        drawTableRow([String(lineRows.length+index+1),f.label+(f.details?'\\n'+f.details:''),'1',money(amount),money(amount),gst+'%',money(tax),money(amount+tax)]);
+      });
+      y+=6;ensureSpace(46);
+      doc.setFont('helvetica','bold');doc.setFontSize(9);doc.setTextColor(40,94,139);doc.text('TAX SUMMARY',left,y);y+=6;
+      doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(55,68,86);
+      const taxRows=isIntraState?[['Taxable value',money(subtotal)],['CGST',money(cgst)],['SGST',money(sgst)],['Total GST',money(taxTotal)]]:[['Taxable value',money(subtotal)],['IGST',money(igst)],['Total GST',money(taxTotal)]];
+      taxRows.forEach(([label,value])=>{doc.text(label,left,y);doc.text(value,right-38,y,{align:'right'});y+=5;});
+      y+=2;doc.setDrawColor(20,59,103);doc.line(left,y,right,y);y+=7;
+      doc.setFont('helvetica','bold');doc.setFontSize(13);doc.setTextColor(20,59,103);doc.text('GRAND TOTAL  '+money(payable),right,y,{align:'right'});y+=7;
+      doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(70,83,100);
+      textLine('Amount in words: '+numberWords(payable),left,8,[70,83,100]);
+      y+=2;textLine('Notes: '+(notes||'—'),left,8,[70,83,100]);
+      y+=2;textLine('Terms & Conditions: '+(terms||'—'),left,8,[70,83,100]);
+      ensureSpace(15);y+=5;doc.setDrawColor(215,224,234);doc.line(left,y,right,y);y+=7;
+      doc.setFont('helvetica','bold');doc.setFontSize(9);doc.setTextColor(40,52,70);doc.text('For K&B NET SERVICE',left,y);
+      doc.setFont('helvetica','normal');doc.setFontSize(8);doc.text('Authorised Signatory',right,y,{align:'right'});
+      doc.setFontSize(7);doc.setTextColor(120,130,145);doc.text('Computer-generated invoice · Please retain for your records',left,y+5);
+      const fileName=invoiceNo.replace(/[^a-z0-9_-]+/gi,'-')+'.pdf';
+      await exportPdfFile(fileName,doc.output('datauristring'));
+      flash('Invoice PDF saved in the K&B Management Nexus Documents folder. You can also share or save another copy from the Android share sheet.');
       setDialogOpen(false);
       setInvoiceNo('KB/INV/'+new Date().getFullYear()+'/'+String(Date.now()).slice(-6));
-    } catch(error) { flash(error instanceof Error?error.message:'Could not prepare invoice PDF.'); }
-    finally {setBusy(false);}
+    } catch(error) {
+      flash(error instanceof Error?error.message:'Could not save the invoice PDF.');
+    } finally { setBusy(false); }
   }
   return <div className="invoice-workspace">
     <section className="invoice-intro"><div><span className="eyebrow">CUSTOMER DOCUMENTS</span><h2>Professional GST invoices</h2><p>Create a branded customer invoice with automatic tax calculation and PDF printing.</p></div><div className="invoice-brand-chip"><b>K&amp;B</b><span>NET SERVICE</span></div><button type="button" className="btn primary invoice-open-button" onClick={()=>setDialogOpen(true)}>+ Create invoice</button></section>
@@ -142,7 +224,7 @@ export default function InvoiceWorkspace({customers,plans,flash}:{customers:Cust
       </section>
       <section className="invoice-form-section"><h3>Manual calculator</h3><p className="invoice-help">Independent check only. This calculator does not change invoice line items or automatic totals. The default 18% GST is split into 9% CGST + 9% SGST for this manual check.</p><div className="invoice-grid"><label>Quantity<input type="number" min="0" step="0.01" value={manualQty} onChange={e=>setManualQty(e.target.value)}/></label><label>Rate per unit (₹)<input type="number" min="0" step="0.01" value={manualRate} onChange={e=>setManualRate(e.target.value)}/></label><label>Discount (%)<input type="number" min="0" max="100" step="0.01" value={manualDiscount} onChange={e=>setManualDiscount(e.target.value)}/></label><label>GST rate<select value={manualGst} onChange={e=>setManualGst(e.target.value)}><option value="0">0%</option><option value="5">5%</option><option value="12">12%</option><option value="18">18% (9% CGST + 9% SGST)</option><option value="28">28%</option></select></label></div><div className="invoice-tax-preview"><div><span>Taxable amount</span><b>{money(Math.max(0,Number(manualQty)||0)*Math.max(0,Number(manualRate)||0)*(1-Math.min(100,Math.max(0,Number(manualDiscount)||0))/100))}</b></div><div><span>CGST ({Number(manualGst)/2}%)</span><b>{money(Math.max(0,Number(manualQty)||0)*Math.max(0,Number(manualRate)||0)*(1-Math.min(100,Math.max(0,Number(manualDiscount)||0))/100)*Number(manualGst)/200)}</b></div><div><span>SGST ({Number(manualGst)/2}%)</span><b>{money(Math.max(0,Number(manualQty)||0)*Math.max(0,Number(manualRate)||0)*(1-Math.min(100,Math.max(0,Number(manualDiscount)||0))/100)*Number(manualGst)/200)}</b></div><div className="total"><span>Total with GST</span><b>{money(Math.max(0,Number(manualQty)||0)*Math.max(0,Number(manualRate)||0)*(1-Math.min(100,Math.max(0,Number(manualDiscount)||0))/100)*(1+Number(manualGst)/100))}</b></div></div></section>
       <section className="invoice-form-section"><h3>Customer message &amp; terms</h3><div className="invoice-grid"><label className="wide">Notes <small>Optional</small><textarea rows={2} value={notes} onChange={e=>setNotes(e.target.value)}/></label><label className="wide">Terms &amp; conditions <small>Optional</small><textarea rows={2} value={terms} onChange={e=>setTerms(e.target.value)}/></label></div></section>
-      <div className="invoice-submit"><div><span>Amount payable</span><strong>{money(payable)}</strong><small>Includes GST and rounding</small></div><button className="btn primary" disabled={busy||!items.length}>{busy?'Preparing…':'Generate customer PDF invoice'}</button></div>
+      <div className="invoice-submit"><div><span>Amount payable</span><strong>{money(payable)}</strong><small>Includes GST and rounding</small></div><button className="btn primary" disabled={busy||!items.length}>{busy?'Preparing…':'Save PDF to device'}</button></div>
     </form></div></div>}
     <style>{`
       .invoice-workspace{display:grid;gap:16px}.invoice-modal-backdrop{position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;padding:16px;background:#0b1729a8}.invoice-modal{width:min(980px,100%);max-height:92dvh;overflow:auto;background:var(--surface,#fff);border:1px solid var(--border,#dbe2ec);border-radius:18px;padding:18px;box-shadow:0 24px 70px #07142655}.invoice-modal-head{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;margin-bottom:14px}.invoice-modal-head h2{margin:0;font-size:19px;color:var(--text,#172033)}.invoice-modal-head p{margin:4px 0 0;font-size:12px;color:var(--muted,#64748b)}.invoice-open-button{align-self:center;white-space:nowrap}.invoice-intro{display:flex;justify-content:space-between;align-items:center;padding:20px 22px;border-radius:16px;background:linear-gradient(120deg,#102e50,#1e5d8c);color:#fff}.invoice-intro h2{margin:5px 0;font-size:21px}.invoice-intro p{margin:0;color:#d6e5f4;font-size:13px}.invoice-brand-chip{display:grid;justify-items:center;padding:12px 16px;border:1px solid #ffffff55;border-radius:12px}.invoice-brand-chip b{font-size:25px}.invoice-brand-chip span{font-size:9px;letter-spacing:2px}
