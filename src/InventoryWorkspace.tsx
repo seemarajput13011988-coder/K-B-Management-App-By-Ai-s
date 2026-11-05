@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { api } from './lib/api';
-import { Download } from 'lucide-react';
-import { exportCsvFile } from './lib/file-export';
+import { Download, FileText } from 'lucide-react';
+import { exportCsvFile, exportPdfReport } from './lib/file-export';
 
 type InventoryItem = {
   id: string; name: string; sku: string; category: string; unit: string; quantity: number;
@@ -19,6 +19,13 @@ async function exportInventory(items:InventoryItem[],isAdmin:boolean){
     ...items.map(item=>[item.name,item.sku,item.category,item.quantity,item.unit,item.minimumQuantity,...(isAdmin?[item.unitCost||0,item.supplier||'']:[]),item.location||'',item.active?'Yes':'No'])];
   try { await exportCsvFile('kb-inventory-'+new Date().toISOString().slice(0,10)+'.csv',rows); }
   catch(error) { window.alert(error instanceof Error?error.message:'Could not export inventory.'); }
+}
+
+async function exportInventoryPdf(items:InventoryItem[],isAdmin:boolean){
+  const rows=[['Item','SKU','Category','Quantity','Unit','Minimum stock',...(isAdmin?['Unit cost','Supplier']:[]),'Storage location','Active'],
+    ...items.map(item=>[item.name,item.sku,item.category,item.quantity,item.unit,item.minimumQuantity,...(isAdmin?[item.unitCost||0,item.supplier||'']:[]),item.location||'',item.active?'Yes':'No'])];
+  try { await exportPdfReport('kb-inventory-'+new Date().toISOString().slice(0,10)+'.pdf','Inventory register',rows); }
+  catch(error) { window.alert(error instanceof Error?error.message:'Could not create inventory PDF.'); }
 }
 
 export default function InventoryWorkspace({isAdmin,flash}:{isAdmin:boolean;flash:(message:string)=>void}) {
@@ -76,7 +83,7 @@ export default function InventoryWorkspace({isAdmin,flash}:{isAdmin:boolean;flas
   return <section className="panel table-panel">
     <div className="toolbar">
       <div><h2>Inventory & equipment</h2><p className="subtle">Track routers, cables, ONTs, tools and other business stock.</p></div>
-      <div className="inventory-toolbar"><span className="inventory-low-count">{lowStock} low-stock</span><button className="btn secondary" onClick={()=>exportInventory(items,isAdmin)} disabled={!items.length}><Download size={14}/> Export CSV</button>{isAdmin&&<button className="btn primary" onClick={openCreate}>+ Add item</button>}</div>
+      <div className="inventory-toolbar"><span className="inventory-low-count">{lowStock} low-stock</span><button className="btn secondary" onClick={()=>exportInventory(items,isAdmin)} disabled={!items.length}><Download size={14}/> Export CSV</button><button className="btn secondary" onClick={()=>exportInventoryPdf(items,isAdmin)} disabled={!items.length}><FileText size={14}/> Export PDF</button>{isAdmin&&<button className="btn primary" onClick={openCreate}>+ Add item</button>}</div>
     </div>
     {showForm&&isAdmin&&<form className="inventory-form" onSubmit={saveItem}>
       <div className="inventory-form-title"><strong>{editing?'Edit inventory item':'Add inventory item'}</strong><button type="button" className="btn secondary compact" onClick={()=>setShowForm(false)}>Close</button></div>
