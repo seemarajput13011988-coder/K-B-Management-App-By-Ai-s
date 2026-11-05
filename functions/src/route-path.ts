@@ -142,3 +142,16 @@ export function buildCustomerLedger(
   const totalPaid = Math.round(items.reduce((sum, item) => sum + item.credit, 0) * 100) / 100;
   return { items, totalBilled, totalPaid, outstandingBalance: Math.round((totalBilled - totalPaid) * 100) / 100 };
 }
+
+
+/** Records become eligible for an admin review six calendar months after saved/created time. */
+export function isSixMonthReviewDue(createdAt: unknown, currentTime = Date.now()): boolean {
+  if (typeof createdAt !== 'string' || !createdAt.trim()) return false;
+  const created = Date.parse(createdAt);
+  if (!Number.isFinite(created) || !Number.isFinite(currentTime)) return false;
+  const current = new Date(currentTime);
+  const cutoffMonth = new Date(current.getFullYear(), current.getMonth() - 6, 1);
+  const lastDay = new Date(cutoffMonth.getFullYear(), cutoffMonth.getMonth() + 1, 0).getDate();
+  cutoffMonth.setDate(Math.min(current.getDate(), lastDay));
+  return created <= cutoffMonth.getTime();
+}
