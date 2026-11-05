@@ -1,48 +1,12 @@
-name: Deploy K&B Management Nexus to Firebase Hosting
-
+name: Disabled - Firebase Hosting deployment
 on:
   workflow_dispatch:
-
-permissions:
-  contents: read
-
 jobs:
-  deploy:
+  blocked:
     runs-on: ubuntu-latest
     steps:
-      - name: Check out migration branch
-        uses: actions/checkout@v4
-        with:
-          ref: firebase-migration
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
-      - name: Install dependencies
-        run: npm install
-
-      - name: Type-check and build production web app
-        env:
-          # Firebase Web App configuration is public client config, matching the
-          # confirmed Android build configuration. Do not store it as a secret.
-          VITE_FIREBASE_API_KEY: 'AIzaSyAuJuFA1I06aSJ1AyHhVA86ws8c_cX1ZC8'
-          VITE_FIREBASE_AUTH_DOMAIN: kandb-net-sevice.firebaseapp.com
-          VITE_FIREBASE_PROJECT_ID: kandb-net-sevice
-          VITE_FIREBASE_STORAGE_BUCKET: kandb-net-sevice.firebasestorage.app
-          VITE_FIREBASE_MESSAGING_SENDER_ID: '847932976304'
-          VITE_FIREBASE_APP_ID: '1:847932976304:web:87148565df2a329a5f9f75'
-          VITE_FIREBASE_FUNCTIONS_URL: https://asia-south1-kandb-net-sevice.cloudfunctions.net/api
-          VITE_GOOGLE_MAPS_API_KEY: ${{ secrets.VITE_GOOGLE_MAPS_API_KEY }}
+      - name: Explain zero-cost deployment path
         run: |
-          npx tsc --noEmit
-          npm run build
-
-      - name: Deploy production Hosting site
-        uses: FirebaseExtended/action-hosting-deploy@v0
-        with:
-          repoToken: ${{ secrets.GITHUB_TOKEN }}
-          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_KANDB_NET_SEVICE }}
-          projectId: kandb-net-sevice
-          channelId: live
+          echo "::error::This project now uses Netlify to host the web app and API on the free plan."
+          echo "Do not deploy Firebase Hosting rewrites to Cloud Functions on the Spark plan."
+          exit 1
