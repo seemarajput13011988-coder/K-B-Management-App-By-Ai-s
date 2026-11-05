@@ -148,8 +148,13 @@ export async function apiHandler(req: any, res: any) {
       // If an older Brajraj owner record exists with an incompatible password hash, permit that
       // same configured secret to repair it once. The marker prevents repeated bootstrap resets.
       const initialPassword = process.env.ADMIN_INITIAL_PASSWORD || '';
-      if (matches.length === 0 && userId.toLowerCase() === 'brajraj' &&
-          initialPassword.length >= 10 && equalSecret(password, initialPassword)) {
+      if (matches.length === 0 && userId.toLowerCase() === 'brajraj') {
+        if (initialPassword.length < 10) {
+          send(res, 503, { error: 'The primary admin account is not initialized. Complete the one-time owner password setup in the Render service environment.' }); return;
+        }
+        if (!equalSecret(password, initialPassword)) {
+          send(res, 401, { error: 'The admin username or password is incorrect.' }); return;
+        }
         const ownerRef = db.collection('users').doc('admin-primary');
         await db.runTransaction(async transaction => {
           const [ownerSnapshot, existingAdmins] = await Promise.all([
@@ -166,8 +171,16 @@ export async function apiHandler(req: any, res: any) {
           }
         });
         matches = (await list('users')).filter(item => String(item.userId || '').toLowerCase() === 'brajraj');
+        if (matches.length === 0) {
+          send(res, 409, { error: 'The primary admin account could not be initialized because another admin account already exists. Admin setup needs owner review.' }); return;
+        }
       }
-      if (matches.length !== 1) { send(res, 401, { error: 'The user ID or password is incorrect.' }); return; }
+      if (matches.length === 0) {
+        send(res, 404, { error: 'No account exists with this user ID. A staff account must be created or approved by the admin before staff sign-in.' }); return;
+      }
+      if (matches.length > 1) {
+        send(res, 409, { error: 'More than one account uses this user ID. Ask the primary admin to resolve the duplicate account records.' }); return;
+      }
       const userDoc = await db.collection('users').doc(String(matches[0].id)).get();
       if (!userDoc.exists) { send(res, 401, { error: 'The user ID or password is incorrect.' }); return; }
       const record = userDoc.data()!;
