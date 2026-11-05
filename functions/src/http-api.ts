@@ -1,3 +1,4 @@
+// Shared HTTP API handler used by the Spark-compatible Netlify deployment.
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { cert, getApps, initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
