@@ -20,7 +20,7 @@
     "@capacitor-community/background-geolocation": "^1.2.25",
     "@capacitor/local-notifications": "^7.0.2",
     "@capacitor/push-notifications": "^7.0.2",
-    "jspdf": "^3.0.2",
+    "jspdf": "^4.2.1",
     "@capacitor/filesystem": "^7.1.4",
     "@capacitor/share": "^7.0.2"
   },
