@@ -76,8 +76,92 @@ async function requestPlans<T = any>(path: string, method: string, payload?: Rec
 }
 function allPlanCountTooSmall(snapshot: Awaited<ReturnType<typeof getDocs>>) { return snapshot.size <= 1; }
 
+
+async function requestCustomers<T = any>(path: string, method: string, payload?: Record<string, unknown>): Promise<ApiResult<T>> {
+  if (!firebaseAuth?.currentUser || !firestore) throw new Error('Please sign in again to continue.');
+  const profile = await getAppUserProfile();
+  const admin = profile.role === 'admin';
+  const base = '/api/customers';
+  const clean = (value: unknown, max: number) => String(value ?? '').trim().slice(0, max);
+  const customers = collection(firestore, 'customers');
+  const id = path.startsWith(base + '/') ? decodeURIComponent(path.slice(base.length + 1).split('?')[0]) : '';
+  const dateOk = (value: string) => /^\\d{4}-\\d{2}-\\d{2}$/.test(value) && !Number.isNaN(Date.parse(value + 'T00:00:00'));
+  if (method === 'GET' && path.split('?')[0] === base) {
+    const snap = await getDocs(admin ? customers : query(customers, where('assignedTo', '==', firebaseAuth.currentUser.uid)));
+    return { data: { items: snap.docs.map(item => ({ id: item.id, ...item.data() })) } as T };
+  }
+  if (method === 'POST' && path.split('?')[0] === base) {
+    if (!admin) throw new Error('Only administrators can add customers.');
+    const name = clean(payload?.name, 100), phone = clean(payload?.phone, 30), address = clean(payload?.address, 300);
+    const plan = clean(payload?.plan, 100), monthlyFee = Number(payload?.monthlyFee), dueDate = clean(payload?.dueDate, 10);
+    if (!name || !phone || !address || !plan || !Number.isFinite(monthlyFee) || monthlyFee < 0 || !dateOk(dueDate)) {
+      throw new Error('Enter customer name, phone, address, plan, valid monthly fee and due date.');
+    }
+    const assignedTo = clean(payload?.assignedTo, 128);
+    let assignedToName = '';
+    if (assignedTo) {
+      const staff = await getDoc(doc(firestore, 'users', assignedTo));
+      if (!staff.exists() || staff.data().role !== 'staff' || staff.data().active !== true) throw new Error('Select an active staff member.');
+      assignedToName = clean(staff.data().displayName, 80);
+    }
+    const record = {
+      name, phone, address, plan, monthlyFee,
+      status: ['Active', 'Inactive', 'Suspended'].includes(String(payload?.status)) ? payload?.status : 'Active',
+      joinedAt: clean(payload?.joinedAt, 10) || new Date().toISOString().slice(0, 10),
+      dueDate, notes: clean(payload?.notes, 1000), assignedTo, assignedToName,
+      createdAt: new Date().toISOString()
+    };
+    const ref = await addDoc(customers, record);
+    return { data: { id: ref.id, ...record } as T };
+  }
+  if (id && (method === 'PUT' || method === 'DELETE')) {
+    const ref = doc(firestore, 'customers', id);
+    const existing = await getDoc(ref);
+    if (!existing.exists()) throw new Error('Customer not found.');
+    const current = existing.data();
+    if (!admin && current.assignedTo !== firebaseAuth.currentUser.uid) throw new Error('You can access only customers assigned to you.');
+    if (method === 'DELETE') {
+      if (!admin) throw new Error('Only administrators can delete customers.');
+      await deleteDoc(ref);
+      return { data: { deleted: true } as T };
+    }
+    const updatedAt = new Date().toISOString();
+    if (!admin) {
+      const patch = { phone: clean(payload?.phone, 30), address: clean(payload?.address, 300), notes: clean(payload?.notes, 1000), updatedAt };
+      await updateDoc(ref, patch);
+      return { data: { updated: true } as T };
+    }
+    const patch: Record<string, unknown> = {};
+    for (const key of ['name', 'phone', 'address', 'plan', 'status', 'joinedAt', 'dueDate']) {
+      if (payload?.[key] !== undefined) patch[key] = clean(payload[key], key === 'address' ? 300 : 120);
+    }
+    if (payload?.monthlyFee !== undefined) {
+      const fee = Number(payload.monthlyFee);
+      if (!Number.isFinite(fee) || fee < 0) throw new Error('Enter a valid monthly fee.');
+      patch.monthlyFee = fee;
+    }
+    if (payload?.notes !== undefined) patch.notes = clean(payload.notes, 1000);
+    if (payload?.assignedTo !== undefined) {
+      const assignedTo = clean(payload.assignedTo, 128);
+      let assignedToName = '';
+      if (assignedTo) {
+        const staff = await getDoc(doc(firestore, 'users', assignedTo));
+        if (!staff.exists() || staff.data().role !== 'staff' || staff.data().active !== true) throw new Error('Select an active staff member.');
+        assignedToName = clean(staff.data().displayName, 80);
+      }
+      patch.assignedTo = assignedTo;
+      patch.assignedToName = assignedToName;
+    }
+    patch.updatedAt = updatedAt;
+    await updateDoc(ref, patch);
+    return { data: { updated: true } as T };
+  }
+  throw new Error('Unsupported customers request.');
+}
+
 async function request<T = any>(path: string, method: string, payload?: Record<string, unknown>): Promise<ApiResult<T>> {
   if (path.split('?')[0] === '/api/plans' || path.split('?')[0].startsWith('/api/plans/')) return requestPlans<T>(path, method, payload);
+  if (path.split('?')[0] === '/api/customers' || path.split('?')[0].startsWith('/api/customers/')) return requestCustomers<T>(path, method, payload);
   if (!firebaseAuth) throw new Error('Firebase is not configured yet. Add the K&B Firebase web app settings before signing in.');
   const auth = firebaseAuth;
   if (!auth.currentUser) await new Promise<void>(resolve => {
