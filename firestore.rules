@@ -66,7 +66,38 @@ service cloud.firestore {
             'userId', 'displayName', 'role', 'isSuperAdmin', 'active', 'createdAt', 'createdBy'
           ])
           && request.resource.data.userId is string
-          && request.resource.data.userId.matches('^[A-Za-z0-9_-]{3,32}
+          && request.resource.data.userId.matches('^[A-Za-z0-9_-]{3,32}$')
+          && request.resource.data.userId.lower() != 'brajraj'
+          && request.resource.data.displayName is string
+          && request.resource.data.displayName.size() > 0
+          && request.resource.data.displayName.size() <= 80
+          && request.resource.data.role == 'admin'
+          && request.resource.data.isSuperAdmin == false
+          && request.resource.data.active == true
+          && request.resource.data.createdAt is string
+          && request.resource.data.createdBy == request.auth.uid
+        );
+      allow update: if (
+          isAdmin()
+          && resource.data.role == 'staff'
+          && request.resource.data.role == 'staff'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'active'])
+          && request.resource.data.displayName is string
+          && request.resource.data.displayName.size() > 0
+          && request.resource.data.displayName.size() <= 80
+          && request.resource.data.active is bool
+        ) || (
+          isSuperAdmin()
+          && resource.data.role == 'admin'
+          && resource.data.isSuperAdmin != true
+          && request.resource.data.role == 'admin'
+          && request.resource.data.isSuperAdmin == false
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'active'])
+          && request.resource.data.displayName is string
+          && request.resource.data.displayName.size() > 0
+          && request.resource.data.displayName.size() <= 80
+          && request.resource.data.active is bool
+        );
       allow delete: if false;
     }
 
