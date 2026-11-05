@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - firebase-migration
+      - safe-firebase-migration-copilot-review
     paths:
       - "functions/**"
       - "firebase.json"
@@ -18,10 +18,10 @@ jobs:
   deploy-functions:
     runs-on: ubuntu-latest
     steps:
-      - name: Check out migration branch
+      - name: Check out current branch
         uses: actions/checkout@v4
         with:
-          ref: firebase-migration
+          ref: ${{ github.ref_name }}
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
