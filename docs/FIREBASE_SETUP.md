@@ -15,20 +15,21 @@ The app uses Firebase Authentication with an internal email alias for each user 
 - Admin ID `Brajraj` maps to `brajraj@accounts.kandbnetservice.in`.
 - Staff IDs map to lower-case IDs at `@accounts.kandbnetservice.in`.
 
-Before first use, set these Firebase Functions secrets using a trusted local Firebase CLI session:
+Before first use, set these private environment variables in the Netlify site:
+- `FIREBASE_SERVICE_ACCOUNT_JSON`: Firebase service-account JSON for the project, stored only in Netlify.
 - `ADMIN_BOOTSTRAP_SECRET`: a one-time random setup key.
 - `ADMIN_RECOVERY_CODE`: a separate private recovery code.
 
-Deploy Functions only after the project and database are confirmed. Then call the one-time `POST /api/auth/bootstrap-admin` endpoint with the setup key and a new admin password of at least 12 characters. The endpoint refuses to run if an admin profile already exists. Do not put either secret in GitHub or the browser app.
+The HTTP API runs as a Netlify Function and uses Firebase Admin SDK to create accounts and write Firestore records. Then call the one-time `POST /api/auth/bootstrap-admin` endpoint with the setup key and a new admin password of at least 12 characters. The endpoint refuses to run if an admin profile already exists. Do not put the service account or either secret in GitHub or the browser app.
 
 ## 3. Browser configuration
 Copy `.env.example` to `.env.local` and fill in the Firebase Web App values. The expected project ID is enforced by the client. Keep `.env.local` out of Git.
 
 ## 4. Backend and access model
-- React/Vite uses Firebase Authentication and sends Firebase ID tokens to the Cloud Function.
-- Cloud Functions use Firebase Admin SDK and enforce account status and admin/staff role checks.
-- Firestore rules deny direct browser reads and writes. All data operations go through the API.
-- Firebase Hosting routes `/api/**` to the `api` Cloud Function and serves the React app for other paths.
+- React/Vite and Android use Firebase Authentication and send Firebase ID tokens to the Netlify API Function.
+- The Netlify Function uses Firebase Admin SDK and enforces account status and admin/staff role checks.
+- Firestore rules deny direct browser reads and writes. App data operations go through the API.
+- Netlify hosts both the React app and the API Function. Firebase remains the authentication and database provider.
 - Staff accounts are created in Firebase Authentication by an authenticated admin. Passwords are not stored in Firestore.
 - Group chat currently loads through the API; realtime subscriptions are not migrated yet.
 
@@ -48,16 +49,12 @@ The Android debug APK workflow already uses the public Firebase Web App config s
 
 
 ## 7. Zero-cost API hosting (Spark-compatible)
-The HTTP API can run as a Netlify Function so the project does not need Firebase Cloud Functions or the Firebase Blaze plan.
+The HTTP API runs as a Netlify Function. Firebase Cloud Functions are not needed for this hosting path.
 1. Create a separate Netlify site connected to this repository and deploy the `spark-free-backend` branch.
-2. In Netlify site environment variables, set:
-   - `FIREBASE_SERVICE_ACCOUNT_JSON`: the service-account JSON for the Firebase project. Keep this private; never commit it.
-   - `ADMIN_BOOTSTRAP_SECRET`: a private initial-admin setup value.
-   - `ADMIN_RECOVERY_CODE`: a different private recovery value.
-   - `VITE_API_BASE_URL`: the public base URL of this Netlify site, for example `https://your-site.netlify.app`.
-   - The six `VITE_FIREBASE_*` web-app values listed in `.env.example`.
-3. Redeploy after setting the variables. Netlify Functions run the existing HTTP API using Firebase Admin SDK; Firebase Auth and Firestore remain in project `kandb-net-sevice`.
-4. The first Super Admin bootstrap remains one-time and secret-protected. Do not create an admin profile from the browser or allow staff to choose an admin role.
-5. Keep Netlify auto-recharge disabled. The Free plan has a hard monthly usage limit and the site can pause when that limit is reached; it should not automatically add paid usage.
+2. In Netlify site environment variables, set the private values `FIREBASE_SERVICE_ACCOUNT_JSON`, `ADMIN_BOOTSTRAP_SECRET`, and `ADMIN_RECOVERY_CODE`. Also set the public build-time values `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`, `VITE_FIREBASE_STORAGE_BUCKET`, `VITE_FIREBASE_MESSAGING_SENDER_ID`, `VITE_FIREBASE_APP_ID`, and `VITE_API_BASE_URL` (the site's own public URL).
+3. In GitHub repository Settings > Secrets and variables > Actions > Variables, add `VITE_API_BASE_URL` with the same Netlify site URL. The Android APK workflow uses it at build time.
+4. Redeploy after setting the variables. Netlify Functions run the existing HTTP API using Firebase Admin SDK; Firebase Auth and Firestore remain in project `kandb-net-sevice`.
+5. The first Super Admin bootstrap remains one-time and secret-protected. Do not create an admin profile from the browser or allow staff to choose an admin role.
+6. Keep Netlify auto-recharge disabled. The Free plan has a hard monthly credit limit and the site pauses when it reaches that limit rather than automatically adding paid usage.
 
-This hosting path is a code/configuration change only until the Netlify site, environment variables, and service-account access are configured and a live health check succeeds. No production deployment is claimed by this repository change.
+This hosting path is not live until the Netlify site, environment variables, service-account access, and health check are verified. No production deployment is claimed by this repository change.
