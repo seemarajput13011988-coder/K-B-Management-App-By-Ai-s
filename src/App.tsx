@@ -6,6 +6,7 @@ import { PushNotifications } from '@capacitor/push-notifications';
 import StaffOperations from './StaffOperations';
 import FinanceWorkspace from './FinanceWorkspace';
 import SubscriptionWorkspace from './SubscriptionWorkspace';
+import InvoiceWorkspace from './InvoiceWorkspace';
 import InventoryWorkspace from './InventoryWorkspace';
 import InstallationsWorkspace from './InstallationsWorkspace';
 import CalendarWorkspace from './CalendarWorkspace';
@@ -105,6 +106,7 @@ type Plan = {
   data: string;
   price: number;
   note: string;
+  details?: string;
   connectionType: string;
   featured: boolean;
   active: boolean;
@@ -658,6 +660,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
     ...(isAdmin ? [{ label: 'Plans & Pricing', icon: Wifi }] : []),
     ...(isAdmin ? [{ label: 'Staff', icon: UserRound, count: staff.length }] : []),
     ...(canManageAdmins ? [{ label: 'Admin Accounts', icon: ShieldCheck, count: adminAccounts.length || undefined }] : []),
+    ...(isAdmin ? [{ label: 'Invoices', icon: ReceiptText }] : []),
     ...(isAdmin ? [{ label: 'Finance & Billing', icon: IndianRupee }] : []),
     { label: 'Payments', icon: CreditCard },
     {
@@ -786,6 +789,8 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                         ? 'Schedule customer installations, upgrades and repair visits.'
                       : page === 'Inventory'
                         ? 'Track equipment, stock levels, supplies and stock movements.'
+                      : page === 'Invoices'
+                        ? 'Create professional GST invoices and customer-ready PDF documents.'
                       : page === 'Payments'
                         ? 'Track customer collections and payment history.'
                         : page === 'Staff'
@@ -844,6 +849,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
           {page === 'Calendar' && <CalendarWorkspace tasks={tasks} attendance={attendanceRecords} isAdmin={isAdmin} />}
           {page === 'Salary' && isAdmin && <FinanceWorkspace salaryOnly session={session} customers={customers} payments={payments} flash={flash} />}
           {page === 'My Day' && !isAdmin && <StaffOperations session={session} customers={customers} flash={flash} onDataChanged={() => { void load(true); }} />}
+          {page === 'Invoices' && isAdmin && <InvoiceWorkspace customers={customers} plans={plans} flash={flash} />}
           {page === 'Finance & Billing' && isAdmin && <FinanceWorkspace session={session} customers={customers} payments={payments} flash={flash} />}
           {page === 'Subscriptions' && <SubscriptionWorkspace customers={customers} plans={plans} isAdmin={isAdmin} flash={flash} />}
           {page === 'Inventory' && <InventoryWorkspace isAdmin={isAdmin} flash={flash} />}
@@ -1566,6 +1572,7 @@ function PlanModal({ initial, onClose, onSave }: { initial: Plan | null; onClose
     data: initial?.data || '',
     price: String(initial?.price ?? ''),
     note: initial?.note || '',
+    details: initial?.details || '',
     connectionType: initial?.connectionType || 'Fiber',
     featured: initial?.featured ?? false,
     active: initial?.active ?? true,
@@ -1587,6 +1594,7 @@ function PlanModal({ initial, onClose, onSave }: { initial: Plan | null; onClose
         <Field label="Monthly price (₹)"><input required type="number" min="0" max="1000000" step="1" value={form.price} onChange={e => setForm({ ...form, price: e.target.value })} /></Field>
         <Field label="Connection type"><select value={form.connectionType} onChange={e => setForm({ ...form, connectionType: e.target.value })}><option>Fiber</option><option>Air Fibre</option><option>Wireless</option><option>Cable</option><option>Other</option></select></Field>
         <Field label="Short description" wide><textarea rows={2} maxLength={180} value={form.note} onChange={e => setForm({ ...form, note: e.target.value })} placeholder="Who is this plan suitable for?" /></Field>
+        <Field label="Additional plan details (optional)" wide><textarea rows={3} maxLength={1000} value={form.details} onChange={e => setForm({ ...form, details: e.target.value })} placeholder="Add extra features, fair-use policy, router details, installation terms or any other information. This field is optional." /></Field>
         <label className="plan-check"><input type="checkbox" checked={form.featured} onChange={e => setForm({ ...form, featured: e.target.checked })} /> Mark as popular plan</label>
         <div className="modal-actions"><button type="button" className="btn secondary" onClick={onClose}>Cancel</button><button className="btn primary" disabled={busy}>{busy ? 'Saving...' : initial ? 'Save changes' : 'Create plan'}</button></div>
       </form>
