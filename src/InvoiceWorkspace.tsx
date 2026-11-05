@@ -3,7 +3,8 @@ import type { FormEvent } from 'react';
 
 type Customer = { id:string; name:string; phone:string; address:string; plan:string; monthlyFee:number; status:string };
 type Plan = { id:string; name:string; provider:string; speed:string; data:string; price:number; note:string; details?:string; connectionType:string; active:boolean };
-type LineItem = { id:number; description:string; details:string; sac:string; quantity:string; rate:string; discount:string; gstRate:string; taxMode:'exclusive'|'inclusive' };\ntype ExtraSummaryField = { id:number; label:string; details:string; amount:string; gstRate:string };
+type LineItem = { id:number; description:string; details:string; sac:string; quantity:string; rate:string; discount:string; gstRate:string; taxMode:'exclusive'|'inclusive' };
+type ExtraSummaryField = { id:number; label:string; details:string; amount:string; gstRate:string };
 const BUSINESS = { name:'K&B NET SERVICE', gstin:'24AHHPC7437K1ZA', tollFree:'079-29992999', ifsc:'VCOB0000018', address:'B-8/10 Gokul Galaxy Residency, Kathwada, Ahmedabad - 382430', email:'brajrajsinghchauhan3517@gmail.com', state:'Gujarat' };
 const today = () => new Date().toISOString().slice(0,10);
 const money = (n:number) => '₹'+(Number.isFinite(n)?n:0).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});
@@ -107,7 +108,7 @@ export default function InvoiceWorkspace({customers,plans,flash}:{customers:Cust
   }
   function generate(e:FormEvent) {
     e.preventDefault();
-    if(!customerName.trim()||!customerPhone.trim()||!items.length||items.some(i=>!i.description.trim()||Number(i.quantity)<=0||Number(i.rate)<0)){flash('Enter customer name, phone number and valid service line details.');return;}
+    if(!customerName.trim()||!customerPhone.trim()||!items.length||items.some(i=>!i.description.trim()||Number(i.quantity)<=0||Number(i.rate)<0)||extraSummaryFields.some(f=>(f.label.trim()||f.details.trim()||f.amount.trim())&&(!f.label.trim()||!f.amount.trim()||Number(f.amount)<0))){flash('Enter customer details, valid service amounts, and a name plus amount for each optional summary field you use.');return;}
     setBusy(true);
     try {
       const html=makeInvoiceHtml(), popup=window.open('','_blank');
