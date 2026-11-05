@@ -78,8 +78,15 @@ service cloud.firestore {
       allow list: if isAdmin()
         || (hasActiveProfile() && resource.data.assignedTo == request.auth.uid);
       allow create: if isAdmin() && validCustomer(request.resource.data);
-      allow update: if isAdmin()
-          && validCustomer(request.resource.data)
+      allow update: if (isAdmin()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'name', 'phone', 'address', 'plan', 'monthlyFee', 'status',
+            'joinedAt', 'dueDate', 'notes', 'assignedTo', 'assignedToName', 'updatedAt'
+          ])
+          && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['status'])
+            || request.resource.data.status in ['Active', 'Inactive', 'Suspended'])
+          && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['monthlyFee'])
+            || (request.resource.data.monthlyFee is number && request.resource.data.monthlyFee >= 0)))
         || (hasActiveProfile()
           && resource.data.assignedTo == request.auth.uid
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
