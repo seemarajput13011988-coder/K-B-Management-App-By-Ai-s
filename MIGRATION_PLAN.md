@@ -66,3 +66,21 @@ Authentication and staff accounts; customers; plans; payments; dashboards; atten
 - [ ] Configure FCM push notifications for delivery while the app is fully closed, if required.
 - [ ] Test web and Android flows for admin and staff.
 - [ ] Deploy Hosting and Functions only after approval and all safety checks.
+
+
+## Safe rollout gates (required before production)
+
+- [ ] Confirm the complete AppDeploy route, collection, import, and role-check inventory against the preserved source snapshot.
+- [ ] Diagnose each affected staff account using its legacy AppDeploy record and the Firebase Auth / Firestore profile mapping; do not assume password hashes are portable.
+- [ ] Add automated authentication and authorization tests for valid login, invalid credentials, expired/revoked ID tokens, admin/staff role boundaries, and staff-only record isolation.
+- [ ] Run Firebase Emulator Suite tests and frontend/Functions production builds.
+- [ ] Export and reconcile every collection before any import. Keep the original AppDeploy app and records unchanged during staged rollout.
+- [ ] Obtain explicit owner approval for production deployment and data cutover.
+
+### Retention policy
+
+No six-month automatic deletion job is authorized or implemented. Before any retention automation is considered, the owner must specify the exact eligible data categories and retention trigger. Customer, payment, invoice, accounting, audit, and other business records must not be deleted by default.
+
+### Current test gap
+
+The current Functions test suite includes route normalization and pure business-rule tests. It does not yet provide emulator-backed end-to-end coverage for Firebase Authentication, token expiry/revocation, role enforcement, or staff record isolation. Do not describe the migration as production-complete until those tests, the Functions/frontend builds, and the staged data reconciliation pass.
