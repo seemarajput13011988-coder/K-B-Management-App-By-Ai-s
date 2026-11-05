@@ -1461,7 +1461,7 @@ function PaymentTable({ rows, isAdmin = false, onEdit, onDelete }: any) {
               <td>
                 <span className="status active">Paid</span>
               </td>
-              {(isAdmin || onDelete) && <td><div className="staff-actions"><button className="row-action" title="Edit payment" onClick={() => onEdit?.(p)}><Pencil size={14}/></button>{onDelete && <button className="row-action danger" title="Delete payment" onClick={() => onDelete(p)}><Trash2 size={14}/></button>}</div></td>
+              {(isAdmin || onDelete) && <td><div className="staff-actions"><button className="row-action" title="Edit payment" onClick={() => onEdit?.(p)}><Pencil size={14}/></button>{onDelete && <button className="row-action danger" title="Delete payment" onClick={() => onDelete(p)}><Trash2 size={14}/></button>}</div></td>}
             </tr>
           ))}
         </tbody>
