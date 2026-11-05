@@ -56,11 +56,12 @@ function printReport(title: string, rows: unknown[][]) {
   popup.print();
 }
 
-export default function FinanceWorkspace({ session, customers, payments, flash }: {
+export default function FinanceWorkspace({ session, customers, payments, flash, salaryOnly = false }: {
   session: Session;
   customers: Customer[];
   payments: Payment[];
   flash: (message: string) => void;
+  salaryOnly?: boolean;
 }) {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
@@ -179,6 +180,25 @@ export default function FinanceWorkspace({ session, customers, payments, flash }
       flash(err instanceof Error ? err.message : 'Could not delete expense.');
     } finally { setBusy(false); }
   }
+
+  if (salaryOnly) return <div className="finance-workspace salary-workspace">
+    <section className="panel finance-panel">
+      <div className="finance-head"><div><span className="eyebrow">STAFF PAYROLL</span><h2>Monthly salary records</h2><p>Record each staff member's salary once per month. Salary is also added to the expense ledger automatically.</p></div></div>
+      <form className="finance-expense-form" onSubmit={recordSalary}>
+        <label>Staff member<select required value={salaryStaffId} onChange={e => setSalaryStaffId(e.target.value)}><option value="">Select staff member</option>{staff.map(item => <option key={item.id} value={item.id}>{item.displayName} ({item.userId})</option>)}</select></label>
+        <label>Salary amount (₹)<input required type="number" min="0.01" max="1000000" step="0.01" value={salaryAmount} onChange={e => setSalaryAmount(e.target.value)}/></label>
+        <label>Payment date<input required type="date" value={salaryPaidAt} onChange={e => setSalaryPaidAt(e.target.value)}/></label>
+        <label>Payment method<select value={salaryMethod} onChange={e => setSalaryMethod(e.target.value)}><option>Bank transfer</option><option>UPI</option><option>Cash</option><option>Card</option><option>Other</option></select></label>
+        <label className="wide">Notes<input maxLength={300} value={salaryNotes} onChange={e => setSalaryNotes(e.target.value)} placeholder="Optional salary reference"/></label>
+        <button className="btn primary" disabled={busy || !staff.length || !salaryStaffId || !salaryAmount}>{busy ? 'Saving…' : 'Record salary'}</button>
+      </form>
+      <div className="finance-table-wrap"><table><thead><tr><th>STAFF MEMBER</th><th>MONTH</th><th>PAID DATE</th><th>METHOD</th><th>AMOUNT</th></tr></thead><tbody>
+        {payroll.map(item => <tr key={item.id}><td><b>{item.staffName}</b></td><td>{monthName(item.period)}</td><td>{item.paidAt}</td><td>{item.method}</td><td className="amount">{money(item.amount)}</td></tr>)}
+        {!payroll.length && <tr><td colSpan={5}>No salary payments recorded for this month.</td></tr>}
+      </tbody></table></div>
+      <div className="finance-foot"><span>{payroll.length} staff payments · Total salary paid: <b>{money(payrollTotal)}</b></span><button className="btn secondary compact" disabled={!payroll.length} onClick={() => downloadCsv('kb-payroll-' + period + '.csv', [['Staff member','Staff ID','Month','Paid date','Method','Amount','Notes'], ...payroll.map(item => [item.staffName, item.staffUserId, monthName(item.period), item.paidAt, item.method, item.amount, item.notes || ''])])}><Download size={14}/> Export payroll</button></div>
+    </section>
+  </div>;
 
   return <div className="finance-workspace">
     <section className="finance-metrics">
