@@ -18,7 +18,7 @@ function exportInventory(items:InventoryItem[],isAdmin:boolean){
     ...items.map(item=>[item.name,item.sku,item.category,item.quantity,item.unit,item.minimumQuantity,...(isAdmin?[item.unitCost||0,item.supplier||'']:[]),item.location||'',item.active?'Yes':'No'])];
   const csv='\uFEFF'+rows.map(row=>row.map(value=>'"'+String(value??'').replace(/"/g,'""')+'"').join(',')).join('\r\n');
   const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
-  const link=document.createElement('a');link.href=url;link.download='kb-inventory-'+new Date().toISOString().slice(0,10)+'.csv';link.style.display='none';document.body.appendChild(link);link.click();link.remove();window.setTimeout(()=>URL.revokeObjectURL(url),1500);
+  const link=document.createElement('a');link.href=url;link.download='kb-inventory-'+new Date().toISOString().slice(0,10)+'.csv';link.style.display='none';document.body.appendChild(link);link.click();window.setTimeout(()=>{link.remove();URL.revokeObjectURL(url);},2000);
 }
 
 export default function InventoryWorkspace({isAdmin,flash}:{isAdmin:boolean;flash:(message:string)=>void}) {
