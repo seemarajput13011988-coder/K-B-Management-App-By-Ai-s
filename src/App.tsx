@@ -1242,7 +1242,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                       {c.resolvedByName && <span><b>Solved by:</b> {c.resolvedByName}</span>}
                       {c.resolvedAt && <span><b>Solved on:</b> {dateLabel(c.resolvedAt)}</span>}
                     </div>
-                    {c.locationText && <p className="complaint-location"><MapPin size={14}/>{c.locationText} {Number.isFinite(c.latitude) && Number.isFinite(c.longitude) && <a href={'https://www.google.com/maps?q=' + c.latitude + ',' + c.longitude} target="_blank" rel="noreferrer">Open map</a>}</p>}
+                    {c.locationText && <p className="complaint-location"><MapPin size={14}/>{c.locationText} <a href={Number.isFinite(c.latitude) && Number.isFinite(c.longitude) ? 'https://www.google.com/maps?q=' + c.latitude + ',' + c.longitude : 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(c.locationText)} target="_blank" rel="noreferrer">Open map</a></p>}
                     <div className="complaint-controls">
                       <label><small>Status</small>{canUpdate ? <select value={c.status} onChange={e => {
                         const status = e.target.value;
