@@ -437,7 +437,7 @@ async function requestSubscriptions<T = any>(path: string, method: string, paylo
       if (overlaps) throw new Error('This renewal overlaps an existing active subscription. Check the current expiry date first.');
       transaction.set(subscriptionRef, record);
       const currentDueDate = String(latestCustomer.data().dueDate || '');
-      const customerPatch: Record<string, unknown> = { plan, monthlyFee: amount, updatedAt: createdAt };
+      const customerPatch: Record<string, unknown> = { plan, monthlyFee: amount, updatedAt: createdAt, lastSubscriptionId: subscriptionRef.id };
       if (!currentDueDate || endDate >= currentDueDate) customerPatch.dueDate = endDate;
       transaction.update(customerRef, customerPatch);
       if (paymentRef) transaction.set(paymentRef, {
