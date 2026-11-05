@@ -301,9 +301,10 @@ service cloud.firestore {
         && request.resource.data.accuracy is number
         && request.resource.data.capturedAt is string
         && request.resource.data.attendanceId is string
-        && get(/databases/$(database)/documents/attendance/$(request.resource.data.attendanceId)).data.userId == request.auth.uid
-        && get(/databases/$(database)/documents/attendance/$(request.resource.data.attendanceId)).data.checkOutAt == null
-        && get(/databases/$(database)/documents/attendance/$(request.resource.data.attendanceId)).data.gpsRestartRequired != true;
+        && getAfter(/databases/$(database)/documents/attendance/$(request.resource.data.attendanceId)).data.userId == request.auth.uid
+        && (!getAfter(/databases/$(database)/documents/attendance/$(request.resource.data.attendanceId)).data.keys().hasAny(['checkOutAt'])
+          || getAfter(/databases/$(database)/documents/attendance/$(request.resource.data.attendanceId)).data.checkOutAt == null)
+        && getAfter(/databases/$(database)/documents/attendance/$(request.resource.data.attendanceId)).data.gpsRestartRequired != true;
       allow update, delete: if false;
     }
 
