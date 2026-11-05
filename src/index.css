@@ -1757,6 +1757,12 @@ html, body, #root {
 .staff-calendar-chevron{margin-left:auto;font-size:20px;color:var(--muted,#718096);transition:transform .18s ease}
 .staff-calendar-accordion[open] .staff-calendar-chevron{transform:rotate(180deg)}
 .staff-calendar-accordion .attendance-calendar-card{margin-top:10px}
+.staff-calendar-profile{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:10px 0}
+.staff-calendar-profile>span{display:grid;gap:4px;min-width:0;padding:10px;border:1px solid var(--line,#e5eaf1);border-radius:10px;background:var(--surface-soft,#f7f9fc)}
+.staff-calendar-profile small{font-size:9px;color:var(--muted,#718096);font-weight:700}
+.staff-calendar-profile b{font-size:12px;color:var(--text,#24344b);overflow-wrap:anywhere}
+[data-theme="dark"] .staff-calendar-profile>span{background:#162235;border-color:#35455d}
+[data-theme="dark"] .staff-calendar-profile b{color:#e5ebf4}
 [data-theme="dark"] .staff-calendar-accordion{background:#111e2e;border-color:#2d3c52}
 [data-theme="dark"] .staff-calendar-accordion>summary b{color:#e5ebf4}
 [data-theme="dark"] .calendar-month-picker,[data-theme="dark"] .attendance-month-picker{background:#101b2b;border-color:#35455d;color:#e5ebf4}
