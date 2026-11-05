@@ -1698,3 +1698,78 @@ html, body, #root {
   .content .page-heading h1 { overflow-wrap: anywhere; }
   .content .btn { max-width: 100%; white-space: normal; }
 }
+
+
+/* App-wide mobile dialog, notification and touch refinements */
+:root{--kb-topbar-height:68px}
+.notification-popover{
+  position:fixed;
+  top:calc(var(--kb-topbar-height) + env(safe-area-inset-top,0px) + 6px);
+  right:12px;
+  width:min(360px,calc(100vw - 24px));
+  max-height:min(70dvh,520px);
+  overflow-y:auto;
+  overscroll-behavior:contain;
+  z-index:300;
+}
+.modal-backdrop{
+  padding:max(12px,env(safe-area-inset-top,0px)) 12px max(12px,env(safe-area-inset-bottom,0px));
+  overscroll-behavior:contain;
+}
+.modal{
+  max-height:calc(100dvh - max(24px,env(safe-area-inset-top,0px) + env(safe-area-inset-bottom,0px) + 24px));
+  overflow-y:auto;
+  overscroll-behavior:contain;
+  -webkit-overflow-scrolling:touch;
+}
+.calendar-month-picker,.attendance-month-picker{
+  min-height:34px;
+  max-width:100%;
+  padding:0 7px;
+  border:1px solid var(--line,#dce3ec);
+  border-radius:8px;
+  background:var(--surface,#fff);
+  color:var(--text,#24344b);
+  font:inherit;
+  font-size:11px;
+  font-weight:700;
+}
+.attendance-month-picker{width:132px}
+.staff-calendar-accordion{
+  min-width:0;
+  padding:10px;
+  border:1px solid var(--line,#e5eaf1);
+  border-radius:14px;
+  background:var(--panel,#fff);
+}
+.staff-calendar-accordion>summary{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  min-height:44px;
+  list-style:none;
+  cursor:pointer;
+}
+.staff-calendar-accordion>summary::-webkit-details-marker{display:none}
+.staff-calendar-accordion>summary>span:nth-child(2){display:grid;gap:3px;min-width:0}
+.staff-calendar-accordion>summary b{font-size:12px;color:var(--text,#24344b)}
+.staff-calendar-accordion>summary small{font-size:10px;color:var(--muted,#718096)}
+.staff-calendar-chevron{margin-left:auto;font-size:20px;color:var(--muted,#718096);transition:transform .18s ease}
+.staff-calendar-accordion[open] .staff-calendar-chevron{transform:rotate(180deg)}
+.staff-calendar-accordion .attendance-calendar-card{margin-top:10px}
+[data-theme="dark"] .staff-calendar-accordion{background:#111e2e;border-color:#2d3c52}
+[data-theme="dark"] .staff-calendar-accordion>summary b{color:#e5ebf4}
+[data-theme="dark"] .calendar-month-picker,[data-theme="dark"] .attendance-month-picker{background:#101b2b;border-color:#35455d;color:#e5ebf4}
+button,a,input,select,textarea{-webkit-tap-highlight-color:transparent}
+button:focus:not(:focus-visible),a:focus:not(:focus-visible){outline:none;box-shadow:none}
+button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid #d98a39;outline-offset:2px}
+@media(max-width:700px){
+  :root{--kb-topbar-height:58px}
+  .notification-popover{right:12px;width:calc(100vw - 24px);max-height:min(68dvh,480px)}
+  .modal-backdrop{place-items:start center}
+  .modal{width:100%;max-height:calc(100dvh - 24px);margin:auto 0;padding:18px}
+  .calendar-controls{width:100%;justify-content:flex-end;flex-wrap:wrap}
+  .calendar-month-picker{flex:1;min-width:130px}
+  .attendance-month-picker{width:116px}
+  .staff-calendar-accordion{padding:8px}
+}
