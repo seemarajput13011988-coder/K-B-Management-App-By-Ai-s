@@ -1,22 +1,11 @@
 name: K&B Render backend checks
 on:
   push:
-    branches:
-      - render-backend-migration
-    paths:
-      - "render-backend/**"
-      - "src/**"
-      - "package.json"
-      - "package-lock.json"
-      - ".github/workflows/render-backend-check.yml"
+    branches: [render-backend-migration]
+    paths: ["render-backend/**", "src/**", "package.json", "package-lock.json", ".github/workflows/render-backend-check.yml"]
   pull_request:
-    branches:
-      - main
-    paths:
-      - "render-backend/**"
-      - "src/**"
-      - "package.json"
-      - "package-lock.json"
+    branches: [main]
+    paths: ["render-backend/**", "src/**", "package.json", "package-lock.json"]
 jobs:
   backend:
     runs-on: ubuntu-latest
