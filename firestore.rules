@@ -91,7 +91,18 @@ service cloud.firestore {
           && resource.data.assignedTo == request.auth.uid
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
             'phone', 'address', 'notes', 'updatedAt'
-          ]));
+          ]))
+        || (hasActiveProfile()
+          && resource.data.assignedTo == request.auth.uid
+          && request.resource.data.lastSubscriptionId is string
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'plan', 'monthlyFee', 'dueDate', 'updatedAt', 'lastSubscriptionId'
+          ])
+          && getAfter(/databases/$(database)/documents/subscriptions/$(request.resource.data.lastSubscriptionId)).data.customerId == customerId
+          && getAfter(/databases/$(database)/documents/subscriptions/$(request.resource.data.lastSubscriptionId)).data.createdBy == request.auth.uid
+          && getAfter(/databases/$(database)/documents/subscriptions/$(request.resource.data.lastSubscriptionId)).data.plan == request.resource.data.plan
+          && getAfter(/databases/$(database)/documents/subscriptions/$(request.resource.data.lastSubscriptionId)).data.amount == request.resource.data.monthlyFee
+          && getAfter(/databases/$(database)/documents/subscriptions/$(request.resource.data.lastSubscriptionId)).data.endDate == request.resource.data.dueDate);
       allow delete: if isAdmin();
     }
 
