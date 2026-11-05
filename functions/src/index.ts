@@ -924,26 +924,55 @@ export const api = onRequest(
         if (!allow(user, ['admin'], res)) return;
         const staffId = clean(body.userId, 128), member = await staffFor(staffId);
         if (!member || member.role !== 'staff' || member.active !== true) { send(res, 400, { error: 'Choose an active staff member.' }); return; }
-        const workDate = indiaDate(), items = await list('attendance');
-        const existing = items.find(item => item.userId === staffId && item.workDate === workDate);
+        const workDate = indiaDate();
+        const todaysAttendance = db.collection('attendance').where('workDate', '==', workDate).limit(1000);
         if (path.endsWith('admin-start')) {
-          if (existing && !existing.gpsRestartRequired) { send(res, 409, { error: 'Attendance is already recorded for this staff member today.' }); return; }
-          if (existing && existing.gpsRestartRequired) {
-            const resumedAt = now();
-            await db.collection('attendance').doc(existing.id).update({ checkInAt: resumedAt, checkOutAt: null, status: 'Checked in', gpsCancelled: false, gpsRestartRequired: false, gpsStatus: 'active', restartedByAdmin: user.displayName, restartedAt: resumedAt, shiftEvents: FieldValue.arrayUnion({ type: 'admin-restart-after-gps-cancel', at: resumedAt, by: user.displayName }) });
-            await audit(user, 'ADMIN_RESTART_GPS_SHIFT', 'attendance', existing.id, 'Restarted GPS-cancelled shift for ' + member.displayName);
-            send(res, 200, { id: existing.id, restarted: true }); return;
-          }
           const dayType = body.dayType === 'Half day' ? 'Half day' : 'Full day';
-          const record = { userId: staffId, displayName: member.displayName, workDate, checkInAt: now(), status: 'Checked in', dayType, startedByAdmin: user.displayName, attendanceSource: 'Admin', gpsStatus: 'active' };
-          const ref = await db.collection('attendance').add(record);
-          await audit(user, 'ADMIN_START', 'attendance', ref.id, 'Started shift for ' + member.displayName);
-          send(res, 201, { id: ref.id, ...record }); return;
+          const startedAt = now();
+          const newRecord = { userId: staffId, displayName: member.displayName, workDate, checkInAt: startedAt, status: 'Checked in', dayType, startedByAdmin: user.displayName, attendanceSource: 'Admin', gpsStatus: 'active' };
+          const deterministicRef = db.collection('attendance').doc('att-' + createHash('sha256').update(staffId + '|' + workDate).digest('hex'));
+          const outcome = await db.runTransaction(async transaction => {
+            const records = await transaction.get(todaysAttendance);
+            const existingDoc = records.docs.find(document => document.data().userId === staffId);
+            if (existingDoc) {
+              const current = existingDoc.data();
+              if (!current.gpsRestartRequired) return { status: 'exists' as const, id: existingDoc.id };
+              transaction.update(existingDoc.ref, {
+                checkInAt: startedAt,
+                checkOutAt: null,
+                status: 'Checked in',
+                gpsCancelled: false,
+                gpsRestartRequired: false,
+                gpsStatus: 'active',
+                restartedByAdmin: user.displayName,
+                restartedAt: startedAt,
+                shiftEvents: FieldValue.arrayUnion({ type: 'admin-restart-after-gps-cancel', at: startedAt, by: user.displayName })
+              });
+              return { status: 'restarted' as const, id: existingDoc.id };
+            }
+            transaction.create(deterministicRef, newRecord);
+            return { status: 'created' as const, id: deterministicRef.id };
+          });
+          if (outcome.status === 'exists') { send(res, 409, { error: 'Attendance is already recorded for this staff member today.' }); return; }
+          if (outcome.status === 'restarted') {
+            await audit(user, 'ADMIN_RESTART_GPS_SHIFT', 'attendance', outcome.id, 'Restarted GPS-cancelled shift for ' + member.displayName);
+            send(res, 200, { id: outcome.id, restarted: true }); return;
+          }
+          await audit(user, 'ADMIN_START', 'attendance', outcome.id, 'Started shift for ' + member.displayName);
+          send(res, 201, { id: outcome.id, ...newRecord }); return;
         }
-        if (!existing) { send(res, 400, { error: 'Start this staff member’s shift before ending it.' }); return; }
-        if (existing.checkOutAt) { send(res, 409, { error: 'This staff member has already ended today’s shift.' }); return; }
-        await db.collection('attendance').doc(existing.id).update({ checkOutAt: now(), status: 'Completed', endedByAdmin: user.displayName });
-        await audit(user, 'ADMIN_END', 'attendance', existing.id, 'Ended shift for ' + member.displayName);
+        const records = await todaysAttendance.get();
+        const existingDoc = records.docs.find(document => document.data().userId === staffId);
+        if (!existingDoc) { send(res, 400, { error: 'Start this staff member’s shift before ending it.' }); return; }
+        const endedAt = now();
+        const ended = await db.runTransaction(async transaction => {
+          const current = await transaction.get(existingDoc.ref);
+          if (!current.exists || current.data()?.checkOutAt) return false;
+          transaction.update(existingDoc.ref, { checkOutAt: endedAt, status: 'Completed', endedByAdmin: user.displayName });
+          return true;
+        });
+        if (!ended) { send(res, 409, { error: 'This staff member has already ended today’s shift.' }); return; }
+        await audit(user, 'ADMIN_END', 'attendance', existingDoc.id, 'Ended shift for ' + member.displayName);
         send(res, 200, { updated: true }); return;
       }
       if (path === '/api/attendance/gps-lost' && method === 'POST') {
