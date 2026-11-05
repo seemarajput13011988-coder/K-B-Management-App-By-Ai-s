@@ -49,11 +49,10 @@ jobs:
     steps:
       - name: Wake API and request background check
         env:
-          K_B_RENDER_API_URL: ${{ secrets.K_B_RENDER_API_URL }}
           K_B_JOB_SECRET: ${{ secrets.K_B_JOB_SECRET }}
         run: |
-          if [ -z "$K_B_RENDER_API_URL" ] || [ -z "$K_B_JOB_SECRET" ]; then
-            echo "::warning::Set K_B_RENDER_API_URL and K_B_JOB_SECRET to enable the five-minute wake-up check."
+          if [ -z "$K_B_JOB_SECRET" ]; then
+            echo "::warning::Set K_B_JOB_SECRET to enable the five-minute wake-up check."
             exit 0
           fi
-          curl --fail --silent --show-error --max-time 55 -X POST "$K_B_RENDER_API_URL/internal/jobs/tick" -H "x-kb-job-secret: $K_B_JOB_SECRET"
+          curl --fail --silent --show-error --max-time 55 -X POST "https://kandb-management-nexus-api-zv7f.onrender.com/internal/jobs/tick" -H "x-kb-job-secret: $K_B_JOB_SECRET"
