@@ -8,7 +8,7 @@ import { api as client, nativeApiPost } from './lib/api';
 const BackgroundGeolocation = registerPlugin<BackgroundGeolocationPlugin>('BackgroundGeolocation');
 
 type Session = { token: string; user: { id: string; displayName: string; role: 'admin' | 'staff'; isSuperAdmin?: boolean } };
-type Attendance = { id: string; userId: string; displayName: string; workDate: string; checkInAt: string; checkOutAt?: string; dayType?: 'Full day' | 'Half day'; correctionReason?: string; gpsRestartRequired?: boolean; gpsCancelled?: boolean; status?: string };
+type Attendance = { id: string; userId: string; displayName: string; workDate: string; checkInAt: string; checkOutAt?: string; dayType?: 'Full day' | 'Half day' | 'Absent'; correctionReason?: string; gpsRestartRequired?: boolean; gpsCancelled?: boolean; status?: string };
 type HolidayRequest = { id: string; userId: string; displayName: string; startDate: string; endDate: string; reason: string; status: 'pending'|'approved'|'rejected'; createdAt: string };
 type StaffRegistrationRequest = { id: string; userId: string; displayName: string; phone?: string; reason?: string; status: 'pending'|'approved'|'rejected'; createdAt: string };
 type Visit = { id: string; customerName: string; purpose: string; notes: string; visitedAt: string; staffName: string };
@@ -38,14 +38,14 @@ function AttendanceCalendar({ staffId, staffName, records, holidays }: { staffId
   const statusFor = (day: number) => {
     const date = dateKey(day), weekday = new Date(year, monthIndex, day).getDay(), record = recordsByDate.get(date);
     if (holidayOn(date)) return 'holiday';
-    if (record) return record.gpsCancelled || String(record.status || '').toLowerCase().includes('cancelled') ? 'absent' : record.dayType === 'Half day' ? 'half' : 'full';
+    if (record) return record.dayType === 'Absent' || record.gpsCancelled || String(record.status || '').toLowerCase().includes('absent') || String(record.status || '').toLowerCase().includes('cancelled') ? 'absent' : record.dayType === 'Half day' ? 'half' : 'full';
     if (weekday === 0) return 'off';
     if (date < today) return 'absent';
     return date === today ? 'today' : 'future';
   };
   const label = month.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
   return <div className="attendance-calendar-card">
-    <div className="attendance-calendar-head"><div><b>{staffName}</b><small>Attendance calendar</small></div><div className="attendance-calendar-nav"><button type="button" aria-label="Previous month" onClick={() => setMonth(new Date(year, monthIndex - 1, 1))}>‹</button><strong>{label}</strong><button type="button" aria-label="Next month" onClick={() => setMonth(new Date(year, monthIndex + 1, 1))}>›</button></div></div>
+    <div className="attendance-calendar-head"><div><b>{staffName}</b><small>Attendance calendar</small></div><div className="attendance-calendar-nav"><button type="button" aria-label="Previous month" onClick={() => setMonth(new Date(year, monthIndex - 1, 1))}>‹</button><input className="attendance-month-picker" type="month" aria-label={'Choose month for ' + staffName} value={year + '-' + String(monthIndex + 1).padStart(2,'0')} onChange={event=>{if(!event.target.value)return;const [nextYear,nextMonth]=event.target.value.split('-').map(Number);setMonth(new Date(nextYear,nextMonth-1,1));}}/><button type="button" aria-label="Next month" onClick={() => setMonth(new Date(year, monthIndex + 1, 1))}>›</button></div></div>
     <div className="attendance-calendar-grid">{['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(day => <span className="attendance-calendar-weekday" key={day}>{day}</span>)}
       {Array.from({length:mondayOffset},(_,i)=><span className="attendance-calendar-blank" key={'blank-'+i}/>)}
       {Array.from({length:daysInMonth},(_,i)=>{const day=i+1,status=statusFor(day);return <span key={day} className={'attendance-calendar-day '+status} title={dateKey(day)+' · '+status.replace('-',' ')}>{day}</span>;})}
@@ -54,7 +54,7 @@ function AttendanceCalendar({ staffId, staffName, records, holidays }: { staffId
   </div>;
 }
 
-export default function StaffOperations({ session, customers, flash, compact = false }: { session: Session; customers: Array<{ id: string; name: string }>; flash: (message: string) => void; compact?: boolean }) {
+export default function StaffOperations({ session, customers, flash, compact = false, onDataChanged }: { session: Session; customers: Array<{ id: string; name: string }>; flash: (message: string) => void; compact?: boolean; onDataChanged?: () => void }) {
   const admin = session.user.role === 'admin';
   const superAdmin = admin && session.user.isSuperAdmin === true;
   const [attendance, setAttendance] = useState<Attendance[]>([]);
@@ -70,7 +70,8 @@ export default function StaffOperations({ session, customers, flash, compact = f
   const [registrationRequests, setRegistrationRequests] = useState<StaffRegistrationRequest[]>([]);
   const [registrationPasswords, setRegistrationPasswords] = useState<Record<string,string>>({});
   const [dayType, setDayType] = useState<'Full day'|'Half day'>('Full day');
-  const [attendanceCorrection, setAttendanceCorrection] = useState<{id:string;dayType:'Full day'|'Half day';reason:string}|null>(null);
+  const [staffDayTypes, setStaffDayTypes] = useState<Record<string, 'Full day'|'Half day'|'Absent'>>({});
+  const [attendanceCorrection, setAttendanceCorrection] = useState<{id:string;dayType:'Full day'|'Half day'|'Absent';reason:string}|null>(null);
   const [staff, setStaff] = useState<Array<{ id: string; displayName: string; active: boolean }>>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [groups, setGroups] = useState<ChatGroup[]>([]);
@@ -419,6 +420,7 @@ export default function StaffOperations({ session, customers, flash, compact = f
         setGpsConsentShiftId(null);
       }
       await refresh();
+      onDataChanged?.();
       flash(action === 'check-in' ? 'You are checked in for today.' : 'Your shift has been checked out.');
     } catch (err) {
       flash(err instanceof Error ? err.message : 'Attendance update failed.');
@@ -436,14 +438,28 @@ export default function StaffOperations({ session, customers, flash, compact = f
     } finally { setBusy(false); }
   }
 
-  async function adminShift(userId: string, action: 'admin-start' | 'admin-end') {
+  async function adminShift(userId: string, action: 'admin-start' | 'admin-end', requestedDayType: 'Full day'|'Half day' = 'Full day') {
     setBusy(true);
     try {
-      await request('post', '/api/attendance/' + action, { userId, dayType });
+      await request('post', '/api/attendance/' + action, { userId, dayType: requestedDayType });
       await refresh();
+      onDataChanged?.();
       flash(action === 'admin-start' ? 'Staff shift started or restarted by administrator.' : 'Staff shift ended by administrator.');
     } catch (err) {
       flash(err instanceof Error ? err.message : 'Could not update staff attendance.');
+    } finally { setBusy(false); }
+  }
+
+  async function adminAbsent(userId: string) {
+    if (!window.confirm('Mark this staff member absent for today?')) return;
+    setBusy(true);
+    try {
+      await request('post', '/api/attendance/admin-absent', { userId, reason: 'Marked absent by administrator' });
+      await refresh();
+      onDataChanged?.();
+      flash('Staff member marked absent for today.');
+    } catch (err) {
+      flash(err instanceof Error ? err.message : 'Could not mark staff member absent.');
     } finally { setBusy(false); }
   }
 
@@ -478,7 +494,7 @@ export default function StaffOperations({ session, customers, flash, compact = f
   }
   async function correctAttendance(event:FormEvent) {
     event.preventDefault(); if(!attendanceCorrection?.reason.trim())return; setBusy(true);
-    try{await request('put','/api/attendance/'+attendanceCorrection.id+'/day-type',{dayType:attendanceCorrection.dayType,reason:attendanceCorrection.reason});setAttendanceCorrection(null);await refresh();flash('Attendance corrected and audit logged.');}
+    try{await request('put','/api/attendance/'+attendanceCorrection.id+'/day-type',{dayType:attendanceCorrection.dayType,reason:attendanceCorrection.reason});setAttendanceCorrection(null);await refresh();onDataChanged?.();flash('Attendance corrected and audit logged.');}
     catch(err){flash(err instanceof Error?err.message:'Could not correct attendance.');}
     finally{setBusy(false);}
   }
@@ -569,7 +585,7 @@ export default function StaffOperations({ session, customers, flash, compact = f
         const memberPayments = payments.filter(payment => payment.recordedBy === member.id);
         const memberTotal = memberPayments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
         const memberMonth = memberPayments.filter(payment => String(payment.paidAt || '').slice(0, 7) === monthKey).reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
-        const memberDays = attendance.filter(item => item.userId === member.id).reduce((sum,item) => sum + (item.dayType === 'Half day' ? 0.5 : 1), 0);
+        const memberDays = attendance.filter(item => item.userId === member.id && item.dayType !== 'Absent' && String(item.status || '').toLowerCase() !== 'absent').reduce((sum,item) => sum + (item.dayType === 'Half day' ? 0.5 : 1), 0);
         const memberShift = attendance.find(item => item.userId === member.id && item.workDate === today);
         return <tr key={member.id}><td><b>{member.displayName}</b></td><td>{memberPayments.length}</td><td className="amount">₹{memberTotal.toLocaleString('en-IN')}</td><td className="amount">₹{memberMonth.toLocaleString('en-IN')}</td><td>{memberDays}</td><td>{memberShift?.checkOutAt ? 'Completed' : memberShift ? 'On shift' : 'Not started'}</td></tr>;
       })}{!staff.length && <tr><td colSpan={6}>No staff records available yet.</td></tr>}</tbody></table></div>
@@ -577,7 +593,7 @@ export default function StaffOperations({ session, customers, flash, compact = f
 
     {admin && <section className="panel ops-panel">
       <div className="ops-panel-head"><div><span className="eyebrow">TEAM ATTENDANCE</span><h2>Individual staff calendars</h2><p>Green is full day, yellow is half day, red is absent. Sundays are weekly off by default; pending and approved holidays are marked separately.</p></div></div>
-      <div className="attendance-calendar-list">{staff.map(member=><AttendanceCalendar key={member.id} staffId={member.id} staffName={member.displayName} records={attendance} holidays={holidays}/>)}</div>
+      <div className="attendance-calendar-list">{staff.map(member=><details className="staff-calendar-accordion" key={member.id}><summary><span className="avatar">{member.displayName.slice(0,2).toUpperCase()}</span><span><b>{member.displayName}</b><small>{attendance.filter(item=>item.userId===member.id).length} attendance records · Tap to view calendar</small></span><span className="staff-calendar-chevron">⌄</span></summary><AttendanceCalendar staffId={member.id} staffName={member.displayName} records={attendance} holidays={holidays}/></details>)}</div>
       {!staff.length && <p className="ops-empty">Staff calendars will appear after staff accounts are added.</p>}
     </section>}
 
@@ -603,13 +619,14 @@ export default function StaffOperations({ session, customers, flash, compact = f
     </section>}
 
     {admin && <section className="panel ops-panel">
-      <div className="ops-panel-head"><div><span className="eyebrow">TEAM VISIBILITY · LIVE</span><h2>Live staff locations</h2><p>Staff locations refresh every 15 seconds. Select a staff member below and open their latest reported GPS point in Google Maps. Location is available only when the staff member has shared it during a shift.</p></div><label className="ops-day-type">New shift type <select value={dayType} onChange={e=>setDayType(e.target.value as 'Full day'|'Half day')}><option>Full day</option><option>Half day</option></select></label><button className="btn secondary compact" onClick={refresh}>Refresh now</button></div>
+      <div className="ops-panel-head"><div><span className="eyebrow">TEAM VISIBILITY · LIVE</span><h2>Live staff locations</h2><p>Staff locations refresh every 15 seconds. Select a staff member below and open their latest reported GPS point in Google Maps. Location is available only when the staff member has shared it during a shift.</p></div><button className="btn secondary compact" onClick={refresh}>Refresh now</button></div>
       <div className="ops-location-list">{staff.map(member => {
         const loc = locations.find(item => item.userId === member.id);
         const shiftRecord = sortedAttendance.find(item => item.userId === member.id && item.workDate === today);
         const locationAge = loc ? Date.now() - new Date(loc.capturedAt).getTime() : Number.POSITIVE_INFINITY;
         const locationStatus = locationAge < 90000 ? 'Live · Updated ' : 'Last known · Updated ';
-        return <article className="ops-location-card" key={member.id}><div className="ops-person"><span className="avatar">{member.displayName.slice(0, 2).toUpperCase()}</span><div><b>{member.displayName}</b><small>{shiftRecord?.checkOutAt ? 'Checked out ' + stamp(shiftRecord.checkOutAt) : shiftRecord ? 'Checked in ' + stamp(shiftRecord.checkInAt) : 'No attendance today'}</small></div></div><div className="ops-location-detail">{loc ? <><span>{locationStatus}{stamp(loc.capturedAt)}</span><small>Accuracy approx. {Math.round(loc.accuracy)} m</small><a className="btn secondary compact" href={'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(loc.latitude + ',' + loc.longitude)} target="_blank" rel="noreferrer">View location in Google Maps ↗</a></> : <span>No location shared during this shift yet</span>}{!shiftRecord ? <button className="btn primary compact" disabled={busy || !member.active} onClick={() => adminShift(member.id, 'admin-start')}>Start shift</button> : shiftRecord.gpsRestartRequired ? <button className="btn primary compact" disabled={busy || !member.active} onClick={() => adminShift(member.id, 'admin-start')}>Admin restart required</button> : shiftRecord.checkOutAt ? <span className="ops-complete">Shift completed</span> : <button className="btn danger compact" disabled={busy} onClick={() => adminShift(member.id, 'admin-end')}>End shift</button>}</div></article>;
+        const selectedType = staffDayTypes[member.id] || 'Full day';
+        return <article className="ops-location-card" key={member.id}><div className="ops-person"><span className="avatar">{member.displayName.slice(0, 2).toUpperCase()}</span><div><b>{member.displayName}</b><small>{shiftRecord?.checkOutAt ? 'Checked out ' + stamp(shiftRecord.checkOutAt) : shiftRecord ? 'Checked in ' + stamp(shiftRecord.checkInAt) : 'No attendance today'}</small></div></div><div className="ops-location-detail">{loc ? <><span>{locationStatus}{stamp(loc.capturedAt)}</span><small>Accuracy approx. {Math.round(loc.accuracy)} m</small><a className="btn secondary compact" href={'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(loc.latitude + ',' + loc.longitude)} target="_blank" rel="noreferrer">View location in Google Maps ↗</a></> : <span>No location shared during this shift yet</span>}{!shiftRecord && <label className="ops-day-type">Attendance type <select value={selectedType} onChange={e=>setStaffDayTypes(current=>({...current,[member.id]:e.target.value as 'Full day'|'Half day'|'Absent'}))}><option>Full day</option><option>Half day</option><option>Absent</option></select></label>}{!shiftRecord ? selectedType === 'Absent' ? <button className="btn danger compact" disabled={busy || !member.active} onClick={() => adminAbsent(member.id)}>Mark absent</button> : <button className="btn primary compact" disabled={busy || !member.active} onClick={() => adminShift(member.id, 'admin-start', selectedType)}>Start shift</button> : shiftRecord.gpsRestartRequired ? <button className="btn primary compact" disabled={busy || !member.active} onClick={() => adminShift(member.id, 'admin-start', selectedType === 'Absent' ? 'Full day' : selectedType)}>Admin restart required</button> : shiftRecord.checkOutAt ? <span className="ops-complete">Shift completed</span> : <button className="btn danger compact" disabled={busy} onClick={() => adminShift(member.id, 'admin-end')}>End shift</button>}</div></article>;
       })}{!staff.length && <p className="ops-empty">Staff accounts will appear here after they are created.</p>}</div>
     </section>}
 
@@ -660,7 +677,7 @@ export default function StaffOperations({ session, customers, flash, compact = f
       <div className="ops-feed">{sortedVisits.map(item => <article className="ops-feed-item" key={item.id}><div className="ops-message-top"><b>{item.customerName}</b><small>{stamp(item.visitedAt)}</small></div><p>{item.purpose}</p>{item.notes && <p>{item.notes}</p>}{admin && <small>Staff: {item.staffName}</small>}</article>)}{!visits.length && <p className="ops-empty">No field visits recorded yet.</p>}</div>
     </section>
 
-    {admin && attendanceCorrection && <section className="panel ops-panel"><div className="ops-panel-head"><div><span className="eyebrow">ATTENDANCE CORRECTION</span><h2>Correct day type</h2><p>Changes are recorded in the audit log.</p></div><button className="btn secondary compact" onClick={()=>setAttendanceCorrection(null)}>Cancel</button></div><form className="ops-form" onSubmit={correctAttendance}><select value={attendanceCorrection.dayType} onChange={e=>setAttendanceCorrection({...attendanceCorrection,dayType:e.target.value as 'Full day'|'Half day'})}><option>Full day</option><option>Half day</option></select><textarea required maxLength={300} rows={2} placeholder="Reason for correction" value={attendanceCorrection.reason} onChange={e=>setAttendanceCorrection({...attendanceCorrection,reason:e.target.value})}/><button className="btn primary" disabled={busy}>Save correction</button></form></section>}
+    {admin && attendanceCorrection && <section className="panel ops-panel"><div className="ops-panel-head"><div><span className="eyebrow">ATTENDANCE CORRECTION</span><h2>Correct day type</h2><p>Changes are recorded in the audit log.</p></div><button className="btn secondary compact" onClick={()=>setAttendanceCorrection(null)}>Cancel</button></div><form className="ops-form" onSubmit={correctAttendance}><select value={attendanceCorrection.dayType} onChange={e=>setAttendanceCorrection({...attendanceCorrection,dayType:e.target.value as 'Full day'|'Half day'|'Absent'})}><option>Full day</option><option>Half day</option><option>Absent</option></select><textarea required maxLength={300} rows={2} placeholder="Reason for correction" value={attendanceCorrection.reason} onChange={e=>setAttendanceCorrection({...attendanceCorrection,reason:e.target.value})}/><button className="btn primary" disabled={busy}>Save correction</button></form></section>}
     {!admin && <section className="panel ops-panel">
       <div className="ops-panel-head"><div><span className="eyebrow">MY ATTENDANCE</span><h2>My attendance calendar</h2><p>Green is full day, yellow is half day, red is absent. Sundays are weekly off by default.</p></div></div>
       <AttendanceCalendar staffId={session.user.id} staffName={session.user.displayName} records={attendance} holidays={holidays}/>
