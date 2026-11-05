@@ -407,7 +407,7 @@ export const handler = router({
       assignedTo,
       assignedToName,
     };
-    if (!record.name || !record.phone || !record.address || !record.plan || !validMoney(record.monthlyFee)) {
+    if (!record.name || !/^\d{10}$/.test(record.phone) || !record.address || !record.plan || !validMoney(record.monthlyFee)) {
       return error('Please provide a valid name, phone, address, plan and monthly fee.', 400);
     }
     const [id] = await db.add('customers', [record as unknown as Record<string, unknown>]);
@@ -425,6 +425,7 @@ export const handler = router({
         address: cleanText(input.address, 300),
         notes: cleanText(input.notes, 500),
       };
+      if (!/^\d{10}$/.test(limited.phone)) return error('Enter a 10-digit mobile number using numbers only.', 400);
       const [updated] = await db.tx.update('customers', [{ id: params.id, record: limited }], { patch: true });
       return updated ? json({ updated: true }) : error('Could not update customer.', 500);
     }
@@ -448,7 +449,7 @@ export const handler = router({
       assignedTo,
       assignedToName,
     };
-    if (!record.name || !record.phone || !record.address || !record.plan || !validMoney(record.monthlyFee)) {
+    if (!record.name || !/^\d{10}$/.test(record.phone) || !record.address || !record.plan || !validMoney(record.monthlyFee)) {
       return error('Invalid customer details.', 400);
     }
     const [updated] = await db.update('customers', [{ id: params.id, record: record as unknown as Record<string, unknown> }]);
