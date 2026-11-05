@@ -11,6 +11,8 @@ on:
       - "netlify/**"
       - "netlify.toml"
       - "functions/src/http-api.ts"
+      - "functions/src/admin.ts"
+      - "functions/src/route-path.ts"
       - "package.json"
       - "package-lock.json"
       - "vite.config.ts"
@@ -46,3 +48,4 @@ jobs:
         run: |
           npx tsc --noEmit
           npm run build
+          npx esbuild netlify/functions/api.ts netlify/functions/gps-grace-period.ts netlify/functions/daily-reminders.ts --bundle --platform=node --format=esm --outdir=/tmp/netlify-function-check --packages=external
