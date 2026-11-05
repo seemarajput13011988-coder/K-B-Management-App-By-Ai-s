@@ -120,7 +120,7 @@ export default function InvoiceWorkspace({customers,plans,flash}:{customers:Cust
       doc.text(detailLines,right-65,cardY+12);
       y=cardY+41;
       const tableHeaders=['#','SERVICE / DETAILS','QTY','RATE','TAXABLE','GST','TAX','TOTAL'];
-      const colWidths=[8,64,12,22,22,14,20,24];
+      const colWidths=[8,62,12,22,22,14,20,24];
       const drawTableRow=(cells:string[],header=false)=>{
         const wrapped=cells.map((value,index)=>doc.splitTextToSize(value,Math.max(5,colWidths[index]-3)).slice(0,6));
         const height=Math.max(8,...wrapped.map(lines=>lines.length*3.6+4));
@@ -137,7 +137,7 @@ export default function InvoiceWorkspace({customers,plans,flash}:{customers:Cust
       drawTableRow(tableHeaders,true);
       const lineRows=items.map((item,index)=>{
         const qty=Math.max(0,Number(item.quantity)||0),rate=Math.max(0,Number(item.rate)||0),disc=Math.min(100,Math.max(0,Number(item.discount)||0)),gst=Math.max(0,Number(item.gstRate)||0);
-        const gross=qty*rate,discount=gross*disc/100,after=gross-discount,taxable=item.taxMode==='inclusive'?after/(1+gst/100):after,tax=after-taxable,total=after+(item.taxMode==='exclusive'?tax:0);
+        const gross=qty*rate,discount=gross*disc/100,after=gross-discount,taxable=item.taxMode==='inclusive'?after/(1+gst/100):after,tax=item.taxMode==='inclusive'?after-taxable:taxable*gst/100,total=after+(item.taxMode==='exclusive'?tax:0);
         return {item,index,qty,rate,taxable,tax,total,gst,discount};
       });
       lineRows.forEach(r=>drawTableRow([String(r.index+1),r.item.description+(r.item.details?'\\n'+r.item.details:'')+(r.item.sac?'\\nSAC: '+r.item.sac:''),String(r.qty),money(r.rate),money(r.taxable),r.gst+'%',money(r.tax),money(r.total)]));
