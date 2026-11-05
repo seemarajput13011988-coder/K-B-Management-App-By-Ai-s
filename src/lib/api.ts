@@ -27,9 +27,17 @@ async function request<T = any>(path: string, method: string, payload?: Record<s
     body = JSON.stringify(safePayload);
   }
   const response = await fetch(url.toString(), { method, headers, body, cache: 'no-store' });
+  const responseText = await response.text();
   let data: any = {};
-  try { data = await response.json(); } catch { data = {}; }
-  if (!response.ok) throw new Error(typeof data.error === 'string' ? data.error : 'The request could not be completed. Please try again.');
+  try { data = responseText ? JSON.parse(responseText) : {}; } catch { data = {}; }
+  if (!response.ok) {
+    if (typeof data.error === 'string' && data.error.trim()) throw new Error(data.error);
+    const contentType = response.headers.get('content-type') || 'unknown content type';
+    throw new Error(`K&B server returned HTTP ${response.status} (${contentType}). The Firebase API may not be deployed at the configured URL.`);
+  }
+  if (responseText && (!data || typeof data !== 'object')) {
+    throw new Error('K&B server returned an unexpected response. Check the Firebase Functions deployment.');
+  }
   return { data };
 }
 export async function nativeApiPost<T = any>(path: string, payload: Record<string, unknown>): Promise<ApiResult<T>> {
@@ -143,7 +151,20 @@ export async function signInAppUser(userId: string, password: string, role: 'adm
     const currentUser = firebaseAuth.currentUser;
     if (!currentUser) throw new Error('Firebase sign-in completed but no authenticated user session was returned. Please sign in again.');
     const token = await currentUser.getIdToken();
-    const profile = await api.get<{ user: { id: string; userId: string; displayName: string; role: 'admin' | 'staff'; active: boolean; isSuperAdmin?: boolean } }>('/api/auth/me');
+    const loadProfile = () => api.get<{ user: { id: string; userId: string; displayName: string; role: 'admin' | 'staff'; active: boolean; isSuperAdmin?: boolean } }>('/api/auth/me');
+    let profile;
+    try {
+      profile = await loadProfile();
+    } catch (profileError) {
+      // A manually created Firebase owner account may not yet have its matching
+      // Firestore profile. Only the fixed primary-owner email can claim that profile,
+      // and the server refuses the claim if another admin profile already exists.
+      if (role !== 'admin' || currentUser.email?.toLowerCase() !== 'brajraj@accounts.kandbnetservice.in') {
+        throw profileError;
+      }
+      await api.post('/api/auth/claim-owner-profile');
+      profile = await loadProfile();
+    }
     return { token, expiresAt: Date.now() + 3600000, user: profile.data.user };
   } catch (error) {
     await signOut(firebaseAuth);
