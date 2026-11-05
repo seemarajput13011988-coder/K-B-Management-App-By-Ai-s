@@ -1,6 +1,6 @@
 # K&B Management Nexus — release blockers and owner setup
 
-The application source and CI build are maintained on the `firebase-migration` branch. A successful build is not a production release. The following items require access to the Firebase / Google Cloud owner account and must not be replaced with guessed credentials.
+The active draft changes and CI build are maintained on `render-backend-migration`; the production branch remains unchanged. A successful build is not a production release. The following items require access to the Firebase / Google Cloud owner account and must not be replaced with guessed credentials.
 
 ## 1. Firebase Android push notifications
 
@@ -19,19 +19,13 @@ Windows PowerShell (run locally in the folder containing the downloaded file):
 [Convert]::ToBase64String([IO.File]::ReadAllBytes(".\google-services.json"))
 ```
 
-Copy the output directly into the GitHub secret form. Do not paste the file or encoded value into a chat, issue, commit, or source file. Rebuild the APK after adding the secret. The workflow currently allows a debug build without this secret, but that APK does not have Android FCM configured.
+Copy the output directly into the GitHub secret form. Do not paste the file or encoded value into a chat, issue, commit, or source file. Rebuild the APK after adding the secret. The current APK workflow requires this secret before it builds so the resulting APK includes Android FCM configuration.
 
-## 2. Google Maps for the admin live staff map
+## 2. Staff GPS in Google Maps — no billing setup
 
-In the Google Cloud project used by K&B:
+Each staff location card has a **View location in Google Maps** button. It opens the selected staff member's latest reported latitude and longitude in Google Maps using a standard Maps URL.
 
-1. Enable Maps JavaScript API and configure billing if Google requires it.
-2. Create a browser API key restricted to Maps JavaScript API.
-3. Restrict application origins to the production Hosting domain and the verified Android Capacitor WebView origin. Do not leave the key unrestricted.
-4. Add a GitHub Actions repository secret named `VITE_GOOGLE_MAPS_API_KEY`.
-5. Rebuild the web app and Android APK after adding the key.
-
-The key is a public browser key embedded in the app bundle. It must be restricted by API and application origin; it is not a private server credential.
+No Maps JavaScript API, API key, Google Cloud billing account, or payment details are required. The app does not embed a paid Google map canvas.
 
 ## 3. Firebase deployment credentials
 
@@ -42,10 +36,9 @@ The manual Functions and Hosting deployment workflows require this GitHub Action
 The value must be the service-account JSON for project `kandb-net-sevice`, with the minimum permissions needed to deploy Firebase Functions and Hosting. The account owner should create and add it directly in GitHub Actions secrets. Never commit it or send it through chat.
 
 Before deploying, the Firebase owner must also confirm:
-- Email/Password sign-in is enabled in Firebase Authentication.
 - Firestore is enabled in the intended production project and the existing data has been backed up.
 - Firebase Functions secrets `ADMIN_BOOTSTRAP_SECRET` and `ADMIN_RECOVERY_CODE` are set in the project.
-- Cloud Scheduler / required Google Cloud APIs and billing are enabled for scheduled GPS grace-period and subscription reminder functions.
+- GitHub Actions scheduled keepalive is enabled from the repository's default branch, and `K_B_JOB_SECRET` matches Render's `JOB_SECRET`. The free Render plan can sleep, so exact real-time job timing is best-effort.
 - The primary admin account and recovery procedure are ready.
 
 Deploy Functions before Hosting so the Hosting `/api/**` rewrite has a deployed API target.
@@ -62,7 +55,7 @@ Before business use, test on the actual Android phones:
 - GPS unavailable through the full grace window.
 - Checkout stops tracking.
 - Push notification received while the app is backgrounded and fully closed.
-- Admin map shows all active staff with accurate timestamps.
+- Each staff member's location card shows its latest timestamp and accuracy, and the Google Maps button opens that staff member's exact reported coordinate.
 
 ## 5. Current code/build state
 
