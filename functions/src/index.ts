@@ -197,7 +197,7 @@ export const api = onRequest(
       send(res, 201, { initialized: true, userId: 'Brajraj' }); return;
     }
 
-    if (method === 'POST' && path === '/api/auth/rec    if (method === 'POST' && path === '/api/auth/recover-admin') {
+    if (method === 'POST' && path === '/api/auth/recover-admin') {
       const input = req.body && typeof req.body === 'object' ? req.body : {};
       const userId = clean(input.userId, 40);
       const recoveryCode = typeof input.recoveryCode === 'string' ? input.recoveryCode : '';
@@ -333,10 +333,7 @@ export const api = onRequest(
         await db.collection('users').doc(accountId).set(record);
         await audit(user, 'CREATE', 'admin', accountId, 'Created administrator account ' + userId);
         const { passwordHash, salt, ...safe } = record;
-        send(res, 201, { user: { id: accountId, ...safe } }); return;        }
-        await db.collection('expenses').doc(id).delete();
-        await audit(user, 'DELETE', 'expense', id, 'Deleted expense: ' + String(item.title || 'Expense'));
-        send(res, 200, { deleted: true }); return;
+        send(res, 201, { user: { id: accountId, ...safe } }); return;
       }
       if (path === '/api/customer-ledger' && method === 'GET') {
         if (!allow(user, ['admin'], res)) return;
