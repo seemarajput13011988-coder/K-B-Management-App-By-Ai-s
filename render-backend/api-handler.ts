@@ -303,15 +303,15 @@ export async function apiHandler(req: any, res: any) {
           createdAt: reviewedAt,
           createdBy: user.uid,
         };
-        const applied = await db.runTransaction(async transaction => {
+        const outcome = await db.runTransaction(async transaction => {
           const [latest, duplicateUsers] = await Promise.all([
             transaction.get(requestRef),
             status === 'approved'
               ? transaction.get(db.collection('users').where('userIdLower', '==', staffUserIdLower).limit(1))
               : Promise.resolve(null),
           ]);
-          if (!latest.exists || latest.data()?.status !== 'pending') return false;
-          if (status === 'approved' && duplicateUsers && !duplicateUsers.empty) return false;
+          if (!latest.exists || latest.data()?.status !== 'pending') return 'not-pending';
+          if (status === 'approved' && duplicateUsers && !duplicateUsers.empty) return 'duplicate';
           if (status === 'approved') transaction.create(staffRef, staffRecord);
           transaction.update(requestRef, {
             status,
@@ -320,9 +320,10 @@ export async function apiHandler(req: any, res: any) {
             reviewedByName: user.displayName,
             ...(status === 'approved' ? { createdUserId: staffRecordId } : {}),
           });
-          return true;
+          return 'applied';
         });
-        if (!applied) { send(res, 409, { error: 'This registration request was already reviewed. Refresh the list.' }); return; }
+        if (outcome === 'duplicate') { send(res, 409, { error: 'This staff ID was registered while the request was being reviewed. Refresh and reject this request.' }); return; }
+        if (outcome !== 'applied') { send(res, 409, { error: 'This registration request was already reviewed. Refresh the list.' }); return; }
         if (status === 'approved') {
           await db.collection('staff_notifications').add({
             recipientId: staffRecordId,
