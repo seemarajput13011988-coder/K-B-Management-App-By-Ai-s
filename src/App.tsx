@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
-import { PushNotifications } from '@capacitor/push-notifications';
 import StaffOperations from './StaffOperations';
 import FinanceWorkspace from './FinanceWorkspace';
 import SubscriptionWorkspace from './SubscriptionWorkspace';
@@ -10,7 +9,7 @@ import InventoryWorkspace from './InventoryWorkspace';
 import InstallationsWorkspace from './InstallationsWorkspace';
 import CalendarWorkspace from './CalendarWorkspace';
 import { useAppPreferences } from './appPreferences';
-import { api as client, changeAppPassword, changeAppUserId, signInAppUser, signOutAppUser, submitStaffRegistrationRequest, getStaffRegistrationStatus } from './lib/api';
+import { api as client, changeAppPassword, changeAppUserId, getAppUserProfile, signInAppUser, signOutAppUser, submitStaffRegistrationRequest, getStaffRegistrationStatus } from './lib/api';
 import {
   Activity,
   Bell,
@@ -150,7 +149,6 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const seenNotifications = useRef<Set<string> | null>(null);
-  const pushToken = useRef<string | null>(null);
 
   useEffect(() => {
     if (!mobileNav) return;
@@ -232,61 +230,8 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
     return () => { stopped = true; window.clearInterval(timer); };
   }, [session.user.id, isAdmin]);
 
-  useEffect(() => {
-    if (!Capacitor.isNativePlatform()) return;
-    let stopped = false;
-    let registrationListener: { remove: () => Promise<void> } | undefined;
-    let receivedListener: { remove: () => Promise<void> } | undefined;
-    let actionListener: { remove: () => Promise<void> } | undefined;
-    let errorListener: { remove: () => Promise<void> } | undefined;
-
-    const registerDevice = async () => {
-      try {
-        registrationListener = await PushNotifications.addListener('registration', async token => {
-          if (stopped || !token.value) return;
-          pushToken.current = token.value;
-          try {
-            await api.post('/api/push-tokens', { token: token.value, platform: 'android' });
-          } catch (error) {
-            console.warn('Could not register this device for K&B push notifications.', error);
-          }
-        });
-        receivedListener = await PushNotifications.addListener('pushNotificationReceived', async () => {
-          try {
-            const result = await api.get('/api/notifications');
-            if (!stopped) setNotifications((result.data.items || []) as AppNotification[]);
-          } catch { /* The normal notification poll will retry. */ }
-        });
-        actionListener = await PushNotifications.addListener('pushNotificationActionPerformed', async () => {
-          try {
-            const result = await api.get('/api/notifications');
-            if (!stopped) {
-              setNotifications((result.data.items || []) as AppNotification[]);
-              setNotificationsOpen(true);
-            }
-          } catch { /* The normal notification poll will retry. */ }
-        });
-        errorListener = await PushNotifications.addListener('registrationError', error => {
-          console.warn('K&B push registration failed.', error);
-        });
-
-        let permission = await PushNotifications.checkPermissions();
-        if (permission.receive !== 'granted') permission = await PushNotifications.requestPermissions();
-        if (!stopped && permission.receive === 'granted') await PushNotifications.register();
-      } catch (error) {
-        console.warn('K&B push notifications are not configured on this device yet.', error);
-      }
-    };
-
-    void registerDevice();
-    return () => {
-      stopped = true;
-      void registrationListener?.remove();
-      void receivedListener?.remove();
-      void actionListener?.remove();
-      void errorListener?.remove();
-    };
-  }, [session.user.id]);
+  // Spark-only builds use the in-app inbox and local notification polling.
+  // Remote FCM delivery requires trusted server-side sending, which Spark does not provide.
 
   const active = customers.filter(c => c.status === 'Active').length;
   const collected = payments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
@@ -332,11 +277,6 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
     setNotifications(current => current.map(item => ({ ...item, read: true })));
   }
   async function signOut() {
-    if (pushToken.current) {
-      try { await api.post('/api/push-tokens', { token: pushToken.current, action: 'unregister' }); } catch { /* Server cleanup can be retried on the next sign-in. */ }
-      pushToken.current = null;
-    }
-    try { await api.post('/api/auth/logout'); } catch { /* local sign-out still proceeds */ }
     onLogout();
   }
   async function savePlan(form: Omit<Plan, 'id'>) {
@@ -1775,7 +1715,7 @@ function Modal({ title, subtitle, onClose, children }: any) {
 
 function App(){
  const [session,setSession]=useState<Session|null>(null);const [checking,setChecking]=useState(true);
- useEffect(()=>{let live=true;async function restore(){const raw=localStorage.getItem('kb-customer-session');if(!raw){setChecking(false);return;}try{const old=JSON.parse(raw) as Session;const r=await client.get('/api/auth/me?sessionToken='+encodeURIComponent(old.token));if(live)setSession({...old,user:r.data.user});}catch{localStorage.removeItem('kb-customer-session');}finally{if(live)setChecking(false);}}restore();return()=>{live=false;};},[]);
+ useEffect(()=>{let live=true;async function restore(){const raw=localStorage.getItem('kb-customer-session');if(!raw){setChecking(false);return;}try{const old=JSON.parse(raw) as Session;const user=await getAppUserProfile();if(live)setSession({...old,user});}catch{localStorage.removeItem('kb-customer-session');}finally{if(live)setChecking(false);}}restore();return()=>{live=false;};},[]);
  async function login(userId:string,password:string,expectedRole:'admin'|'staff'){const next=await signInAppUser(userId,password) as Session;if(next.user.role!==expectedRole){await signOutAppUser();throw new Error(expectedRole==='admin'?'This account is not an admin account. Choose Staff Sign In instead.':'This account is not a staff account. Choose Admin Sign In instead.');}localStorage.setItem('kb-customer-session',JSON.stringify(next));setSession(next);}
  if(checking)return <div className="loading-cover"><div className="loader"/><span>Preparing secure sign-in…</span></div>;
  return session?<Workspace session={session} onLogout={()=>{signOutAppUser().catch(()=>undefined);localStorage.removeItem('kb-customer-session');setSession(null);}}/>:<LoginScreen onLogin={login}/>;

@@ -283,7 +283,7 @@ export default function StaffOperations({ session, customers, flash, compact = f
                 } else if (result.data.monitoring && result.data.deadlineAt) {
                   setGpsDeadline(result.data.deadlineAt);
                   const minutes = Math.max(0, Math.ceil(Number(result.data.remainingSeconds || 0) / 60));
-                  setGpsMessage('GPS is unavailable. Turn it back on within 15 minutes. About ' + minutes + ' minutes remain. Your shift stays active during this grace period.');
+                  setGpsMessage('GPS is unavailable. Restore it within 15 minutes. About ' + minutes + ' minutes remain. Firebase Spark cannot guarantee automatic shift cancellation if the app or tracking service is offline, so notify an administrator if GPS cannot be restored.');
                 } else if (result.data.reason === 'holiday-exempt') setGpsMessage('GPS monitoring is paused for your pending/approved holiday date.');
               })
               .catch(() => { if (!cancelled) setGpsMessage('GPS status could not be checked. Restore location and internet access; contact an admin if this continues.'); });
@@ -362,9 +362,9 @@ export default function StaffOperations({ session, customers, flash, compact = f
           if (result.data.monitoring && result.data.deadlineAt) {
             setGpsDeadline(result.data.deadlineAt);
             const minutes = Math.max(0, Math.ceil(Number(result.data.remainingSeconds || 0) / 60));
-            if (!cancelled) setGpsMessage('GPS is unavailable. Turn it back on within 15 minutes. About ' + minutes + ' minutes remain. Your shift will be cancelled only after the grace period.');
+            if (!cancelled) setGpsMessage('GPS is unavailable. Restore it within 15 minutes. About ' + minutes + ' minutes remain. The timer is monitored while the app is running; Spark cannot guarantee automatic cancellation in the background. Notify an administrator if GPS cannot be restored.');
           } else if (result.data.reason === 'holiday-exempt') setGpsMessage('GPS monitoring is paused for your pending/approved holiday date.');
-        } catch { if (!cancelled) setGpsMessage('GPS is unavailable. Reconnect and restore location; the 15-minute grace timer will be enforced by the server once detected.'); }
+        } catch { if (!cancelled) setGpsMessage('GPS is unavailable. Reconnect and restore location. The 15-minute timer is shown in the app, but Spark cannot enforce automatic cancellation from a server when the app is offline.'); }
         inFlight = false;
       }, { enableHighAccuracy: true, maximumAge: 10000, timeout: 20000 });
     };
@@ -570,7 +570,7 @@ export default function StaffOperations({ session, customers, flash, compact = f
     </section>}
 
     <section className="panel ops-panel">
-      <div className="ops-panel-head"><div><span className="eyebrow">HOLIDAY MANAGEMENT</span><h2>{admin ? 'Staff holiday requests' : 'Request a holiday'}</h2><p>Pending and approved holiday dates are exempt from automatic GPS shift cancellation.</p></div><span className="ops-pill">{holidays.filter(item=>item.status==='pending').length} PENDING</span></div>
+      <div className="ops-panel-head"><div><span className="eyebrow">HOLIDAY MANAGEMENT</span><h2>{admin ? 'Staff holiday requests' : 'Request a holiday'}</h2><p>Holiday requests are managed here; automatic GPS grace-period exemptions are not yet active on the Spark plan.</p></div><span className="ops-pill">{holidays.filter(item=>item.status==='pending').length} PENDING</span></div>
       {!admin && <form className="ops-form" onSubmit={e=>{e.preventDefault();submit('/api/holidays',{...holidayForm},'Holiday request submitted for admin approval.');setHolidayForm({...holidayForm,reason:''});}}><label>From <input type="date" required value={holidayForm.startDate} onChange={e=>setHolidayForm({...holidayForm,startDate:e.target.value})}/></label><label>To <input type="date" required min={holidayForm.startDate} value={holidayForm.endDate} onChange={e=>setHolidayForm({...holidayForm,endDate:e.target.value})}/></label><textarea required maxLength={300} rows={2} placeholder="Reason for holiday request" value={holidayForm.reason} onChange={e=>setHolidayForm({...holidayForm,reason:e.target.value})}/><button className="btn primary" disabled={busy}>Submit holiday request</button></form>}
       <div className="ops-feed">{holidays.map(item=><article className="ops-feed-item" key={item.id}><div className="ops-message-top"><b>{item.displayName} · {item.startDate}{item.endDate!==item.startDate?' to '+item.endDate:''}</b><span className={'ops-pill '+(item.status==='approved'?'is-live':item.status==='rejected'?'is-idle':'')}>{item.status.toUpperCase()}</span></div><p>{item.reason}</p><small>Requested {stamp(item.createdAt)}</small>{admin && item.status==='pending' && <div className="ops-actions"><button className="btn primary compact" disabled={busy} onClick={()=>submit('/api/holidays/'+item.id,{status:'approved'},'Holiday request approved.')}>Approve</button><button className="btn danger compact" disabled={busy} onClick={()=>submit('/api/holidays/'+item.id,{status:'rejected'},'Holiday request rejected.')}>Reject</button></div>}</article>)}{!holidays.length && <p className="ops-empty">No holiday requests yet.</p>}</div>
     </section>

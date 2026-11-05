@@ -1,11 +1,12 @@
 name: Web app build check
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 on:
   push:
     branches:
       - firebase-migration
+      - spark-migration
     paths:
       - "src/**"
       - "package.json"
@@ -17,6 +18,8 @@ on:
       - ".env.example"
       - ".github/workflows/web-build-check.yml"
       - "firebase.json"
+      - "firestore.rules"
+      - "firestore.indexes.json"
       - ".firebaserc"
   pull_request:
     branches:

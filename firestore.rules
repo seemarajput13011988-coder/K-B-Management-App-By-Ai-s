@@ -2,8 +2,836 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    // All application reads and writes will go through authenticated,
-    // server-validated Cloud Functions. Do not open client access here.
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function myProfilePath() {
+      return /databases/$(database)/documents/users/$(request.auth.uid);
+    }
+
+    function hasActiveProfile() {
+      return signedIn()
+        && exists(myProfilePath())
+        && get(myProfilePath()).data.active == true;
+    }
+
+    function isAdmin() {
+      return hasActiveProfile()
+        && get(myProfilePath()).data.role == 'admin';
+    }
+
+    function isSuperAdmin() {
+      return isAdmin()
+        && get(myProfilePath()).data.isSuperAdmin == true;
+    }
+
+    function validPlan(data) {
+      return data.keys().hasOnly([
+          'name', 'provider', 'speed', 'data', 'price', 'note',
+          'connectionType', 'featured', 'active'
+        ])
+        && data.name is string && data.name.size() > 0 && data.name.size() <= 80
+        && data.provider is string && data.provider.size() > 0 && data.provider.size() <= 60
+        && data.speed is string && data.speed.size() > 0 && data.speed.size() <= 40
+        && data.data is string && data.data.size() > 0 && data.data.size() <= 40
+        && data.connectionType is string && data.connectionType.size() > 0 && data.connectionType.size() <= 40
+        && data.price is number && data.price >= 0 && data.price <= 1000000
+        && data.note is string && data.note.size() <= 180
+        && data.featured is bool && data.active is bool;
+    }
+
+    // Users can read their own profile; admins can manage staff profiles only.
+    // Client-side staff provisioning never permits creation or promotion of admins.
+    match /users/{userId} {
+      allow get: if signedIn() && (request.auth.uid == userId || isAdmin());
+      allow list: if isAdmin();
+      allow create: if (
+          isAdmin()
+          && request.resource.data.keys().hasOnly(['userId', 'displayName', 'role', 'active', 'createdAt', 'createdBy'])
+          && request.resource.data.userId is string
+          && request.resource.data.userId.matches('^[A-Za-z0-9_-]{3,32}$')
+          && request.resource.data.displayName is string
+          && request.resource.data.displayName.size() > 0
+          && request.resource.data.displayName.size() <= 80
+          && request.resource.data.role == 'staff'
+          && request.resource.data.active == true
+          && request.resource.data.createdAt is string
+          && request.resource.data.createdBy == request.auth.uid
+        ) || (
+          isSuperAdmin()
+          && request.resource.data.keys().hasOnly(['userId', 'displayName', 'role', 'isSuperAdmin', 'active', 'createdAt', 'createdBy'])
+          && request.resource.data.userId is string
+          && request.resource.data.userId.matches('^[A-Za-z0-9_-]{3,32}$')
+          && request.resource.data.userId.lower() != 'brajraj'
+          && request.resource.data.displayName is string
+          && request.resource.data.displayName.size() > 0
+          && request.resource.data.displayName.size() <= 80
+          && request.resource.data.role == 'admin'
+          && request.resource.data.isSuperAdmin == false
+          && request.resource.data.active == true
+          && request.resource.data.createdAt is string
+          && request.resource.data.createdBy == request.auth.uid
+        );
+      allow update: if (
+          isAdmin()
+          && resource.data.role == 'staff'
+          && request.resource.data.role == 'staff'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'active'])
+          && request.resource.data.displayName is string
+          && request.resource.data.displayName.size() > 0
+          && request.resource.data.displayName.size() <= 80
+          && request.resource.data.active is bool
+        ) || (
+          isSuperAdmin()
+          && resource.data.role == 'admin'
+          && resource.data.isSuperAdmin != true
+          && request.resource.data.role == 'admin'
+          && request.resource.data.isSuperAdmin == false
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'active'])
+          && request.resource.data.displayName is string
+          && request.resource.data.displayName.size() > 0
+          && request.resource.data.displayName.size() <= 80
+          && request.resource.data.active is bool
+        ) || (
+          signedIn()
+          && hasActiveProfile()
+          && request.auth.uid == userId
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['userId'])
+          && request.resource.data.userId is string
+          && request.resource.data.userId.matches('^[A-Za-z0-9_-]{3,32}$')
+          && request.auth.token.email == request.resource.data.userId.lower() + '@accounts.kandbnetservice.in'
+        );
+      allow delete: if false;
+    }
+
+    // Active plans are visible to active staff; admins manage the catalogue.
+    match /plans/{planId} {
+      allow get: if isAdmin() || (hasActiveProfile() && resource.data.active == true);
+      allow list: if isAdmin() || (hasActiveProfile() && resource.data.active == true);
+      allow create: if isAdmin() && validPlan(request.resource.data);
+      allow update: if isAdmin()
+        && validPlan(request.resource.data)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'name', 'provider', 'speed', 'data', 'price', 'note',
+          'connectionType', 'featured', 'active'
+        ]);
+      allow delete: if isAdmin();
+    }
+
+    function validCustomer(data) {
+      return data.name is string && data.name.size() > 0 && data.name.size() <= 100
+        && data.phone is string && data.phone.size() <= 30
+        && data.address is string && data.address.size() <= 300
+        && data.plan is string && data.plan.size() > 0 && data.plan.size() <= 100
+        && data.monthlyFee is number && data.monthlyFee >= 0
+        && data.status in ['Active', 'Inactive', 'Suspended']
+        && data.joinedAt is string && data.dueDate is string
+        && data.notes is string && data.notes.size() <= 1000
+        && data.assignedTo is string && data.assignedToName is string;
+    }
+
+    // Admins manage all customer records. Staff can read only assigned
+    // customers and may update contact notes, phone and address only.
+    match /customers/{customerId} {
+      allow get: if isAdmin()
+        || (hasActiveProfile() && resource.data.assignedTo == request.auth.uid);
+      allow list: if isAdmin()
+        || (hasActiveProfile() && resource.data.assignedTo == request.auth.uid);
+      allow create: if isAdmin() && validCustomer(request.resource.data);
+      allow update: if (isAdmin()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'name', 'phone', 'address', 'plan', 'monthlyFee', 'status',
+            'joinedAt', 'dueDate', 'notes', 'assignedTo', 'assignedToName', 'updatedAt'
+          ])
+          && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['status'])
+            || request.resource.data.status in ['Active', 'Inactive', 'Suspended'])
+          && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['monthlyFee'])
+            || (request.resource.data.monthlyFee is number && request.resource.data.monthlyFee >= 0)))
+        || (hasActiveProfile()
+          && resource.data.assignedTo == request.auth.uid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'phone', 'address', 'notes', 'updatedAt'
+          ]))
+        || (hasActiveProfile()
+          && resource.data.assignedTo == request.auth.uid
+          && request.resource.data.lastSubscriptionId is string
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'plan', 'monthlyFee', 'dueDate', 'updatedAt', 'lastSubscriptionId'
+          ])
+          && getAfter(/databases/$(database)/documents/subscriptions/$(request.resource.data.lastSubscriptionId)).data.customerId == customerId
+          && getAfter(/databases/$(database)/documents/subscriptions/$(request.resource.data.lastSubscriptionId)).data.createdBy == request.auth.uid
+          && getAfter(/databases/$(database)/documents/subscriptions/$(request.resource.data.lastSubscriptionId)).data.plan == request.resource.data.plan
+          && getAfter(/databases/$(database)/documents/subscriptions/$(request.resource.data.lastSubscriptionId)).data.amount == request.resource.data.monthlyFee
+          && getAfter(/databases/$(database)/documents/subscriptions/$(request.resource.data.lastSubscriptionId)).data.endDate == request.resource.data.dueDate);
+      allow delete: if isAdmin();
+    }
+
+    // Payments are visible to admins and to the staff member who recorded them.
+    // A staff member may record a payment only for an assigned customer.
+    match /payments/{paymentId} {
+      allow get: if isAdmin()
+        || (hasActiveProfile() && resource.data.recordedBy == request.auth.uid);
+      allow list: if isAdmin()
+        || (hasActiveProfile() && resource.data.recordedBy == request.auth.uid);
+      allow create: if hasActiveProfile()
+        && request.resource.data.keys().hasOnly([
+          'customerId', 'customerName', 'amount', 'method', 'paidAt',
+          'month', 'recordedBy', 'recordedByName', 'createdAt', 'subscriptionId'
+        ])
+        && request.resource.data.customerId is string
+        && request.resource.data.customerName is string
+        && request.resource.data.amount is number
+        && request.resource.data.amount > 0
+        && request.resource.data.method is string
+        && request.resource.data.paidAt is string
+        && request.resource.data.month is string
+        && request.resource.data.recordedBy == request.auth.uid
+        && request.resource.data.recordedByName is string
+        && request.resource.data.createdAt is string
+        && (isAdmin()
+          || get(/databases/$(database)/documents/customers/$(request.resource.data.customerId)).data.assignedTo == request.auth.uid);
+      allow update: if false;
+      allow delete: if isAdmin();
+    }
+
+    // Assigned work: staff can see and update only their own task status.
+    // Admins assign, edit and remove tasks.
+    match /tasks/{taskId} {
+      allow get: if isAdmin()
+        || (hasActiveProfile() && resource.data.assignedTo == request.auth.uid);
+      allow list: if isAdmin()
+        || (hasActiveProfile() && resource.data.assignedTo == request.auth.uid);
+      allow create: if isAdmin()
+        && request.resource.data.title is string
+        && request.resource.data.title.size() > 0
+        && request.resource.data.title.size() <= 120
+        && request.resource.data.details is string
+        && request.resource.data.details.size() <= 1500
+        && request.resource.data.assignedTo is string
+        && get(/databases/$(database)/documents/users/$(request.resource.data.assignedTo)).data.role == 'staff'
+        && get(/databases/$(database)/documents/users/$(request.resource.data.assignedTo)).data.active == true
+        && request.resource.data.assignedToName is string
+        && request.resource.data.priority in ['Low', 'Normal', 'High']
+        && request.resource.data.dueDate is string
+        && request.resource.data.status == 'Pending'
+        && request.resource.data.createdBy == request.auth.uid;
+      allow update: if isAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'title', 'details', 'dueDate', 'status', 'updatedAt'
+        ])
+        && request.resource.data.status in ['Pending', 'In progress', 'Completed']
+        || (hasActiveProfile()
+          && resource.data.assignedTo == request.auth.uid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt'])
+          && request.resource.data.status in ['Pending', 'In progress', 'Completed']);
+      allow delete: if isAdmin();
+    }
+
+    // Task assignment/update messages are written with the task batch and
+    // read only by their intended recipient (or an administrator).
+    match /staff_notifications/{notificationId} {
+      allow get, list: if isAdmin()
+        || (hasActiveProfile() && resource.data.recipientId == request.auth.uid);
+      allow create: if isAdmin()
+        || (hasActiveProfile()
+          && (
+            (
+              request.resource.data.createdBy == request.auth.uid
+              && request.resource.data.recipientId is string
+              && get(/databases/$(database)/documents/users/$(request.resource.data.recipientId)).data.active == true
+              && request.resource.data.recipientRole == get(/databases/$(database)/documents/users/$(request.resource.data.recipientId)).data.role
+              && request.resource.data.type in ['direct-message', 'group-message']
+              && request.resource.data.title is string
+              && request.resource.data.message is string
+              && request.resource.data.relatedId is string
+            )
+            || (
+              request.resource.data.recipientRole == 'admin'
+              && request.resource.data.relatedId is string
+              && get(/databases/$(database)/documents/tasks/$(request.resource.data.relatedId)).data.assignedTo == request.auth.uid
+            )
+          ));
+      allow update: if hasActiveProfile()
+        && resource.data.recipientId == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read', 'readAt'])
+        && request.resource.data.read == true
+        && request.resource.data.readAt is string;
+      allow delete: if false;
+    }
+
+    // Service tickets can be raised by active staff/admins. Staff can read
+    // tickets they created or that are assigned to them; admins manage tickets.
+    match /complaints/{complaintId} {
+      allow get: if isAdmin()
+        || (hasActiveProfile()
+          && (resource.data.createdBy == request.auth.uid
+            || resource.data.assignedTo == request.auth.uid));
+      allow list: if isAdmin()
+        || (hasActiveProfile()
+          && (resource.data.createdBy == request.auth.uid
+            || resource.data.assignedTo == request.auth.uid));
+      allow create: if hasActiveProfile()
+        && request.resource.data.subject is string
+        && request.resource.data.subject.size() > 0
+        && request.resource.data.subject.size() <= 120
+        && request.resource.data.details is string
+        && request.resource.data.details.size() > 0
+        && request.resource.data.details.size() <= 1500
+        && request.resource.data.priority in ['Low', 'Normal', 'High', 'Urgent']
+        && request.resource.data.status == 'Open'
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.createdByName is string
+        && request.resource.data.assignedTo == ''
+        && (request.resource.data.customerId == ''
+          || isAdmin()
+          || get(/databases/$(database)/documents/customers/$(request.resource.data.customerId)).data.assignedTo == request.auth.uid);
+      allow update: if isAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status', 'assignedTo', 'assignedToName', 'updatedAt'
+        ])
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['status'])
+          || request.resource.data.status in ['Open', 'In progress', 'Resolved'])
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['assignedTo'])
+          || request.resource.data.assignedTo == ''
+          || (get(/databases/$(database)/documents/users/$(request.resource.data.assignedTo)).data.role == 'staff'
+            && get(/databases/$(database)/documents/users/$(request.resource.data.assignedTo)).data.active == true));
+      allow delete: if isAdmin();
+    }
+
+    // Subscription history: staff can access renewals only for customers
+    // assigned to them. Only active admins can change renewal status.
+    match /subscriptions/{subscriptionId} {
+      allow get, list: if isAdmin()
+        || (hasActiveProfile()
+          && get(/databases/$(database)/documents/customers/$(resource.data.customerId)).data.assignedTo == request.auth.uid);
+      allow create: if hasActiveProfile()
+        && request.resource.data.customerId is string
+        && request.resource.data.customerName is string
+        && request.resource.data.plan is string
+        && request.resource.data.startDate is string
+        && request.resource.data.endDate is string
+        && request.resource.data.endDate >= request.resource.data.startDate
+        && request.resource.data.amount is number
+        && request.resource.data.amount > 0
+        && request.resource.data.status == 'Active'
+        && request.resource.data.paymentStatus in ['Paid', 'Pending']
+        && request.resource.data.createdBy == request.auth.uid
+        && (isAdmin()
+          || get(/databases/$(database)/documents/customers/$(request.resource.data.customerId)).data.assignedTo == request.auth.uid);
+      allow update: if isAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status', 'notes', 'updatedAt', 'updatedBy'
+        ])
+        && request.resource.data.status in ['Active', 'Pending', 'Expired', 'Cancelled'];
+      allow delete: if false;
+    }
+
+    function validAttendanceRecord(data) {
+      return data.userId is string && data.displayName is string
+        && data.workDate is string && data.checkInAt is string
+        && data.status in ['Checked in', 'Completed']
+        && data.dayType in ['Full day', 'Half day'];
+    }
+
+    // Attendance is owner-scoped. Staff create only their own deterministic
+    // daily shift and may update only GPS state or complete an open shift.
+    match /attendance/{attendanceId} {
+      allow get, list: if isAdmin()
+        || (hasActiveProfile() && resource.data.userId == request.auth.uid);
+      allow create: if isAdmin()
+        || (hasActiveProfile()
+          && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'staff'
+          && request.resource.data.userId == request.auth.uid
+          && validAttendanceRecord(request.resource.data)
+          && request.resource.data.keys().hasOnly([
+            'userId', 'displayName', 'workDate', 'checkInAt', 'status',
+            'dayType', 'gpsStatus', 'attendanceSource', 'shiftEvents'
+          ])
+          && request.resource.data.workDate.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+          && attendanceId == 'att-' + request.auth.uid + '-' + request.resource.data.workDate);
+      allow update: if isAdmin()
+        || (hasActiveProfile()
+          && resource.data.userId == request.auth.uid
+          && request.resource.data.userId == resource.data.userId
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'checkOutAt', 'status', 'gpsStatus', 'gpsIssueStartedAt',
+            'gpsIssueReason', 'gpsRestoredAt', 'gpsCancelled',
+            'gpsRestartRequired', 'gpsCancelledAt', 'gpsIssueDeadlineAt'
+          ])
+          && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['status'])
+            || request.resource.data.status in ['Checked in', 'Completed', 'GPS Cancelled'])
+          && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['checkOutAt'])
+            || (!resource.data.keys().hasAny(['checkOutAt'])
+              && request.resource.data.checkOutAt is string
+              && request.resource.data.status in ['Completed', 'GPS Cancelled']))
+          && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['gpsStatus'])
+            || request.resource.data.gpsStatus in ['active', 'grace-period', 'stopped', 'cancelled'])
+          && (request.resource.data.status != 'GPS Cancelled'
+            || (request.resource.data.gpsStatus == 'cancelled'
+              && request.resource.data.gpsCancelled == true
+              && request.resource.data.gpsRestartRequired == true
+              && request.resource.data.gpsCancelledAt is string
+              && request.resource.data.gpsIssueDeadlineAt is string
+              && request.resource.data.checkOutAt == request.resource.data.gpsIssueDeadlineAt
+              && request.resource.data.gpsIssueStartedAt is string))
+          && (!resource.data.keys().hasAny(['checkOutAt'])
+            || request.resource.data.checkOutAt == resource.data.checkOutAt));
+      allow delete: if isAdmin();
+    }
+
+    // Location points are visible only to admins. Staff can create points
+    // for their own active shift; updates and deletes are forbidden.
+    match /locations/{locationId} {
+      allow get, list: if isAdmin();
+      allow create: if hasActiveProfile()
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'staff'
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.latitude is number
+        && request.resource.data.latitude >= -90 && request.resource.data.latitude <= 90
+        && request.resource.data.longitude is number
+        && request.resource.data.longitude >= -180 && request.resource.data.longitude <= 180
+        && request.resource.data.accuracy is number
+        && request.resource.data.capturedAt is string
+        && request.resource.data.attendanceId is string
+        && getAfter(/databases/$(database)/documents/attendance/$(request.resource.data.attendanceId)).data.userId == request.auth.uid
+        && (!getAfter(/databases/$(database)/documents/attendance/$(request.resource.data.attendanceId)).data.keys().hasAny(['checkOutAt'])
+          || getAfter(/databases/$(database)/documents/attendance/$(request.resource.data.attendanceId)).data.checkOutAt == null)
+        && getAfter(/databases/$(database)/documents/attendance/$(request.resource.data.attendanceId)).data.gpsRestartRequired != true;
+      allow update, delete: if false;
+    }
+
+    // Holiday requests are private to the requester and administrators.
+    // Staff may submit requests; only admins may approve or reject them.
+    match /holiday_requests/{holidayId} {
+      allow get, list: if isAdmin()
+        || (hasActiveProfile() && resource.data.userId == request.auth.uid);
+      allow create: if hasActiveProfile()
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'staff'
+        && request.resource.data.keys().hasOnly([
+          'userId', 'displayName', 'startDate', 'endDate', 'reason', 'status', 'createdAt'
+        ])
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.displayName is string
+        && request.resource.data.startDate is string
+        && request.resource.data.endDate is string
+        && request.resource.data.endDate >= request.resource.data.startDate
+        && request.resource.data.reason is string
+        && request.resource.data.reason.size() > 0
+        && request.resource.data.reason.size() <= 300
+        && request.resource.data.status == 'pending'
+        && request.resource.data.createdAt is string;
+      allow update: if isAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status', 'reviewedAt', 'reviewedBy', 'reviewedByName', 'reviewNote'
+        ])
+        && resource.data.status == 'pending'
+        && request.resource.data.status in ['approved', 'rejected']
+        && request.resource.data.reviewedBy == request.auth.uid;
+      allow delete: if false;
+    }
+
+    // Installation jobs: admins schedule and assign; staff see only their
+    // own jobs and can update progress notes/status, never assignment details.
+    match /installations/{installationId} {
+      allow get, list: if isAdmin()
+        || (hasActiveProfile() && resource.data.assignedTo == request.auth.uid);
+      allow create: if isAdmin()
+        && request.resource.data.customerId is string
+        && exists(/databases/$(database)/documents/customers/$(request.resource.data.customerId))
+        && request.resource.data.assignedTo is string
+        && get(/databases/$(database)/documents/users/$(request.resource.data.assignedTo)).data.role == 'staff'
+        && get(/databases/$(database)/documents/users/$(request.resource.data.assignedTo)).data.active == true
+        && request.resource.data.type in ['New connection', 'Upgrade', 'Repair', 'Relocation']
+        && request.resource.data.scheduledDate is string
+        && request.resource.data.status == 'Scheduled'
+        && request.resource.data.createdBy == request.auth.uid;
+      allow update: if isAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status', 'notes', 'updatedAt', 'updatedBy', 'completedAt',
+          'scheduledDate', 'address', 'assignedTo', 'assignedToName'
+        ])
+        && request.resource.data.status in ['Scheduled', 'In progress', 'Completed', 'Cancelled']
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['assignedTo'])
+          || (get(/databases/$(database)/documents/users/$(request.resource.data.assignedTo)).data.role == 'staff'
+            && get(/databases/$(database)/documents/users/$(request.resource.data.assignedTo)).data.active == true))
+        || (hasActiveProfile()
+          && resource.data.assignedTo == request.auth.uid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'status', 'notes', 'updatedAt', 'updatedBy', 'completedAt'
+          ])
+          && request.resource.data.status in ['Scheduled', 'In progress', 'Completed']);
+      allow delete: if isAdmin();
+    }
+
+
+    function validInventoryItem(data) {
+      return data.keys().hasOnly([
+          'name', 'sku', 'skuKey', 'skuReservationId', 'category', 'unit', 'quantity', 'minimumQuantity',
+          'unitCost', 'supplier', 'location', 'notes', 'active', 'createdAt',
+          'updatedAt', 'createdBy', 'lastMovementId'
+        ])
+        && data.name is string && data.name.size() > 0 && data.name.size() <= 100
+        && data.sku is string && data.sku.size() > 0 && data.sku.size() <= 50
+        && data.skuKey is string && data.skuKey.size() > 0 && data.skuKey.size() <= 150
+        && data.skuReservationId is string && data.skuReservationId.size() > 0 && data.skuReservationId.size() <= 150
+        && data.category is string && data.category.size() > 0 && data.category.size() <= 60
+        && data.unit is string && data.unit.size() > 0 && data.unit.size() <= 24
+        && data.quantity is int && data.quantity >= 0
+        && data.minimumQuantity is int && data.minimumQuantity >= 0
+        && data.unitCost is number && data.unitCost >= 0 && data.unitCost <= 100000000
+        && data.supplier is string && data.supplier.size() <= 100
+        && data.location is string && data.location.size() <= 100
+        && data.notes is string && data.notes.size() <= 500
+        && data.active is bool
+        && data.createdAt is string && data.updatedAt is string
+        && data.createdBy is string;
+    }
+
+    match /inventory_skus/{skuId} {
+      allow get, list: if isAdmin();
+      allow create, update: if isAdmin()
+        && request.resource.data.keys().hasOnly(['itemId', 'skuKey', 'createdAt', 'updatedAt'])
+        && request.resource.data.itemId is string
+        && request.resource.data.skuKey is string;
+      allow delete: if isAdmin();
+    }
+
+    match /inventory/{itemId} {
+      allow get, list: if isAdmin()
+        || (hasActiveProfile() && resource.data.active == true);
+      allow create: if isAdmin()
+        && validInventoryItem(request.resource.data)
+        && getAfter(/databases/$(database)/documents/inventory_skus/$(request.resource.data.skuReservationId)).data.itemId == itemId;
+      allow update: if (
+          isAdmin()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'name', 'sku', 'skuKey', 'skuReservationId', 'category', 'unit', 'minimumQuantity', 'unitCost',
+            'supplier', 'location', 'notes', 'active', 'updatedAt'
+          ])
+          && request.resource.data.name is string
+          && request.resource.data.sku is string
+          && request.resource.data.skuKey is string
+          && getAfter(/databases/$(database)/documents/inventory_skus/$(request.resource.data.skuReservationId)).data.itemId == itemId
+        ) || (
+          hasActiveProfile()
+          && resource.data.active == true
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'quantity', 'updatedAt', 'lastMovementId'
+          ])
+          && request.resource.data.quantity is int
+          && request.resource.data.quantity >= 0
+          && request.resource.data.lastMovementId is string
+          && getAfter(/databases/$(database)/documents/inventory_movements/$(request.resource.data.lastMovementId)).data.itemId == itemId
+          && getAfter(/databases/$(database)/documents/inventory_movements/$(request.resource.data.lastMovementId)).data.createdBy == request.auth.uid
+          && getAfter(/databases/$(database)/documents/inventory_movements/$(request.resource.data.lastMovementId)).data.quantityBefore == resource.data.quantity
+          && getAfter(/databases/$(database)/documents/inventory_movements/$(request.resource.data.lastMovementId)).data.quantityAfter == request.resource.data.quantity
+          && (isAdmin()
+            || getAfter(/databases/$(database)/documents/inventory_movements/$(request.resource.data.lastMovementId)).data.type == 'OUT')
+        );
+      allow delete: if false;
+    }
+
+    match /inventory_movements/{movementId} {
+      allow get, list: if hasActiveProfile();
+      allow create: if hasActiveProfile()
+        && request.resource.data.keys().hasOnly([
+          'itemId', 'itemName', 'sku', 'type', 'quantity', 'quantityBefore',
+          'quantityAfter', 'reason', 'createdAt', 'createdBy', 'createdByName'
+        ])
+        && request.resource.data.itemId is string
+        && request.resource.data.itemName is string
+        && request.resource.data.sku is string
+        && request.resource.data.type in ['IN', 'OUT']
+        && request.resource.data.quantity is int
+        && request.resource.data.quantity > 0
+        && request.resource.data.quantity <= 100000
+        && request.resource.data.quantityBefore is int
+        && request.resource.data.quantityAfter is int
+        && request.resource.data.reason is string
+        && request.resource.data.reason.size() > 0
+        && request.resource.data.reason.size() <= 240
+        && request.resource.data.createdAt is string
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.createdByName is string
+        && getAfter(/databases/$(database)/documents/inventory/$(request.resource.data.itemId)).data.lastMovementId == movementId
+        && getAfter(/databases/$(database)/documents/inventory/$(request.resource.data.itemId)).data.quantity == request.resource.data.quantityAfter
+        && (request.resource.data.type == 'IN'
+          ? request.resource.data.quantityAfter == request.resource.data.quantityBefore + request.resource.data.quantity
+          : request.resource.data.quantityAfter == request.resource.data.quantityBefore - request.resource.data.quantity);
+      allow update, delete: if false;
+    }
+
+    match /audit_logs/{auditId} {
+      allow get, list: if isAdmin();
+      allow create: if hasActiveProfile()
+        && request.resource.data.keys().hasOnly([
+          'actorId', 'actorName', 'action', 'entityType', 'entityId', 'description', 'createdAt'
+        ])
+        && request.resource.data.actorId == request.auth.uid
+        && request.resource.data.actorName is string
+        && request.resource.data.action is string
+        && request.resource.data.entityType in ['inventory-item', 'expense', 'payroll', 'invoice_batch', 'invoice', 'staff_registration_request', 'announcement', 'visit']
+        && request.resource.data.entityId is string
+        && request.resource.data.description is string
+        && request.resource.data.createdAt is string;
+      allow update, delete: if false;
+    }
+
+
+    match /expenses/{expenseId} {
+      allow get, list: if isAdmin();
+      allow create: if isAdmin()
+        && request.resource.data.keys().hasOnly([
+          'title', 'category', 'amount', 'spentAt', 'method', 'notes',
+          'createdBy', 'createdByName', 'createdAt', 'payrollId', 'staffUserId'
+        ])
+        && request.resource.data.title is string
+        && request.resource.data.title.size() > 0
+        && request.resource.data.title.size() <= 120
+        && request.resource.data.category is string
+        && request.resource.data.category.size() > 0
+        && request.resource.data.category.size() <= 60
+        && request.resource.data.amount is number
+        && request.resource.data.amount > 0
+        && request.resource.data.amount <= 100000000
+        && request.resource.data.spentAt is string
+        && request.resource.data.method is string
+        && request.resource.data.method.size() > 0
+        && request.resource.data.method.size() <= 40
+        && request.resource.data.notes is string
+        && request.resource.data.notes.size() <= 300
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.createdByName is string
+        && request.resource.data.createdAt is string;
+      allow update: if false;
+      allow delete: if isAdmin() && !('payrollId' in resource.data);
+    }
+
+    match /payroll/{payrollId} {
+      allow get, list: if isAdmin();
+      allow create: if isAdmin()
+        && request.resource.data.keys().hasOnly([
+          'staffUserId', 'staffName', 'period', 'amount', 'paidAt', 'method',
+          'notes', 'createdBy', 'createdByName', 'createdAt'
+        ])
+        && request.resource.data.staffUserId is string
+        && request.resource.data.staffName is string
+        && request.resource.data.period is string
+        && request.resource.data.amount is number
+        && request.resource.data.amount > 0
+        && request.resource.data.paidAt is string
+        && request.resource.data.method is string
+        && request.resource.data.notes is string
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.createdByName is string
+        && request.resource.data.createdAt is string;
+      allow update, delete: if false;
+    }
+
+    match /invoices/{invoiceId} {
+      allow get, list: if isAdmin();
+      allow create: if isAdmin()
+        && request.resource.data.keys().hasOnly([
+          'customerId', 'customerName', 'period', 'dueDate', 'amount', 'createdAt', 'createdBy'
+        ])
+        && request.resource.data.customerId is string
+        && request.resource.data.customerName is string
+        && request.resource.data.period is string
+        && request.resource.data.dueDate is string
+        && request.resource.data.amount is number
+        && request.resource.data.amount >= 0
+        && request.resource.data.createdAt is string
+        && request.resource.data.createdBy == request.auth.uid;
+      allow update: if isAdmin()
+        && !('voidedAt' in resource.data)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['voidedAt', 'voidedBy'])
+        && request.resource.data.voidedAt is string
+        && request.resource.data.voidedBy == request.auth.uid;
+      allow delete: if false;
+    }
+
+
+    function validStaffRegistration(data, requestId) {
+      return data.keys().hasOnly([
+          'userId', 'userIdLower', 'displayName', 'phone', 'reason',
+          'status', 'createdAt', 'requestId', 'statusId',
+          'reviewedAt', 'reviewedBy', 'reviewedByName', 'approvedUserId'
+        ])
+        && data.userId is string
+        && data.userId.matches('^[A-Za-z0-9_-]{3,32}$')
+        && data.userIdLower == requestId
+        && data.displayName is string
+        && data.displayName.size() > 0
+        && data.displayName.size() <= 80
+        && data.phone is string
+        && data.phone.size() <= 30
+        && data.reason is string
+        && data.reason.size() <= 300
+        && data.status in ['pending', 'approved', 'rejected']
+        && data.createdAt is string
+        && data.requestId is string
+        && data.requestId.matches('^[a-f0-9]{48}$')
+        && data.statusId is string
+        && data.statusId.matches('^[a-f0-9]{48}$');
+    }
+
+    match /staff_registration_requests/{requestId} {
+      allow get, list: if isAdmin();
+      allow create: if request.auth == null
+        && validStaffRegistration(request.resource.data, requestId)
+        && request.resource.data.status == 'pending';
+      allow update: if (
+          request.auth == null
+          && resource.data.status == 'rejected'
+          && validStaffRegistration(request.resource.data, requestId)
+          && request.resource.data.status == 'pending'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'userId', 'userIdLower', 'displayName', 'phone', 'reason', 'status',
+            'createdAt', 'requestId', 'statusId', 'reviewedAt', 'reviewedBy',
+            'reviewedByName', 'approvedUserId'
+          ])
+        ) || (
+          isAdmin()
+          && resource.data.status == 'pending'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'status', 'reviewedAt', 'reviewedBy', 'reviewedByName', 'approvedUserId'
+          ])
+          && request.resource.data.status in ['approved', 'rejected']
+          && request.resource.data.reviewedAt is string
+          && request.resource.data.reviewedBy == request.auth.uid
+          && request.resource.data.reviewedByName is string
+          && (request.resource.data.status != 'approved' || request.resource.data.approvedUserId is string)
+        );
+      allow delete: if false;
+    }
+
+    match /staff_registration_status/{trackingCode} {
+      allow get: if true;
+      allow list: if false;
+      allow create: if request.auth == null
+        && trackingCode.matches('^[a-f0-9]{48}$')
+        && request.resource.data.keys().hasOnly(['requestId', 'status', 'createdAt'])
+        && request.resource.data.requestId is string
+        && request.resource.data.requestId.matches('^[a-f0-9]{48}$')
+        && request.resource.data.status == 'pending'
+        && request.resource.data.createdAt is string;
+      allow update: if isAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'reviewedAt', 'reviewedByName'])
+        && request.resource.data.status in ['approved', 'rejected']
+        && request.resource.data.reviewedAt is string
+        && request.resource.data.reviewedByName is string;
+      allow delete: if false;
+    }
+
+    match /announcements/{announcementId} {
+      allow get, list: if hasActiveProfile();
+      allow create: if isAdmin()
+        && request.resource.data.keys().hasOnly(['title', 'message', 'createdAt', 'createdBy', 'createdByName'])
+        && request.resource.data.title is string
+        && request.resource.data.title.size() > 0
+        && request.resource.data.title.size() <= 120
+        && request.resource.data.message is string
+        && request.resource.data.message.size() > 0
+        && request.resource.data.message.size() <= 2000
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.createdByName is string
+        && request.resource.data.createdAt is string;
+      allow update: if false;
+      allow delete: if isAdmin();
+    }
+
+    match /messages/{messageId} {
+      allow get, list: if isAdmin()
+        || (hasActiveProfile()
+          && (resource.data.senderId == request.auth.uid || resource.data.recipientId == request.auth.uid));
+      allow create: if hasActiveProfile()
+        && request.resource.data.keys().hasOnly([
+          'senderId', 'senderName', 'recipientId', 'recipientName', 'message', 'createdAt'
+        ])
+        && request.resource.data.senderId == request.auth.uid
+        && request.resource.data.senderName is string
+        && request.resource.data.recipientId is string
+        && request.resource.data.recipientName is string
+        && request.resource.data.message is string
+        && request.resource.data.message.size() > 0
+        && request.resource.data.message.size() <= 1500
+        && request.resource.data.createdAt is string
+        && (isAdmin()
+          ? get(/databases/$(database)/documents/users/$(request.resource.data.recipientId)).data.role == 'staff'
+            && get(/databases/$(database)/documents/users/$(request.resource.data.recipientId)).data.active == true
+          : request.resource.data.recipientId == 'admin-primary');
+      allow update: if false;
+      allow delete: if isAdmin();
+    }
+
+    match /chat_groups/{groupId} {
+      allow get, list: if isAdmin()
+        || (hasActiveProfile() && request.auth.uid in resource.data.memberIds);
+      allow create: if isAdmin()
+        && request.resource.data.keys().hasOnly([
+          'name', 'memberIds', 'memberNames', 'createdAt', 'createdBy', 'createdByName'
+        ])
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 60
+        && request.resource.data.memberIds is list
+        && request.resource.data.memberIds.size() >= 2
+        && request.resource.data.memberIds.size() <= 101
+        && request.auth.uid in request.resource.data.memberIds
+        && request.resource.data.memberNames is list
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.createdAt is string;
+      allow update: if false;
+      allow delete: if isAdmin();
+    }
+
+    match /group_messages/{messageId} {
+      function groupMember(groupId) {
+        return isAdmin()
+          || (hasActiveProfile()
+            && request.auth.uid in get(/databases/$(database)/documents/chat_groups/$(groupId)).data.memberIds);
+      }
+      allow get, list: if groupMember(resource.data.groupId);
+      allow create: if request.resource.data.keys().hasOnly([
+          'groupId', 'senderId', 'senderName', 'message', 'createdAt'
+        ])
+        && request.resource.data.senderId == request.auth.uid
+        && request.resource.data.senderName is string
+        && request.resource.data.message is string
+        && request.resource.data.message.size() > 0
+        && request.resource.data.message.size() <= 1500
+        && request.resource.data.createdAt is string
+        && groupMember(request.resource.data.groupId);
+      allow update: if false;
+      allow delete: if isAdmin();
+    }
+
+    match /visits/{visitId} {
+      allow get, list: if isAdmin()
+        || (hasActiveProfile() && resource.data.staffId == request.auth.uid);
+      allow create: if hasActiveProfile()
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'staff'
+        && request.resource.data.keys().hasOnly([
+          'customerId', 'customerName', 'purpose', 'notes', 'visitedAt', 'staffId', 'staffName'
+        ])
+        && request.resource.data.customerId is string
+        && get(/databases/$(database)/documents/customers/$(request.resource.data.customerId)).data.assignedTo == request.auth.uid
+        && request.resource.data.customerName is string
+        && request.resource.data.purpose is string
+        && request.resource.data.purpose.size() > 0
+        && request.resource.data.purpose.size() <= 120
+        && request.resource.data.notes is string
+        && request.resource.data.notes.size() <= 1200
+        && request.resource.data.visitedAt is string
+        && request.resource.data.staffId == request.auth.uid
+        && request.resource.data.staffName is string;
+      allow update: if false;
+      allow delete: if isAdmin();
+    }
+
+    // All remaining collections stay closed until their own ownership-checked
+    // Spark rules and direct Firestore data paths are implemented.
     match /{document=**} {
       allow read, write: if false;
     }

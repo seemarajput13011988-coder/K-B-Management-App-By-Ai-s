@@ -5,17 +5,18 @@
 - Location tracking starts only after a staff member agrees to location sharing for the active shift.
 - Android uses `@capacitor-community/background-geolocation` with a visible foreground-service notification.
 - The notification explains that work location is shared with authorised K&B administrators and that tracking stops at checkout.
-- Location points are sent to the Firebase API using Capacitor's native HTTP transport.
-- The server accepts points only from an authenticated staff account with an active shift for the current India work date.
-- The admin location API returns the latest points only for active shifts.
-- Checkout or server rejection for an ended shift causes the app watcher to be removed.
-- If the native location plugin reports a location/permission error, the app asks the server to start the 15-minute GPS grace period.
-- The server scheduler sends reminders and cancels the shift after the grace period if no valid location point is received.
-- Pending or approved holiday requests for the work date are exempt from GPS cancellation.
+- Location points are written directly to Firestore by the authenticated staff app. This Spark build does not call Firebase Cloud Functions.
+- Firestore rules restrict staff location writes to the signed-in staff member and an attendance record belonging to that member.
+- The admin location view returns the latest points for active shifts and refreshes while the admin screen is open.
+- If the native location plugin reports a location/permission error, the app records the start of a 15-minute grace period.
+- The app attempts to settle an expired grace period when the app or admin next makes an attendance/location request. It is not a server-scheduled cancellation.
+- Pending or approved holiday exemptions are not yet enforced in the Spark attendance path; do not promise holiday-based GPS exemption until implemented and tested.
 
 ## Android behavior and limitations
 
 This is best-effort background tracking, not a guarantee of uninterrupted live location. Android battery optimisation, OEM task management, force-stop, reboot, app-data clearing, permission changes, GPS being disabled, device power-off, and loss of internet can interrupt updates. The admin view must treat the last point as historical and display its captured time; it must not label a stale point as live.
+
+**Important Spark-plan limitation:** Firebase Spark does not provide Cloud Functions or a trusted scheduled backend. The 15-minute deadline is recorded by the client and is settled only when an app/admin request runs after the deadline. If the phone/app is force-stopped or offline and nobody opens the admin app, cancellation cannot be guaranteed exactly at minute 15. A strict server-enforced timer requires a trusted backend and scheduler, which is outside the current Spark-only scope.
 
 The native plugin needs:
 - Capacitor Android configuration with `android.useLegacyBridge: true`.
@@ -33,9 +34,9 @@ Tracking is limited to a disclosed active shift. Staff consent is required, the 
 3. Confirm the persistent K&B tracking notification appears.
 4. Lock the screen and leave the app in the background for at least 15 minutes; confirm fresh timestamped points reach the admin map.
 5. Move between locations and verify that the admin map shows updated points and accuracy/timestamps.
-6. Disable location services or revoke permission; confirm the server starts the grace timer after the native plugin reports the failure.
-7. Restore location before 15 minutes; confirm the shift remains active and old GPS reminder notifications are resolved.
-8. In a separate test shift, leave location unavailable through the grace period; confirm the server cancels the shift and the admin can restart it.
+6. Disable location services or revoke permission; confirm the app records the grace timer when the native plugin reports the failure.
+7. Restore location before 15 minutes; confirm the shift remains active.
+8. In a separate test shift, leave location unavailable through the grace period, then trigger an app/admin refresh after the deadline; confirm the shift is marked GPS Cancelled and the admin can restart it. This does not prove exact minute-15 server cancellation.
 9. Check out normally; confirm the persistent tracking notification disappears and no later points are accepted.
 10. Repeat with battery saver enabled, app backgrounded, and the actual staff phone models used by the business.
 
@@ -43,28 +44,18 @@ Record the Android version, phone model, permission settings, observed update in
 
 ## Release status and prerequisites
 
-- Web and Functions CI checks are separate from live Firebase integration tests.
-- The Android workflow produces a debug APK artifact; it is for internal testing, not a signed production release.
-- Before Firebase deployment, confirm Email/Password Authentication, the existing Firestore database and its region, Functions secrets, service-account permissions, and Cloud Scheduler/billing requirements.
-- The scheduled GPS grace-period function requires Cloud Scheduler support. Confirm the project's billing plan and required Google Cloud APIs before deploying it.
-- Deploy Functions before Hosting rewrites are used.
-- Do not run production deployment until test accounts, backup/data review, and API/role tests are complete.
-- The old AppDeploy app and `main` branch are retained. No legacy data has been imported by this migration.
+- The Spark branch uses direct Firestore client handlers and restrictive Firestore rules. It does not depend on Cloud Functions routes for the migrated app modules.
+- Firestore rules emulator regression tests and web TypeScript/build checks run in GitHub Actions.
+- The Android workflow produces an unsigned debug APK artifact for internal testing, not a signed production release.
+- Firebase Email/Password Authentication and the Firestore database must be enabled in the K&B Firebase project. The first Super Admin profile must be provisioned by the Firebase project owner; the Spark app cannot securely bootstrap its own first administrator.
 - A production APK needs a private signing key managed outside the repository. Never commit the signing key or its password.
+- No legacy data has been imported by this migration. The original `firebase-migration` branch and Functions code are retained and are not part of the Spark app build.
 
+## Notifications
 
-## Push notification setup
-
-The app now registers Android FCM device tokens and the Functions backend sends a push notification whenever a document is created in `staff_notifications`. Direct and group message previews are not included in lock-screen notification text.
-
-Before push delivery can work:
-1. In Firebase project `kandb-net-sevice`, register an Android app with package name `kandbnet.service2010`.
-2. Download that Android app's `google-services.json` file.
-3. Base64-encode the file locally and add the resulting value as the GitHub Actions repository secret `ANDROID_GOOGLE_SERVICES_JSON_BASE64`. Do not commit the JSON file to this public repository.
-4. Deploy the updated Functions after the Firebase owner has confirmed project permissions and billing.
-5. Install a build containing the Firebase Android configuration, sign in, allow notifications, and verify a test push while the app is backgrounded and fully closed.
-
-The APK workflow can still compile without the secret, but that build will not be push-ready. Push delivery is not considered verified until a real Android device receives a test message while the app is not open.
+- The Spark app polls the in-app notification inbox while the app is open and can show local Android/browser notifications while it is running and permitted.
+- It does not currently deliver reliable remote push notifications when the app is fully closed.
+- FCM token registration and trusted push sending require a configured Android Firebase app plus a trusted backend. The Spark-only build does not claim that capability.
 
 ## Multi-worker Google Maps setup
 
