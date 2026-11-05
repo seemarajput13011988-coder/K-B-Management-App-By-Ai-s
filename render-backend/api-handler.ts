@@ -486,6 +486,71 @@ export async function apiHandler(req: any, res: any) {
         const { passwordHash, salt, ...safe } = record;
         send(res, 201, { user: { id: accountId, ...safe } }); return;
       }
+      // Staff account management routes are handled by the Render/Firestore session API.
+      if (path === '/api/staff' && method === 'GET') {
+        if (!allow(user, ['admin'], res)) return;
+        const items = (await list('users')).filter(item => item.role === 'staff').map(({ passwordHash, salt, ...safe }) => safe);
+        send(res, 200, { items }); return;
+      }
+      if (path === '/api/staff' && method === 'POST') {
+        if (!allow(user, ['admin'], res)) return;
+        const userId = clean(body.userId, 32), displayName = clean(body.displayName, 80);
+        const password = typeof body.password === 'string' ? body.password : '';
+        if (!/^[a-zA-Z0-9_-]{3,32}$/.test(userId) || !displayName || password.length < 10) { send(res, 400, { error: 'Use a 3–32 character staff ID, a name and a password of at least 10 characters.' }); return; }
+        if ((await list('users')).some(item => String(item.userId || '').toLowerCase() === userId.toLowerCase())) { send(res, 409, { error: 'That user ID is already in use.' }); return; }
+        const accountId = 'staff-' + randomBytes(10).toString('hex');
+        const record: Data = { userId, userIdLower: userId.toLowerCase(), displayName, role: 'staff', active: true, canManageAdmins: false, ...newPasswordFields(password), createdAt: now(), createdBy: user.uid };
+        await db.collection('users').doc(accountId).create(record);
+        await audit(user, 'CREATE', 'staff', accountId, 'Created staff account ' + userId);
+        const { passwordHash, salt, ...safe } = record;
+        send(res, 201, { user: { id: accountId, ...safe } }); return;
+      }
+      if (path.startsWith('/api/staff/') && path.endsWith('/reset-password') && method === 'POST') {
+        if (!allow(user, ['admin'], res)) return;
+        const staffId = path.slice('/api/staff/'.length, -'/reset-password'.length).replace(/\/$/, '');
+        const password = typeof body.password === 'string' ? body.password : '';
+        if (password.length < 10) { send(res, 400, { error: 'Password must contain at least 10 characters.' }); return; }
+        const staff = await getDoc('users', staffId);
+        if (!staff || staff.role !== 'staff') { send(res, 404, { error: 'Staff account not found.' }); return; }
+        await db.collection('users').doc(staffId).update(newPasswordFields(password));
+        await revokeUserSessions(staffId);
+        await audit(user, 'RESET_PASSWORD', 'staff', staffId, 'Reset staff password for ' + String(staff.userId || staffId));
+        send(res, 200, { reset: true }); return;
+      }
+      if (path.startsWith('/api/staff/') && method === 'PUT') {
+        if (!allow(user, ['admin'], res)) return;
+        const staffId = routeId(path, '/api/staff'), staff = await getDoc('users', routeId(path, '/api/staff'));
+        if (!staff || staff.role !== 'staff') { send(res, 404, { error: 'Staff account not found.' }); return; }
+        const patch: Data = { updatedAt: now() };
+        if (typeof body.displayName === 'string') { const name = clean(body.displayName, 80); if (!name) { send(res, 400, { error: 'Enter a staff name.' }); return; } patch.displayName = name; }
+        if (typeof body.userId === 'string') { const nextId = clean(body.userId, 32); if (!/^[a-zA-Z0-9_-]{3,32}$/.test(nextId)) { send(res, 400, { error: 'Use a 3–32 character staff ID.' }); return; } if ((await list('users')).some(item => item.id !== staffId && String(item.userId || '').toLowerCase() === nextId.toLowerCase())) { send(res, 409, { error: 'That user ID is already in use.' }); return; } patch.userId = nextId; patch.userIdLower = nextId.toLowerCase(); }
+        if (typeof body.active === 'boolean') patch.active = body.active;
+        await db.collection('users').doc(staffId).update(patch);
+        if (patch.active === false || patch.userId) await revokeUserSessions(staffId);
+        await audit(user, 'UPDATE', 'staff', staffId, 'Updated staff account ' + String(staff.userId || staffId));
+        send(res, 200, { updated: true }); return;
+      }
+      if (path.startsWith('/api/staff/') && method === 'DELETE') {
+        if (!allow(user, ['admin'], res)) return;
+        const staffId = routeId(path, '/api/staff'), staff = await getDoc('users', routeId(path, '/api/staff'));
+        if (!staff || staff.role !== 'staff') { send(res, 404, { error: 'Staff account not found.' }); return; }
+        const assigned = (await list('customers')).filter(item => item.assignedTo === staffId);
+        await Promise.all(assigned.map(customer => db.collection('customers').doc(String(customer.id)).update({ assignedTo: '', assignedToName: '' })));
+        await revokeUserSessions(staffId);
+        await db.collection('users').doc(staffId).delete();
+        await audit(user, 'DELETE', 'staff', staffId, 'Removed staff account ' + String(staff.displayName || staff.userId || staffId) + '; historical records preserved');
+        send(res, 200, { deleted: true, unassignedCustomers: assigned.length, historyPreserved: true }); return;
+      }
+      if (path.startsWith('/api/admins/') && method === 'DELETE') {
+        if (!allowSuperAdmin(user, res)) return;
+        const adminId = routeId(path, '/api/admins'), target = await getDoc('users', routeId(path, '/api/admins'));
+        if (!target || target.role !== 'admin') { send(res, 404, { error: 'Admin account not found.' }); return; }
+        if (adminId === user.uid || target.canManageAdmins === true || target.isSuperAdmin === true) { send(res, 403, { error: 'The primary super-admin account cannot be removed.' }); return; }
+        await revokeUserSessions(adminId);
+        await db.collection('users').doc(adminId).delete();
+        await audit(user, 'DELETE', 'admin', adminId, 'Removed administrator account ' + String(target.userId || adminId));
+        send(res, 200, { deleted: true }); return;
+      }
       if (path === '/api/customer-ledger' && method === 'GET') {
         if (!allow(user, ['admin'], res)) return;
         const customerId = clean(req.query.customerId, 128);
