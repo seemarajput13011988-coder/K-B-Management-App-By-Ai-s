@@ -22,6 +22,16 @@ jobs:
           node-version: 22
       - run: npm install
       - run: npm run typecheck
+      - name: Verify staff registration route contracts
+        working-directory: .
+        run: |
+          set -euo pipefail
+          grep -Fq "method === 'POST' && path === '/api/staff-registration-requests'" render-backend/api-handler.ts
+          grep -Fq "method === 'GET' && path === '/api/staff-registration-requests/status'" render-backend/api-handler.ts
+          grep -Fq "path === '/api/staff-registration-requests' && method === 'GET'" render-backend/api-handler.ts
+          grep -Fq "path.startsWith('/api/staff-registration-requests/') && method === 'PUT'" render-backend/api-handler.ts
+          grep -Fq "if (!allow(user, ['admin'], res)) return;" render-backend/api-handler.ts
+          echo "Public request/status and admin-only list/review handlers are present."
   web:
     runs-on: ubuntu-latest
     steps:
