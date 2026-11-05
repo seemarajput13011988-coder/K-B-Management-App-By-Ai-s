@@ -1,6 +1,5 @@
-import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import { createHash, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 import { initializeApp } from 'firebase-admin/app';
-import { getAuth } from 'firebase-admin/auth';
 import { getMessaging } from 'firebase-admin/messaging';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import { onRequest } from 'firebase-functions/v2/https';
@@ -11,14 +10,12 @@ import { defineSecret } from 'firebase-functions/params';
 import { buildCustomerLedger, calculateInventoryBalance, gpsGracePeriodExpired, hasOverlappingSubscription, isConfirmedGpsLossReason, hasAdminManagementAccess, isValidDateKey, isValidDateRange, routePath, subscriptionExpiryKind, taskReminderKind, isSixMonthReviewDue } from './route-path.js';
 
 initializeApp();
-const auth = getAuth();
 const db = getFirestore();
 const adminRecoveryCode = defineSecret('ADMIN_RECOVERY_CODE');
 const adminBootstrapSecret = defineSecret('ADMIN_BOOTSTRAP_SECRET');
-const PRIMARY_ADMIN_EMAIL = 'brajraj@accounts.kandbnetservice.in';
 
 type Role = 'admin' | 'staff';
-type AppUser = { uid: string; id: string; userId: string; displayName: string; role: Role; active: boolean; authTime: number; canManageAdmins?: boolean };
+type AppUser = { uid: string; id: string; userId: string; displayName: string; role: Role; active: boolean; authTime: number; canManageAdmins?: boolean; salt: string; passwordHash: string };
 type Data = Record<string, any>;
 
 const clean = (value: unknown, max = 300): string =>
@@ -35,6 +32,32 @@ const send = (res: any, status: number, body: Data) => { res.status(status).json
 function routeId(path: string, base: string): string {
   return decodeURIComponent(path.slice(base.length + 1));
 }
+
+const hashPassword = (password: string, salt: string) => scryptSync(password, salt, 64).toString('hex');
+const equalSecret = (a: string, b: string) => {
+  const left = Buffer.from(a); const right = Buffer.from(b);
+  return left.length === right.length && timingSafeEqual(left, right);
+};
+const newPasswordFields = (password: string) => {
+  const salt = randomBytes(16).toString('hex');
+  return { salt, passwordHash: hashPassword(password, salt) };
+};
+const sessionTokenId = (token: string) => createHash('sha256').update(token).digest('hex');
+async function createSession(user: Data) {
+  const token = randomBytes(32).toString('hex');
+  const expiresAt = Date.now() + 8 * 60 * 60 * 1000;
+  await db.collection('sessions').doc(sessionTokenId(token)).set({
+    userId: user.id, expiresAt, createdAt: now(), authTime: Math.floor(Date.now() / 1000),
+  });
+  return { token, expiresAt };
+}
+async function revokeUserSessions(userId: string) {
+  const sessions = await db.collection('sessions').where('userId', '==', userId).limit(500).get();
+  if (sessions.empty) return;
+  const batch = db.batch();
+  sessions.docs.forEach(doc => batch.delete(doc.ref));
+  await batch.commit();
+}
 async function requireUser(req: any): Promise<AppUser | null> {
   const header = clean(req.headers.authorization, 4096);
   const token = header.startsWith('Bearer ')
@@ -42,17 +65,26 @@ async function requireUser(req: any): Promise<AppUser | null> {
     : clean(req.body?.sessionToken, 4096) || clean(req.query?.sessionToken, 4096);
   if (!token) return null;
   try {
-    const decoded = await auth.verifyIdToken(token, true);
-    const snap = await db.collection('users').doc(decoded.uid).get();
+    const sessionSnap = await db.collection('sessions').doc(sessionTokenId(token)).get();
+    if (!sessionSnap.exists) return null;
+    const session = sessionSnap.data()!;
+    if (!Number.isFinite(session.expiresAt) || session.expiresAt <= Date.now()) {
+      await sessionSnap.ref.delete().catch(() => undefined);
+      return null;
+    }
+    const snap = await db.collection('users').doc(String(session.userId)).get();
     if (!snap.exists) return null;
     const data = snap.data()!;
     if (data.active !== true || !['admin', 'staff'].includes(data.role)) return null;
-    const userId = clean(data.userId, 40);
-    return { uid: decoded.uid, id: decoded.uid, userId,
-      displayName: clean(data.displayName, 80), role: data.role, active: true, authTime: Number(decoded.auth_time || 0),
-      canManageAdmins: hasAdminManagementAccess({ role: data.role, canManageAdmins: data.canManageAdmins, isSuperAdmin: data.isSuperAdmin }) };
+    return {
+      uid: snap.id, id: snap.id, userId: clean(data.userId, 40),
+      displayName: clean(data.displayName, 80), role: data.role, active: true,
+      authTime: Number(session.authTime || 0), salt: clean(data.salt, 128), passwordHash: clean(data.passwordHash, 256),
+      canManageAdmins: hasAdminManagementAccess({ role: data.role, canManageAdmins: data.canManageAdmins, isSuperAdmin: data.isSuperAdmin }),
+    };
   } catch { return null; }
 }
+
 function allow(user: AppUser, roles: Role[], res: any): boolean {
   if (!roles.includes(user.role)) { send(res, 403, { error: 'You do not have permission to perform this action.' }); return false; }
   return true;
