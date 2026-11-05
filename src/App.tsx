@@ -164,9 +164,9 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
     if (!root) return;
     const labelTables = () => {
       root.querySelectorAll('table').forEach(table => {
-        const headerRow = table.querySelector('thead tr');
+        const headerRow = table.querySelector<HTMLTableRowElement>('thead tr');
         const headers = headerRow ? Array.from(headerRow.cells).map(cell => (cell.textContent || '').trim()) : [];
-        table.querySelectorAll('tbody tr').forEach(row => {
+        table.querySelectorAll<HTMLTableRowElement>('tbody tr').forEach(row => {
           Array.from(row.cells).forEach((cell, index) => {
             const label = headers[index] || (index === row.cells.length - 1 ? 'Actions' : 'Details');
             if (cell.dataset.label !== label) cell.dataset.label = label;
