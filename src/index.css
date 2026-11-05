@@ -1844,3 +1844,10 @@ button:focus:not(:focus-visible),a:focus:not(:focus-visible){outline:0!important
   .quick-actions button span{font-size:11px}
   .complaint-controls label{min-width:100%}
 }
+
+.complaint-counts{display:flex;align-items:center;flex-wrap:wrap;gap:8px}
+.complaint-counts span{display:inline-flex;align-items:center;gap:5px;padding:6px 9px;border-radius:20px;background:#f2f5f9;color:#65758c;font-size:10px;white-space:nowrap}
+.complaint-counts b{color:#26364d;font-size:11px}
+[data-theme="dark"] .complaint-counts span{background:#101b2b;color:#b9c6d8}
+[data-theme="dark"] .complaint-counts b{color:#e5ebf4}
+@media(max-width:700px){.complaint-counts{order:3;width:100%}.complaint-counts span{flex:1;justify-content:center}.complaint-counts span{font-size:9px}}
