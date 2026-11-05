@@ -96,7 +96,7 @@ export default function InvoiceWorkspace({customers,plans,flash}:{customers:Cust
     if(!customerName.trim()||!customerPhone.trim()||!items.length||items.some(i=>!i.description.trim()||Number(i.quantity)<=0||Number(i.rate)<0)){flash('Enter customer name, phone number and valid service line details.');return;}
     setBusy(true);
     try {
-      const html=makeInvoiceHtml(), popup=window.open('','_blank','noopener,noreferrer');
+      const html=makeInvoiceHtml(), popup=window.open('','_blank');
       if(!popup){flash('Allow pop-ups for K&B Management Nexus, then generate the invoice again.');return;}
       popup.document.open();popup.document.write(html);popup.document.close();
       flash('Invoice prepared. Choose Save as PDF in the print window.');
