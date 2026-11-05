@@ -16,6 +16,7 @@ type UserRecord = {
 };
 type SafeUser = Pick<UserRecord, 'id' | 'userId' | 'displayName' | 'role' | 'active'>;
 type Customer = {
+  id: string;
   name: string;
   phone: string;
   address: string;
@@ -53,7 +54,7 @@ type Complaint = {
 };
 type SessionRecord = { userId: string; expiresAt: number };
 type TaskRecord = { title: string; details: string; assignedTo: string; assignedToName: string; priority: string; dueDate: string; status: string; createdAt: string; createdBy: string; createdByName: string };
-type PlanRecord = { name: string; provider: string; speed: string; data: string; price: number; note: string; connectionType: string; featured: boolean; active: boolean };
+type PlanRecord = { id?: string; name: string; provider: string; speed: string; data: string; price: number; note: string; connectionType: string; featured: boolean; active: boolean };
 const defaultPlans: PlanRecord[] = [
   { name: 'RailWire 30 Mbps', provider: 'RailWire', speed: '30 Mbps', data: '1.5 TB', price: 549, note: 'Popular home plan', connectionType: 'Fiber', featured: true, active: true },
   { name: 'RailWire 50 Mbps', provider: 'RailWire', speed: '50 Mbps', data: '2 TB', price: 699, note: 'For multiple devices', connectionType: 'Fiber', featured: false, active: true },
@@ -628,7 +629,7 @@ export const handler = router({
     const existing = result.items.find(item => item.userId === user.id && item.workDate === workDate);
     if (!existing) return error('Check in before checking out.', 400);
     if (existing.checkOutAt) return error('You have already checked out today.', 409);
-    const [updated] = await db.tx.update('attendance', [{ id: existing.id, record: { checkOutAt: new Date().toISOString(), status: 'Completed' } }], { patch: true });
+    const [updated] = await db.tx.update('attendance', [{ id: String(existing.id), record: { checkOutAt: new Date().toISOString(), status: 'Completed' } }], { patch: true });
     return updated ? json({ updated: true }) : error('Could not save your check-out.', 500);
   }),
 
@@ -653,7 +654,7 @@ export const handler = router({
     const existing = result.items.find(item => item.userId === staffId && item.workDate === workDate);
     if (!existing) return error('Start this staff member’s shift before ending it.', 400);
     if (existing.checkOutAt) return error('This staff member has already ended today’s shift.', 409);
-    const [updated] = await db.tx.update('attendance', [{ id: existing.id, record: { checkOutAt: new Date().toISOString(), status: 'Completed', endedByAdmin: admin.displayName } }], { patch: true });
+    const [updated] = await db.tx.update('attendance', [{ id: String(existing.id), record: { checkOutAt: new Date().toISOString(), status: 'Completed', endedByAdmin: admin.displayName } }], { patch: true });
     return updated ? json({ updated: true }) : error('Could not end this staff shift.', 500);
   }),
 
