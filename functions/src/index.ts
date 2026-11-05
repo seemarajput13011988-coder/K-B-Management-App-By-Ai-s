@@ -176,17 +176,10 @@ export const api = onRequest(
       const userId = clean(input.userId, 40);
       const password = typeof input.password === 'string' ? input.password : '';
       if (!userId || !password) { send(res, 400, { error: 'Enter your user ID and password.' }); return; }
-      const matches = await db.collection('users').where('userIdLower', '==', userId.toLowerCase()).limit(2).get();
-      let userDoc = matches.docs[0];
-      if (!userDoc) {
-        const legacy = await db.collection('users').where('userId', '==', userId).limit(2).get();
-        userDoc = legacy.docs[0];
-      }
-      if (!userDoc && userId.toLowerCase() === 'brajraj') {
-        const fixed = await db.collection('users').doc('admin-primary').get();
-        if (fixed.exists) userDoc = fixed;
-      }
-      if (!userDoc || (matches.size > 1)) { send(res, 401, { error: 'The user ID or password is incorrect.' }); return; }
+      const matches = (await list('users')).filter(item => String(item.userId || '').toLowerCase() === userId.toLowerCase());
+      if (matches.length !== 1) { send(res, 401, { error: 'The user ID or password is incorrect.' }); return; }
+      const userDoc = await db.collection('users').doc(String(matches[0].id)).get();
+      if (!userDoc.exists) { send(res, 401, { error: 'The user ID or password is incorrect.' }); return; }
       const record = userDoc.data()!;
       if (record.active !== true || !['admin', 'staff'].includes(record.role) || !record.salt || !record.passwordHash ||
           !equalSecret(hashPassword(password, String(record.salt)), String(record.passwordHash))) {
@@ -228,7 +221,7 @@ export const api = onRequest(
       if (!configuredCode || !equalSecret(recoveryCode, configuredCode)) {
         send(res, 401, { error: 'The admin recovery code is incorrect or has not been configured.' }); return;
       }
-      const admins = await db.collection('users').where('userIdLower', '==', 'brajraj').where('role', '==', 'admin').limit(1).get();
+      const admins = await db.collection('users').where('userId', '==', 'Brajraj').where('role', '==', 'admin').limit(1).get();
       if (admins.empty) { send(res, 404, { error: 'The admin account has not been set up yet.' }); return; }
       const adminDoc = admins.docs[0];
       await adminDoc.ref.update(newPasswordFields(newPassword));
