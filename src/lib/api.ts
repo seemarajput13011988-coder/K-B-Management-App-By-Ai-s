@@ -717,7 +717,7 @@ async function requestInventory<T = any>(path: string, method: string, payload?:
     const reservationRef = doc(firestore, 'inventory_skus', skuDocumentId(skuKey));
     const now = new Date().toISOString();
     const record = {
-      name, sku, skuKey, category, unit, quantity, minimumQuantity, unitCost,
+      name, sku, skuKey, skuReservationId: skuDocumentId(skuKey), category, unit, quantity, minimumQuantity, unitCost,
       supplier: clean(payload?.supplier, 100), location: clean(payload?.location, 100),
       notes: clean(payload?.notes, 500), active: true, createdAt: now, updatedAt: now, createdBy: user.uid,
     };
@@ -800,7 +800,7 @@ async function requestInventory<T = any>(path: string, method: string, payload?:
       }
       transaction.set(newReservationRef, { itemId: id, skuKey, updatedAt: now });
       transaction.update(itemRef, {
-        name, sku, skuKey, category, unit, minimumQuantity, unitCost,
+        name, sku, skuKey, skuReservationId: skuDocumentId(skuKey), category, unit, minimumQuantity, unitCost,
         supplier: clean(payload?.supplier, 100), location: clean(payload?.location, 100),
         notes: clean(payload?.notes, 500), active: payload?.active !== false, updatedAt: now,
       });
