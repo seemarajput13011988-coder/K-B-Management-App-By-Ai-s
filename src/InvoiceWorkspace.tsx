@@ -45,7 +45,7 @@ export default function InvoiceWorkspace({customers,plans,flash}:{customers:Cust
   },0),[items]);
   const discountTotal = items.reduce((sum,item)=>{const gross=Math.max(0,Number(item.quantity)||0)*Math.max(0,Number(item.rate)||0)*Math.min(100,Math.max(0,Number(item.discount)||0))/100;const gst=Math.max(0,Number(item.gstRate)||0);return sum+gross/(item.taxMode==='inclusive'?1+gst/100:1);},0);
   const isIntraState = supplyStateCode.trim()==='24';
-  const cgst = isIntraState ? taxTotal/2 : 0, sgst = isIntraState ? taxTotal/2 : 0, igst = isIntraState ? 0 : taxTotal;
+  const cgst = isIntraState ? Math.round(taxTotal/2*100)/100 : 0, sgst = isIntraState ? taxTotal-cgst : 0, igst = isIntraState ? 0 : taxTotal;
   const grandTotal = Math.round((subtotal+taxTotal)*100)/100;
   const roundOff = Math.round(grandTotal)-grandTotal;
   const payable = Math.round(grandTotal);
@@ -103,6 +103,7 @@ export default function InvoiceWorkspace({customers,plans,flash}:{customers:Cust
       if(!popup){flash('Allow pop-ups for K&B Management Nexus, then generate the invoice again.');return;}
       popup.document.open();popup.document.write(html);popup.document.close();
       flash('Invoice prepared. Choose Save as PDF in the print window.');
+      setDialogOpen(false);
       setInvoiceNo('KB/INV/'+new Date().getFullYear()+'/'+String(Date.now()).slice(-6));
     } catch(error) { flash(error instanceof Error?error.message:'Could not prepare invoice PDF.'); }
     finally {setBusy(false);}
