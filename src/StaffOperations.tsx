@@ -280,6 +280,11 @@ export default function StaffOperations({ session, customers, flash, compact = f
                 if (!result.data.monitoring && result.data.reason === 'no-active-shift') {
                   if (watcherId) void BackgroundGeolocation.removeWatcher({ id: watcherId });
                   setGpsMessage('The shift is no longer active. Background location tracking has stopped.');
+                  await refresh();
+                } else if (!result.data.monitoring && result.data.reason === 'restart-required') {
+                  if (watcherId) void BackgroundGeolocation.removeWatcher({ id: watcherId });
+                  setGpsMessage('This shift was cancelled after the GPS grace period. An administrator must restart it before tracking can resume.');
+                  await refresh();
                 } else if (result.data.monitoring && result.data.deadlineAt) {
                   setGpsDeadline(result.data.deadlineAt);
                   const minutes = Math.max(0, Math.ceil(Number(result.data.remainingSeconds || 0) / 60));
@@ -363,7 +368,15 @@ export default function StaffOperations({ session, customers, flash, compact = f
             setGpsDeadline(result.data.deadlineAt);
             const minutes = Math.max(0, Math.ceil(Number(result.data.remainingSeconds || 0) / 60));
             if (!cancelled) setGpsMessage('GPS is unavailable. Turn it back on within 15 minutes. About ' + minutes + ' minutes remain. Your shift will be cancelled only after the grace period.');
-          } else if (result.data.reason === 'holiday-exempt') setGpsMessage('GPS monitoring is paused for your pending/approved holiday date.');
+          } else if (result.data.reason === 'holiday-exempt') {
+            setGpsMessage('GPS monitoring is paused for your pending/approved holiday date.');
+          } else if (result.data.reason === 'restart-required') {
+            setGpsMessage('This shift was cancelled after the GPS grace period. An administrator must restart it before tracking can resume.');
+            await refresh();
+          } else if (result.data.reason === 'no-active-shift') {
+            setGpsMessage('The shift is no longer active. Location sharing has stopped.');
+            await refresh();
+          }
         } catch { if (!cancelled) setGpsMessage('GPS is unavailable. Reconnect and restore location; the 15-minute grace timer will be enforced by the server once detected.'); }
         inFlight = false;
       }, { enableHighAccuracy: true, maximumAge: 10000, timeout: 20000 });
