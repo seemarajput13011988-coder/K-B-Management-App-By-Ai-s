@@ -280,11 +280,11 @@ export default function StaffOperations({ session, customers, flash, compact = f
                 if (!result.data.monitoring && result.data.reason === 'no-active-shift') {
                   if (watcherId) void BackgroundGeolocation.removeWatcher({ id: watcherId });
                   setGpsMessage('The shift is no longer active. Background location tracking has stopped.');
-                  await refresh();
+                  void refresh();
                 } else if (!result.data.monitoring && result.data.reason === 'restart-required') {
                   if (watcherId) void BackgroundGeolocation.removeWatcher({ id: watcherId });
                   setGpsMessage('This shift was cancelled after the GPS grace period. An administrator must restart it before tracking can resume.');
-                  await refresh();
+                  void refresh();
                 } else if (result.data.monitoring && result.data.deadlineAt) {
                   setGpsDeadline(result.data.deadlineAt);
                   const minutes = Math.max(0, Math.ceil(Number(result.data.remainingSeconds || 0) / 60));
