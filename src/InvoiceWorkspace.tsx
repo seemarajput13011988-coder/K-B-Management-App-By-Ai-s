@@ -34,7 +34,8 @@ export default function InvoiceWorkspace({customers,plans,flash}:{customers:Cust
   const [notes,setNotes]=useState('Thank you for choosing K&B Net Service.');
   const [terms,setTerms]=useState('Payment is due by the due date mentioned above. Please mention the invoice number while making payment.');
   const [paymentMode,setPaymentMode]=useState('UPI / Bank Transfer');
-  const [items,setItems]=useState<LineItem[]>([newLine(1)]);\n  const [extraSummaryFields,setExtraSummaryFields]=useState<ExtraSummaryField[]>([]);
+  const [items,setItems]=useState<LineItem[]>([newLine(1)]);
+  const [extraSummaryFields,setExtraSummaryFields]=useState<ExtraSummaryField[]>([]);
   const [busy,setBusy]=useState(false);
   const [dialogOpen,setDialogOpen]=useState(false);
   const lineSubtotal = useMemo(()=>items.reduce((sum,item)=>{
@@ -47,7 +48,11 @@ export default function InvoiceWorkspace({customers,plans,flash}:{customers:Cust
     const net=qty*rate*(1-disc/100), taxable=item.taxMode==='inclusive'?net/(1+gst/100):net;
     return sum + (item.taxMode==='inclusive'?net-taxable:taxable*gst/100);
   },0),[items]);
-  const extraSubtotal = extraSummaryFields.reduce((sum,field)=>sum+Math.max(0,Number(field.amount)||0),0);\n  const extraTaxTotal = extraSummaryFields.reduce((sum,field)=>sum+Math.max(0,Number(field.amount)||0)*Math.max(0,Number(field.gstRate)||0)/100,0);\n  const subtotal = lineSubtotal + extraSubtotal;\n  const taxTotal = lineTaxTotal + extraTaxTotal;\n  const discountTotal = items.reduce((sum,item)=>{const gross=Math.max(0,Number(item.quantity)||0)*Math.max(0,Number(item.rate)||0)*Math.min(100,Math.max(0,Number(item.discount)||0))/100;const gst=Math.max(0,Number(item.gstRate)||0);return sum+gross/(item.taxMode==='inclusive'?1+gst/100:1);},0);
+  const extraSubtotal = extraSummaryFields.reduce((sum,field)=>sum+Math.max(0,Number(field.amount)||0),0);
+  const extraTaxTotal = extraSummaryFields.reduce((sum,field)=>sum+Math.max(0,Number(field.amount)||0)*Math.max(0,Number(field.gstRate)||0)/100,0);
+  const subtotal = lineSubtotal + extraSubtotal;
+  const taxTotal = lineTaxTotal + extraTaxTotal;
+  const discountTotal = items.reduce((sum,item)=>{const gross=Math.max(0,Number(item.quantity)||0)*Math.max(0,Number(item.rate)||0)*Math.min(100,Math.max(0,Number(item.discount)||0))/100;const gst=Math.max(0,Number(item.gstRate)||0);return sum+gross/(item.taxMode==='inclusive'?1+gst/100:1);},0);
   const isIntraState = supplyStateCode.trim()==='24';
   const cgst = isIntraState ? Math.round(taxTotal/2*100)/100 : 0, sgst = isIntraState ? taxTotal-cgst : 0, igst = isIntraState ? 0 : taxTotal;
   const grandTotal = Math.round((subtotal+taxTotal)*100)/100;
@@ -69,7 +74,9 @@ export default function InvoiceWorkspace({customers,plans,flash}:{customers:Cust
       const gross=qty*rate,discount=gross*disc/100,after=gross-discount,taxable=item.taxMode==='inclusive'?after/(1+gst/100):after,tax=after-taxable,total=after+(item.taxMode==='exclusive'?tax:0);
       return {index:index+1,item,qty,rate,discount,taxable,tax,total,gst};
     });
-    const lineRowsHtml=rows.map(r=>'<tr><td>'+r.index+'</td><td><b>'+esc(r.item.description)+'</b>'+(r.item.details?'<small>'+esc(r.item.details)+'</small>':'')+'<small>SAC: '+esc(r.item.sac||'—')+'</small></td><td class="num">'+r.qty+'</td><td class="num">'+money(r.rate)+'</td><td class="num">'+money(r.discount)+'</td><td class="num">'+money(r.taxable)+'</td><td class="num">'+r.gst+'%</td><td class="num">'+money(r.tax)+'</td><td class="num"><b>'+money(r.total)+'</b></td></tr>').join('');\n    const extraRowsHtml=extraSummaryFields.filter(f=>f.label.trim()||f.details.trim()||f.amount.trim()).map((f,index)=>{const amount=Math.max(0,Number(f.amount)||0),gst=Math.max(0,Number(f.gstRate)||0),tax=amount*gst/100;return '<tr><td>'+ (rows.length+index+1) +'</td><td><b>'+esc(f.label||'Additional charge')+'</b>'+(f.details?'<small>'+esc(f.details)+'</small>':'')+'<small>Optional invoice summary entry</small></td><td class="num">1</td><td class="num">'+money(amount)+'</td><td class="num">'+money(0)+'</td><td class="num">'+money(amount)+'</td><td class="num">'+gst+'%</td><td class="num">'+money(tax)+'</td><td class="num"><b>'+money(amount+tax)+'</b></td></tr>';}).join('');\n    const rowsHtml=lineRowsHtml+extraRowsHtml;
+    const lineRowsHtml=rows.map(r=>'<tr><td>'+r.index+'</td><td><b>'+esc(r.item.description)+'</b>'+(r.item.details?'<small>'+esc(r.item.details)+'</small>':'')+'<small>SAC: '+esc(r.item.sac||'—')+'</small></td><td class="num">'+r.qty+'</td><td class="num">'+money(r.rate)+'</td><td class="num">'+money(r.discount)+'</td><td class="num">'+money(r.taxable)+'</td><td class="num">'+r.gst+'%</td><td class="num">'+money(r.tax)+'</td><td class="num"><b>'+money(r.total)+'</b></td></tr>').join('');
+    const extraRowsHtml=extraSummaryFields.filter(f=>f.label.trim()||f.details.trim()||f.amount.trim()).map((f,index)=>{const amount=Math.max(0,Number(f.amount)||0),gst=Math.max(0,Number(f.gstRate)||0),tax=amount*gst/100;return '<tr><td>'+ (rows.length+index+1) +'</td><td><b>'+esc(f.label||'Additional charge')+'</b>'+(f.details?'<small>'+esc(f.details)+'</small>':'')+'<small>Optional invoice summary entry</small></td><td class="num">1</td><td class="num">'+money(amount)+'</td><td class="num">'+money(0)+'</td><td class="num">'+money(amount)+'</td><td class="num">'+gst+'%</td><td class="num">'+money(tax)+'</td><td class="num"><b>'+money(amount+tax)+'</b></td></tr>';}).join('');
+    const rowsHtml=lineRowsHtml+extraRowsHtml;
     const taxLabel=isIntraState?'<div><span>CGST</span><b>'+money(cgst)+'</b></div><div><span>SGST</span><b>'+money(sgst)+'</b></div>':'<div><span>IGST</span><b>'+money(igst)+'</b></div>';
     return `<!doctype html><html><head><meta charset="utf-8"><title>${esc(invoiceNo)}</title><style>
       @page{size:A4;margin:12mm}*{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;color:#172033;margin:0;font-size:11px;line-height:1.45}
