@@ -254,6 +254,86 @@ export async function apiHandler(req: any, res: any) {
       if (!user) { send(res, 401, { error: 'Please sign in again to continue.' }); return; }
       const body: Data = req.body && typeof req.body === 'object' ? req.body : {};
 
+      if (path === '/api/staff-registration-requests' && method === 'GET') {
+        if (!allow(user, ['admin'], res)) return;
+        const items = (await list('staff_registration_requests'))
+          .map(({ trackingHash, ...safe }) => safe)
+          .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+        send(res, 200, { items }); return;
+      }
+
+      if (path.startsWith('/api/staff-registration-requests/') && method === 'PUT') {
+        if (!allow(user, ['admin'], res)) return;
+        const requestId = routeId(path, '/api/staff-registration-requests').toLowerCase();
+        const status = clean(body.status, 20).toLowerCase();
+        const password = typeof body.password === 'string' ? body.password : '';
+        if (!requestId || requestId === 'status') { send(res, 400, { error: 'A valid registration request ID is required.' }); return; }
+        if (!['approved', 'rejected'].includes(status)) {
+          send(res, 400, { error: 'Choose approve or reject for this registration request.' }); return;
+        }
+        if (status === 'approved' && password.length < 10) {
+          send(res, 400, { error: 'Set a temporary password with at least 10 characters before approving.' }); return;
+        }
+        const requestRef = db.collection('staff_registration_requests').doc(requestId);
+        const existingSnap = await requestRef.get();
+        if (!existingSnap.exists) { send(res, 404, { error: 'Staff registration request not found.' }); return; }
+        const existing = existingSnap.data()!;
+        if (existing.status !== 'pending') { send(res, 409, { error: 'This registration request has already been reviewed.' }); return; }
+        const staffUserId = clean(existing.userId, 32);
+        const staffUserIdLower = staffUserId.toLowerCase();
+        if (!/^[a-zA-Z0-9_-]{3,32}$/.test(staffUserId) || !clean(existing.displayName, 80)) {
+          send(res, 400, { error: 'This registration request has incomplete account details. Reject it and ask the applicant to submit again.' }); return;
+        }
+        const allUsers = await list('users');
+        if (status === 'approved' && allUsers.some(item => String(item.userId || '').toLowerCase() === staffUserIdLower)) {
+          send(res, 409, { error: 'This staff ID is already registered. Reject this request and ask the person to contact an administrator.' }); return;
+        }
+        const reviewedAt = now();
+        const staffRecordId = 'staff-' + randomBytes(12).toString('hex');
+        const staffRef = db.collection('users').doc(staffRecordId);
+        const staffRecord: Data = {
+          userId: staffUserId,
+          userIdLower: staffUserIdLower,
+          displayName: clean(existing.displayName, 80),
+          phone: clean(existing.phone, 30),
+          role: 'staff',
+          active: true,
+          canManageAdmins: false,
+          ...newPasswordFields(password),
+          createdAt: reviewedAt,
+          createdBy: user.uid,
+        };
+        const applied = await db.runTransaction(async transaction => {
+          const latest = await transaction.get(requestRef);
+          if (!latest.exists || latest.data()?.status !== 'pending') return false;
+          if (status === 'approved') transaction.create(staffRef, staffRecord);
+          transaction.update(requestRef, {
+            status,
+            reviewedAt,
+            reviewedBy: user.uid,
+            reviewedByName: user.displayName,
+            ...(status === 'approved' ? { createdUserId: staffRecordId } : {}),
+          });
+          return true;
+        });
+        if (!applied) { send(res, 409, { error: 'This registration request was already reviewed. Refresh the list.' }); return; }
+        if (status === 'approved') {
+          await db.collection('staff_notifications').add({
+            recipientId: staffRecordId,
+            recipientRole: 'staff',
+            type: 'staff-registration-approved',
+            title: 'Staff access approved',
+            message: 'Your staff account has been approved. You can now sign in using your staff ID and the temporary password shared by the administrator.',
+            relatedId: requestId,
+            createdAt: reviewedAt,
+            read: false,
+          });
+        }
+        await audit(user, status === 'approved' ? 'APPROVE_STAFF_REGISTRATION' : 'REJECT_STAFF_REGISTRATION',
+          'staff_registration_request', requestId, 'Staff registration request ' + status + ' for ' + staffUserId);
+        send(res, 200, { updated: true, status, ...(status === 'approved' ? { userId: staffUserId, userRecordId: staffRecordId } : {}) }); return;
+      }
+
       if (path === '/api/retention/review' && method === 'GET') {
         if (!allow(user, ['admin'], res)) return;
         const dueItems: Data[] = [];
