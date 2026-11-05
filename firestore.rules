@@ -105,7 +105,7 @@ service cloud.firestore {
       allow create: if hasActiveProfile()
         && request.resource.data.keys().hasOnly([
           'customerId', 'customerName', 'amount', 'method', 'paidAt',
-          'month', 'recordedBy', 'recordedByName', 'createdAt'
+          'month', 'recordedBy', 'recordedByName', 'createdAt', 'subscriptionId'
         ])
         && request.resource.data.customerId is string
         && request.resource.data.customerName is string
@@ -206,6 +206,34 @@ service cloud.firestore {
           || (get(/databases/$(database)/documents/users/$(request.resource.data.assignedTo)).data.role == 'staff'
             && get(/databases/$(database)/documents/users/$(request.resource.data.assignedTo)).data.active == true));
       allow delete: if isAdmin();
+    }
+
+    // Subscription history: staff can access renewals only for customers
+    // assigned to them. Only active admins can change renewal status.
+    match /subscriptions/{subscriptionId} {
+      allow get, list: if isAdmin()
+        || (hasActiveProfile()
+          && get(/databases/$(database)/documents/customers/$(resource.data.customerId)).data.assignedTo == request.auth.uid);
+      allow create: if hasActiveProfile()
+        && request.resource.data.customerId is string
+        && request.resource.data.customerName is string
+        && request.resource.data.plan is string
+        && request.resource.data.startDate is string
+        && request.resource.data.endDate is string
+        && request.resource.data.endDate >= request.resource.data.startDate
+        && request.resource.data.amount is number
+        && request.resource.data.amount > 0
+        && request.resource.data.status == 'Active'
+        && request.resource.data.paymentStatus in ['Paid', 'Pending']
+        && request.resource.data.createdBy == request.auth.uid
+        && (isAdmin()
+          || get(/databases/$(database)/documents/customers/$(request.resource.data.customerId)).data.assignedTo == request.auth.uid);
+      allow update: if isAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status', 'notes', 'updatedAt', 'updatedBy'
+        ])
+        && request.resource.data.status in ['Active', 'Pending', 'Expired', 'Cancelled'];
+      allow delete: if false;
     }
 
     // All remaining collections stay closed until their own ownership-checked
