@@ -16,5 +16,7 @@ services:
         sync: false
       - key: ADMIN_RECOVERY_CODE
         sync: false
+      - key: JOB_SECRET
+        sync: false
       - key: NODE_ENV
         value: production

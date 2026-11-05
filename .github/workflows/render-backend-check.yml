@@ -1,5 +1,8 @@
 name: K&B Render backend checks
 on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
   push:
     branches: [render-backend-migration]
     paths: ["render-backend/**", "src/**", "package.json", "package-lock.json", ".github/workflows/render-backend-check.yml"]
@@ -39,3 +42,18 @@ jobs:
           npm install
           npx tsc --noEmit
           npm run build
+
+  keepalive:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wake API and request background check
+        env:
+          K_B_RENDER_API_URL: ${{ secrets.K_B_RENDER_API_URL }}
+          K_B_JOB_SECRET: ${{ secrets.K_B_JOB_SECRET }}
+        run: |
+          if [ -z "$K_B_RENDER_API_URL" ] || [ -z "$K_B_JOB_SECRET" ]; then
+            echo "::warning::Set K_B_RENDER_API_URL and K_B_JOB_SECRET to enable the five-minute wake-up check."
+            exit 0
+          fi
+          curl --fail --silent --show-error --max-time 55 -X POST "$K_B_RENDER_API_URL/internal/jobs/tick" -H "x-kb-job-secret: $K_B_JOB_SECRET"
