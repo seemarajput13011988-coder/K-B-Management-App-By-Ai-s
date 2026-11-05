@@ -7,7 +7,7 @@ import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { onDocumentCreated } from 'firebase-functions/v2/firestore';
 import { logger } from 'firebase-functions';
 import { defineSecret } from 'firebase-functions/params';
-import { buildCustomerLedger, calculateInventoryBalance, gpsGracePeriodExpired, hasOverlappingSubscription, isConfirmedGpsLossReason, hasAdminManagementAccess, isValidDateKey, isValidDateRange, routePath, subscriptionExpiryKind, taskReminderKind, isSixMonthReviewDue } from './route-path.js';
+import { buildCustomerLedger, hasOverlappingSubscription, hasAdminManagementAccess, isValidDateKey, isValidDateRange, routePath, subscriptionExpiryKind, taskReminderKind, isSixMonthReviewDue } from './route-path.js';
 
 initializeApp();
 const db = getFirestore();
@@ -107,10 +107,6 @@ async function audit(user: AppUser, action: string, entityType: string, entityId
     description: clean(description, 240), createdAt: now(), serverCreatedAt: FieldValue.serverTimestamp(),
   });
 }
-async function staffFor(userId: string): Promise<Data | null> {
-  return getDoc('users', userId);
-}
-
 const RETENTION_REVIEW_COLLECTIONS: Record<string, string> = {
   customers: 'Customers',
   payments: 'Payments',
@@ -141,12 +137,7 @@ function retentionRecordLabel(data: Data, id: string): string {
   return id;
 }
 
-const defaultPlans = [
-  { id: 'default-plan-1', name: 'RailWire 30 Mbps', provider: 'RailWire', speed: '30 Mbps', data: '1.5 TB', price: 549, note: 'Popular home plan', connectionType: 'Fiber', featured: true, active: true },
-  { id: 'default-plan-2', name: 'RailWire 50 Mbps', provider: 'RailWire', speed: '50 Mbps', data: '2 TB', price: 699, note: 'For multiple devices', connectionType: 'Fiber', featured: false, active: true },
-  { id: 'default-plan-3', name: 'RailWire 100 Mbps', provider: 'RailWire', speed: '100 Mbps', data: '3 TB', price: 899, note: 'Heavy usage', connectionType: 'Fiber', featured: false, active: true },
-  { id: 'default-plan-4', name: 'BSNL / Air Fibre', provider: 'BSNL / Air Fibre', speed: 'As configured', data: 'Plan based', price: 799, note: 'Custom connection', connectionType: 'Air Fibre', featured: false, active: true },
-];
+
 
 export const api = onRequest(
   { region: 'asia-south1', cors: true, maxInstances: 10, timeoutSeconds: 60, secrets: [adminRecoveryCode, adminBootstrapSecret] },
@@ -271,6 +262,39 @@ export const api = onRequest(
       const user = await requireUser(req);
       if (!user) { send(res, 401, { error: 'Please sign in again to continue.' }); return; }
       const body: Data = req.body && typeof req.body === 'object' ? req.body : {};
+
+      if (path === '/api/retention/review' && method === 'GET') {
+        if (!allow(user, ['admin'], res)) return;
+        const dueItems: Data[] = [];
+        for (const [collection, label] of Object.entries(RETENTION_REVIEW_COLLECTIONS)) {
+          const snapshot = await db.collection(collection).get();
+          for (const doc of snapshot.docs) {
+            const data = doc.data();
+            const createdAt = retentionCreatedAt(data, doc.createTime);
+            if (createdAt && isSixMonthReviewDue(createdAt)) {
+              dueItems.push({ id: doc.id, collection, collectionLabel: label, label: retentionRecordLabel(data, doc.id), createdAt });
+            }
+          }
+        }
+        dueItems.sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
+        send(res, 200, { items: dueItems, count: dueItems.length }); return;
+      }
+
+      if (path === '/api/retention/review/delete' && method === 'POST') {
+        if (!allow(user, ['admin'], res)) return;
+        const collection = clean(body.collection, 80);
+        const id = clean(body.id, 160);
+        if (body.confirmDelete !== true) { send(res, 400, { error: 'Explicit administrator confirmation is required.' }); return; }
+        if (!Object.prototype.hasOwnProperty.call(RETENTION_REVIEW_COLLECTIONS, collection) || !id) {
+          send(res, 400, { error: 'This record cannot be deleted through retention review.' }); return;
+        }
+        const ref = db.collection(collection).doc(id);
+        const record = await ref.get();
+        if (!record.exists) { send(res, 404, { error: 'The record no longer exists.' }); return; }
+        await ref.delete();
+        await audit(user, 'RETENTION_DELETE', collection, id, 'Administrator confirmed deletion of ' + RETENTION_REVIEW_COLLECTIONS[collection] + ' record');
+        send(res, 200, { deleted: true }); return;
+      }
 
       if (method === 'POST' && path === '/api/auth/change-password') {
         const currentPassword = typeof body.currentPassword === 'string' ? body.currentPassword : '';
