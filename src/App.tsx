@@ -1516,30 +1516,32 @@ function TaskModal({ staff, onClose, onSave }: any) {
   </form></Modal>;
 }
 function AccountSettingsModal({ session, onClose, onChangeUserId, onChangePassword }: any) {
-  const [currentPassword, setCurrentPassword] = useState('');
+  const [currentPasswordForUserId, setCurrentPasswordForUserId] = useState('');
+  const [currentPasswordForPassword, setCurrentPasswordForPassword] = useState('');
   const [newUserId, setNewUserId] = useState(session.user.userId);
   const [newPassword, setNewPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   async function submitUserId(e: FormEvent) {
     e.preventDefault(); setBusy(true); setMessage('');
-    try { await onChangeUserId(currentPassword, newUserId); }
+    try { await onChangeUserId(currentPasswordForUserId, newUserId); }
     catch (err) { setMessage(err instanceof Error ? err.message : 'Could not change user ID.'); setBusy(false); }
   }
   async function submitPassword(e: FormEvent) {
     e.preventDefault(); setBusy(true); setMessage('');
-    try { await onChangePassword(currentPassword, newPassword); }
+    try { await onChangePassword(currentPasswordForPassword, newPassword); }
     catch (err) { setMessage(err instanceof Error ? err.message : 'Could not change password.'); setBusy(false); }
   }
   return <Modal title="My account" subtitle={'Signed in as ' + session.user.displayName + ' · ' + session.user.role} onClose={onClose}>
     <div className="form-grid">
       <form className="form-grid" onSubmit={submitUserId}>
-        <Field label="Current password"><input type="password" required value={currentPassword} onChange={e => setCurrentPassword(e.target.value)} autoComplete="current-password" /></Field>
+        <Field label="Current password"><input type="password" required value={currentPasswordForUserId} onChange={e => setCurrentPasswordForUserId(e.target.value)} autoComplete="current-password" /></Field>
         <Field label="New user ID"><input required minLength={3} maxLength={32} pattern="[a-zA-Z0-9_-]{3,32}" value={newUserId} onChange={e => setNewUserId(e.target.value)} /></Field>
         <div className="form-actions"><button className="btn primary" disabled={busy || newUserId.trim().toLowerCase() === session.user.userId.toLowerCase()}>{busy ? 'Saving…' : 'Change username'}</button></div>
       </form>
       <div className="form-hint">Changing your username signs you out. Sign in again with the new ID.</div>
       <form className="form-grid" onSubmit={submitPassword}>
+        <Field label="Current password"><input type="password" required value={currentPasswordForPassword} onChange={e => setCurrentPasswordForPassword(e.target.value)} autoComplete="current-password" /></Field>
         <Field label="New password"><input type="password" required minLength={10} value={newPassword} onChange={e => setNewPassword(e.target.value)} autoComplete="new-password" /></Field>
         {message && <div className="auth-message">{message}</div>}
         <div className="form-actions"><button className="btn primary" disabled={busy || !newPassword}>{busy ? 'Saving…' : 'Change password'}</button><button type="button" className="btn secondary" onClick={onClose}>Close</button></div>
