@@ -150,12 +150,16 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   const [planFilter, setPlanFilter] = useState<'Active' | 'Archived' | 'All'>('Active');
   const [selected, setSelected] = useState<Customer | null>(null);
   const [showPayment, setShowPayment] = useState(false);
+  const [editingPayment, setEditingPayment] = useState<Payment | null>(null);
+  const [paymentSearch, setPaymentSearch] = useState('');
+  const [staffSearch, setStaffSearch] = useState('');
   const [showComplaint, setShowComplaint] = useState(false);
   const [notice, setNotice] = useState('');
   const [mobileNav, setMobileNav] = useState(false);
   const [retentionItems, setRetentionItems] = useState<RetentionReviewItem[]>([]);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const notificationAnchorRef = useRef<HTMLDivElement | null>(null);
   const seenNotifications = useRef<Set<string> | null>(null);
   const pushToken = useRef<string | null>(null);
 
@@ -192,8 +196,8 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
     };
   }, [mobileNav]);
 
-  async function load() {
-    setLoading(true);
+  async function load(silent = false) {
+    if (!silent) setLoading(true);
     try {
       const [c, p, t, w, a, planResult] = await Promise.all([
         api.get('/api/customers'),
@@ -226,7 +230,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
     } catch (e) {
       setNotice('Could not load records. Please refresh and try again.');
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }
   useEffect(() => {
@@ -269,6 +273,20 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
     const timer = window.setInterval(pollNotifications, 12000);
     return () => { stopped = true; window.clearInterval(timer); };
   }, [session.user.id, isAdmin]);
+
+  useEffect(() => {
+    if (!notificationsOpen) return;
+    const closeOutside = (event: PointerEvent) => {
+      if (!notificationAnchorRef.current?.contains(event.target as Node)) setNotificationsOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === 'Escape') setNotificationsOpen(false); };
+    document.addEventListener('pointerdown', closeOutside);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', closeOutside);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [notificationsOpen]);
 
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
@@ -349,6 +367,8 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
     [customers, search]
   );
   const selectedStaffProfile = staff.find(member => member.id === selectedStaffProfileId);
+  const filteredStaff = staff.filter(member => [member.displayName, member.userId].join(' ').toLowerCase().includes(staffSearch.toLowerCase()));
+  const filteredPayments = payments.filter(payment => [payment.customerName, payment.month, payment.method, payment.paidAt, payment.recordedByName || ''].join(' ').toLowerCase().includes(paymentSearch.toLowerCase()));
   const selectedStaffPayments = payments.filter(payment => payment.recordedBy === selectedStaffProfileId).sort((a, b) => b.paidAt.localeCompare(a.paidAt));
   const selectedStaffAttendance = attendanceRecords.filter(record => record.userId === selectedStaffProfileId).sort((a, b) => b.workDate.localeCompare(a.workDate));
   const selectedStaffAttendanceEquivalent = selectedStaffAttendance.reduce((sum, record) => sum + (record.dayType === 'Half day' ? 0.5 : 1), 0);
@@ -509,12 +529,24 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   }
   async function savePayment(data: Omit<Payment, 'id'>) {
     try {
-      await api.post('/api/payments', data);
+      if (editingPayment) await api.put('/api/payments/' + editingPayment.id, data as unknown as Record<string, unknown>);
+      else await api.post('/api/payments', data);
       setShowPayment(false);
+      setEditingPayment(null);
       await load();
-      flash('Payment recorded');
-    } catch {
-      flash('Could not record payment');
+      flash(editingPayment ? 'Payment updated' : 'Payment recorded');
+    } catch (err) {
+      flash(err instanceof Error ? err.message : 'Could not save payment');
+    }
+  }
+  async function deletePayment(payment: Payment) {
+    if (!isAdmin || !window.confirm('Delete this payment record for ' + payment.customerName + '? The audit history will be preserved.')) return;
+    try {
+      await api.delete('/api/payments/' + payment.id);
+      await load();
+      flash('Payment deleted.');
+    } catch (err) {
+      flash(err instanceof Error ? err.message : 'Could not delete payment.');
     }
   }
   async function saveComplaint(data: Omit<Complaint, 'id'>) {
@@ -607,6 +639,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
               className={'nav-item ' + (page === item.label ? 'active' : '')}
               onClick={() => {
                 setPage(item.label);
+                setNotificationsOpen(false);
                 setMobileNav(false);
               }}
             >
@@ -663,7 +696,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
               <label className="language-control" title="App language"><span>🌐</span><select aria-label="App language" value={language} onChange={event => setLanguage(event.target.value as 'en' | 'hi' | 'gu')}><option value="en">English</option><option value="hi">हिन्दी</option><option value="gu">ગુજરાતી</option></select></label>
               <button className="theme-toggle" onClick={toggleTheme} title={theme === 'dark' ? 'Switch to day mode' : 'Switch to night mode'} aria-label={theme === 'dark' ? 'Switch to day mode' : 'Switch to night mode'}>{theme === 'dark' ? '☀️' : '🌙'}<span>{theme === 'dark' ? 'Day' : 'Night'}</span></button>
             </div>
-            <div className="notification-anchor">
+            <div className="notification-anchor" ref={notificationAnchorRef}>
               <button className="icon-button notification-bell" onClick={() => setNotificationsOpen(open => !open)} aria-label="Open notifications">
                 <Bell size={18}/>{notifications.filter(item=>!item.read).length>0 && <span className="notification-count">{Math.min(99,notifications.filter(item=>!item.read).length)}</span>}
               </button>
@@ -673,7 +706,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                 {!notifications.length && <p className="notification-empty">You’re all caught up.</p>}
               </div>}
             </div>
-            <button type="button" className="icon-button account-trigger" title="Account settings" aria-label="Account settings" onClick={() => setShowAccountSettings(true)}><div className="avatar small-avatar">{session.user.displayName.slice(0, 2).toUpperCase()}</div></button>
+            <button type="button" className="icon-button account-trigger" title="Account settings" aria-label="Account settings" onClick={() => { setNotificationsOpen(false); setShowAccountSettings(true); }}><div className="avatar small-avatar">{session.user.displayName.slice(0, 2).toUpperCase()}</div></button>
           </div>
         </header>
         <div className="content">
@@ -942,17 +975,17 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
 
           {page === 'Staff' && isAdmin && (
             <section className="panel table-panel">
-              <div className="toolbar"><div><h2>Staff accounts</h2><p className="subtle">Create accounts and manage access to assigned customers.</p></div><span className="result-count">{staff.length} members</span></div>
+              <div className="toolbar"><div className="searchbox"><Search size={17}/><input value={staffSearch} onChange={e => setStaffSearch(e.target.value)} placeholder="Search staff name or user ID..."/></div><span className="result-count">{filteredStaff.length} of {staff.length} members</span></div>
               <div className="table-wrap"><table><thead><tr><th>STAFF MEMBER</th><th>USER ID</th><th>ASSIGNED CUSTOMERS</th><th>COLLECTIONS RECORDED</th><th>ACCESS</th><th>ACTIONS</th></tr></thead><tbody>
-                {staff.map(member => {
+                {filteredStaff.map(member => {
                   const assigned = customers.filter(c => c.assignedTo === member.id).length;
                   const total = payments.filter(p => p.recordedBy === member.id).reduce((sum, p) => sum + Number(p.amount || 0), 0);
                   return <tr key={member.id}><td data-label="Staff member"><b>{member.displayName}</b></td><td data-label="User ID">{member.userId}</td><td data-label="Assigned customers">{assigned}</td><td data-label="Collections" className="amount">{money(total)}</td><td data-label="Access"><span className={'status ' + (member.active ? 'active' : 'inactive')}>{member.active ? 'Active' : 'Disabled'}</span></td><td data-label="Actions"><div className="staff-actions"><button className="btn secondary compact" onClick={() => updateStaff(member, { active: !member.active })}>{member.active ? 'Disable' : 'Enable'}</button><button className="row-action" title="Change username" onClick={() => setEditStaffUserId(member)}><Pencil size={15} /></button><button className="row-action" title="Reset password" onClick={() => setResetStaff(member)}><LockKeyhole size={15} /></button><button className="row-action danger" title="Delete staff account" onClick={() => removeStaff(member)}><Trash2 size={15} /></button></div></td></tr>;
                 })}
               </tbody></table></div>
-              {!staff.length && <Empty icon={<UserRound />} title="No staff accounts yet" text="Create a staff account, then assign customers to that person from the customer form." action="Add staff member" onClick={() => setShowStaff(true)} />}
+              {!filteredStaff.length && <Empty icon={<UserRound />} title={staff.length ? 'No matching staff' : 'No staff accounts yet'} text={staff.length ? 'Try another staff name or user ID.' : 'Create a staff account, then assign customers to that person from the customer form.'} action={!staff.length ? 'Add staff member' : undefined} onClick={() => setShowStaff(true)} />}
               <div className="staff-insight-grid">
-                {staff.map(member => {
+                {filteredStaff.map(member => {
                   const assigned = customers.filter(c => c.assignedTo === member.id).length;
                   const total = payments.filter(p => p.recordedBy === member.id).reduce((sum, p) => sum + Number(p.amount || 0), 0);
                   return <div className={'staff-insight ' + (selectedStaffProfileId === member.id ? 'staff-insight-selected' : '')} key={member.id}><div className="staff-insight-head"><span className="avatar">{member.displayName.slice(0,2).toUpperCase()}</span><div><b>{member.displayName}</b><small>{member.userId}</small></div></div><div className="staff-insight-stats"><span><small>Assigned</small><b>{assigned}</b></span><span><small>Collected</small><b>{money(total)}</b></span></div><button className="btn secondary compact staff-profile-button" onClick={() => setSelectedStaffProfileId(member.id)}>View personal record <Eye size={13}/></button></div>;
@@ -1098,9 +1131,10 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                   <h2>Payment history</h2>
                   <p className="subtle">All recorded customer collections</p>
                 </div>
-                <span className="result-count">{payments.length} records</span>
+                <div className="searchbox"><Search size={17}/><input value={paymentSearch} onChange={e => setPaymentSearch(e.target.value)} placeholder="Search customer, month, method or date..."/></div>
+                <span className="result-count">{filteredPayments.length} of {payments.length} records</span>
               </div>
-              <PaymentTable rows={payments} />
+              <PaymentTable rows={filteredPayments} isAdmin={isAdmin} onEdit={(payment: Payment) => { setEditingPayment(payment); setShowPayment(true); }} onDelete={isAdmin ? deletePayment : undefined} />
               {!payments.length && (
                 <Empty
                   icon={<CreditCard />}
@@ -1181,7 +1215,8 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
       {showPayment && (
         <PaymentModal
           customers={customers}
-          onClose={() => setShowPayment(false)}
+          initial={editingPayment}
+          onClose={() => { setShowPayment(false); setEditingPayment(null); }}
           onSave={savePayment}
         />
       )}
@@ -1397,7 +1432,7 @@ function CustomerTable({ rows, onView, onEdit, onDelete }: any) {
     </div>
   );
 }
-function PaymentTable({ rows }: any) {
+function PaymentTable({ rows, isAdmin = false, onEdit, onDelete }: any) {
   return (
     <div className="table-wrap">
       <table>
@@ -1409,6 +1444,7 @@ function PaymentTable({ rows }: any) {
             <th>DATE</th>
             <th>AMOUNT</th>
             <th>STATUS</th>
+            {(isAdmin || onDelete) && <th>ACTIONS</th>}
           </tr>
         </thead>
         <tbody>
@@ -1424,6 +1460,7 @@ function PaymentTable({ rows }: any) {
               <td>
                 <span className="status active">Paid</span>
               </td>
+              {(isAdmin || onDelete) && <td><div className="staff-actions"><button className="row-action" title="Edit payment" onClick={() => onEdit?.(p)}><Pencil size={14}/></button>{onDelete && <button className="row-action danger" title="Delete payment" onClick={() => onDelete(p)}><Trash2 size={14}/></button>}</div></td>
             </tr>
           ))}
         </tbody>
@@ -1509,7 +1546,7 @@ function CustomerModal({ initial, onClose, onSave, staff = [], role = 'admin', p
     >
       <form onSubmit={submit} className="form-grid">
         {role === 'staff' ? <>
-          <Field label="Phone number"><input required value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} /></Field>
+          <Field label="Phone number"><input required type="tel" inputMode="numeric" pattern="[0-9]{10}" minLength={10} maxLength={10} value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value.replace(/\D/g, '').slice(0, 10) })} placeholder="10-digit mobile number" /></Field>
           <Field label="Address" wide><textarea required rows={2} value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} /></Field>
           <Field label="Notes" wide><textarea rows={3} value={form.notes || ''} onChange={e => setForm({ ...form, notes: e.target.value })} /></Field>
         </> : <>
@@ -1524,10 +1561,14 @@ function CustomerModal({ initial, onClose, onSave, staff = [], role = 'admin', p
         <Field label="Phone number">
           <input
             required
-            pattern="[0-9+ -]{8,16}"
+            type="tel"
+            inputMode="numeric"
+            pattern="[0-9]{10}"
+            minLength={10}
+            maxLength={10}
             value={form.phone}
-            onChange={e => setForm({ ...form, phone: e.target.value })}
-            placeholder="Mobile number"
+            onChange={e => setForm({ ...form, phone: e.target.value.replace(/\D/g, '').slice(0, 10) })}
+            placeholder="10-digit mobile number"
           />
         </Field>
         <Field label="Internet plan">
@@ -1684,8 +1725,8 @@ function StaffPasswordModal({ staff, onClose, onSave }: any) {
   const [busy, setBusy] = useState(false);
   return <Modal title={'Reset password · ' + staff.displayName} subtitle="The staff member will need to sign in again." onClose={onClose}><form className="form-grid" onSubmit={async e => { e.preventDefault(); setBusy(true); await onSave(password); setBusy(false); }}><Field label="New temporary password" wide><input type="password" required minLength={10} value={password} onChange={e => setPassword(e.target.value)} /></Field><div className="form-actions"><button type="button" className="btn secondary" onClick={onClose}>Cancel</button><button className="btn primary" disabled={busy}>{busy ? 'Saving…' : 'Reset password'}</button></div></form></Modal>;
 }
-function PaymentModal({ customers, onClose, onSave }: any) {
-  const [f, s] = useState<any>({
+function PaymentModal({ customers, initial, onClose, onSave }: any) {
+  const [f, s] = useState<any>(initial || {
     customerId: customers[0]?.id || '',
     amount: customers[0]?.monthlyFee || 0,
     method: 'UPI',
@@ -1698,16 +1739,17 @@ function PaymentModal({ customers, onClose, onSave }: any) {
   const c = customers.find((x: Customer) => x.id === f.customerId);
   return (
     <Modal
-      title="Record payment"
-      subtitle="Add a payment to the customer's collection history."
+      title={initial ? 'Edit payment' : 'Record payment'}
+      subtitle={initial ? 'Correct the saved customer payment details.' : "Add a payment to the customer's collection history."}
       onClose={onClose}
     >
       <form
         className="form-grid"
         onSubmit={e => {
           e.preventDefault();
+          const { id: _ignoredId, ...paymentFields } = f;
           onSave({
-            ...f,
+            ...paymentFields,
             amount: Number(f.amount),
             customerName: c?.name || '',
           });
@@ -1775,7 +1817,7 @@ function PaymentModal({ customers, onClose, onSave }: any) {
             Cancel
           </button>
           <button className="btn primary" disabled={!customers.length}>
-            Save payment
+            {initial ? 'Save changes' : 'Save payment'}
           </button>
         </div>
       </form>
@@ -1925,7 +1967,7 @@ function LoginScreen({onLogin}:{onLogin:(id:string,pw:string,role:'admin'|'staff
   <strong>{registrationStatus.status==='pending'?'Your request is awaiting admin approval.':registrationStatus.status==='approved'?'Your staff access is approved.':'Your staff access request was rejected.'}</strong>
   <small>Request submitted {new Date(registrationStatus.createdAt).toLocaleString('en-IN')}{registrationStatus.reviewedAt?' · Reviewed '+new Date(registrationStatus.reviewedAt).toLocaleString('en-IN'):''}</small>
   {registrationStatus.status==='rejected' && <button type="button" className="auth-link" onClick={()=>{localStorage.removeItem('kandb-staff-registration');setRegistrationStatus(null);setRegistrationOpen(true);}}>Submit a new request</button>}
- </div> : !registrationOpen?<button type="button" className="auth-link" onClick={()=>{setRegistrationOpen(true);setRegistrationMessage('');}}>Request staff access</button>:<div className="staff-registration-form"><strong>Staff registration request</strong><Field label="Preferred staff ID"><input required minLength={3} maxLength={32} pattern="[a-zA-Z0-9_-]{3,32}" value={registration.userId} onChange={e=>setRegistration({...registration,userId:e.target.value})}/></Field><Field label="Full name"><input required maxLength={80} value={registration.displayName} onChange={e=>setRegistration({...registration,displayName:e.target.value})}/></Field><Field label="Phone (optional)"><input maxLength={30} value={registration.phone} onChange={e=>setRegistration({...registration,phone:e.target.value})}/></Field><Field label="Reason / note (optional)"><textarea rows={2} maxLength={300} value={registration.reason} onChange={e=>setRegistration({...registration,reason:e.target.value})}/></Field><div className="form-actions"><button type="button" className="btn secondary" onClick={()=>setRegistrationOpen(false)}>Cancel</button><button type="button" className="btn primary" disabled={registrationBusy} onClick={e=>{const form=e.currentTarget.closest('.staff-registration-form');const fields=form?.querySelectorAll('input');if(fields && Array.from(fields).every(field=>field.reportValidity()))void submitRegistration();}}>{registrationBusy?'Submitting…':'Submit request'}</button></div></div>}
+ </div> : !registrationOpen?<button type="button" className="auth-link" onClick={()=>{setRegistrationOpen(true);setRegistrationMessage('');}}>Request staff access</button>:<div className="staff-registration-form"><strong>Staff registration request</strong><Field label="Preferred staff ID"><input required minLength={3} maxLength={32} pattern="[a-zA-Z0-9_-]{3,32}" value={registration.userId} onChange={e=>setRegistration({...registration,userId:e.target.value})}/></Field><Field label="Full name"><input required maxLength={80} value={registration.displayName} onChange={e=>setRegistration({...registration,displayName:e.target.value})}/></Field><Field label="Phone (optional)"><input type="tel" inputMode="numeric" pattern="[0-9]{10}" maxLength={10} value={registration.phone} onChange={e=>setRegistration({...registration,phone:e.target.value.replace(/\D/g,'').slice(0,10)})} placeholder="10-digit mobile number"/></Field><Field label="Reason / note (optional)"><textarea rows={2} maxLength={300} value={registration.reason} onChange={e=>setRegistration({...registration,reason:e.target.value})}/></Field><div className="form-actions"><button type="button" className="btn secondary" onClick={()=>setRegistrationOpen(false)}>Cancel</button><button type="button" className="btn primary" disabled={registrationBusy} onClick={e=>{const form=e.currentTarget.closest('.staff-registration-form');const fields=form?.querySelectorAll('input');if(fields && Array.from(fields).every(field=>field.reportValidity()))void submitRegistration();}}>{registrationBusy?'Submitting…':'Submit request'}</button></div></div>}
  {registrationMessage&&<div className={registrationError?'auth-message':'form-hint'}>{registrationMessage}</div>}</>:<>
  <label className="auth-field"><span>{role==='admin'?'Admin username':'Staff user ID'}</span><input value={id} onChange={e=>setId(e.target.value)} required autoComplete="username" placeholder={role==='admin'?'Enter your admin username':'Enter your staff ID'}/></label><label className="auth-field"><span>Password</span><input type="password" value={pw} onChange={e=>setPw(e.target.value)} required autoComplete="current-password"/></label>
  {msg&&<div className="auth-message">{msg}</div>}<button className="btn primary auth-submit">Sign in securely</button><button type="button" className="auth-link" onClick={()=>{setRole(null);setId('');setPw('');setMsg('');}}>← Choose another sign-in</button>
