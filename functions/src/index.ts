@@ -15,6 +15,7 @@ const auth = getAuth();
 const db = getFirestore();
 const adminRecoveryCode = defineSecret('ADMIN_RECOVERY_CODE');
 const adminBootstrapSecret = defineSecret('ADMIN_BOOTSTRAP_SECRET');
+const PRIMARY_ADMIN_EMAIL = 'brajraj@accounts.kandbnetservice.in';
 
 type Role = 'admin' | 'staff';
 type AppUser = { uid: string; id: string; userId: string; displayName: string; role: Role; active: boolean; authTime: number; canManageAdmins?: boolean };
@@ -94,6 +95,48 @@ export const api = onRequest(
     if (method === 'GET' && path === '/api/_healthcheck') {
       send(res, 200, { message: 'Success', service: 'kandb-firebase-api' }); return;
     }
+    // One-time recovery for the primary owner who created their Firebase Auth
+    // account manually. The exact owner email is required; no other account can
+    // grant itself an admin role. Existing, different admin profiles block claims.
+    if (method === 'POST' && path === '/api/auth/claim-owner-profile') {
+      const authorization = clean(req.headers.authorization, 4096);
+      const token = authorization.startsWith('Bearer ') ? authorization.slice(7) : '';
+      if (!token) { send(res, 401, { error: 'Sign in to the primary owner Firebase account first.' }); return; }
+      try {
+        const decoded = await auth.verifyIdToken(token, true);
+        if (String(decoded.email || '').toLowerCase() !== PRIMARY_ADMIN_EMAIL) {
+          send(res, 403, { error: 'Only the designated primary owner Firebase account can complete this setup.' }); return;
+        }
+        const account = await auth.getUser(decoded.uid);
+        if (account.disabled || String(account.email || '').toLowerCase() !== PRIMARY_ADMIN_EMAIL) {
+          send(res, 403, { error: 'The primary owner Firebase account is disabled or does not match the configured owner email.' }); return;
+        }
+        const [admins, existingProfile, duplicateOwnerId] = await Promise.all([
+          db.collection('users').where('role', '==', 'admin').limit(5).get(),
+          db.collection('users').doc(decoded.uid).get(),
+          db.collection('users').where('userId', '==', 'Brajraj').limit(5).get(),
+        ]);
+        const conflictingAdmin = admins.docs.find(doc => doc.id !== decoded.uid);
+        const conflictingOwnerId = duplicateOwnerId.docs.find(doc => doc.id !== decoded.uid);
+        if (conflictingAdmin || conflictingOwnerId) {
+          send(res, 409, { error: 'An existing K&B administrator profile uses a different Firebase UID. Ask the project owner to reconcile that profile before claiming this account.' }); return;
+        }
+        const previous = existingProfile.data() || {};
+        await db.collection('users').doc(decoded.uid).set({
+          userId: 'Brajraj',
+          displayName: clean(account.displayName, 80) || clean(previous.displayName, 80) || 'Brajraj',
+          role: 'admin',
+          canManageAdmins: true,
+          active: true,
+          createdAt: previous.createdAt || now(),
+          ownerProfileClaimedAt: now(),
+        }, { merge: true });
+        send(res, 200, { profileCreated: true, userId: 'Brajraj' }); return;
+      } catch (error) {
+        logger.error('Primary owner profile claim failed', error);
+        send(res, 401, { error: 'Firebase could not verify the primary owner session. Sign in again and retry.' }); return;
+      }
+    }
     if (method === 'POST' && path === '/api/auth/bootstrap-admin') {
       const input = req.body && typeof req.body === 'object' ? req.body : {};
       const bootstrapSecret = typeof input.bootstrapSecret === 'string' ? input.bootstrapSecret : '';
@@ -107,7 +150,7 @@ export const api = onRequest(
       }
       const existing = await db.collection('users').where('role', '==', 'admin').limit(1).get();
       if (!existing.empty) { send(res, 409, { error: 'The admin account is already initialized. Use admin sign in.' }); return; }
-      const email = 'brajraj@accounts.kandbnetservice.in';
+      const email = PRIMARY_ADMIN_EMAIL;
       const account = await auth.createUser({ email, password, displayName: 'Brajraj', disabled: false });
       await db.collection('users').doc(account.uid).set({
         userId: 'Brajraj', displayName: 'Brajraj', role: 'admin', canManageAdmins: true, active: true, createdAt: now(),
