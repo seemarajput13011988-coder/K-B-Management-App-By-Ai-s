@@ -292,13 +292,17 @@ export const api = onRequest(
       const body: Data = req.body && typeof req.body === 'object' ? req.body : {};
 
       if (method === 'POST' && path === '/api/auth/change-password') {
+        const currentPassword = typeof body.currentPassword === 'string' ? body.currentPassword : '';
         const newPassword = typeof body.newPassword === 'string' ? body.newPassword : '';
         if (newPassword.length < 10) { send(res, 400, { error: 'Choose a password with at least 10 characters.' }); return; }
         if (!user.authTime || Date.now() / 1000 - user.authTime > 300) {
           send(res, 401, { error: 'Please sign in again before changing your password.' }); return;
         }
-        await auth.updateUser(user.uid, { password: newPassword });
-        await auth.revokeRefreshTokens(user.uid);
+        if (!user.salt || !user.passwordHash || !equalSecret(hashPassword(currentPassword, user.salt), user.passwordHash)) {
+          send(res, 401, { error: 'Your current password is incorrect.' }); return;
+        }
+        await db.collection('users').doc(user.uid).update(newPasswordFields(newPassword));
+        await revokeUserSessions(user.uid);
         send(res, 200, { changed: true }); return;
       }
 
@@ -306,20 +310,18 @@ export const api = onRequest(
         if (!user.authTime || Date.now() / 1000 - user.authTime > 300) {
           send(res, 401, { error: 'Please sign in again before changing your user ID.' }); return;
         }
+        const currentPassword = typeof body.currentPassword === 'string' ? body.currentPassword : '';
         const userId = clean(body.userId, 32);
+        if (!user.salt || !user.passwordHash || !equalSecret(hashPassword(currentPassword, user.salt), user.passwordHash)) {
+          send(res, 401, { error: 'Your current password is incorrect.' }); return;
+        }
         if (!/^[a-zA-Z0-9_-]{3,32}$/.test(userId)) {
           send(res, 400, { error: 'Use 3–32 letters, numbers, underscores or hyphens for the user ID.' }); return;
         }
         const existing = (await list('users')).some(item => item.id !== user.uid && String(item.userId).toLowerCase() === userId.toLowerCase());
         if (existing) { send(res, 409, { error: 'That user ID is already in use.' }); return; }
-        const email = userId.toLowerCase() + '@accounts.kandbnetservice.in';
-        // Preserve the original account's server-assigned admin-management permission if its login ID changes.
-        const preserveAdminManagement = user.canManageAdmins === true;
-        await auth.updateUser(user.uid, { email });
-        await db.collection('users').doc(user.uid).update({
-          userId,
-          ...(preserveAdminManagement ? { canManageAdmins: true } : {}),
-        });
+        await db.collection('users').doc(user.uid).update({ userId, userIdLower: userId.toLowerCase() });
+        await revokeUserSessions(user.uid);
         await audit(user, 'CHANGE_USER_ID', user.role, user.uid, 'Changed own user ID');
         send(res, 200, { changed: true, userId }); return;
       }
@@ -347,10 +349,12 @@ export const api = onRequest(
         if (existing) { send(res, 409, { error: 'That account ID is already in use.' }); return; }
         const email = userId.toLowerCase() + '@accounts.kandbnetservice.in';
         const account = await auth.createUser({ email, password, displayName, disabled: false });
-        const record = { userId, displayName, role: 'admin', canManageAdmins: false, active: true, createdAt: now(), createdBy: user.uid };
-        await db.collection('users').doc(account.uid).set(record);
-        await audit(user, 'CREATE', 'admin', account.uid, 'Created administrator account ' + userId);
-        send(res, 201, { user: { id: account.uid, ...record } }); return;
+        const accountId = 'admin-' + randomBytes(10).toString('hex');
+        const record = { userId, userIdLower: userId.toLowerCase(), displayName, role: 'admin', canManageAdmins: false, active: true, ...newPasswordFields(password), createdAt: now(), createdBy: user.uid };
+        await db.collection('users').doc(accountId).set(record);
+        await audit(user, 'CREATE', 'admin', accountId, 'Created administrator account ' + userId);
+        const { passwordHash, salt, ...safe } = record;
+        send(res, 201, { user: { id: accountId, ...safe } }); return;
       }
       if (path.startsWith('/api/admins/')) {
         if (!allowSuperAdmin(user, res)) return;
@@ -363,16 +367,14 @@ export const api = onRequest(
           const displayName = clean(body.displayName, 80) || target.displayName;
           const active = typeof body.active === 'boolean' ? body.active : target.active === true;
           await db.collection('users').doc(id).update({ displayName, active });
-          await auth.updateUser(id, { displayName, disabled: !active });
-          if (!active) await auth.revokeRefreshTokens(id);
+          if (!active) await revokeUserSessions(id);
           await audit(user, 'UPDATE', 'admin', id, 'Updated administrator profile/status');
           send(res, 200, { updated: true }); return;
         }
         if (method === 'DELETE') {
           if (id === user.uid) { send(res, 400, { error: 'You cannot remove your own account.' }); return; }
-          await auth.updateUser(id, { disabled: true });
-          await auth.revokeRefreshTokens(id);
           await db.collection('users').doc(id).update({ active: false, deletedAt: now() });
+          await revokeUserSessions(id);
           await audit(user, 'DISABLE', 'admin', id, 'Disabled administrator account');
           send(res, 200, { deleted: true }); return;
         }
