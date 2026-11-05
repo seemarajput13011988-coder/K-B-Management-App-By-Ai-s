@@ -40,7 +40,7 @@ import {
   ShieldCheck, KeyRound, BarChart3, LogOut, UserPlus, UserRound, LockKeyhole,
 } from 'lucide-react';
 
-type Session={token:string;expiresAt:number;user:{id:string;userId:string;displayName:string;role:'admin'|'staff';active:boolean;isSuperAdmin?:boolean}};
+type Session={token:string;expiresAt:number;user:{id:string;userId:string;displayName:string;role:'admin'|'staff';active:boolean;canManageAdmins?:boolean}};
 type AppNotification={id:string;title:string;message:string;createdAt:string;read:boolean;type:string};
 const getToken=()=>{try{return (JSON.parse(localStorage.getItem('kb-customer-session')||'null') as Session|null)?.token||'';}catch{return '';}};
 const api={get:(url:string)=>client.get(url+(url.includes('?')?'&':'?')+'sessionToken='+encodeURIComponent(getToken())),post:(url:string,data?:Record<string,unknown>)=>client.post(url,{...(data||{}),sessionToken:getToken()}),put:(url:string,data?:Record<string,unknown>)=>client.put(url,{...(data||{}),sessionToken:getToken()}),delete:(url:string)=>client.delete(url+'?sessionToken='+encodeURIComponent(getToken()))};
@@ -70,7 +70,7 @@ type Payment = {
   recordedByName?: string;
 };
 type Staff = { id: string; userId: string; displayName: string; role: 'staff'; active: boolean };
-type AdminAccount = { id: string; userId: string; displayName: string; role: 'admin'; active: boolean; isSuperAdmin?: boolean };
+type AdminAccount = { id: string; userId: string; displayName: string; role: 'admin'; active: boolean; canManageAdmins?: boolean };
 type AttendanceRecord = { id: string; userId: string; displayName: string; workDate: string; checkInAt: string; checkOutAt?: string; dayType?: 'Full day' | 'Half day' };
 type Task = { id: string; title: string; details: string; assignedTo: string; assignedToName: string; priority: 'Low' | 'Normal' | 'High'; dueDate: string; status: 'Pending' | 'In progress' | 'Completed'; createdAt: string; createdByName: string };
 type Complaint = {
@@ -108,7 +108,7 @@ const dateLabel = (s: string) =>
 
 function Workspace({ session, onLogout }: { session: Session; onLogout: () => void }) {
   const isAdmin = session.user.role === 'admin';
-  const canManageAdmins = session.user.isSuperAdmin === true;
+  const canManageAdmins = session.user.canManageAdmins === true;
   const { language, setLanguage, theme, toggleTheme } = useAppPreferences();
   const [localHour, setLocalHour] = useState(() => new Date().getHours());
   useEffect(() => {
@@ -415,7 +415,9 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
       await load();
       flash('Admin account created successfully');
     } catch (err) {
-      flash(err instanceof Error ? err.message : 'Could not create admin account');
+      const message = (err as any)?.response?.data?.error || (err instanceof Error ? err.message : 'Could not create admin account');
+      flash(message);
+      throw new Error(message);
     }
   }
   async function createStaff(data: { userId: string; displayName: string; password: string }) {
@@ -865,8 +867,8 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
           {page === 'Admin Accounts' && canManageAdmins && (
             <section className="panel table-panel">
               <div className="toolbar"><div><h2>Admin accounts</h2><p className="subtle">Only the original Brajraj account can create additional admins.</p></div><span className="result-count">{adminAccounts.length} admins</span></div>
-              <div className="table-wrap"><table><thead><tr><th>ADMIN</th><th>USER ID</th><th>ACCESS</th><th>ACCOUNT TYPE</th></tr></thead><tbody>
-                {adminAccounts.map(account => <tr key={account.id}><td><strong>{account.displayName}</strong></td><td>{account.userId}</td><td><span className={'status ' + (account.active ? 'active' : 'inactive')}>{account.active ? 'Active' : 'Disabled'}</span></td><td>{account.isSuperAdmin ? 'Primary account' : 'Admin'}</td></tr>)}
+              <div className="table-wrap"><table><thead><tr><th>ADMIN</th><th>USER ID</th><th>ACCESS</th><th>ROLE</th></tr></thead><tbody>
+                {adminAccounts.map(account => <tr key={account.id}><td><strong>{account.displayName}</strong></td><td>{account.userId}</td><td><span className={'status ' + (account.active ? 'active' : 'inactive')}>{account.active ? 'Active' : 'Disabled'}</span></td><td>{'Admin'}</td></tr>)}
               </tbody></table></div>
               {!adminAccounts.length && <Empty icon={<ShieldCheck />} title="No admin accounts" text="Create the first additional admin account when needed." />}
             </section>
