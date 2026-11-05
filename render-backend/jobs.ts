@@ -108,7 +108,7 @@ export async function sendTaskDueReminders() {
   const tomorrow = new Date(Date.UTC(year, month - 1, day + 1)).toISOString().slice(0, 10);
   for (const task of await readCollection('tasks', 1000)) {
     const dueDate = String(task.dueDate || ''), assignedTo = String(task.assignedTo || '');
-    if (!task.id || !assignedTo || !/^\\d{4}-\\d{2}-\\d{2}$/.test(dueDate) || task.status === 'Completed') continue;
+    if (!task.id || !assignedTo || !/^\d{4}-\d{2}-\d{2}$/.test(dueDate) || task.status === 'Completed') continue;
     const kind = taskReminderKind(dueDate, today, tomorrow);
     if (!kind) continue;
     const ref = firestore.collection('staff_notifications').doc('task-reminder-' + String(task.id) + '-' + kind + '-' + dueDate);
@@ -134,7 +134,7 @@ export async function sendSubscriptionExpiryReminders() {
   ]);
   const admins = users.filter(item => item.role === 'admin' && item.active === true);
   for (const subscription of subscriptions) {
-    if (!subscription.id || subscription.status !== 'Active' || !/^\\d{4}-\\d{2}-\\d{2}$/.test(String(subscription.endDate || ''))) continue;
+    if (!subscription.id || subscription.status !== 'Active' || !/^\d{4}-\d{2}-\d{2}$/.test(String(subscription.endDate || ''))) continue;
     const kind = subscriptionExpiryKind(String(subscription.endDate), today, inThreeDays);
     if (!kind) continue;
     const customer = customers.find(item => item.id === subscription.customerId);
@@ -209,9 +209,9 @@ export async function runScheduledTick() {
     const hour = Number(parts.find(part => part.type === 'hour')?.value || 0);
     const { date } = indiaDateParts();
     if (hour >= 9 && lastDailyRun !== date) {
-      lastDailyRun = date;
       await sendTaskDueReminders();
       await sendSubscriptionExpiryReminders();
+      lastDailyRun = date;
     }
     return { skipped: false };
   } finally { running = false; }
