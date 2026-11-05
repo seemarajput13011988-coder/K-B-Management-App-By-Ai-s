@@ -21,7 +21,7 @@ on:
       - ".firebaserc"
   pull_request:
     branches:
-      - firebase-migration
+      - main
 jobs:
   build:
     runs-on: ubuntu-latest
