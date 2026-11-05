@@ -4,7 +4,7 @@ on:
     - cron: '*/5 * * * *'
   workflow_dispatch:
   push:
-    branches: [render-backend-migration]
+    branches: [render-backend-migration, quality-audit-2026-11-06]
     paths: ["render-backend/**", "src/**", "package.json", "package-lock.json", ".github/workflows/render-backend-check.yml"]
   pull_request:
     branches: [main]
@@ -50,6 +50,14 @@ jobs:
           VITE_API_BASE_URL: https://kandb-management-nexus-api-zv7f.onrender.com
         run: |
           npm install
+          npm audit --json > /tmp/kb-npm-audit.json || true
+          node <<'NODE'
+          const audit = require('/tmp/kb-npm-audit.json');
+          console.log('Dependency vulnerability totals:', JSON.stringify(audit.metadata?.vulnerabilities || {}));
+          for (const [name, item] of Object.entries(audit.vulnerabilities || {})) {
+            console.log(JSON.stringify({ package: name, severity: item.severity, range: item.range, via: item.via, effects: item.effects, isDirect: item.isDirect, fixAvailable: item.fixAvailable }));
+          }
+          NODE
           npx tsc --noEmit
           npm run build
 

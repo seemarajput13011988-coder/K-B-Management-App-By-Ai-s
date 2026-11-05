@@ -9,6 +9,7 @@ on:
       - firebase-migration
       - safe-firebase-migration-copilot-review
       - render-backend-migration
+      - quality-audit-2026-11-06
     paths:
       - "src/**"
       - "render-backend/**"
