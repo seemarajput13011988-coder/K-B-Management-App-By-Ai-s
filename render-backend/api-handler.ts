@@ -778,11 +778,16 @@ export async function apiHandler(req: any, res: any) {
         if (!allow(user,['admin'],res)) return;
         const staffUserId = clean(req.body?.staffUserId,128), period = clean(req.body?.period,7);
         const amount = Number(req.body?.amount), paidAt = clean(req.body?.paidAt,10), payMethod = clean(req.body?.method,50);
-        if (!staffUserId || !monthPattern.test(period) || !validMoney(amount) || amount <= 0 || !datePattern.test(paidAt) || !payMethod) {
+        const monthNumber = Number(period.slice(5,7));
+        if (!staffUserId || !monthPattern.test(period) || monthNumber < 1 || monthNumber > 12 || !validMoney(amount) || amount <= 0 || !datePattern.test(paidAt) || !isValidDateKey(paidAt) || !payMethod) {
           send(res,400,{error:'Enter a valid staff member, month, salary amount, payment date and method.'}); return;
         }
         const staff = await getDoc('users',staffUserId);
-        if (!staff || staff.role !== 'staff') { send(res,404,{error:'Staff account not found.'}); return; }
+        if (!staff || staff.role !== 'staff' || staff.active !== true) { send(res,404,{error:'Active staff account not found.'}); return; }
+        const existingPayroll = await db.collection('payroll').where('staffUserId','==',staffUserId).limit(500).get();
+        if (existingPayroll.docs.some(doc => String(doc.data().period || '') === period)) {
+          send(res,409,{error:'Salary has already been recorded for this staff member and month.'}); return;
+        }
         const record = {staffUserId,staffName:clean(staff.displayName,80),period,amount,paidAt,method:payMethod,notes:clean(req.body?.notes,500),recordedBy:user.uid,recordedByName:user.displayName,createdAt:now()};
         const ref = await db.collection('payroll').add(record);
         await audit(user,'CREATE','payroll',ref.id,'Recorded salary payment for '+record.staffName);
