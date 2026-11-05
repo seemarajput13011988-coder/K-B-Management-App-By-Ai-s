@@ -45,3 +45,19 @@ The Android debug APK workflow already uses the public Firebase Web App config s
 - No old AppDeploy customer, payment, staff, attendance, or finance records have been imported yet.
 - Treat the old database as potentially containing important records until a backup and record count are reviewed.
 - Do not deploy to production or generate the final APK until the Functions typecheck, frontend build, emulator/API tests, role tests, and data migration plan have been completed.
+
+
+## 7. Zero-cost API hosting (Spark-compatible)
+The HTTP API can run as a Netlify Function so the project does not need Firebase Cloud Functions or the Firebase Blaze plan.
+1. Create a separate Netlify site connected to this repository and deploy the `spark-free-backend` branch.
+2. In Netlify site environment variables, set:
+   - `FIREBASE_SERVICE_ACCOUNT_JSON`: the service-account JSON for the Firebase project. Keep this private; never commit it.
+   - `ADMIN_BOOTSTRAP_SECRET`: a private initial-admin setup value.
+   - `ADMIN_RECOVERY_CODE`: a different private recovery value.
+   - `VITE_API_BASE_URL`: the public base URL of this Netlify site, for example `https://your-site.netlify.app`.
+   - The six `VITE_FIREBASE_*` web-app values listed in `.env.example`.
+3. Redeploy after setting the variables. Netlify Functions run the existing HTTP API using Firebase Admin SDK; Firebase Auth and Firestore remain in project `kandb-net-sevice`.
+4. The first Super Admin bootstrap remains one-time and secret-protected. Do not create an admin profile from the browser or allow staff to choose an admin role.
+5. Keep Netlify auto-recharge disabled. The Free plan has a hard monthly usage limit and the site can pause when that limit is reached; it should not automatically add paid usage.
+
+This hosting path is a code/configuration change only until the Netlify site, environment variables, and service-account access are configured and a live health check succeeds. No production deployment is claimed by this repository change.
