@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api as client } from './lib/api';
 import { Download, Plus, RefreshCw, ReceiptText, TrendingDown, TrendingUp, Wallet } from 'lucide-react';
-import { jsPDF } from 'jspdf';
 import { exportCsvFile, exportPdfFile } from './lib/file-export';
 
 type Session = { token: string; user: { id: string; displayName: string; role: 'admin' | 'staff' } };
@@ -27,6 +26,7 @@ async function downloadCsv(name: string, rows: unknown[][]) {
 
 async function printReport(title: string, rows: unknown[][]) {
   try {
+    const { jsPDF } = await import('jspdf');
     const landscape = (rows[0]?.length || 0) >= 7;
     const doc = new jsPDF({ orientation: landscape ? 'landscape' : 'portrait', unit: 'mm', format: 'a4' });
     const pageWidth = doc.internal.pageSize.getWidth();
