@@ -279,7 +279,8 @@ service cloud.firestore {
             'gpsIssueReason', 'gpsRestoredAt'
           ])
           && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['status'])
-            || request.resource.data.status in ['Checked in', 'Completed'])
+            || (request.resource.data.status in ['Checked in', 'Completed']
+              && (request.resource.data.status != 'Completed' || request.resource.data.checkOutAt is string)))
           && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['checkOutAt'])
             || (!resource.data.keys().hasAny(['checkOutAt'])
               && request.resource.data.checkOutAt is string
