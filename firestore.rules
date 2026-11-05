@@ -356,17 +356,25 @@ service cloud.firestore {
           && request.resource.data.userId == resource.data.userId
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
             'checkOutAt', 'status', 'gpsStatus', 'gpsIssueStartedAt',
-            'gpsIssueReason', 'gpsRestoredAt'
+            'gpsIssueReason', 'gpsRestoredAt', 'gpsCancelled',
+            'gpsRestartRequired', 'gpsCancelledAt', 'gpsIssueDeadlineAt'
           ])
           && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['status'])
-            || (request.resource.data.status in ['Checked in', 'Completed']
-              && (request.resource.data.status != 'Completed' || request.resource.data.checkOutAt is string)))
+            || request.resource.data.status in ['Checked in', 'Completed', 'GPS Cancelled'])
           && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['checkOutAt'])
             || (!resource.data.keys().hasAny(['checkOutAt'])
               && request.resource.data.checkOutAt is string
-              && request.resource.data.status == 'Completed'))
+              && request.resource.data.status in ['Completed', 'GPS Cancelled']))
           && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['gpsStatus'])
-            || request.resource.data.gpsStatus in ['active', 'grace-period', 'stopped'])
+            || request.resource.data.gpsStatus in ['active', 'grace-period', 'stopped', 'cancelled'])
+          && (request.resource.data.status != 'GPS Cancelled'
+            || (request.resource.data.gpsStatus == 'cancelled'
+              && request.resource.data.gpsCancelled == true
+              && request.resource.data.gpsRestartRequired == true
+              && request.resource.data.gpsCancelledAt is string
+              && request.resource.data.gpsIssueDeadlineAt is string
+              && request.resource.data.checkOutAt == request.resource.data.gpsIssueDeadlineAt
+              && request.resource.data.gpsIssueStartedAt is string))
           && (!resource.data.keys().hasAny(['checkOutAt'])
             || request.resource.data.checkOutAt == resource.data.checkOutAt));
       allow delete: if isAdmin();
