@@ -393,7 +393,7 @@ export const handler = router({
       if (!staff || staff.role !== 'staff' || !staff.active) return error('Select an active staff account.', 400);
       assignedToName = staff.displayName;
     }
-    const record: Customer = {
+    const record = {
       name: cleanText(input.name, 100),
       phone: cleanText(input.phone, 20),
       address: cleanText(input.address, 300),
