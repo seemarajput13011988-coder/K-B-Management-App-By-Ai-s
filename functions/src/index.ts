@@ -112,26 +112,14 @@ async function staffFor(userId: string): Promise<Data | null> {
 }
 
 const RETENTION_REVIEW_COLLECTIONS: Record<string, string> = {
-  plans: 'Plans',
   customers: 'Customers',
   payments: 'Payments',
-  complaints: 'Complaints',
+  invoices: 'Invoices',
+  expenses: 'Expenses',
+  subscriptions: 'Subscriptions',
   tasks: 'Tasks',
   attendance: 'Attendance',
-  locations: 'Location records',
-  announcements: 'Announcements',
-  messages: 'Messages',
-  chat_groups: 'Chat groups',
-  group_messages: 'Group messages',
-  expenses: 'Expenses',
   visits: 'Field visits',
-  invoices: 'Invoices',
-  payroll: 'Payroll records',
-  inventory: 'Inventory items',
-  inventory_movements: 'Inventory movements',
-  inventory_skus: 'Inventory SKUs',
-  installations: 'Installations',
-  subscriptions: 'Subscriptions',
   holiday_requests: 'Holiday requests',
 };
 
