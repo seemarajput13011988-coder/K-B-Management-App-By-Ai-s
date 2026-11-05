@@ -25,8 +25,7 @@ function downloadCsv(name: string, rows: unknown[][]) {
   link.style.display = 'none';
   document.body.appendChild(link);
   link.click();
-  link.remove();
-  window.setTimeout(() => URL.revokeObjectURL(url), 1500);
+  window.setTimeout(() => { link.remove(); URL.revokeObjectURL(url); }, 2000);
 }
 
 function printReport(title: string, rows: unknown[][]) {
