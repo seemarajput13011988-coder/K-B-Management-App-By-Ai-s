@@ -476,9 +476,28 @@ async function requestAttendance<T = any>(path: string, method: string, payload?
     }
     return { latitude, longitude, accuracy: Math.min(Math.max(Number(p.accuracy) || 0, 0), 100000) };
   };
+  const settleExpiredGpsShift = async (shift: any): Promise<boolean> => {
+    const data = shift.data();
+    if (!data.gpsIssueStartedAt || data.checkOutAt || data.gpsRestartRequired) return false;
+    const issueStartedAt = new Date(String(data.gpsIssueStartedAt)).getTime();
+    if (!Number.isFinite(issueStartedAt)) return false;
+    const deadlineAt = new Date(issueStartedAt + 15 * 60 * 1000).toISOString();
+    if (Date.now() < new Date(deadlineAt).getTime()) return false;
+    await updateDoc(shift.ref, {
+      checkOutAt: deadlineAt,
+      status: 'GPS Cancelled',
+      gpsStatus: 'cancelled',
+      gpsCancelled: true,
+      gpsRestartRequired: true,
+      gpsCancelledAt: stamp,
+      gpsIssueDeadlineAt: deadlineAt
+    });
+    return true;
+  };
   const pathOnly = path.split('?')[0];
   if (pathOnly === '/api/attendance' && method === 'GET') {
     const snap = await getDocs(admin ? attendance : query(attendance, where('userId', '==', user.uid)));
+    for (const item of snap.docs) await settleExpiredGpsShift(item);
     const items = snap.docs.map(item => ({ id: item.id, ...item.data() }));
     items.sort((a: any, b: any) => String(b.workDate || '').localeCompare(String(a.workDate || '')));
     return { data: { items } as T };
@@ -560,6 +579,9 @@ async function requestAttendance<T = any>(path: string, method: string, payload?
     const snap = await getDocs(query(attendance, where('userId', '==', user.uid), where('workDate', '==', today)));
     const active = snap.docs.find(item => !item.data().checkOutAt && !item.data().gpsRestartRequired);
     if (!active) return { data: { monitoring: false, reason: 'no-active-shift' } as T };
+    if (await settleExpiredGpsShift(active)) {
+      return { data: { monitoring: false, cancelled: true, reason: 'gps-grace-expired' } as T };
+    }
     const startedAt = String(active.data().gpsIssueStartedAt || stamp);
     const deadlineAt = new Date(new Date(startedAt).getTime() + 15 * 60 * 1000).toISOString();
     if (!active.data().gpsIssueStartedAt) {
@@ -570,6 +592,7 @@ async function requestAttendance<T = any>(path: string, method: string, payload?
   if (pathOnly === '/api/locations' && method === 'GET') {
     if (!admin) throw new Error('Only administrators can view team locations.');
     const [locationSnap, shiftSnap] = await Promise.all([getDocs(locations), getDocs(query(attendance, where('workDate', '==', today)))]);
+    for (const shift of shiftSnap.docs) await settleExpiredGpsShift(shift);
     const activeIds = new Set(shiftSnap.docs.filter(item => !item.data().checkOutAt && !item.data().gpsRestartRequired).map(item => String(item.data().userId)));
     const latest = new Map<string, any>();
     for (const item of locationSnap.docs) {
@@ -592,10 +615,9 @@ async function requestAttendance<T = any>(path: string, method: string, payload?
     const snap = await getDocs(query(attendance, where('userId', '==', user.uid), where('workDate', '==', today)));
     const active = snap.docs.find(item => !item.data().checkOutAt && !item.data().gpsRestartRequired);
     if (!active) throw new Error('Location can be shared only during an active shift.');
+    const expired = await settleExpiredGpsShift(active);
+    if (expired) throw new Error('The 15-minute GPS grace window has elapsed and the shift has been marked for administrator review.');
     const issueStartedAt = active.data().gpsIssueStartedAt ? new Date(String(active.data().gpsIssueStartedAt)).getTime() : null;
-    if (issueStartedAt !== null && Date.now() - issueStartedAt >= 15 * 60 * 1000) {
-      throw new Error('The 15-minute GPS grace window has elapsed. Contact an administrator to review your shift.');
-    }
     const locationRef = doc(locations);
     const capturedAt = clean(payload?.capturedAt, 40) || stamp;
     const batch = writeBatch(firestore);
