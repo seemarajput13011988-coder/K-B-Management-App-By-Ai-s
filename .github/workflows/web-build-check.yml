@@ -6,6 +6,7 @@ on:
   push:
     branches:
       - firebase-migration
+      - spark-migration
     paths:
       - "src/**"
       - "package.json"
@@ -17,6 +18,7 @@ on:
       - ".env.example"
       - ".github/workflows/web-build-check.yml"
       - "firebase.json"
+      - "firestore.rules"
       - ".firebaserc"
   pull_request:
     branches:
