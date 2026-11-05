@@ -282,14 +282,12 @@ export const handler = router({
       createdAt: reviewedAt,
       createdBy: admin.id,
     };
-    let createdUser = false;
-    await firestore.runTransaction(async transaction => {
+    const reviewApplied = await firestore.runTransaction(async transaction => {
       const latest = await transaction.get(requestRef);
-      if (!latest.exists || latest.data()?.status !== 'pending') return;
+      if (!latest.exists || latest.data()?.status !== 'pending') return false;
       if (status === 'approved') {
         const userRef = firestore.collection('users').doc(userIdForDoc);
         transaction.create(userRef, userRecord);
-        createdUser = true;
       }
       transaction.update(requestRef, {
         status,
@@ -298,14 +296,12 @@ export const handler = router({
         reviewedByName: admin.displayName,
         ...(status === 'approved' ? { createdUserId: userIdForDoc } : {}),
       });
+      return true;
     });
-    if (status === 'approved' && !createdUser) {
+    if (!reviewApplied) {
       return error('This registration request was already reviewed. Refresh the list.', 409);
     }
-    if (status === 'rejected') {
-      const latest = await db.get<Record<string, unknown>>('staff_registration_requests', [requestId], { consistent: true });
-      if (!latest[0] || latest[0].status !== 'rejected') return error('This registration request was already reviewed. Refresh the list.', 409);
-    }
+    const createdUser = status === 'approved';
     if (createdUser) {
       await firestore.collection('staff_notifications').add({
         recipientId: userIdForDoc, recipientRole: 'staff', type: 'staff-registration-approved',
