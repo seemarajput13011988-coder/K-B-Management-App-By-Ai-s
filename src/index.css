@@ -1779,3 +1779,68 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
   .attendance-month-picker{width:116px}
   .staff-calendar-accordion{padding:8px}
 }
+
+
+/* Complaint tracking: readable cards, clear ownership and evidence. */
+.complaints-workspace{display:grid;gap:14px}
+.complaint-card{display:grid;gap:12px;padding:15px 0;border-bottom:1px solid #e9edf3;min-width:0}
+.complaint-card-head{display:flex;align-items:flex-start;gap:12px;min-width:0}
+.complaint-card-head .complaint-info{min-width:0;flex:1}
+.complaint-meta{display:flex;flex-wrap:wrap;gap:7px 16px;padding-left:47px;color:#738197;font-size:11px}
+.complaint-meta b{color:#45556d}
+.complaint-location{display:flex;align-items:center;flex-wrap:wrap;gap:7px;padding-left:47px;margin:0;color:#61728a;font-size:11px}
+.complaint-location a,.complaint-location-action a{color:#2866b1;font-weight:700;text-decoration:none}
+.complaint-controls{display:flex;align-items:flex-end;flex-wrap:wrap;gap:9px;padding-left:47px}
+.complaint-controls label{display:grid;gap:4px;min-width:145px;max-width:220px;flex:1}
+.complaint-controls label small{font-size:10px;color:#77859a;font-weight:700}
+.complaint-controls select{min-height:36px;border:1px solid #dce3ed;border-radius:8px;background:#fff;color:#34445a;padding:0 9px;font-size:11px;max-width:100%}
+.complaint-status{display:inline-flex;align-items:center;min-height:36px;color:#44546b;font-size:12px;font-weight:700}
+.complaint-resolution{margin:0 0 0 47px;padding:10px 12px;border-radius:9px;background:#f4f7fb;color:#56667d;font-size:11px;line-height:1.5}
+.complaint-resolution b{color:#34445a}
+.complaint-location-action{display:flex;align-items:center;flex-wrap:wrap;gap:8px}
+.complaint-location-action small{width:100%;color:#b45309;font-size:11px}
+.complaint-file-name{display:block;color:#4c7b57;font-size:11px;margin-top:5px}
+.complaint-preview{display:grid;place-items:center;max-height:65dvh;overflow:auto;margin-bottom:14px;background:#0b1220;border-radius:10px}
+.complaint-preview img,.complaint-preview video{display:block;max-width:100%;max-height:62dvh;object-fit:contain}
+[data-theme="dark"] .complaint-card{border-color:#2b3a50}
+[data-theme="dark"] .complaint-meta,[data-theme="dark"] .complaint-location{color:#a9b8cb}
+[data-theme="dark"] .complaint-meta b,[data-theme="dark"] .complaint-resolution b{color:#e5ebf4}
+[data-theme="dark"] .complaint-controls select{background:#101b2b;border-color:#35455d;color:#e5ebf4}
+[data-theme="dark"] .complaint-resolution{background:#101b2b;color:#b9c6d8}
+
+/* Home screen shortcuts reduce the number of steps for everyday work. */
+.quick-actions{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:0 0 18px}
+.quick-actions button{display:grid;grid-template-columns:30px minmax(0,1fr);grid-template-rows:auto auto;align-items:center;column-gap:9px;text-align:left;padding:13px;border:1px solid #e4eaf2;border-radius:12px;background:#fff;color:#24344b;min-width:0}
+.quick-actions button svg{grid-row:1/3;color:#3974b9}
+.quick-actions button span{font-size:12px;font-weight:800}
+.quick-actions button small{font-size:10px;color:#8390a3;margin-top:3px}
+.quick-actions button:active{transform:translateY(1px)}
+[data-theme="dark"] .quick-actions button{background:#162235;border-color:#2b3a50;color:#e5ebf4}
+[data-theme="dark"] .quick-actions button small{color:#a9b8cb}
+
+/* Android cutout and system navigation safe areas. */
+html{min-height:100%;height:100%;overscroll-behavior-y:none}
+body,#root{min-height:100%;height:100%}
+.shell{min-height:100dvh;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+.sidebar{top:env(safe-area-inset-top,0px);bottom:env(safe-area-inset-bottom,0px);height:auto;max-height:none}
+.topbar{scroll-margin-top:env(safe-area-inset-top,0px)}
+.content{padding-bottom:calc(28px + env(safe-area-inset-bottom,0px))}
+.modal-backdrop{padding-top:max(16px,env(safe-area-inset-top,0px));padding-bottom:max(24px,env(safe-area-inset-bottom,0px));}
+.modal{max-height:calc(100dvh - max(40px,env(safe-area-inset-top,0px) + env(safe-area-inset-bottom,0px) + 32px))}
+button,a,input,select,textarea{-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+button:focus:not(:focus-visible),a:focus:not(:focus-visible){outline:0!important;box-shadow:none!important}
+@media(max-width:700px){
+  .sidebar{top:env(safe-area-inset-top,0px);bottom:env(safe-area-inset-bottom,0px);height:auto;max-height:none;padding-top:calc(20px + env(safe-area-inset-top,0px))}
+  .content{padding-bottom:calc(32px + env(safe-area-inset-bottom,0px))}
+  .modal-backdrop{padding: max(14px,env(safe-area-inset-top,0px)) 10px max(26px,env(safe-area-inset-bottom,0px))}
+  .modal{max-height:calc(100dvh - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px) - 24px)}
+  .quick-actions{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .complaint-meta,.complaint-location,.complaint-controls,.complaint-resolution{padding-left:0;margin-left:0}
+  .complaint-controls label{min-width:calc(50% - 8px)}
+  .complaint-card-head{align-items:flex-start}
+}
+@media(max-width:380px){
+  .quick-actions button{padding:10px;column-gap:6px}
+  .quick-actions button span{font-size:11px}
+  .complaint-controls label{min-width:100%}
+}
