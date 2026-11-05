@@ -796,7 +796,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                           : page === taskPage
                             ? (isAdmin ? 'Assign work, set priorities and monitor team progress.' : 'Your assigned work, priorities and due dates.')
                             : page === 'My Day' || page === 'Salary'
-                              ? (isAdmin ? 'Attendance, team locations, announcements, messages and field visits.' : 'Your attendance, customer visits, team updates and messages.')
+                              ? (isAdmin ? 'Record monthly staff salaries and export payroll.' : 'Your attendance, customer visits, team updates and messages.')
                               : 'Track and resolve customer service requests.'}
               </p>
             </div>
@@ -841,7 +841,8 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
           </div>
 
           {page === 'Calendar' && <CalendarWorkspace tasks={tasks} attendance={attendanceRecords} isAdmin={isAdmin} />}
-          {page === (isAdmin ? 'Salary' : 'My Day') && <StaffOperations session={session} customers={customers} flash={flash} onDataChanged={() => { void load(true); }} />}
+          {page === 'Salary' && isAdmin && <FinanceWorkspace salaryOnly session={session} customers={customers} payments={payments} flash={flash} />}
+          {page === 'My Day' && !isAdmin && <StaffOperations session={session} customers={customers} flash={flash} onDataChanged={() => { void load(true); }} />}
           {page === 'Finance & Billing' && isAdmin && <FinanceWorkspace session={session} customers={customers} payments={payments} flash={flash} />}
           {page === 'Subscriptions' && <SubscriptionWorkspace customers={customers} plans={plans} isAdmin={isAdmin} flash={flash} />}
           {page === 'Inventory' && <InventoryWorkspace isAdmin={isAdmin} flash={flash} />}
