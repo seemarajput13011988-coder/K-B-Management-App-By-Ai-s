@@ -474,6 +474,27 @@ export const handler = router({
     return json({ items: user.role === 'admin' ? result.items : result.items.filter(item => item.recordedBy === user.id) });
   }),
 
+  'PUT /api/payments/:id': protectedRoute(['admin'], async ({ body, params }, user) => {
+    const input = (body || {}) as Payment;
+    const [existing] = await db.get<Payment>('payments', [params.id], { consistent: true });
+    if (!existing) return error('Payment record not found.', 404);
+    const customerId = cleanText(input.customerId || existing.customerId, 128);
+    const [customer] = await db.get<Customer>('customers', [customerId], { consistent: true });
+    if (!customer) return error('Customer not found.', 404);
+    const amount = Number(input.amount);
+    const method = cleanText(input.method, 40);
+    const paidAt = cleanText(input.paidAt, 20);
+    const month = cleanText(input.month, 40);
+    if (!validMoney(amount) || amount <= 0 || !method || !month || !/^\d{4}-\d{2}-\d{2}$/.test(paidAt)) {
+      return error('Please provide a valid payment amount, method, billing month and payment date.', 400);
+    }
+    const patch = { customerId, customerName: customer.name, amount, method, paidAt, month, updatedAt: new Date().toISOString() };
+    const [updated] = await db.tx.update('payments', [{ id: params.id, record: patch }], { patch: true });
+    if (!updated) return error('Could not update payment.', 500);
+    await writeAudit(user, 'UPDATE', 'payment', params.id, 'Updated payment of ₹' + amount + ' for ' + customer.name);
+    return json({ updated: true });
+  }),
+
   'POST /api/payments': protectedRoute(['admin', 'staff'], async ({ body }, user) => {
     const input = (body || {}) as Payment;
     const [customer] = await db.get<Customer>('customers', [cleanText(input.customerId, 128)], { consistent: true });
@@ -575,7 +596,7 @@ export const handler = router({
     const assignedTo = cleanText(input.assignedTo, 100);
     const dueDate = cleanText(input.dueDate, 20);
     const priority = ['Low', 'Normal', 'High'].includes(String(input.priority)) ? String(input.priority) : 'Normal';
-    if (!title || !assignedTo || !/^\\d{4}-\\d{2}-\\d{2}$/.test(dueDate)) return error('Enter a task title, active staff member and valid due date.', 400);
+    if (!title || !assignedTo || !/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) return error('Enter a task title, active staff member and valid due date.', 400);
     const [staffMember] = await db.get<UserRecord>('users', [assignedTo], { consistent: true });
     if (!staffMember || staffMember.role !== 'staff' || !staffMember.active) return error('Choose an active staff account.', 400);
     const record: TaskRecord = { title, details, assignedTo, assignedToName: staffMember.displayName, priority, dueDate, status: 'Pending', createdAt: new Date().toISOString().slice(0, 10), createdBy: user.id, createdByName: user.displayName };
@@ -626,7 +647,7 @@ export const handler = router({
 
   'PUT /api/attendance/:id/day-type': protectedRoute(['admin'], async ({ body, params }, admin) => {
     const input = (body || {}) as Record<string, unknown>;
-    const dayType = input.dayType === 'Half day' ? 'Half day' : input.dayType === 'Full day' ? 'Full day' : '';
+    const dayType = input.dayType === 'Half day' ? 'Half day' : input.dayType === 'Full day' ? 'Full day' : input.dayType === 'Absent' ? 'Absent' : '';
     const reason = cleanText(input.reason, 300);
     if (!dayType || reason.length < 3) return error('Choose a day type and provide a correction reason.', 400);
     const [attendance] = await db.get<Record<string, unknown>>('attendance', [params.id], { consistent: true });
@@ -635,6 +656,7 @@ export const handler = router({
       id: params.id,
       record: {
         dayType,
+        status: dayType === 'Absent' ? 'Absent' : attendance.checkOutAt ? 'Completed' : 'Checked in',
         correctionReason: reason,
         correctedAt: new Date().toISOString(),
         correctedBy: admin.id,
@@ -740,6 +762,35 @@ export const handler = router({
       },
     }], { patch: true });
     return updated ? json({ updated: true }) : error('Could not save your check-out.', 500);
+  }),
+
+  'POST /api/attendance/admin-absent': protectedRoute(['admin'], async ({ body }, admin) => {
+    const input = (body || {}) as Record<string, unknown>;
+    const staffId = cleanText(input.userId, 128);
+    const reason = cleanText(input.reason, 300) || 'Marked absent by administrator';
+    const [member] = await db.get<UserRecord>('users', [staffId], { consistent: true });
+    if (!member || member.role !== 'staff' || !member.active) return error('Choose an active staff member.', 400);
+    const workDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+    const result = await db.list<Record<string, unknown>>('attendance', { limit: 1000 });
+    const todays = result.items.filter(item => item.userId === member.id && item.workDate === workDate)
+      .sort((a, b) => String(b.checkInAt || '').localeCompare(String(a.checkInAt || '')));
+    const latest = todays[0];
+    if (latest && !latest.checkOutAt) return error('End this staff member’s active shift before marking absent.', 409);
+    const absence = {
+      userId: member.id, displayName: member.displayName, workDate,
+      checkInAt: '', checkOutAt: '', status: 'Absent', dayType: 'Absent',
+      absenceReason: reason, markedAbsentBy: admin.displayName, attendanceSource: 'Admin',
+    };
+    if (latest) {
+      const [updated] = await db.tx.update('attendance', [{ id: String(latest.id), record: absence }], { patch: true });
+      if (!updated) return error('Could not mark this staff member absent.', 500);
+      await writeAudit(admin, 'MARK_ABSENT', 'attendance', String(latest.id), 'Marked ' + member.displayName + ' absent: ' + reason);
+      return json({ updated: true, id: String(latest.id) });
+    }
+    const [id] = await db.add('attendance', [absence]);
+    if (!id) return error('Could not mark this staff member absent.', 500);
+    await writeAudit(admin, 'MARK_ABSENT', 'attendance', id, 'Marked ' + member.displayName + ' absent: ' + reason);
+    return json({ id, ...absence }, 201);
   }),
 
   'POST /api/attendance/admin-start': protectedRoute(['admin'], async ({ body }, admin) => {
@@ -1110,7 +1161,7 @@ export const handler = router({
     const amount = Number(input.amount);
     const spentAt = cleanText(input.spentAt, 20);
     const method = cleanText(input.method, 40);
-    if (!title || !category || !validMoney(amount) || amount <= 0 || !/^\\d{4}-\\d{2}-\\d{2}$/.test(spentAt) || !method) return error('Enter a valid expense title, category, amount, date and payment method.', 400);
+    if (!title || !category || !validMoney(amount) || amount <= 0 || !/^\d{4}-\d{2}-\d{2}$/.test(spentAt) || !method) return error('Enter a valid expense title, category, amount, date and payment method.', 400);
     const record = { title, category, amount, spentAt, method, notes: cleanText(input.notes, 300), createdBy: user.id, createdByName: user.displayName, createdAt: new Date().toISOString() };
     const [id] = await db.add('expenses', [record]);
     if (!id) return error('Could not save expense.', 500);
@@ -1165,7 +1216,7 @@ export const handler = router({
       const key = customer.id + '|' + period;
       if (existingKeys.has(key)) continue;
       const [year, month] = period.split('-').map(Number);
-      const dueDay = customer.dueDate && /^\\d{4}-\\d{2}-\\d{2}$/.test(customer.dueDate) ? Number(customer.dueDate.slice(-2)) : 10;
+      const dueDay = customer.dueDate && /^\d{4}-\d{2}-\d{2}$/.test(customer.dueDate) ? Number(customer.dueDate.slice(-2)) : 10;
       const maxDay = new Date(year, month, 0).getDate();
       const dueDate = period + '-' + String(Math.min(Math.max(dueDay, 1), maxDay)).padStart(2, '0');
       const id = 'inv-' + createHash('sha256').update(key).digest('hex').slice(0, 32);
