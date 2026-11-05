@@ -144,34 +144,62 @@ export async function apiHandler(req: any, res: any) {
       if (!userId || !password) { send(res, 400, { error: 'Enter your user ID and password.' }); return; }
       let matches = (await list('users')).filter(item => String(item.userId || '').toLowerCase() === userId.toLowerCase());
 
-      // First sign-in bootstraps the one fixed owner account only when no admin exists.
-      // The one-time seed password is supplied through Render's private environment settings.
-      if (matches.length === 0 && userId.toLowerCase() === 'brajraj') {
-        const initialPassword = process.env.ADMIN_INITIAL_PASSWORD || '';
-        if (initialPassword.length >= 10 && equalSecret(password, initialPassword)) {
-          const ownerRef = db.collection('users').doc('admin-primary');
-          await db.runTransaction(async transaction => {
-            const [ownerSnapshot, existingAdmins] = await Promise.all([
-              transaction.get(ownerRef),
-              transaction.get(db.collection('users').where('role', '==', 'admin').limit(1)),
-            ]);
-            if (!ownerSnapshot.exists && existingAdmins.empty) {
-              transaction.create(ownerRef, {
-                userId: 'Brajraj', userIdLower: 'brajraj', displayName: 'Brajraj',
-                role: 'admin', canManageAdmins: true, active: true,
-                ...newPasswordFields(password), createdAt: now(),
-              });
-            }
-          });
-          matches = (await list('users')).filter(item => String(item.userId || '').toLowerCase() === 'brajraj');
-        }
+      // Bootstrap the fixed owner account from a private one-time secret when it does not exist.
+      // If an older Brajraj owner record exists with an incompatible password hash, permit that
+      // same configured secret to repair it once. The marker prevents repeated bootstrap resets.
+      const initialPassword = process.env.ADMIN_INITIAL_PASSWORD || '';
+      if (matches.length === 0 && userId.toLowerCase() === 'brajraj' &&
+          initialPassword.length >= 10 && equalSecret(password, initialPassword)) {
+        const ownerRef = db.collection('users').doc('admin-primary');
+        await db.runTransaction(async transaction => {
+          const [ownerSnapshot, existingAdmins] = await Promise.all([
+            transaction.get(ownerRef),
+            transaction.get(db.collection('users').where('role', '==', 'admin').limit(1)),
+          ]);
+          if (!ownerSnapshot.exists && existingAdmins.empty) {
+            const bootstrapTime = now();
+            transaction.create(ownerRef, {
+              userId: 'Brajraj', userIdLower: 'brajraj', displayName: 'Brajraj',
+              role: 'admin', canManageAdmins: true, active: true,
+              ...newPasswordFields(password), bootstrapPasswordUsedAt: bootstrapTime, createdAt: bootstrapTime,
+            });
+          }
+        });
+        matches = (await list('users')).filter(item => String(item.userId || '').toLowerCase() === 'brajraj');
       }
       if (matches.length !== 1) { send(res, 401, { error: 'The user ID or password is incorrect.' }); return; }
       const userDoc = await db.collection('users').doc(String(matches[0].id)).get();
       if (!userDoc.exists) { send(res, 401, { error: 'The user ID or password is incorrect.' }); return; }
       const record = userDoc.data()!;
-      if (record.active !== true || !['admin', 'staff'].includes(record.role) || !record.salt || !record.passwordHash ||
-          !equalSecret(hashPassword(password, String(record.salt)), String(record.passwordHash))) {
+      if (record.active !== true || !['admin', 'staff'].includes(record.role)) {
+        send(res, 401, { error: 'The user ID or password is incorrect, or this account needs an administrator password reset.' }); return;
+      }
+      let passwordMatches = Boolean(record.salt && record.passwordHash &&
+        equalSecret(hashPassword(password, String(record.salt)), String(record.passwordHash)));
+      if (!passwordMatches && userId.toLowerCase() === 'brajraj' &&
+          record.role === 'admin' && record.canManageAdmins === true &&
+          !record.bootstrapPasswordUsedAt &&
+          initialPassword.length >= 10 && equalSecret(password, initialPassword)) {
+        const bootstrapFields = newPasswordFields(password);
+        const bootstrapTime = now();
+        const repaired = await db.runTransaction(async transaction => {
+          const latest = await transaction.get(userDoc.ref);
+          const latestRecord = latest.data() || {};
+          if (!latest.exists || latestRecord.active !== true ||
+              latestRecord.role !== 'admin' || latestRecord.canManageAdmins !== true ||
+              latestRecord.bootstrapPasswordUsedAt) return false;
+          transaction.update(userDoc.ref, {
+            ...bootstrapFields,
+            bootstrapPasswordUsedAt: bootstrapTime,
+          });
+          return true;
+        });
+        if (repaired) {
+          Object.assign(record, bootstrapFields, { bootstrapPasswordUsedAt: bootstrapTime });
+          passwordMatches = true;
+        }
+      }
+      if (!passwordMatches) {
         send(res, 401, { error: 'The user ID or password is incorrect, or this account needs an administrator password reset.' }); return;
       }
       const user = { id: userDoc.id, ...record };
