@@ -1488,3 +1488,23 @@ footer span {
 
 /* Customer ledger controls and responsive summary */
 .finance-actions select{min-height:38px;max-width:100%;border:1px solid #dce3ed;border-radius:8px;padding:0 10px;background:#fff;color:#25344b;font:inherit;font-size:12px}.ledger-metrics{grid-template-columns:repeat(3,minmax(0,1fr));margin:12px 0 16px}.ledger-metrics article{padding:13px 15px}.ledger-metrics article>span{font-weight:700}.ledger-metrics strong{font-size:21px}.ledger-metrics+.finance-table-wrap{margin-top:4px}@media(max-width:600px){.ledger-metrics{grid-template-columns:1fr 1fr}.ledger-metrics article:last-child{grid-column:1/-1}.finance-foot .finance-actions{width:100%}.finance-foot .finance-actions button{flex:1;justify-content:center}.finance-actions select{width:100%}}
+
+
+/* Mobile-first data cards for the customer and staff directories. */
+@media (max-width: 680px) {
+  .customer-table-wrap, .staff-table-wrap { overflow: visible; }
+  .customer-table-wrap table, .staff-table-wrap table { width: 100%; min-width: 0; border-collapse: separate; border-spacing: 0 9px; }
+  .customer-table-wrap thead, .staff-table-wrap thead { display: none; }
+  .customer-table-wrap tbody, .staff-table-wrap tbody { display: grid; gap: 10px; }
+  .customer-table-wrap tr, .staff-table-wrap tr { display: grid; gap: 0; min-width: 0; padding: 10px 12px; border: 1px solid var(--line, #e6eaf0); border-radius: 14px; background: var(--panel, #fff); box-shadow: 0 5px 18px rgba(20,35,60,.045); }
+  .customer-table-wrap td, .staff-table-wrap td { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; padding: 7px 0; border: 0; text-align: right; white-space: normal; overflow-wrap: anywhere; }
+  .customer-table-wrap td::before, .staff-table-wrap td::before { content: attr(data-label); flex: 0 0 38%; color: var(--muted, #718096); font-size: 9px; font-weight: 800; letter-spacing: .04em; text-align: left; }
+  .customer-table-wrap td:first-child, .staff-table-wrap td:first-child { justify-content: flex-start; border-bottom: 1px solid var(--line, #e6eaf0); padding-bottom: 10px; margin-bottom: 4px; text-align: left; }
+  .customer-table-wrap td:first-child::before, .staff-table-wrap td:first-child::before { display: none; }
+  .customer-table-wrap td:last-child, .staff-table-wrap td:last-child { border-top: 1px solid var(--line, #e6eaf0); margin-top: 4px; padding-top: 10px; }
+  .customer-table-wrap td:last-child::before, .staff-table-wrap td:last-child::before { content: "ACTIONS"; }
+  .customer-table-wrap .customer-cell { max-width: 100%; }
+  .customer-table-wrap .customer-cell b, .staff-table-wrap td b { font-size: 12px; }
+  .staff-table-wrap .staff-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+  .staff-table-wrap .staff-actions .btn { min-height: 30px; }
+}

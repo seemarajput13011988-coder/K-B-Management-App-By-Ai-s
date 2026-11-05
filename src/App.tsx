@@ -71,7 +71,7 @@ type Payment = {
   recordedByName?: string;
 };
 type Staff = { id: string; userId: string; displayName: string; role: 'staff'; active: boolean };
-type AdminAccount = { id: string; userId: string; displayName: string; role: 'admin'; active: boolean; canManageAdmins?: boolean };
+type AdminAccount = { id: string; userId: string; displayName: string; role: 'admin'; active: boolean; canManageAdmins?: boolean; isSuperAdmin?: boolean };
 type AttendanceRecord = { id: string; userId: string; displayName: string; workDate: string; checkInAt: string; checkOutAt?: string; dayType?: 'Full day' | 'Half day' };
 type Task = { id: string; title: string; details: string; assignedTo: string; assignedToName: string; priority: 'Low' | 'Normal' | 'High'; dueDate: string; status: 'Pending' | 'In progress' | 'Completed'; createdAt: string; createdByName: string };
 type Complaint = {
@@ -98,7 +98,7 @@ type Plan = {
 };
 
 const money = (n: number) => '₹' + Number(n || 0).toLocaleString('en-IN');
-const dateLabel = (s: string) =>
+const customerStatusLabel = (value: unknown): Customer['status'] => { const status = String(value || 'Active').trim().toLowerCase(); return status === 'suspended' ? 'Suspended' : status === 'inactive' ? 'Inactive' : 'Active'; };\nconst dateLabel = (s: string) =>
   s
     ? new Date(s).toLocaleDateString('en-IN', {
         day: '2-digit',
@@ -181,7 +181,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
         api.get('/api/attendance'),
         api.get('/api/plans'),
       ]);
-      setCustomers(c.data.items || []);
+      setCustomers((c.data.items || []).map((item: Customer) => ({ ...item, status: customerStatusLabel(item.status) })));
       setPlans(planResult.data.items || []);
       setPayments(p.data.items || []);
       setAttendanceRecords(a.data.items || []);
@@ -439,6 +439,12 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
     } catch (err) {
       flash(err instanceof Error ? err.message : 'Could not create staff account');
     }
+  }
+  async function removeAdmin(account: AdminAccount) {
+    if (account.canManageAdmins || account.isSuperAdmin || account.id === session.user.id) { flash('The primary super-admin account cannot be removed.'); return; }
+    if (!window.confirm('Remove administrator account ' + account.displayName + '? Their sign-in will be revoked. Existing business records and history will be preserved.')) return;
+    try { await api.delete('/api/admins/' + account.id); await load(); flash('Admin account removed. Existing records were preserved.'); }
+    catch (err) { flash(err instanceof Error ? err.message : 'Could not remove admin account.'); }
   }
   async function removeStaff(staffUser: Staff) {
     if (!window.confirm('Delete staff account "' + staffUser.displayName + '"? Their sign-in will be removed and assigned customers will become unassigned. Payment, attendance and work history will be preserved.')) return;
@@ -905,8 +911,8 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
           {page === 'Admin Accounts' && canManageAdmins && (
             <section className="panel table-panel">
               <div className="toolbar"><div><h2>Admin accounts</h2><p className="subtle">Only the original Brajraj account can create additional admins.</p></div><span className="result-count">{adminAccounts.length} admins</span></div>
-              <div className="table-wrap"><table><thead><tr><th>ADMIN</th><th>USER ID</th><th>ACCESS</th><th>ROLE</th></tr></thead><tbody>
-                {adminAccounts.map(account => <tr key={account.id}><td><strong>{account.displayName}</strong></td><td>{account.userId}</td><td><span className={'status ' + (account.active ? 'active' : 'inactive')}>{account.active ? 'Active' : 'Disabled'}</span></td><td>{'Admin'}</td></tr>)}
+              <div className="table-wrap staff-table-wrap"><table><thead><tr><th>ADMIN</th><th>USER ID</th><th>ACCESS</th><th>ROLE</th><th>ACTIONS</th></tr></thead><tbody>
+                {adminAccounts.map(account => <tr key={account.id}><td><strong>{account.displayName}</strong></td><td>{account.userId}</td><td><span className={'status ' + (account.active ? 'active' : 'inactive')}>{account.active ? 'Active' : 'Disabled'}</span></td><td>{account.canManageAdmins || account.isSuperAdmin ? 'Super admin' : 'Admin'}</td><td>{account.canManageAdmins || account.isSuperAdmin || account.id === session.user.id ? <span className="subtle">Protected</span> : <button className="row-action danger" title="Remove admin account" onClick={() => removeAdmin(account)}><Trash2 size={15}/></button>}</td></tr>)}
               </tbody></table></div>
               {!adminAccounts.length && <Empty icon={<ShieldCheck />} title="No admin accounts" text="Create the first additional admin account when needed." />}
             </section>
@@ -919,7 +925,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                 {staff.map(member => {
                   const assigned = customers.filter(c => c.assignedTo === member.id).length;
                   const total = payments.filter(p => p.recordedBy === member.id).reduce((sum, p) => sum + Number(p.amount || 0), 0);
-                  return <tr key={member.id}><td><b>{member.displayName}</b></td><td>{member.userId}</td><td>{assigned}</td><td className="amount">{money(total)}</td><td><span className={'status ' + (member.active ? 'active' : 'inactive')}>{member.active ? 'Active' : 'Disabled'}</span></td><td><div className="staff-actions"><button className="btn secondary compact" onClick={() => updateStaff(member, { active: !member.active })}>{member.active ? 'Disable' : 'Enable'}</button><button className="row-action" title="Change username" onClick={() => setEditStaffUserId(member)}><Pencil size={15} /></button><button className="row-action" title="Reset password" onClick={() => setResetStaff(member)}><LockKeyhole size={15} /></button><button className="row-action danger" title="Delete staff account" onClick={() => removeStaff(member)}><Trash2 size={15} /></button></div></td></tr>;
+                  return <tr key={member.id}><td data-label="Staff member"><b>{member.displayName}</b></td><td data-label="User ID">{member.userId}</td><td data-label="Assigned customers">{assigned}</td><td data-label="Collections" className="amount">{money(total)}</td><td data-label="Access"><span className={'status ' + (member.active ? 'active' : 'inactive')}>{member.active ? 'Active' : 'Disabled'}</span></td><td data-label="Actions"><div className="staff-actions"><button className="btn secondary compact" onClick={() => updateStaff(member, { active: !member.active })}>{member.active ? 'Disable' : 'Enable'}</button><button className="row-action" title="Change username" onClick={() => setEditStaffUserId(member)}><Pencil size={15} /></button><button className="row-action" title="Reset password" onClick={() => setResetStaff(member)}><LockKeyhole size={15} /></button><button className="row-action danger" title="Delete staff account" onClick={() => removeStaff(member)}><Trash2 size={15} /></button></div></td></tr>;
                 })}
               </tbody></table></div>
               {!staff.length && <Empty icon={<UserRound />} title="No staff accounts yet" text="Create a staff account, then assign customers to that person from the customer form." action="Add staff member" onClick={() => setShowStaff(true)} />}
@@ -1188,8 +1194,8 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
               </button>
             </div>
             <div className="profile-status">
-              <span className={'status ' + selected.status.toLowerCase()}>
-                {selected.status}
+              <span className={'status ' + customerStatusLabel(selected.status).toLowerCase()} aria-label={'Connection status: ' + customerStatusLabel(selected.status)}>
+                Status: {customerStatusLabel(selected.status)}
               </span>
               <span>Customer since {dateLabel(selected.joinedAt)}</span>
             </div>
@@ -1312,7 +1318,7 @@ function Empty({ icon, title, text, action, onClick }: any) {
 }
 function CustomerTable({ rows, onView, onEdit, onDelete }: any) {
   return (
-    <div className="table-wrap">
+    <div className="table-wrap customer-table-wrap">
       <table>
         <thead>
           <tr>
@@ -1327,7 +1333,7 @@ function CustomerTable({ rows, onView, onEdit, onDelete }: any) {
         <tbody>
           {rows.map((c: Customer) => (
             <tr key={c.id}>
-              <td>
+              <td data-label="Customer">
                 <button className="customer-cell" onClick={() => onView(c)}>
                   <span className="avatar customer-avatar">
                     {c.name
@@ -1343,15 +1349,15 @@ function CustomerTable({ rows, onView, onEdit, onDelete }: any) {
                   </span>
                 </button>
               </td>
-              <td>{c.plan}</td>
-              <td className="amount">{money(c.monthlyFee)}</td>
-              <td>
-                <span className={'status ' + c.status.toLowerCase()}>
-                  {c.status}
+              <td data-label="Plan">{c.plan}</td>
+              <td data-label="Monthly fee" className="amount">{money(c.monthlyFee)}</td>
+              <td data-label="Status">
+                <span className={'status ' + customerStatusLabel(c.status).toLowerCase()} aria-label={'Customer status: ' + customerStatusLabel(c.status)}>
+                  {customerStatusLabel(c.status)}
                 </span>
               </td>
-              <td>{dateLabel(c.joinedAt)}</td>
-              <td>
+              <td data-label="Joined">{dateLabel(c.joinedAt)}</td>
+              <td data-label="Actions">
                 {onEdit && (
                   <button
                     className="row-action"
