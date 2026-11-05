@@ -836,7 +836,7 @@ export const handler = router({
 
   'GET /api/invoices': protectedRoute(['admin'], async ({ query }) => {
     const period = cleanText(query.period, 7);
-    if (!/^\\d{4}-\\d{2}$/.test(period)) return error('Select a valid billing month.', 400);
+    if (!/^[0-9]{4}-[0-9]{2}$/.test(period)) return error('Select a valid billing month.', 400);
     const [invoiceResult, paymentResult] = await Promise.all([
       db.list<Record<string, unknown>>('invoices', { limit: 500 }),
       db.list<Payment>('payments', { limit: 500 })
@@ -854,7 +854,7 @@ export const handler = router({
   'POST /api/invoices/generate': protectedRoute(['admin'], async ({ body }, user) => {
     const input = (body || {}) as Record<string, unknown>;
     const period = cleanText(input.period, 7);
-    if (!/^\\d{4}-\\d{2}$/.test(period)) return error('Select a valid billing month.', 400);
+    if (!/^[0-9]{4}-[0-9]{2}$/.test(period)) return error('Select a valid billing month.', 400);
     const customers = await db.list<Customer>('customers', { limit: 500 });
     const existing = await db.list<Record<string, unknown>>('invoices', { limit: 500 });
     const existingKeys = new Set(existing.items.map(item => String(item.customerId) + '|' + String(item.period)));
