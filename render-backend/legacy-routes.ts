@@ -619,7 +619,7 @@ export const handler = router({
     const latitude = Number(input.latitude);
     const longitude = Number(input.longitude);
     if (Number.isFinite(latitude) && Number.isFinite(longitude) && Math.abs(latitude) <= 90 && Math.abs(longitude) <= 180) {
-      await db.add('locations', [{ userId: user.id, displayName: user.displayName, latitude, longitude, accuracy: Number(input.accuracy) || 0, capturedAt: record.checkInAt }]);
+      await db.add('locations', [{ attendanceId: id, userId: user.id, displayName: user.displayName, latitude, longitude, accuracy: Number(input.accuracy) || 0, capturedAt: record.checkInAt }]);
     }
     return json({ id, ...record }, 201);
   }),
@@ -642,7 +642,7 @@ export const handler = router({
     const active = todays.find(item => !item.checkOutAt);
     if (!active) {
       const latest = todays[0];
-      return json({ monitoring: false, reason: latest?.gpsRestartRequired ? 'restart-required' : 'no-active-shift' });
+      return json({ monitoring: false, reason: latest?.gpsRestartRequired || latest?.gpsCancelled ? 'restart-required' : 'no-active-shift' });
     }
     const holidayExempt = holidayResult.items.some(request =>
       request.userId === user.id &&
@@ -784,22 +784,36 @@ export const handler = router({
   }),
 
   'GET /api/locations': protectedRoute(['admin'], async () => {
-    const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
-    const [result, shifts] = await Promise.all([
-      db.list<Record<string, unknown>>('locations', { limit: 500 }),
-      db.list<Record<string, unknown>>('attendance', { limit: 500 })
+    const today = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit',
+    }).format(new Date());
+    const [locationResult, attendanceResult] = await Promise.all([
+      db.list<Record<string, unknown>>('locations', { limit: 1000 }),
+      db.list<Record<string, unknown>>('attendance', { limit: 1000 }),
     ]);
-    const activeStaffIds = new Set(shifts.items
-      .filter(item => item.workDate === today && !item.checkOutAt)
-      .map(item => String(item.userId || '')));
-    const latest = new Map<string, Record<string, unknown>>();
-    for (const item of result.items) {
-      const key = String(item.userId || '');
-      if (!activeStaffIds.has(key)) continue;
-      const previous = latest.get(key);
-      if (!previous || String(item.capturedAt || '') > String(previous.capturedAt || '')) latest.set(key, item);
+    const latestShiftByStaff = new Map<string, Record<string, unknown>>();
+    const todays = attendanceResult.items
+      .filter(item => item.workDate === today)
+      .sort((a, b) => String(a.checkInAt || '').localeCompare(String(b.checkInAt || '')));
+    for (const shift of todays) {
+      if (shift.userId) latestShiftByStaff.set(String(shift.userId), shift);
     }
-    return json({ items: Array.from(latest.values()) });
+    const activeShiftIds = new Set(
+      Array.from(latestShiftByStaff.values())
+        .filter(shift => !shift.checkOutAt && shift.gpsRestartRequired !== true && shift.gpsCancelled !== true)
+        .map(shift => String(shift.id)),
+    );
+    const latestLocationByStaff = new Map<string, Record<string, unknown>>();
+    for (const point of locationResult.items) {
+      const attendanceId = String(point.attendanceId || '');
+      const userId = String(point.userId || '');
+      if (!userId || !attendanceId || !activeShiftIds.has(attendanceId)) continue;
+      const previous = latestLocationByStaff.get(userId);
+      if (!previous || String(point.capturedAt || '') > String(previous.capturedAt || '')) {
+        latestLocationByStaff.set(userId, point);
+      }
+    }
+    return json({ items: Array.from(latestLocationByStaff.values()) });
   }),
 
   'POST /api/locations': protectedRoute(['staff'], async ({ body }, user) => {
@@ -824,6 +838,7 @@ export const handler = router({
     const locationRef = firestore.collection('locations').doc();
     const capturedAt = new Date().toISOString();
     const record = {
+      attendanceId: String(active.id),
       userId: user.id,
       displayName: user.displayName,
       latitude,
