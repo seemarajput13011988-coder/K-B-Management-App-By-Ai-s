@@ -778,7 +778,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                   </div>
                   {retentionItems.length ? (
                     <div className="retention-review-list">
-                      {retentionItems.slice(0, 8).map(item => (
+                      {retentionItems.map(item => (
                         <div className="snapshot-row" key={item.collection + ':' + item.id}>
                           <div className="snapshot-icon orange-bg"><Clock3 /></div>
                           <div className="retention-review-details">
@@ -790,7 +790,6 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                           </button>
                         </div>
                       ))}
-                      {retentionItems.length > 8 && <p className="retention-review-more">Showing 8 of {retentionItems.length} records due for review.</p>}
                     </div>
                   ) : (
                     <p className="retention-review-empty">No records are currently due for review.</p>
