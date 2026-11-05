@@ -424,7 +424,7 @@ service cloud.firestore {
           && request.resource.data.name is string
           && request.resource.data.sku is string
           && request.resource.data.skuKey is string
-          && getAfter(/databases/$(database)/documents/inventory_skus/$(request.resource.data.skuKey)).data.itemId == itemId
+          && getAfter(/databases/$(database)/documents/inventory_skus/$(request.resource.data.skuReservationId)).data.itemId == itemId
         ) || (
           hasActiveProfile()
           && resource.data.active == true
