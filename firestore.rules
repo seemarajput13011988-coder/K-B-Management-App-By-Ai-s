@@ -196,10 +196,20 @@ service cloud.firestore {
         || (hasActiveProfile() && resource.data.recipientId == request.auth.uid);
       allow create: if isAdmin()
         || (hasActiveProfile()
-          && request.resource.data.recipientRole == 'admin'
-          && request.resource.data.relatedId is string
-          && get(/databases/$(database)/documents/tasks/$(request.resource.data.relatedId)).data.assignedTo == request.auth.uid);
-      allow update, delete: if false;
+          && request.resource.data.createdBy == request.auth.uid
+          && request.resource.data.recipientId is string
+          && get(/databases/$(database)/documents/users/$(request.resource.data.recipientId)).data.active == true
+          && request.resource.data.recipientRole == get(/databases/$(database)/documents/users/$(request.resource.data.recipientId)).data.role
+          && request.resource.data.type in ['direct-message', 'group-message']
+          && request.resource.data.title is string
+          && request.resource.data.message is string
+          && request.resource.data.relatedId is string);
+      allow update: if hasActiveProfile()
+        && resource.data.recipientId == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read', 'readAt'])
+        && request.resource.data.read == true
+        && request.resource.data.readAt is string;
+      allow delete: if false;
     }
 
     // Service tickets can be raised by active staff/admins. Staff can read
@@ -505,7 +515,7 @@ service cloud.firestore {
         && request.resource.data.actorId == request.auth.uid
         && request.resource.data.actorName is string
         && request.resource.data.action is string
-        && request.resource.data.entityType in ['inventory-item', 'expense', 'payroll', 'invoice_batch', 'invoice', 'staff_registration_request']
+        && request.resource.data.entityType in ['inventory-item', 'expense', 'payroll', 'invoice_batch', 'invoice', 'staff_registration_request', 'announcement', 'visit']
         && request.resource.data.entityId is string
         && request.resource.data.description is string
         && request.resource.data.createdAt is string;
@@ -676,6 +686,113 @@ service cloud.firestore {
         && request.resource.data.reviewedAt is string
         && request.resource.data.reviewedByName is string;
       allow delete: if false;
+    }
+
+
+    match /announcements/{announcementId} {
+      allow get, list: if hasActiveProfile();
+      allow create: if isAdmin()
+        && request.resource.data.keys().hasOnly(['title', 'message', 'createdAt', 'createdBy', 'createdByName'])
+        && request.resource.data.title is string
+        && request.resource.data.title.size() > 0
+        && request.resource.data.title.size() <= 120
+        && request.resource.data.message is string
+        && request.resource.data.message.size() > 0
+        && request.resource.data.message.size() <= 2000
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.createdByName is string
+        && request.resource.data.createdAt is string;
+      allow update: if false;
+      allow delete: if isAdmin();
+    }
+
+    match /messages/{messageId} {
+      allow get, list: if isAdmin()
+        || (hasActiveProfile()
+          && (resource.data.senderId == request.auth.uid || resource.data.recipientId == request.auth.uid));
+      allow create: if hasActiveProfile()
+        && request.resource.data.keys().hasOnly([
+          'senderId', 'senderName', 'recipientId', 'recipientName', 'message', 'createdAt'
+        ])
+        && request.resource.data.senderId == request.auth.uid
+        && request.resource.data.senderName is string
+        && request.resource.data.recipientId is string
+        && request.resource.data.recipientName is string
+        && request.resource.data.message is string
+        && request.resource.data.message.size() > 0
+        && request.resource.data.message.size() <= 1500
+        && request.resource.data.createdAt is string
+        && (isAdmin()
+          ? get(/databases/$(database)/documents/users/$(request.resource.data.recipientId)).data.role == 'staff'
+            && get(/databases/$(database)/documents/users/$(request.resource.data.recipientId)).data.active == true
+          : request.resource.data.recipientId == 'admin-primary');
+      allow update: if false;
+      allow delete: if isAdmin();
+    }
+
+    match /chat_groups/{groupId} {
+      allow get, list: if isAdmin()
+        || (hasActiveProfile() && request.auth.uid in resource.data.memberIds);
+      allow create: if isAdmin()
+        && request.resource.data.keys().hasOnly([
+          'name', 'memberIds', 'memberNames', 'createdAt', 'createdBy', 'createdByName'
+        ])
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 60
+        && request.resource.data.memberIds is list
+        && request.resource.data.memberIds.size() >= 2
+        && request.resource.data.memberIds.size() <= 101
+        && request.auth.uid in request.resource.data.memberIds
+        && request.resource.data.memberNames is list
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.createdAt is string;
+      allow update: if false;
+      allow delete: if isAdmin();
+    }
+
+    match /group_messages/{messageId} {
+      function groupMember(groupId) {
+        return isAdmin()
+          || (hasActiveProfile()
+            && request.auth.uid in get(/databases/$(database)/documents/chat_groups/$(groupId)).data.memberIds);
+      }
+      allow get, list: if groupMember(resource.data.groupId);
+      allow create: if request.resource.data.keys().hasOnly([
+          'groupId', 'senderId', 'senderName', 'message', 'createdAt'
+        ])
+        && request.resource.data.senderId == request.auth.uid
+        && request.resource.data.senderName is string
+        && request.resource.data.message is string
+        && request.resource.data.message.size() > 0
+        && request.resource.data.message.size() <= 1500
+        && request.resource.data.createdAt is string
+        && groupMember(request.resource.data.groupId);
+      allow update: if false;
+      allow delete: if isAdmin();
+    }
+
+    match /visits/{visitId} {
+      allow get, list: if isAdmin()
+        || (hasActiveProfile() && resource.data.staffId == request.auth.uid);
+      allow create: if hasActiveProfile()
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'staff'
+        && request.resource.data.keys().hasOnly([
+          'customerId', 'customerName', 'purpose', 'notes', 'visitedAt', 'staffId', 'staffName'
+        ])
+        && request.resource.data.customerId is string
+        && get(/databases/$(database)/documents/customers/$(request.resource.data.customerId)).data.assignedTo == request.auth.uid
+        && request.resource.data.customerName is string
+        && request.resource.data.purpose is string
+        && request.resource.data.purpose.size() > 0
+        && request.resource.data.purpose.size() <= 120
+        && request.resource.data.notes is string
+        && request.resource.data.notes.size() <= 1200
+        && request.resource.data.visitedAt is string
+        && request.resource.data.staffId == request.auth.uid
+        && request.resource.data.staffName is string;
+      allow update: if false;
+      allow delete: if isAdmin();
     }
 
     // All remaining collections stay closed until their own ownership-checked
