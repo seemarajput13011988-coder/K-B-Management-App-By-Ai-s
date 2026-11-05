@@ -85,7 +85,7 @@ async function requestCustomers<T = any>(path: string, method: string, payload?:
   const clean = (value: unknown, max: number) => String(value ?? '').trim().slice(0, max);
   const customers = collection(firestore, 'customers');
   const id = path.startsWith(base + '/') ? decodeURIComponent(path.slice(base.length + 1).split('?')[0]) : '';
-  const dateOk = (value: string) => /^\\d{4}-\\d{2}-\\d{2}$/.test(value) && !Number.isNaN(Date.parse(value + 'T00:00:00'));
+  const dateOk = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value + 'T00:00:00'));
   if (method === 'GET' && path.split('?')[0] === base) {
     const snap = await getDocs(admin ? customers : query(customers, where('assignedTo', '==', firebaseAuth.currentUser.uid)));
     return { data: { items: snap.docs.map(item => ({ id: item.id, ...item.data() })) } as T };
@@ -177,7 +177,7 @@ async function requestPayments<T = any>(path: string, method: string, payload?: 
     const methodName = String(payload?.method || '').trim().slice(0, 40);
     const paidAt = String(payload?.paidAt || '').trim();
     const month = String(payload?.month || '').trim().slice(0, 40);
-    if (!customerId || !Number.isFinite(amount) || amount <= 0 || !methodName || !/^\\d{4}-\\d{2}-\\d{2}$/.test(paidAt) || !month) {
+    if (!customerId || !Number.isFinite(amount) || amount <= 0 || !methodName || !/^\d{4}-\d{2}-\d{2}$/.test(paidAt) || !month) {
       throw new Error('Enter a valid customer, amount, payment method, payment date and billing month.');
     }
     const customer = await getDoc(doc(firestore, 'customers', customerId));
@@ -223,7 +223,7 @@ async function requestTasks<T = any>(path: string, method: string, payload?: Rec
     if (!admin) throw new Error('Only administrators can assign work.');
     const title = clean(payload?.title, 120), assignedTo = clean(payload?.assignedTo, 128), dueDate = clean(payload?.dueDate, 10);
     const staff = await getDoc(doc(firestore, 'users', assignedTo));
-    if (!title || !assignedTo || !staff.exists() || staff.data().role !== 'staff' || staff.data().active !== true || !/^\\d{4}-\\d{2}-\\d{2}$/.test(dueDate)) {
+    if (!title || !assignedTo || !staff.exists() || staff.data().role !== 'staff' || staff.data().active !== true || !/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) {
       throw new Error('Enter a task title, select an active staff member and choose a valid due date.');
     }
     const record = {
@@ -265,7 +265,7 @@ async function requestTasks<T = any>(path: string, method: string, payload?: Rec
       if (payload?.details !== undefined) patch.details = clean(payload.details, 1500);
       if (payload?.dueDate !== undefined) {
         const dueDate = clean(payload.dueDate, 10);
-        if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(dueDate)) throw new Error('Choose a valid due date.');
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) throw new Error('Choose a valid due date.');
         patch.dueDate = dueDate;
       }
     }
