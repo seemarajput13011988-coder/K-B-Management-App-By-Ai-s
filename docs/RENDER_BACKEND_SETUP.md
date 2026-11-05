@@ -25,16 +25,13 @@ Do not put any of these secret values in Git, this documentation, screenshots, i
 
 ## APK and map/push configuration
 
-Before the Render-connected APK workflow can produce an APK, add the GitHub Actions repository secret:
+The APK workflow already points to the new Render API. It does not require a `K_B_RENDER_API_URL` or `VITE_GOOGLE_MAPS_API_KEY` secret.
 
-- `K_B_RENDER_API_URL`: the full HTTPS base URL of the new Render service (no trailing path).
+For Android push notifications, configure only:
 
-For map and push functionality, also configure:
-
-- `VITE_GOOGLE_MAPS_API_KEY`: a Google Maps key configured for the app's Android package.
 - `ANDROID_GOOGLE_SERVICES_JSON_BASE64`: base64-encoded Firebase Android `google-services.json` for package `kandbnet.service2010`.
 
-The APK workflow deliberately stops if `K_B_RENDER_API_URL` is missing, so it cannot silently package a build that still targets the old Functions endpoint.
+Staff GPS coordinates are opened with a standard Google Maps URL from each staff card. This requires no Maps API key and no Google Cloud billing account.
 
 ## Background jobs and free-tier limit
 
