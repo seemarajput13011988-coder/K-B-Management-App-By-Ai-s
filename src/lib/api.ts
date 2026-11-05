@@ -614,6 +614,63 @@ async function requestAttendance<T = any>(path: string, method: string, payload?
   throw new Error('Unsupported attendance or location request.');
 }
 
+async function requestInstallations<T = any>(path: string, method: string, payload?: Record<string, unknown>): Promise<ApiResult<T>> {
+  if (!firebaseAuth?.currentUser || !firestore) throw new Error('Please sign in again to continue.');
+  const user = firebaseAuth.currentUser;
+  const profile = await getAppUserProfile();
+  const admin = profile.role === 'admin';
+  const base = '/api/installations';
+  const clean = (v: unknown, n: number) => String(v ?? '').trim().slice(0, n);
+  const p = path.split('?')[0];
+  const id = p.startsWith(base + '/') ? decodeURIComponent(p.slice(base.length + 1)) : '';
+  const jobs = collection(firestore, 'installations');
+  const dateOK = (v: string) => /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(v + 'T00:00:00'));
+  if (method === 'GET' && p === base) {
+    const snap = await getDocs(admin ? jobs : query(jobs, where('assignedTo', '==', user.uid)));
+    const items = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    items.sort((a: any,b: any) => String(a.scheduledDate || '').localeCompare(String(b.scheduledDate || '')));
+    return { data: { items } as T };
+  }
+  if (method === 'POST' && p === base) {
+    if (!admin) throw new Error('Only administrators can schedule installation jobs.');
+    const customerId = clean(payload?.customerId,128), assignedTo = clean(payload?.assignedTo,128);
+    const type = clean(payload?.type,40), scheduledDate = clean(payload?.scheduledDate,10);
+    if (!customerId || !assignedTo || !['New connection','Upgrade','Repair','Relocation'].includes(type) || !dateOK(scheduledDate)) throw new Error('Enter valid installation details.');
+    const [customer, staff] = await Promise.all([getDoc(doc(firestore,'customers',customerId)),getDoc(doc(firestore,'users',assignedTo))]);
+    if (!customer.exists()) throw new Error('Customer not found.');
+    if (!staff.exists() || staff.data().role !== 'staff' || staff.data().active !== true) throw new Error('Choose an active staff member.');
+    const data = customer.data(), now = new Date().toISOString();
+    const record = { customerId, customerName: clean(data.name,100), phone: clean(data.phone,30), address: clean(payload?.address,300) || clean(data.address,300), type, scheduledDate, assignedTo, assignedToName: clean(staff.data().displayName,80), status:'Scheduled', notes:clean(payload?.notes,1000), createdAt:now, createdBy:user.uid, createdByName:profile.displayName };
+    const job = doc(jobs), batch = writeBatch(firestore);
+    batch.set(job,record);
+    batch.set(doc(collection(firestore,'staff_notifications')),{recipientId:assignedTo,recipientRole:'staff',type:'installation-assigned',title:'Installation assigned',message:type+' for '+record.customerName+' is scheduled for '+scheduledDate+'.',createdAt:now,read:false,relatedId:job.id});
+    await batch.commit();
+    return { data: { id:job.id,...record } as T };
+  }
+  if (id && method === 'PUT') {
+    const ref = doc(firestore,'installations',id), snap = await getDoc(ref);
+    if (!snap.exists()) throw new Error('Installation job not found.');
+    const old = snap.data();
+    if (!admin && old.assignedTo !== user.uid) throw new Error('You can update only jobs assigned to you.');
+    const status = clean(payload?.status,24);
+    if (!['Scheduled','In progress','Completed','Cancelled'].includes(status) || (!admin && status === 'Cancelled')) throw new Error('Invalid installation status.');
+    const patch: Record<string,unknown> = { status, notes:clean(payload?.notes ?? old.notes,1000), updatedAt:new Date().toISOString(), updatedBy:user.uid };
+    if (status === 'Completed') patch.completedAt = new Date().toISOString();
+    if (admin && payload?.scheduledDate !== undefined) { const d=clean(payload.scheduledDate,10); if(!dateOK(d)) throw new Error('Enter a valid scheduled date.'); patch.scheduledDate=d; }
+    if (admin && payload?.address !== undefined) patch.address=clean(payload.address,300);
+    if (admin && payload?.assignedTo !== undefined) {
+      const staff=await getDoc(doc(firestore,'users',clean(payload.assignedTo,128)));
+      if(!staff.exists() || staff.data().role!=='staff' || staff.data().active!==true) throw new Error('Choose an active staff member.');
+      patch.assignedTo=clean(payload.assignedTo,128); patch.assignedToName=clean(staff.data().displayName,80);
+    }
+    if (!admin && Object.keys(payload || {}).some(k=>!['status','notes','sessionToken'].includes(k))) throw new Error('Staff can update status and notes only.');
+    const batch=writeBatch(firestore); batch.update(ref,patch);
+    if(admin && patch.assignedTo && patch.assignedTo!==old.assignedTo) batch.set(doc(collection(firestore,'staff_notifications')),{recipientId:patch.assignedTo,recipientRole:'staff',type:'installation-assigned',title:'Installation reassigned',message:'An installation job has been assigned to you.',createdAt:new Date().toISOString(),read:false,relatedId:id});
+    await batch.commit(); return { data:{updated:true} as T };
+  }
+  throw new Error('Unsupported installations request.');
+}
+
 async function request<T = any>(path: string, method: string, payload?: Record<string, unknown>): Promise<ApiResult<T>> {
   if (path.split('?')[0] === '/api/plans' || path.split('?')[0].startsWith('/api/plans/')) return requestPlans<T>(path, method, payload);
   if (path.split('?')[0] === '/api/customers' || path.split('?')[0].startsWith('/api/customers/')) return requestCustomers<T>(path, method, payload);
@@ -621,6 +678,7 @@ async function request<T = any>(path: string, method: string, payload?: Record<s
   if (path.split('?')[0] === '/api/tasks' || path.split('?')[0].startsWith('/api/tasks/')) return requestTasks<T>(path, method, payload);
   if (path.split('?')[0] === '/api/complaints' || path.split('?')[0].startsWith('/api/complaints/')) return requestComplaints<T>(path, method, payload);
   if (path.split('?')[0] === '/api/subscriptions' || path.split('?')[0].startsWith('/api/subscriptions/')) return requestSubscriptions<T>(path, method, payload);
+  if (path.split('?')[0] === '/api/installations' || path.split('?')[0].startsWith('/api/installations/')) return requestInstallations<T>(path, method, payload);
   if (path.split('?')[0].startsWith('/api/attendance') || path.split('?')[0] === '/api/locations' || path.split('?')[0] === '/api/locations/history') return requestAttendance<T>(path, method, payload);
   if (!firebaseAuth) throw new Error('Firebase is not configured yet. Add the K&B Firebase web app settings before signing in.');
   const auth = firebaseAuth;
