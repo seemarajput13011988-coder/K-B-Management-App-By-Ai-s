@@ -460,6 +460,21 @@ async function requestSubscriptions<T = any>(path: string, method: string, paylo
   throw new Error('Unsupported subscriptions request.');
 }
 
+async function requestAttendance<T = any>(path: string, method: string): Promise<ApiResult<T>> {
+  if (path.split('?')[0] !== '/api/attendance' || method !== 'GET') {
+    throw new Error('Attendance changes are not enabled on the Spark migration yet.');
+  }
+  if (!firebaseAuth?.currentUser || !firestore) throw new Error('Please sign in again to continue.');
+  const profile = await getAppUserProfile();
+  const records = collection(firestore, 'attendance');
+  const snapshot = await getDocs(profile.role === 'admin'
+    ? records
+    : query(records, where('userId', '==', firebaseAuth.currentUser.uid)));
+  const items = snapshot.docs.map(item => ({ id: item.id, ...item.data() }));
+  items.sort((a: any, b: any) => String(b.workDate || '').localeCompare(String(a.workDate || '')));
+  return { data: { items } as T };
+}
+
 async function request<T = any>(path: string, method: string, payload?: Record<string, unknown>): Promise<ApiResult<T>> {
   if (path.split('?')[0] === '/api/plans' || path.split('?')[0].startsWith('/api/plans/')) return requestPlans<T>(path, method, payload);
   if (path.split('?')[0] === '/api/customers' || path.split('?')[0].startsWith('/api/customers/')) return requestCustomers<T>(path, method, payload);
@@ -467,6 +482,7 @@ async function request<T = any>(path: string, method: string, payload?: Record<s
   if (path.split('?')[0] === '/api/tasks' || path.split('?')[0].startsWith('/api/tasks/')) return requestTasks<T>(path, method, payload);
   if (path.split('?')[0] === '/api/complaints' || path.split('?')[0].startsWith('/api/complaints/')) return requestComplaints<T>(path, method, payload);
   if (path.split('?')[0] === '/api/subscriptions' || path.split('?')[0].startsWith('/api/subscriptions/')) return requestSubscriptions<T>(path, method, payload);
+  if (path.split('?')[0] === '/api/attendance') return requestAttendance<T>(path, method);
   if (!firebaseAuth) throw new Error('Firebase is not configured yet. Add the K&B Firebase web app settings before signing in.');
   const auth = firebaseAuth;
   if (!auth.currentUser) await new Promise<void>(resolve => {
