@@ -50,7 +50,6 @@ jobs:
           VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.VITE_FIREBASE_STORAGE_BUCKET || 'kandb-net-sevice.firebasestorage.app' }}
           VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID || '847932976304' }}
           VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID || '1:847932976304:web:87148565df2a329a5f9f75' }}
-          VITE_FIREBASE_FUNCTIONS_URL: https://asia-south1-kandb-net-sevice.cloudfunctions.net/api
           VITE_API_BASE_URL: https://kandb-management-nexus-api-zv7f.onrender.com
           VITE_GOOGLE_MAPS_API_KEY: ${{ secrets.VITE_GOOGLE_MAPS_API_KEY }}
         run: |
@@ -69,6 +68,10 @@ jobs:
         env:
           ANDROID_GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.ANDROID_GOOGLE_SERVICES_JSON_BASE64 }}
         run: |
+          if [ -z "$ANDROID_GOOGLE_SERVICES_JSON_BASE64" ]; then
+            echo "::error::Set ANDROID_GOOGLE_SERVICES_JSON_BASE64 to enable Android Firebase Cloud Messaging. The final app requires remote notifications."
+            exit 1
+          fi
           if [ -n "$ANDROID_GOOGLE_SERVICES_JSON_BASE64" ]; then
             printf '%s' "$ANDROID_GOOGLE_SERVICES_JSON_BASE64" | base64 --decode > android/app/google-services.json
             node <<'NODE'
@@ -89,7 +92,8 @@ jobs:
           console.log('Firebase Android config validated for the K&B project and app package.');
           NODE
           else
-            echo "::warning::FCM is not configured for this build. Add the ANDROID_GOOGLE_SERVICES_JSON_BASE64 repository secret."
+            echo "::error::FCM config missing."
+            exit 1
           fi
       - name: Assemble debug APK
         run: cd android && ./gradlew --no-daemon assembleDebug
