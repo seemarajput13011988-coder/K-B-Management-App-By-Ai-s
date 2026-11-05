@@ -54,11 +54,9 @@ export default function InvoiceWorkspace({customers,plans,flash}:{customers:Cust
   const extraTaxTotal = extraSummaryFields.reduce((sum,field)=>sum+Math.max(0,Number(field.amount)||0)*Math.max(0,Number(field.gstRate)||0)/100,0);
   const subtotal = lineSubtotal + extraSubtotal;
   const taxTotal = lineTaxTotal + extraTaxTotal;
-  const discountTotal = items.reduce((sum,item)=>{const gross=Math.max(0,Number(item.quantity)||0)*Math.max(0,Number(item.rate)||0)*Math.min(100,Math.max(0,Number(item.discount)||0))/100;const gst=Math.max(0,Number(item.gstRate)||0);return sum+gross/(item.taxMode==='inclusive'?1+gst/100:1);},0);
   const isIntraState = supplyStateCode.trim()==='24';
   const cgst = isIntraState ? Math.round(taxTotal/2*100)/100 : 0, sgst = isIntraState ? taxTotal-cgst : 0, igst = isIntraState ? 0 : taxTotal;
   const grandTotal = Math.round((subtotal+taxTotal)*100)/100;
-  const roundOff = Math.round(grandTotal)-grandTotal;
   const payable = Math.round(grandTotal);
   const selectedPlan = (planName:string)=>plans.find(p=>p.name===planName);
   function chooseCustomer(id:string) {
@@ -123,7 +121,6 @@ export default function InvoiceWorkspace({customers,plans,flash}:{customers:Cust
       y=cardY+41;
       const tableHeaders=['#','SERVICE / DETAILS','QTY','RATE','TAXABLE','GST','TAX','TOTAL'];
       const colWidths=[8,64,12,22,22,14,20,24];
-      const tableWidth=colWidths.reduce((a,b)=>a+b,0);
       const drawTableRow=(cells:string[],header=false)=>{
         const wrapped=cells.map((value,index)=>doc.splitTextToSize(value,Math.max(5,colWidths[index]-3)).slice(0,6));
         const height=Math.max(8,...wrapped.map(lines=>lines.length*3.6+4));
