@@ -9,7 +9,7 @@ app.disable('x-powered-by');
 app.use(cors({origin:true,methods:['GET','POST','PUT','PATCH','DELETE','OPTIONS'],allowedHeaders:['Content-Type','Authorization']}));
 app.use(express.json({limit:'2mb'}));
 const useFirestoreSessionApi=(path:string)=>
-  /^\/api\/(auth|admins|staff-registration-requests|retention|customer-ledger|invoices|audit|visits|subscriptions|notifications|push-tokens|payroll|inventory|installations)(\/|$)/.test(path)||path==='/api/_healthcheck';
+  /^\/api\/(auth|admins|staff|staff-registration-requests|retention|customer-ledger|invoices|audit|visits|subscriptions|notifications|push-tokens|payroll|inventory|installations)(\/|$)/.test(path)||path==='/api/_healthcheck';
 app.use((req,res,next)=>{if(!useFirestoreSessionApi(req.path))return next();void apiHandler(req,res).catch(next);});
 app.post('/internal/jobs/tick', async (req,res) => {
   const expected=process.env.JOB_SECRET||'';
