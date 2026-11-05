@@ -58,11 +58,34 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
-    // Admin-only read is used by the plan deletion guard. Staff customer
-    // access continues through the existing ownership-checked API until migrated.
+    function validCustomer(data) {
+      return data.name is string && data.name.size() > 0 && data.name.size() <= 100
+        && data.phone is string && data.phone.size() <= 30
+        && data.address is string && data.address.size() <= 300
+        && data.plan is string && data.plan.size() > 0 && data.plan.size() <= 100
+        && data.monthlyFee is number && data.monthlyFee >= 0
+        && data.status in ['Active', 'Inactive', 'Suspended']
+        && data.joinedAt is string && data.dueDate is string
+        && data.notes is string && data.notes.size() <= 1000
+        && data.assignedTo is string && data.assignedToName is string;
+    }
+
+    // Admins manage all customer records. Staff can read only assigned
+    // customers and may update contact notes, phone and address only.
     match /customers/{customerId} {
-      allow get, list: if isAdmin();
-      allow create, update, delete: if false;
+      allow get: if isAdmin()
+        || (hasActiveProfile() && resource.data.assignedTo == request.auth.uid);
+      allow list: if isAdmin()
+        || (hasActiveProfile() && resource.data.assignedTo == request.auth.uid);
+      allow create: if isAdmin() && validCustomer(request.resource.data);
+      allow update: if isAdmin()
+          && validCustomer(request.resource.data)
+        || (hasActiveProfile()
+          && resource.data.assignedTo == request.auth.uid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'phone', 'address', 'notes', 'updatedAt'
+          ]));
+      allow delete: if isAdmin();
     }
 
     // All remaining collections stay closed until their own ownership-checked
