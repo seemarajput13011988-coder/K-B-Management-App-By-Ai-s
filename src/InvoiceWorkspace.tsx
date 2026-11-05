@@ -10,6 +10,7 @@ type ExtraSummaryField = { id:number; label:string; details:string; amount:strin
 const BUSINESS = { name:'K&B NET SERVICE', gstin:'24AHHPC7437K1ZA', tollFree:'079-29992999', ifsc:'VCOB0000018', address:'B-8/10 Gokul Galaxy Residency, Kathwada, Ahmedabad - 382430', email:'brajrajsinghchauhan3517@gmail.com', state:'Gujarat' };
 const today = () => new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 const money = (n:number) => '₹'+(Number.isFinite(n)?n:0).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});
+const pdfMoney = (n:number) => 'INR '+(Number.isFinite(n)?n:0).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});
 const fmtDate = (s:string) => s ? new Date(s+'T12:00:00').toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}) : '—';
 const newLine = (id:number):LineItem => ({id,description:'',details:'',sac:'',quantity:'1',rate:'',discount:'0',gstRate:'18',taxMode:'exclusive'});
 
@@ -140,18 +141,18 @@ export default function InvoiceWorkspace({customers,plans,flash}:{customers:Cust
         const gross=qty*rate,discount=gross*disc/100,after=gross-discount,taxable=item.taxMode==='inclusive'?after/(1+gst/100):after,tax=item.taxMode==='inclusive'?after-taxable:taxable*gst/100,total=after+(item.taxMode==='exclusive'?tax:0);
         return {item,index,qty,rate,taxable,tax,total,gst,discount};
       });
-      lineRows.forEach(r=>drawTableRow([String(r.index+1),r.item.description+(r.item.details?'\\n'+r.item.details:'')+(r.item.sac?'\\nSAC: '+r.item.sac:''),String(r.qty),money(r.rate),money(r.taxable),r.gst+'%',money(r.tax),money(r.total)]));
+      lineRows.forEach(r=>drawTableRow([String(r.index+1),r.item.description+(r.item.details?'\\n'+r.item.details:'')+(r.item.sac?'\\nSAC: '+r.item.sac:''),String(r.qty),pdfMoney(r.rate),pdfMoney(r.taxable),r.gst+'%',pdfMoney(r.tax),pdfMoney(r.total)]));
       extraSummaryFields.filter(f=>f.label.trim()||f.details.trim()||f.amount.trim()).forEach((f,index)=>{
         const amount=Math.max(0,Number(f.amount)||0),gst=Math.max(0,Number(f.gstRate)||0),tax=amount*gst/100;
-        drawTableRow([String(lineRows.length+index+1),f.label+(f.details?'\\n'+f.details:''),'1',money(amount),money(amount),gst+'%',money(tax),money(amount+tax)]);
+        drawTableRow([String(lineRows.length+index+1),f.label+(f.details?'\\n'+f.details:''),'1',pdfMoney(amount),pdfMoney(amount),gst+'%',pdfMoney(tax),pdfMoney(amount+tax)]);
       });
       y+=6;ensureSpace(46);
       doc.setFont('helvetica','bold');doc.setFontSize(9);doc.setTextColor(40,94,139);doc.text('TAX SUMMARY',left,y);y+=6;
       doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(55,68,86);
-      const taxRows=isIntraState?[['Taxable value',money(subtotal)],['CGST',money(cgst)],['SGST',money(sgst)],['Total GST',money(taxTotal)]]:[['Taxable value',money(subtotal)],['IGST',money(igst)],['Total GST',money(taxTotal)]];
+      const taxRows=isIntraState?[['Taxable value',pdfMoney(subtotal)],['CGST',pdfMoney(cgst)],['SGST',pdfMoney(sgst)],['Total GST',pdfMoney(taxTotal)]]:[['Taxable value',pdfMoney(subtotal)],['IGST',pdfMoney(igst)],['Total GST',pdfMoney(taxTotal)]];
       taxRows.forEach(([label,value])=>{doc.text(label,left,y);doc.text(value,right-38,y,{align:'right'});y+=5;});
       y+=2;doc.setDrawColor(20,59,103);doc.line(left,y,right,y);y+=7;
-      doc.setFont('helvetica','bold');doc.setFontSize(13);doc.setTextColor(20,59,103);doc.text('GRAND TOTAL  '+money(payable),right,y,{align:'right'});y+=7;
+      doc.setFont('helvetica','bold');doc.setFontSize(13);doc.setTextColor(20,59,103);doc.text('GRAND TOTAL  '+pdfMoney(payable),right,y,{align:'right'});y+=7;
       doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(70,83,100);
       textLine('Amount in words: '+numberWords(payable),left,8,[70,83,100]);
       y+=2;textLine('Notes: '+(notes||'—'),left,8,[70,83,100]);
