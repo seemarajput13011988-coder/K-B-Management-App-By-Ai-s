@@ -5,7 +5,7 @@ concurrency:
 on:
   push:
     branches:
-      - firebase-migration
+      - spark-free-backend
     paths:
       - "src/**"
       - "public/**"
@@ -16,6 +16,8 @@ on:
       - "firebase.json"
       - ".firebaserc"
       - "functions/**"
+      - "netlify/**"
+      - "netlify.toml"
       - "docs/ANDROID_TRACKING_AND_RELEASE.md"
       - ".github/workflows/android-apk.yml"
   workflow_dispatch:
@@ -27,7 +29,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: firebase-migration
+          ref: spark-free-backend
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -48,11 +50,12 @@ jobs:
           VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.VITE_FIREBASE_STORAGE_BUCKET || 'kandb-net-sevice.firebasestorage.app' }}
           VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID || '847932976304' }}
           VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID || '1:847932976304:web:87148565df2a329a5f9f75' }}
-          VITE_FIREBASE_FUNCTIONS_URL: https://asia-south1-kandb-net-sevice.cloudfunctions.net/api
+          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
           VITE_GOOGLE_MAPS_API_KEY: ${{ secrets.VITE_GOOGLE_MAPS_API_KEY }}
         run: |
           npm install
           npx tsc --noEmit
+          test -n "$VITE_API_BASE_URL" || (echo "::error::Set the VITE_API_BASE_URL repository variable to the Netlify site URL before building the APK." && exit 1)
           npm run build
           npm --prefix functions install
           npm --prefix functions test
