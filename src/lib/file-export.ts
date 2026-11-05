@@ -1,4 +1,3 @@
-import { jsPDF } from 'jspdf';
 import { Capacitor } from '@capacitor/core';
 import { Directory, Filesystem } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
@@ -67,6 +66,7 @@ export async function exportPdfFile(fileName: string, pdfDataUri: string): Promi
 }
 
 export async function exportPdfReport(fileName: string, title: string, rows: unknown[][]): Promise<void> {
+  const { jsPDF } = await import('jspdf');
   const landscape = (rows[0]?.length || 0) >= 7;
   const doc = new jsPDF({ orientation: landscape ? 'landscape' : 'portrait', unit: 'mm', format: 'a4' });
   const pageWidth = doc.internal.pageSize.getWidth();
