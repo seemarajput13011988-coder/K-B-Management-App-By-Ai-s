@@ -7,7 +7,7 @@ import { runScheduledTick, startBackgroundJobs } from './jobs.js';
 const app=express();
 app.disable('x-powered-by');
 app.use(cors({origin:true,methods:['GET','POST','PUT','PATCH','DELETE','OPTIONS'],allowedHeaders:['Content-Type','Authorization']}));
-app.use(express.json({limit:'2mb'}));
+app.use(express.json({limit:'16mb'}));
 const useFirestoreSessionApi=(path:string)=>
   /^\/api\/(auth|admins|staff|staff-registration-requests|retention|customer-ledger|invoices|audit|visits|subscriptions|notifications|push-tokens|payroll|inventory|installations)(\/|$)/.test(path)||path==='/api/_healthcheck';
 app.use((req,res,next)=>{if(!useFirestoreSessionApi(req.path))return next();void apiHandler(req,res).catch(next);});
