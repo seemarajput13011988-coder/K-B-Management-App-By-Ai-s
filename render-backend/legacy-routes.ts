@@ -41,8 +41,12 @@ type Payment = {
   recordedByName?: string;
 };
 type Complaint = {
+  id?: string;
+  complaintFor: 'Customer' | 'Staff';
   customerId?: string;
   customerName?: string;
+  staffId?: string;
+  staffName?: string;
   subject: string;
   details: string;
   priority: string;
@@ -52,6 +56,13 @@ type Complaint = {
   createdByName?: string;
   assignedTo?: string;
   assignedToName?: string;
+  locationText?: string;
+  latitude?: number;
+  longitude?: number;
+  resolvedBy?: string;
+  resolvedByName?: string;
+  resolvedAt?: string;
+  resolutionDetails?: string;
 };
 type SessionRecord = { userId: string; expiresAt: number };
 type TaskRecord = { title: string; details: string; assignedTo: string; assignedToName: string; priority: string; dueDate: string; status: string; createdAt: string; createdBy: string; createdByName: string };
@@ -522,65 +533,169 @@ export const handler = router({
 
   'GET /api/complaints': protectedRoute(['admin', 'staff'], async (_ctx, user) => {
     const result = await db.list<Complaint>('complaints', { limit: 200 });
-    if (user.role === 'admin') return json({ items: result.items });
-    const customers = await db.list<Customer>('customers', { limit: 200 });    const assignedIds = new Set(customers.items.filter(item => item.assignedTo === user.id).map(item => item.id));
-    return json({ items: result.items.filter(item => assignedIds.has(item.customerId) || item.assignedTo === user.id) });
+    const mediaSnapshot = await firestore.collection('complaint_media').where('chunkIndex', '==', -1).limit(500).get();
+    const mediaByComplaint = new Map<string, Array<Record<string, unknown>>>();
+    mediaSnapshot.docs.forEach(doc => {
+      const item = doc.data();
+      const list = mediaByComplaint.get(String(item.complaintId)) || [];
+      list.push({ mediaId: item.mediaId, fileName: item.fileName, mimeType: item.mimeType, size: item.size, createdAt: item.createdAt });
+      mediaByComplaint.set(String(item.complaintId), list);
+    });
+    const withMedia = result.items.map(item => ({ ...item, attachments: mediaByComplaint.get(String(item.id)) || [] }));
+    if (user.role === 'admin') return json({ items: withMedia });
+    const customers = await db.list<Customer>('customers', { limit: 1000 });
+    const assignedIds = new Set(customers.items.filter(item => item.assignedTo === user.id).map(item => item.id));
+    return json({ items: withMedia.filter(item => assignedIds.has(item.customerId) || item.assignedTo === user.id || item.staffId === user.id || item.createdBy === user.id) });
   }),
 
   'POST /api/complaints': protectedRoute(['admin', 'staff'], async ({ body }, user) => {
     const input = (body || {}) as Complaint;
+    const complaintFor = input.complaintFor === 'Staff' ? 'Staff' : 'Customer';
     const customerId = cleanText(input.customerId, 128);
+    const staffId = cleanText(input.staffId, 128);
     let customer: Customer | undefined;
-    if (customerId) {
+    let subjectStaff: UserRecord | undefined;
+    if (complaintFor === 'Customer') {
+      if (!customerId) return error('Choose the customer for this complaint.', 400);
       const [foundCustomer] = await db.get<Customer>('customers', [customerId], { consistent: true });
-      customer = foundCustomer;
+      customer = foundCustomer || undefined;
       if (!customer) return error('Customer not found.', 404);
-      if (user.role === 'staff' && customer.assignedTo !== user.id) return error('You can only submit complaints for assigned customers.', 403);
+      if (user.role === 'staff' && customer.assignedTo !== user.id) return error('You can only submit complaints for customers assigned to you.', 403);
+    } else {
+      if (!staffId) return error('Choose the staff member for this complaint.', 400);
+      const [foundStaff] = await db.get<UserRecord>('users', [staffId], { consistent: true });
+      subjectStaff = foundStaff || undefined;
+      if (!subjectStaff || subjectStaff.role !== 'staff' || !subjectStaff.active) return error('Choose an active staff member.', 400);
+      if (user.role === 'staff' && staffId !== user.id) return error('You can only submit a staff complaint for yourself.', 403);
     }
+    const assignedTo = cleanText(input.assignedTo, 128);
+    let assignedToName = '';
+    if (assignedTo) {
+      const [member] = await db.get<UserRecord>('users', [assignedTo], { consistent: true });
+      if (!member || member.role !== 'staff' || !member.active) return error('Choose an active staff member for assignment.', 400);
+      assignedToName = member.displayName;
+    }
+    const latitude = Number(input.latitude);
+    const longitude = Number(input.longitude);
     const record: Complaint = {
-      ...(customerId ? { customerId } : {}),
-      customerName: customer?.name || cleanText(input.customerName, 150) || 'General complaint',
+      complaintFor,
+      ...(customerId ? { customerId, customerName: customer?.name || '' } : {}),
+      ...(staffId ? { staffId, staffName: subjectStaff?.displayName || '' } : {}),
       subject: cleanText(input.subject, 150),
-      details: cleanText(input.details, 1000),
+      details: cleanText(input.details, 1500),
       priority: ['Low', 'Normal', 'High'].includes(input.priority) ? input.priority : 'Normal',
-      status: 'Open',
-      createdAt: cleanText(input.createdAt, 20),
+      status: assignedTo ? 'Assigned' : 'Pending',
+      createdAt: cleanText(input.createdAt, 30) || new Date().toISOString(),
       createdBy: user.id,
       createdByName: user.displayName,
+      assignedTo,
+      assignedToName,
+      locationText: cleanText(input.locationText, 250),
+      ...(Number.isFinite(latitude) && latitude >= -90 && latitude <= 90 ? { latitude } : {}),
+      ...(Number.isFinite(longitude) && longitude >= -180 && longitude <= 180 ? { longitude } : {}),
     };
     if (!record.subject) return error('A complaint subject is required.', 400);
     const [id] = await db.add('complaints', [record as unknown as Record<string, unknown>]);
     return id ? json({ id, ...record }, 201) : error('Could not create complaint.', 500);
   }),
 
-  'PUT /api/complaints/:id': protectedRoute(['admin'], async ({ params, body }, user) => {
+  'PUT /api/complaints/:id': protectedRoute(['admin', 'staff'], async ({ params, body }, user) => {
     const input = (body || {}) as Complaint;
-    const status = ['Open', 'In progress', 'Resolved'].includes(input.status) ? input.status : 'Open';
     const [existing] = await db.get<Complaint>('complaints', [params.id], { consistent: true });
     if (!existing) return error('Complaint not found.', 404);
-    const assignedTo = cleanText(input.assignedTo, 128);
-    let assignedToName: string | undefined;
-    if (assignedTo) {
-      const [member] = await db.get<UserRecord>('users', [assignedTo], { consistent: true });
-      if (!member || member.role !== 'staff' || !member.active) return error('Choose an active staff member for this ticket.', 400);
-      assignedToName = member.displayName;
-    }
+    if (user.role === 'staff' && existing.assignedTo !== user.id) return error('Only the assigned staff member or an administrator can update this complaint.', 403);
+    const allowedStatuses = ['Pending', 'Assigned', 'In Progress', 'Solved', 'Not Solved'];
+    const status = allowedStatuses.includes(input.status) ? input.status : existing.status;
     const patch: Record<string, unknown> = { status };
-    if (Object.prototype.hasOwnProperty.call(input, 'assignedTo')) {
+    if (user.role === 'admin' && Object.prototype.hasOwnProperty.call(input, 'assignedTo')) {
+      const assignedTo = cleanText(input.assignedTo, 128);
+      let assignedToName = '';
+      if (assignedTo) {
+        const [member] = await db.get<UserRecord>('users', [assignedTo], { consistent: true });
+        if (!member || member.role !== 'staff' || !member.active) return error('Choose an active staff member for this assignment.', 400);
+        assignedToName = member.displayName;
+      }
       patch.assignedTo = assignedTo;
-      patch.assignedToName = assignedToName || '';
+      patch.assignedToName = assignedToName;
+      if (assignedTo && status === 'Pending') patch.status = 'Assigned';
+    }
+    if (Object.prototype.hasOwnProperty.call(input, 'resolutionDetails')) patch.resolutionDetails = cleanText(input.resolutionDetails, 1500);
+    if (status === 'Solved') {
+      patch.resolvedBy = user.id;
+      patch.resolvedByName = user.displayName;
+      patch.resolvedAt = new Date().toISOString();
+    } else if (existing.status === 'Solved') {
+      patch.resolvedBy = '';
+      patch.resolvedByName = '';
+      patch.resolvedAt = '';
     }
     const [updated] = await db.tx.update('complaints', [{ id: params.id, record: patch }], { patch: true });
-    if (updated) await writeAudit(user, 'UPDATE', 'ticket', params.id, 'Updated service ticket: ' + existing.subject);
+    if (updated) await writeAudit(user, 'UPDATE', 'complaint', params.id, 'Updated complaint: ' + existing.subject + ' · ' + String(patch.status || status));
     return updated ? json({ updated: true }) : error('Could not update complaint.', 500);
+  }),
+
+  'POST /api/complaints/:id/media': protectedRoute(['admin', 'staff'], async ({ params, body }, user) => {
+    const [ticket] = await db.get<Complaint>('complaints', [params.id], { consistent: true });
+    if (!ticket) return error('Complaint not found.', 404);
+    if (user.role === 'staff' && ticket.createdBy !== user.id && ticket.assignedTo !== user.id && ticket.staffId !== user.id) {
+      if (!ticket.customerId) return error('You do not have access to this complaint.', 403);
+      const [customer] = await db.get<Customer>('customers', [ticket.customerId], { consistent: true });
+      if (customer?.assignedTo !== user.id) return error('You do not have access to this complaint.', 403);
+    }
+    const fileName = cleanText(body?.fileName, 120) || 'complaint-attachment';
+    const mimeType = cleanText(body?.mimeType, 100).toLowerCase();
+    const dataBase64 = typeof body?.dataBase64 === 'string' ? body.dataBase64 : '';
+    if (!/^image\/(jpeg|png|webp)$|^video\/(mp4|webm|quicktime)$/.test(mimeType)) return error('Use a JPG, PNG, WEBP photo or MP4, WEBM, MOV video.', 400);
+    const maxBytes = mimeType.startsWith('image/') ? 2 * 1024 * 1024 : 8 * 1024 * 1024;
+    if (!dataBase64 || dataBase64.length > Math.ceil(maxBytes * 4 / 3) + 8) return error('Attachment is empty or too large.', 413);
+    const buffer = Buffer.from(dataBase64, 'base64');
+    if (!buffer.length || buffer.length > maxBytes || buffer.toString('base64').replace(/=+$/, '') !== dataBase64.replace(/=+$/, '')) return error('Attachment data is invalid or exceeds the allowed size.', 400);
+    const mediaId = randomBytes(12).toString('hex');
+    const chunkSize = 400000;
+    const chunkCount = Math.ceil(dataBase64.length / chunkSize);
+    const batch = firestore.batch();
+    const collection = firestore.collection('complaint_media');
+    const createdAt = new Date().toISOString();
+    const metadataRef = collection.doc();
+    batch.set(metadataRef, { complaintId: params.id, mediaId, chunkIndex: -1, fileName, mimeType, size: buffer.length, chunkCount, createdAt, uploadedBy: user.id, uploadedByName: user.displayName });
+    for (let index = 0; index < chunkCount; index += 1) {
+      const ref = collection.doc();
+      batch.set(ref, { complaintId: params.id, mediaId, chunkIndex: index, data: dataBase64.slice(index * chunkSize, (index + 1) * chunkSize) });
+    }
+    await batch.commit();
+    await writeAudit(user, 'UPLOAD', 'complaint', params.id, 'Attached file to complaint: ' + fileName);
+    return json({ mediaId, fileName, mimeType, size: buffer.length, createdAt }, 201);
+  }),
+
+  'GET /api/complaints/:id/media/:mediaId': protectedRoute(['admin', 'staff'], async ({ params }, user) => {
+    const [ticket] = await db.get<Complaint>('complaints', [params.id], { consistent: true });
+    if (!ticket) return error('Complaint not found.', 404);
+    if (user.role === 'staff' && ticket.createdBy !== user.id && ticket.assignedTo !== user.id && ticket.staffId !== user.id) {
+      if (!ticket.customerId) return error('You do not have access to this complaint.', 403);
+      const [customer] = await db.get<Customer>('customers', [ticket.customerId], { consistent: true });
+      if (customer?.assignedTo !== user.id) return error('You do not have access to this complaint.', 403);
+    }
+    const snapshot = await firestore.collection('complaint_media').where('complaintId', '==', params.id).where('mediaId', '==', params.mediaId).get();
+    if (snapshot.empty) return error('Attachment not found.', 404);
+    const docs = snapshot.docs.map(doc => doc.data()).sort((a, b) => Number(a.chunkIndex) - Number(b.chunkIndex));
+    const metadata = docs.find(doc => Number(doc.chunkIndex) === -1);
+    if (!metadata) return error('Attachment metadata is missing.', 404);
+    const dataBase64 = docs.filter(doc => Number(doc.chunkIndex) >= 0).map(doc => String(doc.data || '')).join('');
+    return json({ fileName: metadata.fileName, mimeType: metadata.mimeType, dataBase64 });
   }),
 
   'DELETE /api/complaints/:id': protectedRoute(['admin'], async ({ params }, user) => {
     const [ticket] = await db.get<Complaint>('complaints', [params.id], { consistent: true });
-    if (!ticket) return error('Service ticket not found.', 404);
+    if (!ticket) return error('Complaint not found.', 404);
+    const media = await firestore.collection('complaint_media').where('complaintId', '==', params.id).get();
+    for (let offset = 0; offset < media.docs.length; offset += 400) {
+      const batch = firestore.batch();
+      media.docs.slice(offset, offset + 400).forEach(doc => batch.delete(doc.ref));
+      await batch.commit();
+    }
     const [deleted] = await db.delete('complaints', [params.id]);
-    if (!deleted) return error('Could not delete service ticket.', 500);
-    await writeAudit(user, 'DELETE', 'ticket', params.id, 'Deleted service ticket: ' + ticket.subject);
+    if (!deleted) return error('Could not delete complaint.', 500);
+    await writeAudit(user, 'DELETE', 'complaint', params.id, 'Deleted complaint: ' + ticket.subject);
     return json({ deleted: true });
   }),
 
