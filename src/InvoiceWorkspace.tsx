@@ -11,7 +11,6 @@ const BUSINESS = { name:'K&B NET SERVICE', gstin:'24AHHPC7437K1ZA', tollFree:'07
 const today = () => new Date().toISOString().slice(0,10);
 const money = (n:number) => '₹'+(Number.isFinite(n)?n:0).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});
 const fmtDate = (s:string) => s ? new Date(s+'T12:00:00').toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}) : '—';
-const esc = (value:unknown) => String(value??'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c] as string));
 const newLine = (id:number):LineItem => ({id,description:'',details:'',sac:'',quantity:'1',rate:'',discount:'0',gstRate:'18',taxMode:'exclusive'});
 
 export default function InvoiceWorkspace({customers,plans,flash}:{customers:Customer[];plans:Plan[];flash:(message:string)=>void}) {
@@ -71,35 +70,6 @@ export default function InvoiceWorkspace({customers,plans,flash}:{customers:Cust
     setItems([{...newLine(1),description:(c.plan||'Internet service')+' - '+(p?.provider||'K&B Net Service'),details:[p?.speed,p?.data,p?.details,p?.note].filter(Boolean).join(' · '),rate:String(c.monthlyFee||p?.price||'')}]);
   }
   function updateItem(id:number,patch:Partial<LineItem>){setItems(prev=>prev.map(item=>item.id===id?{...item,...patch}:item));}
-  function makeInvoiceHtml() {
-    const rows=items.map((item,index)=>{
-      const qty=Math.max(0,Number(item.quantity)||0),rate=Math.max(0,Number(item.rate)||0),disc=Math.min(100,Math.max(0,Number(item.discount)||0)),gst=Math.max(0,Number(item.gstRate)||0);
-      const gross=qty*rate,discount=gross*disc/100,after=gross-discount,taxable=item.taxMode==='inclusive'?after/(1+gst/100):after,tax=after-taxable,total=after+(item.taxMode==='exclusive'?tax:0);
-      return {index:index+1,item,qty,rate,discount,taxable,tax,total,gst};
-    });
-    const lineRowsHtml=rows.map(r=>'<tr><td>'+r.index+'</td><td><b>'+esc(r.item.description)+'</b>'+(r.item.details?'<small>'+esc(r.item.details)+'</small>':'')+'<small>SAC: '+esc(r.item.sac||'—')+'</small></td><td class="num">'+r.qty+'</td><td class="num">'+money(r.rate)+'</td><td class="num">'+money(r.discount)+'</td><td class="num">'+money(r.taxable)+'</td><td class="num">'+r.gst+'%</td><td class="num">'+money(r.tax)+'</td><td class="num"><b>'+money(r.total)+'</b></td></tr>').join('');
-    const extraRowsHtml=extraSummaryFields.filter(f=>f.label.trim()||f.details.trim()||f.amount.trim()).map((f,index)=>{const amount=Math.max(0,Number(f.amount)||0),gst=Math.max(0,Number(f.gstRate)||0),tax=amount*gst/100;return '<tr><td>'+ (rows.length+index+1) +'</td><td><b>'+esc(f.label||'Additional charge')+'</b>'+(f.details?'<small>'+esc(f.details)+'</small>':'')+'<small>Optional invoice summary entry</small></td><td class="num">1</td><td class="num">'+money(amount)+'</td><td class="num">'+money(0)+'</td><td class="num">'+money(amount)+'</td><td class="num">'+gst+'%</td><td class="num">'+money(tax)+'</td><td class="num"><b>'+money(amount+tax)+'</b></td></tr>';}).join('');
-    const rowsHtml=lineRowsHtml+extraRowsHtml;
-    const taxLabel=isIntraState?'<div><span>CGST</span><b>'+money(cgst)+'</b></div><div><span>SGST</span><b>'+money(sgst)+'</b></div>':'<div><span>IGST</span><b>'+money(igst)+'</b></div>';
-    return `<!doctype html><html><head><meta charset="utf-8"><title>${esc(invoiceNo)}</title><style>
-      @page{size:A4;margin:12mm}*{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;color:#172033;margin:0;font-size:11px;line-height:1.45}
-      .top{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:4px solid #143b67;padding:0 0 18px;margin-bottom:18px}
-      .brand{font-size:24px;font-weight:800;letter-spacing:.4px;color:#12395f}.brand small{display:block;font-size:10px;letter-spacing:2px;color:#3975a8;margin-top:3px}
-      .tag{font-size:25px;font-weight:800;color:#12395f;text-align:right}.muted{color:#68778b}.meta{margin-top:7px;text-align:right}
-      .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:14px 0}.card{border:1px solid #d8e0ea;border-radius:8px;padding:12px}.card h3{margin:0 0 8px;color:#28608e;font-size:10px;letter-spacing:1px;text-transform:uppercase}
-      .card p{margin:3px 0}.customer-name{font-size:15px;font-weight:700}.badge{display:inline-block;background:#eaf2fa;color:#1c527e;padding:5px 9px;border-radius:20px;font-weight:700}
-      table{width:100%;border-collapse:collapse;margin-top:15px}th{background:#153f69;color:white;text-align:left;font-size:9px;padding:9px 6px}td{border-bottom:1px solid #e1e7ef;padding:9px 6px;vertical-align:top}td small{display:block;color:#6b7787;margin-top:3px;font-size:9px}.num{text-align:right;white-space:nowrap}
-      .bottom{display:grid;grid-template-columns:1.15fr .85fr;gap:18px;margin-top:18px}.totals{border:1px solid #d8e0ea;border-radius:8px;padding:12px}.totals div{display:flex;justify-content:space-between;padding:5px 0}.totals .grand{border-top:2px solid #153f69;margin-top:6px;padding-top:10px;font-size:17px;font-weight:800;color:#153f69}
-      .words{background:#f2f6fa;border-radius:7px;padding:10px;margin-top:9px}.foot{border-top:1px solid #d8e0ea;margin-top:24px;padding-top:12px;display:flex;justify-content:space-between;gap:20px}.sign{text-align:right;min-width:170px;padding-top:28px}.note{white-space:pre-wrap;margin-top:8px}.small{font-size:9px;color:#68778b}
-      @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}.no-print{display:none}}
-    </style></head><body>
-      <header class="top"><div><div class="brand">K&amp;B NET SERVICE<small>INTERNET • NETWORK • CONNECTIVITY</small></div><p class="muted">${esc(businessAddress).replace(/\n/g,'<br>')}<br>GSTIN: ${BUSINESS.gstin}<br>Toll Free: ${BUSINESS.tollFree}<br>IFSC Code: ${BUSINESS.ifsc}<br>Email: ${BUSINESS.email}${businessUpi?'<br>UPI: '+esc(businessUpi):''}</p></div><div><div class="tag">TAX INVOICE</div><div class="meta"><b>Invoice No:</b> ${esc(invoiceNo)}<br><b>Invoice Date:</b> ${fmtDate(invoiceDate)}<br><b>Due Date:</b> ${fmtDate(dueDate)}<br><span class="badge">Original for Recipient</span></div></div></header>
-      <div class="grid"><section class="card"><h3>Bill To</h3><p class="customer-name">${esc(customerName)}</p><p>${esc(customerAddress).replace(/\n/g,'<br>')}</p><p>Phone: ${esc(customerPhone||'—')}</p>${customerEmail?'<p>Email: '+esc(customerEmail)+'</p>':''}${customerGstin?'<p>GSTIN: '+esc(customerGstin)+'</p>':''}</section><section class="card"><h3>Invoice Details</h3><p><b>Place of Supply:</b> ${esc(placeOfSupply)} (${esc(supplyStateCode)})</p><p><b>Reverse Charge:</b> ${reverseCharge?'Yes':'No'}</p><p><b>Reference:</b> ${esc(reference||'—')}</p><p><b>Payment Mode:</b> ${esc(paymentMode)}</p></section></div>
-      <table><thead><tr><th>#</th><th>DESCRIPTION / SERVICE</th><th class="num">QTY</th><th class="num">RATE</th><th class="num">DISCOUNT</th><th class="num">TAXABLE VALUE</th><th class="num">GST</th><th class="num">TAX</th><th class="num">TOTAL</th></tr></thead><tbody>${rowsHtml}</tbody></table>
-      <div class="bottom"><div><div class="card"><h3>Tax Summary</h3><p>Taxable value: <b>${money(subtotal)}</b></p>${taxLabel}<p><b>Total GST: ${money(taxTotal)}</b></p><p class="small">Tax is calculated line-by-line using the GST rate and inclusive/exclusive setting selected for each service.</p></div><div class="words"><b>Amount in words</b><p>${esc(numberWords(payable))}</p></div><div class="note"><b>Notes:</b> ${esc(notes)}</div><div class="note"><b>Terms &amp; Conditions:</b> ${esc(terms)}</div></div><div class="totals"><div><span>Gross value</span><b>${money(subtotal+discountTotal)}</b></div><div><span>Discount</span><b>- ${money(discountTotal)}</b></div><div><span>Taxable amount</span><b>${money(subtotal)}</b></div><div><span>Total GST</span><b>${money(taxTotal)}</b></div><div><span>Round off</span><b>${money(roundOff)}</b></div><div class="grand"><span>Grand Total</span><b>${money(payable)}</b></div></div></div>
-      <footer class="foot"><div><b>For K&amp;B NET SERVICE</b><p class="small">This is a computer-generated invoice.</p><p class="small">Please retain this invoice for your records.</p></div><div class="sign"><b>Authorised Signatory</b><div class="small">K&amp;B NET SERVICE</div></div></footer>
-      <script>window.onload=()=>setTimeout(()=>window.print(),350);<\/script></body></html>`;
-  }
   function numberWords(value:number) {
     const n=Math.max(0,Math.round(value)); if(n===0)return 'Rupees Zero Only';
     const one=['','One','Two','Three','Four','Five','Six','Seven','Eight','Nine','Ten','Eleven','Twelve','Thirteen','Fourteen','Fifteen','Sixteen','Seventeen','Eighteen','Nineteen'];
