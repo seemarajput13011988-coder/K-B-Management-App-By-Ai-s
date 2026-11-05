@@ -159,9 +159,56 @@ async function requestCustomers<T = any>(path: string, method: string, payload?:
   throw new Error('Unsupported customers request.');
 }
 
+
+async function requestPayments<T = any>(path: string, method: string, payload?: Record<string, unknown>): Promise<ApiResult<T>> {
+  if (!firebaseAuth?.currentUser || !firestore) throw new Error('Please sign in again to continue.');
+  const profile = await getAppUserProfile();
+  const admin = profile.role === 'admin';
+  const payments = collection(firestore, 'payments');
+  const base = '/api/payments';
+  const id = path.startsWith(base + '/') ? decodeURIComponent(path.slice(base.length + 1).split('?')[0]) : '';
+  if (method === 'GET' && path.split('?')[0] === base) {
+    const snap = await getDocs(admin ? payments : query(payments, where('recordedBy', '==', firebaseAuth.currentUser.uid)));
+    return { data: { items: snap.docs.map(item => ({ id: item.id, ...item.data() })) } as T };
+  }
+  if (method === 'POST' && path.split('?')[0] === base) {
+    const customerId = String(payload?.customerId || '').trim();
+    const amount = Number(payload?.amount);
+    const methodName = String(payload?.method || '').trim().slice(0, 40);
+    const paidAt = String(payload?.paidAt || '').trim();
+    const month = String(payload?.month || '').trim().slice(0, 40);
+    if (!customerId || !Number.isFinite(amount) || amount <= 0 || !methodName || !/^\\d{4}-\\d{2}-\\d{2}$/.test(paidAt) || !month) {
+      throw new Error('Enter a valid customer, amount, payment method, payment date and billing month.');
+    }
+    const customer = await getDoc(doc(firestore, 'customers', customerId));
+    if (!customer.exists()) throw new Error('Customer not found.');
+    if (!admin && customer.data().assignedTo !== firebaseAuth.currentUser.uid) {
+      throw new Error('You can record payments only for your assigned customers.');
+    }
+    const record = {
+      customerId, customerName: String(customer.data().name || '').slice(0, 100),
+      amount, method: methodName, paidAt, month,
+      recordedBy: firebaseAuth.currentUser.uid, recordedByName: profile.displayName,
+      createdAt: new Date().toISOString()
+    };
+    const ref = await addDoc(payments, record);
+    return { data: { id: ref.id, ...record } as T };
+  }
+  if (id && method === 'DELETE') {
+    if (!admin) throw new Error('Only administrators can delete payment records.');
+    const ref = doc(firestore, 'payments', id);
+    const existing = await getDoc(ref);
+    if (!existing.exists()) throw new Error('Payment record not found.');
+    await deleteDoc(ref);
+    return { data: { deleted: true } as T };
+  }
+  throw new Error('Unsupported payments request.');
+}
+
 async function request<T = any>(path: string, method: string, payload?: Record<string, unknown>): Promise<ApiResult<T>> {
   if (path.split('?')[0] === '/api/plans' || path.split('?')[0].startsWith('/api/plans/')) return requestPlans<T>(path, method, payload);
   if (path.split('?')[0] === '/api/customers' || path.split('?')[0].startsWith('/api/customers/')) return requestCustomers<T>(path, method, payload);
+  if (path.split('?')[0] === '/api/payments' || path.split('?')[0].startsWith('/api/payments/')) return requestPayments<T>(path, method, payload);
   if (!firebaseAuth) throw new Error('Firebase is not configured yet. Add the K&B Firebase web app settings before signing in.');
   const auth = firebaseAuth;
   if (!auth.currentUser) await new Promise<void>(resolve => {
