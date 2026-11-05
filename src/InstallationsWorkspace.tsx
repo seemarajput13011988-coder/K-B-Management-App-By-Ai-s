@@ -13,7 +13,7 @@ function exportInstallations(items:Installation[]){
     ...items.map(item=>[item.customerName,item.phone||'',item.address,item.type,item.scheduledDate,item.assignedToName,item.status,item.notes||''])];
   const csv='\uFEFF'+rows.map(row=>row.map(value=>'"'+String(value??'').replace(/"/g,'""')+'"').join(',')).join('\r\n');
   const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
-  const link=document.createElement('a');link.href=url;link.download='kb-installations-'+dateToday()+'.csv';link.style.display='none';document.body.appendChild(link);link.click();link.remove();window.setTimeout(()=>URL.revokeObjectURL(url),1500);
+  const link=document.createElement('a');link.href=url;link.download='kb-installations-'+dateToday()+'.csv';link.style.display='none';document.body.appendChild(link);link.click();window.setTimeout(()=>{link.remove();URL.revokeObjectURL(url);},2000);
 }
 
 export default function InstallationsWorkspace({customers,staff,isAdmin,flash}:{customers:Customer[];staff:Staff[];isAdmin:boolean;flash:(message:string)=>void}) {
