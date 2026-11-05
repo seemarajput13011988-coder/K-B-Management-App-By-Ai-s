@@ -97,7 +97,9 @@ async function createSession(user: UserRecord) {
 
 async function currentUser(ctx: Parameters<RouterMiddleware>[0]): Promise<UserRecord | null> {
   const body = (ctx.body || {}) as Record<string, unknown>;
-  const token = cleanText(body.sessionToken, 200) || cleanText(ctx.query.sessionToken, 200);
+  const authorization = cleanText(ctx.headers?.authorization, 4096);
+  const bearerToken = authorization.startsWith('Bearer ') ? authorization.slice(7) : '';
+  const token = bearerToken || cleanText(body.sessionToken, 200) || cleanText(ctx.query.sessionToken, 200);
   if (!token) return null;
   const [session] = await db.get<SessionRecord>('sessions', [tokenId(token)], { consistent: true });
   if (!session || session.expiresAt <= Date.now()) return null;
