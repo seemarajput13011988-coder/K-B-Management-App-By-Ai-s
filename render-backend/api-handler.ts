@@ -142,7 +142,30 @@ export async function apiHandler(req: any, res: any) {
       const userId = clean(input.userId, 40);
       const password = typeof input.password === 'string' ? input.password : '';
       if (!userId || !password) { send(res, 400, { error: 'Enter your user ID and password.' }); return; }
-      const matches = (await list('users')).filter(item => String(item.userId || '').toLowerCase() === userId.toLowerCase());
+      let matches = (await list('users')).filter(item => String(item.userId || '').toLowerCase() === userId.toLowerCase());
+
+      // First sign-in bootstraps the one fixed owner account only when no admin exists.
+      // The one-time seed password is supplied through Render's private environment settings.
+      if (matches.length === 0 && userId.toLowerCase() === 'brajraj') {
+        const initialPassword = process.env.ADMIN_INITIAL_PASSWORD || '';
+        if (initialPassword.length >= 10 && equalSecret(password, initialPassword)) {
+          const ownerRef = db.collection('users').doc('admin-primary');
+          await db.runTransaction(async transaction => {
+            const [ownerSnapshot, existingAdmins] = await Promise.all([
+              transaction.get(ownerRef),
+              transaction.get(db.collection('users').where('role', '==', 'admin').limit(1)),
+            ]);
+            if (!ownerSnapshot.exists && existingAdmins.empty) {
+              transaction.create(ownerRef, {
+                userId: 'Brajraj', userIdLower: 'brajraj', displayName: 'Brajraj',
+                role: 'admin', canManageAdmins: true, active: true,
+                ...newPasswordFields(password), createdAt: now(),
+              });
+            }
+          });
+          matches = (await list('users')).filter(item => String(item.userId || '').toLowerCase() === 'brajraj');
+        }
+      }
       if (matches.length !== 1) { send(res, 401, { error: 'The user ID or password is incorrect.' }); return; }
       const userDoc = await db.collection('users').doc(String(matches[0].id)).get();
       if (!userDoc.exists) { send(res, 401, { error: 'The user ID or password is incorrect.' }); return; }
@@ -154,25 +177,6 @@ export async function apiHandler(req: any, res: any) {
       const user = { id: userDoc.id, ...record };
       const session = await createSession(user);
       send(res, 200, { ...session, user: { id: userDoc.id, userId: clean(record.userId, 40), displayName: clean(record.displayName, 80), role: record.role, active: true, canManageAdmins: record.canManageAdmins === true } }); return;
-    }
-
-    if (method === 'POST' && path === '/api/auth/bootstrap-admin') {
-      const input = req.body && typeof req.body === 'object' ? req.body : {};
-      const bootstrapSecret = typeof input.bootstrapSecret === 'string' ? input.bootstrapSecret : '';
-      const password = typeof input.password === 'string' ? input.password : '';
-      const configuredSecret = (process.env.ADMIN_BOOTSTRAP_SECRET || '');
-      if (!configuredSecret || !equalSecret(bootstrapSecret, configuredSecret)) {
-        send(res, 401, { error: 'The one-time admin setup key is incorrect or has not been configured.' }); return;
-      }
-      if (password.length < 10) { send(res, 400, { error: 'Choose an admin password with at least 10 characters.' }); return; }
-      const existing = await db.collection('users').where('role', '==', 'admin').limit(1).get();
-      if (!existing.empty) { send(res, 409, { error: 'The admin account is already initialized. Use admin sign in.' }); return; }
-      const fields = newPasswordFields(password);
-      await db.collection('users').doc('admin-primary').set({
-        userId: 'Brajraj', userIdLower: 'brajraj', displayName: 'Brajraj', role: 'admin',
-        canManageAdmins: true, active: true, ...fields, createdAt: now(),
-      });
-      send(res, 201, { initialized: true, userId: 'Brajraj' }); return;
     }
 
     if (method === 'POST' && path === '/api/auth/recover-admin') {
