@@ -1,6 +1,6 @@
 import { CapacitorHttp } from '@capacitor/core';
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_FIREBASE_FUNCTIONS_URL || 'https://asia-south1-kandb-net-sevice.cloudfunctions.net/api';
+const API_BASE = import.meta.env.VITE_FIREBASE_FUNCTIONS_URL || 'https://asia-south1-kandb-net-sevice.cloudfunctions.net/api';
 type ApiResult<T = any> = { data: T };
 type LocalSession = { token: string; expiresAt: number; user: { id: string; userId: string; displayName: string; role: 'admin'|'staff'; active: boolean; canManageAdmins?: boolean } };
 function storedToken(): string {
