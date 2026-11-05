@@ -76,13 +76,26 @@ type AttendanceRecord = { id: string; userId: string; displayName: string; workD
 type Task = { id: string; title: string; details: string; assignedTo: string; assignedToName: string; priority: 'Low' | 'Normal' | 'High'; dueDate: string; status: 'Pending' | 'In progress' | 'Completed'; createdAt: string; createdByName: string };
 type Complaint = {
   id: string;
+  complaintFor: 'Customer' | 'Staff';
   customerId?: string;
   customerName?: string;
+  staffId?: string;
+  staffName?: string;
   subject: string;
   details: string;
   priority: string;
-  status: string;
+  status: 'Pending' | 'Assigned' | 'In Progress' | 'Solved' | 'Not Solved' | string;
   createdAt: string;
+  createdByName?: string;
+  assignedTo?: string;
+  assignedToName?: string;
+  locationText?: string;
+  latitude?: number;
+  longitude?: number;
+  resolvedByName?: string;
+  resolvedAt?: string;
+  resolutionDetails?: string;
+  attachments?: Array<{mediaId:string;fileName:string;mimeType:string;size:number}>;
 };
 type Plan = {
   id: string;
@@ -107,6 +120,17 @@ const dateLabel = (s: string) =>
         year: 'numeric',
       })
     : '—';
+const fileAsBase64 = (file: File) => new Promise<string>((resolve, reject) => {
+  const reader = new FileReader();
+  reader.onload = () => {
+    const value = String(reader.result || '');
+    const comma = value.indexOf(',');
+    if (comma < 0) reject(new Error('Could not read the selected attachment.'));
+    else resolve(value.slice(comma + 1));
+  };
+  reader.onerror = () => reject(new Error('Could not read the selected attachment.'));
+  reader.readAsDataURL(file);
+});
 
 function Workspace({ session, onLogout }: { session: Session; onLogout: () => void }) {
   const isAdmin = session.user.role === 'admin';
@@ -154,6 +178,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   const [paymentSearch, setPaymentSearch] = useState('');
   const [staffSearch, setStaffSearch] = useState('');
   const [showComplaint, setShowComplaint] = useState(false);
+  const [complaintPreview, setComplaintPreview] = useState<{name:string;mimeType:string;dataUrl:string}|null>(null);
   const [notice, setNotice] = useState('');
   const [mobileNav, setMobileNav] = useState(false);
   const [retentionItems, setRetentionItems] = useState<RetentionReviewItem[]>([]);
@@ -549,14 +574,28 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
       flash(err instanceof Error ? err.message : 'Could not delete payment.');
     }
   }
-  async function saveComplaint(data: Omit<Complaint, 'id'>) {
+  async function saveComplaint(data: any) {
+    let createdId = '';
     try {
-      await api.post('/api/complaints', data);
+      const { photoFile, videoFile, ...fields } = data;
+      const created = await api.post('/api/complaints', fields);
+      createdId = String(created.data.id || '');
+      if (!createdId) throw new Error('Complaint was created but the server did not return its ID.');
+      for (const file of [photoFile, videoFile].filter((item): item is File => item instanceof File)) {
+        const dataBase64 = await fileAsBase64(file);
+        await api.post('/api/complaints/' + createdId + '/media', { fileName: file.name, mimeType: file.type, dataBase64 });
+      }
       setShowComplaint(false);
       await load();
-      flash('Complaint added');
-    } catch {
-      flash('Could not add complaint');
+      flash('Complaint saved successfully.');
+    } catch (err) {
+      if (createdId) {
+        setShowComplaint(false);
+        await load();
+        flash(err instanceof Error ? 'Complaint saved, but an attachment could not be uploaded: ' + err.message : 'Complaint saved, but an attachment could not be uploaded.');
+      } else {
+        flash(err instanceof Error ? err.message : 'Could not add complaint.');
+      }
     }
   }
   async function saveTask(data: { title: string; details: string; assignedTo: string; priority: string; dueDate: string }) {
@@ -578,13 +617,32 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
       flash(err instanceof Error ? err.message : 'Could not update task');
     }
   }
-  async function updateComplaint(item: Complaint, status: string) {
+  async function updateComplaint(item: Complaint, patch: Record<string, unknown>) {
     try {
-      await api.put('/api/complaints/' + item.id, { ...item, status });
+      await api.put('/api/complaints/' + item.id, patch);
       await load();
-      flash('Complaint status updated');
-    } catch {
-      flash('Could not update complaint');
+      flash('Complaint updated.');
+    } catch (err) {
+      flash(err instanceof Error ? err.message : 'Could not update complaint.');
+    }
+  }
+  async function deleteComplaint(item: Complaint) {
+    if (!window.confirm('Delete this complaint and its attached photo/video? This cannot be undone.')) return;
+    try {
+      await api.delete('/api/complaints/' + item.id);
+      await load();
+      flash('Complaint deleted.');
+    } catch (err) {
+      flash(err instanceof Error ? err.message : 'Could not delete complaint.');
+    }
+  }
+  async function openComplaintAttachment(item: Complaint, attachment: NonNullable<Complaint['attachments']>[number]) {
+    try {
+      const result = await api.get('/api/complaints/' + item.id + '/media/' + attachment.mediaId);
+      const dataUrl = 'data:' + result.data.mimeType + ';base64,' + result.data.dataBase64;
+      setComplaintPreview({ name: result.data.fileName || attachment.fileName, mimeType: result.data.mimeType, dataUrl });
+    } catch (err) {
+      flash(err instanceof Error ? err.message : 'Could not open attachment.');
     }
   }
 
@@ -592,7 +650,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
     { label: 'Overview', icon: LayoutDashboard },
     { label: 'Calendar', icon: CalendarDays },
     { label: taskPage, icon: ClipboardList, count: pendingTasks || undefined },
-    ...(isAdmin ? [{ label: 'Team Operations', icon: Activity }] : [{ label: 'My Day', icon: CalendarDays }]),
+    ...(isAdmin ? [{ label: 'Salary', icon: IndianRupee }] : [{ label: 'My Day', icon: CalendarDays }]),
     { label: 'Customers', icon: Users, count: customers.length },
     { label: 'Subscriptions', icon: CalendarDays },
     { label: 'Inventory', icon: ClipboardList },
@@ -738,7 +796,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                             ? 'View task deadlines and team attendance by date.'
                           : page === taskPage
                             ? (isAdmin ? 'Assign work, set priorities and monitor team progress.' : 'Your assigned work, priorities and due dates.')
-                            : page === 'My Day' || page === 'Team Operations'
+                            : page === 'My Day' || page === 'Salary'
                               ? (isAdmin ? 'Attendance, team locations, announcements, messages and field visits.' : 'Your attendance, customer visits, team updates and messages.')
                               : 'Track and resolve customer service requests.'}
               </p>
@@ -784,7 +842,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
           </div>
 
           {page === 'Calendar' && <CalendarWorkspace tasks={tasks} attendance={attendanceRecords} isAdmin={isAdmin} />}
-          {page === (isAdmin ? 'Team Operations' : 'My Day') && <StaffOperations session={session} customers={customers} flash={flash} onDataChanged={() => { void load(true); }} />}
+          {page === (isAdmin ? 'Salary' : 'My Day') && <StaffOperations session={session} customers={customers} flash={flash} onDataChanged={() => { void load(true); }} />}
           {page === 'Finance & Billing' && isAdmin && <FinanceWorkspace session={session} customers={customers} payments={payments} flash={flash} />}
           {page === 'Subscriptions' && <SubscriptionWorkspace customers={customers} plans={plans} isAdmin={isAdmin} flash={flash} />}
           {page === 'Inventory' && <InventoryWorkspace isAdmin={isAdmin} flash={flash} />}
@@ -1149,45 +1207,52 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
           )}
 
           {page === 'Complaints' && (
-            <section className="panel table-panel">
+            <section className="panel table-panel complaints-workspace">
               <div className="toolbar">
-                <div>
-                  <h2>Customer complaints</h2>
-                  <p className="subtle">Monitor and update service requests</p>
-                </div>
-                <span className="result-count">
-                  {complaints.length} records
-                </span>
+                <div><h2>Staff & customer complaints</h2><p className="subtle">Create a complaint, assign an owner and track it until it is solved.</p></div>
+                <span className="result-count">{complaints.length} records</span>
               </div>
               <div className="complaint-list">
-                {complaints.map(c => (
-                  <div className="complaint-row" key={c.id}>
-                    <div className="complaint-symbol">
-                      <MessageSquare size={18} />
+                {complaints.map(c => {
+                  const canUpdate = isAdmin || c.assignedTo === session.user.id;
+                  const targetName = c.complaintFor === 'Staff' ? (c.staffName || 'Staff member') : (c.customerName || 'Customer');
+                  return <article className="complaint-card" key={c.id}>
+                    <div className="complaint-card-head">
+                      <div className="complaint-symbol"><MessageSquare size={18}/></div>
+                      <div className="complaint-info">
+                        <strong>{c.subject}</strong>
+                        <span>{c.complaintFor || 'Customer'} · {targetName} · {dateLabel(c.createdAt)}</span>
+                        <small>{c.details || 'No additional details.'}</small>
+                      </div>
+                      <span className={'priority ' + String(c.priority || 'Normal').toLowerCase()}>{c.priority || 'Normal'}</span>
                     </div>
-                    <div className="complaint-info">
-                      <strong>{c.subject}</strong>
-                      <span>
-                        {c.customerName || 'General complaint'} · {dateLabel(c.createdAt)}
-                      </span>
-                      <small>{c.details}</small>
+                    <div className="complaint-meta">
+                      <span><b>Assigned to:</b> {c.assignedToName || 'Not assigned'}</span>
+                      <span><b>Raised by:</b> {c.createdByName || '—'}</span>
+                      {c.resolvedByName && <span><b>Solved by:</b> {c.resolvedByName}</span>}
+                      {c.resolvedAt && <span><b>Solved on:</b> {dateLabel(c.resolvedAt)}</span>}
                     </div>
-                    <span className={'priority ' + c.priority.toLowerCase()}>
-                      {c.priority}
-                    </span>
-                    {isAdmin ? <select aria-label="Complaint status" value={c.status} onChange={e => updateComplaint(c, e.target.value)}><option>Open</option><option>In progress</option><option>Resolved</option></select> : <span className="status inactive">{c.status}</span>}
-                  </div>
-                ))}
+                    {c.locationText && <p className="complaint-location"><MapPin size={14}/>{c.locationText} {Number.isFinite(c.latitude) && Number.isFinite(c.longitude) && <a href={'https://www.google.com/maps?q=' + c.latitude + ',' + c.longitude} target="_blank" rel="noreferrer">Open map</a>}</p>}
+                    <div className="complaint-controls">
+                      <label><small>Status</small>{canUpdate ? <select value={c.status} onChange={e => {
+                        const status = e.target.value;
+                        let resolutionDetails = c.resolutionDetails || '';
+                        if (status === 'Solved' || status === 'Not Solved') {
+                          const answer = window.prompt(status === 'Solved' ? 'What work solved this complaint?' : 'Why is this complaint not solved?', resolutionDetails);
+                          if (answer === null) return;
+                          resolutionDetails = answer;
+                        }
+                        void updateComplaint(c, { status, resolutionDetails });
+                      }}><option>Pending</option><option>Assigned</option><option>In Progress</option><option>Solved</option><option>Not Solved</option></select> : <span className="complaint-status">{c.status}</span>}</label>
+                      {isAdmin && <label><small>Assign to staff</small><select value={c.assignedTo || ''} onChange={e => void updateComplaint(c, { assignedTo: e.target.value, status: e.target.value && c.status === 'Pending' ? 'Assigned' : c.status })}><option value="">Unassigned</option>{staff.filter(member => member.active).map(member => <option key={member.id} value={member.id}>{member.displayName}</option>)}</select></label>}
+                      {c.attachments?.map(file => <button type="button" className="btn secondary compact" key={file.mediaId} onClick={() => void openComplaintAttachment(c, file)}>{file.mimeType.startsWith('video/') ? 'View video' : 'View photo'}</button>)}
+                      {isAdmin && <button type="button" className="row-action danger" title="Delete complaint" onClick={() => void deleteComplaint(c)}><Trash2 size={15}/></button>}
+                    </div>
+                    {c.resolutionDetails && <p className="complaint-resolution"><b>Resolution / reason:</b> {c.resolutionDetails}</p>}
+                  </article>;
+                })}
               </div>
-              {!complaints.length && (
-                <Empty
-                  icon={<MessageSquare />}
-                  title="No complaints"
-                  text="New customer service requests will appear here."
-                  action="New complaint"
-                  onClick={() => setShowComplaint(true)}
-                />
-              )}
+              {!complaints.length && <Empty icon={<MessageSquare/>} title="No complaints yet" text="Create a customer or staff complaint to start tracking it." action="New complaint" onClick={() => setShowComplaint(true)}/>}
             </section>
           )}
           <footer>
@@ -1224,10 +1289,13 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
       {showComplaint && (
         <ComplaintModal
           customers={customers}
+          staff={staff}
+          session={session}
           onClose={() => setShowComplaint(false)}
           onSave={saveComplaint}
         />
       )}
+      {complaintPreview && <Modal title={complaintPreview.name} subtitle="Complaint attachment" onClose={() => setComplaintPreview(null)}><div className="complaint-preview">{complaintPreview.mimeType.startsWith('video/') ? <video src={complaintPreview.dataUrl} controls playsInline /> : <img src={complaintPreview.dataUrl} alt={complaintPreview.name}/>}</div><div className="form-actions"><a className="btn secondary" href={complaintPreview.dataUrl} download={complaintPreview.name}>Download attachment</a><button type="button" className="btn primary" onClick={() => setComplaintPreview(null)}>Close</button></div></Modal>}
       {showStaff && <StaffModal onClose={() => setShowStaff(false)} onSave={createStaff} />}
       {showAdminModal && canManageAdmins && <AdminModal onClose={() => setShowAdminModal(false)} onSave={createAdmin} />}
       {showAccountSettings && <AccountSettingsModal session={session} onClose={() => setShowAccountSettings(false)} onChangeUserId={async (currentPassword: string, userId: string) => { await changeAppUserId(currentPassword, userId); onLogout(); }} onChangePassword={async (currentPassword: string, newPassword: string) => { await changeAppPassword(currentPassword, newPassword); onLogout(); }} />}
