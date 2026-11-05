@@ -21,7 +21,7 @@ Work is being carried out on `firebase-migration`. The original AppDeploy implem
 - Attendance supports full-day / half-day selection and reason-required admin corrections.
 - Admin Team Operations includes active-shift location visibility and history. Android uses a visible native background location service with consent; browser tracking is foreground-only. Live location is best-effort and must be verified on real devices.
 - Finance includes a six-month collections-versus-expenses chart and mobile-friendly visual refinements.
-- Web build and Functions typecheck workflows are included. An Android debug APK workflow now runs on migration-branch changes; its first run exposed an obsolete Android SDK package and the workflow fix is being verified.
+- Latest Android APK workflow run #41970912048 (5 Nov 2026, commit `0b80b42`) passed: TypeScript check, web production build, 14 Functions tests, Android config check, APK assembly and artifact upload. The debug APK artifact is available until 19 Nov 2026. It is debug-signed, not a production release. FCM was not configured in this build because `ANDROID_GOOGLE_SERVICES_JSON_BASE64` is missing.
 - Group chat currently refreshes from the API; realtime transport remains pending.
 
 ## Before using or deploying
