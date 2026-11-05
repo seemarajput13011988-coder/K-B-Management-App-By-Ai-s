@@ -505,11 +505,84 @@ service cloud.firestore {
         && request.resource.data.actorId == request.auth.uid
         && request.resource.data.actorName is string
         && request.resource.data.action is string
-        && request.resource.data.entityType == 'inventory-item'
+        && request.resource.data.entityType in ['inventory-item', 'expense', 'payroll', 'invoice_batch', 'invoice']
         && request.resource.data.entityId is string
         && request.resource.data.description is string
         && request.resource.data.createdAt is string;
       allow update, delete: if false;
+    }
+
+
+    match /expenses/{expenseId} {
+      allow get, list: if isAdmin();
+      allow create: if isAdmin()
+        && request.resource.data.keys().hasOnly([
+          'title', 'category', 'amount', 'spentAt', 'method', 'notes',
+          'createdBy', 'createdByName', 'createdAt', 'payrollId', 'staffUserId'
+        ])
+        && request.resource.data.title is string
+        && request.resource.data.title.size() > 0
+        && request.resource.data.title.size() <= 120
+        && request.resource.data.category is string
+        && request.resource.data.category.size() > 0
+        && request.resource.data.category.size() <= 60
+        && request.resource.data.amount is number
+        && request.resource.data.amount > 0
+        && request.resource.data.amount <= 100000000
+        && request.resource.data.spentAt is string
+        && request.resource.data.method is string
+        && request.resource.data.method.size() > 0
+        && request.resource.data.method.size() <= 40
+        && request.resource.data.notes is string
+        && request.resource.data.notes.size() <= 300
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.createdByName is string
+        && request.resource.data.createdAt is string;
+      allow update: if false;
+      allow delete: if isAdmin() && !('payrollId' in resource.data);
+    }
+
+    match /payroll/{payrollId} {
+      allow get, list: if isAdmin();
+      allow create: if isAdmin()
+        && request.resource.data.keys().hasOnly([
+          'staffUserId', 'staffName', 'period', 'amount', 'paidAt', 'method',
+          'notes', 'createdBy', 'createdByName', 'createdAt'
+        ])
+        && request.resource.data.staffUserId is string
+        && request.resource.data.staffName is string
+        && request.resource.data.period is string
+        && request.resource.data.amount is number
+        && request.resource.data.amount > 0
+        && request.resource.data.paidAt is string
+        && request.resource.data.method is string
+        && request.resource.data.notes is string
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.createdByName is string
+        && request.resource.data.createdAt is string;
+      allow update, delete: if false;
+    }
+
+    match /invoices/{invoiceId} {
+      allow get, list: if isAdmin();
+      allow create: if isAdmin()
+        && request.resource.data.keys().hasOnly([
+          'customerId', 'customerName', 'period', 'dueDate', 'amount', 'createdAt', 'createdBy'
+        ])
+        && request.resource.data.customerId is string
+        && request.resource.data.customerName is string
+        && request.resource.data.period is string
+        && request.resource.data.dueDate is string
+        && request.resource.data.amount is number
+        && request.resource.data.amount >= 0
+        && request.resource.data.createdAt is string
+        && request.resource.data.createdBy == request.auth.uid;
+      allow update: if isAdmin()
+        && resource.data.voidedAt == null
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['voidedAt', 'voidedBy'])
+        && request.resource.data.voidedAt is string
+        && request.resource.data.voidedBy == request.auth.uid;
+      allow delete: if false;
     }
 
     // All remaining collections stay closed until their own ownership-checked
