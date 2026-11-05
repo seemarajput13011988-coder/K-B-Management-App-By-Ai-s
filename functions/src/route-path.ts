@@ -150,8 +150,16 @@ export function isSixMonthReviewDue(createdAt: unknown, currentTime = Date.now()
   const created = Date.parse(createdAt);
   if (!Number.isFinite(created) || !Number.isFinite(currentTime)) return false;
   const current = new Date(currentTime);
-  const cutoffMonth = new Date(current.getFullYear(), current.getMonth() - 6, 1);
-  const lastDay = new Date(cutoffMonth.getFullYear(), cutoffMonth.getMonth() + 1, 0).getDate();
-  cutoffMonth.setDate(Math.min(current.getDate(), lastDay));
-  return created <= cutoffMonth.getTime();
+  const cutoffMonthStart = new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth() - 6, 1));
+  const lastDay = new Date(Date.UTC(cutoffMonthStart.getUTCFullYear(), cutoffMonthStart.getUTCMonth() + 1, 0)).getUTCDate();
+  const cutoff = Date.UTC(
+    cutoffMonthStart.getUTCFullYear(),
+    cutoffMonthStart.getUTCMonth(),
+    Math.min(current.getUTCDate(), lastDay),
+    current.getUTCHours(),
+    current.getUTCMinutes(),
+    current.getUTCSeconds(),
+    current.getUTCMilliseconds(),
+  );
+  return created <= cutoff;
 }
