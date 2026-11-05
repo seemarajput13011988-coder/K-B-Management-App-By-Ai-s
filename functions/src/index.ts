@@ -1273,10 +1273,27 @@ export const api = onRequest(
           const dueDay = datePattern.test(String(customer.dueDate || '')) ? Number(String(customer.dueDate).slice(-2)) : 10;
           const dueDate = period + '-' + String(Math.min(Math.max(dueDay, 1), new Date(year, month, 0).getDate())).padStart(2, '0');
           const id = 'inv-' + Buffer.from(key).toString('base64url').slice(0, 32);
-          await db.collection('invoices').doc(id).create({ customerId: customer.id, customerName: customer.name, period, dueDate, amount: Number(customer.monthlyFee || 0), createdAt: now(), createdBy: user.uid });
-          created++;
+          const invoiceRef = db.collection('invoices').doc(id);
+          // Two admins may generate the same billing month at once. Reserve the
+          // deterministic invoice ID inside a transaction so only one request
+          // creates the invoice and the other safely counts it as already present.
+          const wasCreated = await db.runTransaction(async transaction => {
+            const current = await transaction.get(invoiceRef);
+            if (current.exists) return false;
+            transaction.create(invoiceRef, {
+              customerId: customer.id,
+              customerName: customer.name,
+              period,
+              dueDate,
+              amount: Number(customer.monthlyFee || 0),
+              createdAt: now(),
+              createdBy: user.uid
+            });
+            return true;
+          });
+          if (wasCreated) created++;
         }
-        await audit(user, 'GENERATE', 'invoice_batch', period, 'Generated ' + created + ' monthly invoices for ' + period);
+        if (created > 0) await audit(user, 'GENERATE', 'invoice_batch', period, 'Generated ' + created + ' monthly invoices for ' + period);
         send(res, 200, { created, skippedExisting: Math.max(0, active.length - created) }); return;
       }
       if (path.startsWith('/api/invoices/') && path.endsWith('/void') && method === 'PUT') {
