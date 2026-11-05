@@ -43,14 +43,15 @@ test('task reminders distinguish tomorrow, due today, overdue and future tasks',
 });
 
 
-test('only an explicitly server-designated admin is Super Admin', () => {
-  const { isSuperAdminAccount } = require('../lib/route-path.js');
-  assert.equal(isSuperAdminAccount({ role: 'admin', userId: 'Brajraj' }), false, 'username alone must never grant Super Admin');
-  assert.equal(isSuperAdminAccount({ role: 'admin', userId: 'other-admin', isSuperAdmin: true }), true, 'allows the server-designated Super Admin');
-  assert.equal(isSuperAdminAccount({ role: 'admin', userId: 'Brajraj', isSuperAdmin: false }), false, 'a regular admin cannot claim the owner username');
-  assert.equal(isSuperAdminAccount({ role: 'admin', userId: 'other-admin' }), false, 'regular admins cannot manage admin accounts');
-  assert.equal(isSuperAdminAccount({ role: 'staff', userId: 'Brajraj', isSuperAdmin: true }), false, 'staff cannot become Super Admin by setting a flag');
-  assert.equal(isSuperAdminAccount({ role: 'staff', userId: 'employee' }), false);
+test('only the original server-designated admin can manage admin accounts', () => {
+  const { hasAdminManagementAccess } = require('../lib/route-path.js');
+  assert.equal(hasAdminManagementAccess({ role: 'admin', userId: 'Brajraj' }), false, 'username alone must never grant permission');
+  assert.equal(hasAdminManagementAccess({ role: 'admin', userId: 'other-admin', canManageAdmins: true }), true, 'server-designated primary account keeps permission even if renamed');
+  assert.equal(hasAdminManagementAccess({ role: 'admin', userId: 'Brajraj', canManageAdmins: false }), false, 'a regular admin cannot claim the owner username');
+  assert.equal(hasAdminManagementAccess({ role: 'admin', userId: 'other-admin' }), false, 'regular admins cannot manage admin accounts');
+  assert.equal(hasAdminManagementAccess({ role: 'staff', userId: 'Brajraj', canManageAdmins: true }), false, 'staff cannot become admin by setting a flag');
+  assert.equal(hasAdminManagementAccess({ role: 'admin', isSuperAdmin: true }), true, 'existing primary account remains compatible during migration');
+  assert.equal(hasAdminManagementAccess({ role: 'staff', userId: 'employee' }), false);
 });
 
 
