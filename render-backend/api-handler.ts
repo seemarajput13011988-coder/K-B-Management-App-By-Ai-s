@@ -778,7 +778,7 @@ export async function apiHandler(req: any, res: any) {
         if (!allow(user,['admin'],res)) return;
         const staffUserId = clean(req.body?.staffUserId,128), period = clean(req.body?.period,7);
         const amount = Number(req.body?.amount), paidAt = clean(req.body?.paidAt,10), payMethod = clean(req.body?.method,50);
-        if (!staffUserId || !/^\\d{4}-\\d{2}$/.test(period) || !validMoney(amount) || amount <= 0 || !/^\\d{4}-\\d{2}-\\d{2}$/.test(paidAt) || !payMethod) {
+        if (!staffUserId || !monthPattern.test(period) || !validMoney(amount) || amount <= 0 || !datePattern.test(paidAt) || !payMethod) {
           send(res,400,{error:'Enter a valid staff member, month, salary amount, payment date and method.'}); return;
         }
         const staff = await getDoc('users',staffUserId);
