@@ -99,7 +99,7 @@ export default function GpsTrackingWorkspace({flash}:{flash:(message:string)=>vo
     try{
       const capturedAt=liveLocation.capturedAt;
       const record={...liveLocation,address:'Coordinates available in Google Maps',savedAt:new Date().toISOString(),savedByName:'Admin'};
-      const result=await api.post<{id:string}>('/api/saved-locations',{staffId:record.staffId,staffName:record.staffName,latitude:record.latitude,longitude:record.longitude,accuracy:record.accuracy,capturedAt});
+      await api.post<{id:string}>('/api/saved-locations',{staffId:record.staffId,staffName:record.staffName,latitude:record.latitude,longitude:record.longitude,accuracy:record.accuracy,capturedAt});
       const refreshed=await api.get<{items:SavedLocation[]}>('/api/saved-locations');
       setSaved(refreshed.data.items||[]);
       flash('Live location saved.');
