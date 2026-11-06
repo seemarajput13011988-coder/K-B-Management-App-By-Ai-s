@@ -14,8 +14,9 @@ type UserRecord = {
   salt: string;
   passwordHash: string;
   createdAt: string;
+  phone?: string;
 };
-type SafeUser = Pick<UserRecord, 'id' | 'userId' | 'displayName' | 'role' | 'active'>;
+type SafeUser = Pick<UserRecord, 'id' | 'userId' | 'displayName' | 'role' | 'active' | 'createdAt' | 'phone'>;
 type Customer = {
   id: string;
   name: string;
@@ -85,6 +86,8 @@ const safeUser = (user: UserRecord): SafeUser => ({
   displayName: user.displayName,
   role: user.role,
   active: user.active,
+  createdAt: user.createdAt,
+  phone: user.phone || '',
 });
 const hashPassword = (password: string, salt: string) =>
   scryptSync(password, salt, 64).toString('hex');
