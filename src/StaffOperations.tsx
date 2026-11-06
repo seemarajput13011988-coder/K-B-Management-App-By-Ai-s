@@ -1,11 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
-import { Capacitor, registerPlugin } from '@capacitor/core';
-import { LocalNotifications } from '@capacitor/local-notifications';
-import type { BackgroundGeolocationPlugin } from '@capacitor-community/background-geolocation';
-import { api as client, nativeApiPost } from './lib/api';
-
-const BackgroundGeolocation = registerPlugin<BackgroundGeolocationPlugin>('BackgroundGeolocation');
+import { api as client } from './lib/api';
 
 type Session = { token: string; user: { id: string; displayName: string; role: 'admin' | 'staff'; isSuperAdmin?: boolean } };
 type Attendance = { id: string; userId: string; displayName: string; workDate: string; checkInAt: string; checkOutAt?: string; dayType?: 'Full day' | 'Half day' | 'Absent'; correctionReason?: string; gpsRestartRequired?: boolean; gpsCancelled?: boolean; status?: string };
@@ -81,17 +76,13 @@ export default function StaffOperations({ session, customers, flash, compact = f
   const [groupMemberIds, setGroupMemberIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [gpsMessage, setGpsMessage] = useState('Location sharing is limited to active work shifts.');
-  const [gpsDeadline, setGpsDeadline] = useState<string | null>(null);
-  const [gpsConsentShiftId, setGpsConsentShiftId] = useState<string | null>(() => { try { return localStorage.getItem('kandb-gps-consent-shift'); } catch { return null; } });
-  const consentPromptedShiftRef = useRef<string | null>(null);
+  const [locationRequestMessage, setLocationRequestMessage] = useState('Your current location is shared only when an administrator requests it.');
   const [announcementForm, setAnnouncementForm] = useState({ title: '', message: '' });
   const [messageForm, setMessageForm] = useState({ recipientId: '', message: '' });
   const [visitForm, setVisitForm] = useState({ customerId: customers[0]?.id || '', purpose: 'Installation / service visit', notes: '' });
   const selectedGroupRef = useRef('');
   const today = localDay();
   const myToday = attendance.filter(item => item.userId === session.user.id && item.workDate === today).sort((a, b) => b.checkInAt.localeCompare(a.checkInAt))[0];
-  const gpsRemainingMinutes = gpsDeadline ? Math.max(0, Math.ceil((new Date(gpsDeadline).getTime() - Date.now()) / 60000)) : null;
   const activeShift = !!myToday && myToday.dayType !== 'Absent' && !myToday.checkOutAt;
 
   const request = useCallback((method: 'get' | 'post' | 'put' | 'delete', path: string, data?: Record<string, unknown>) => {
@@ -236,188 +227,63 @@ export default function StaffOperations({ session, customers, flash, compact = f
 
   useEffect(() => {
     if (admin) return;
-    if (!activeShift || !myToday) {
-      consentPromptedShiftRef.current = null;
-      if (gpsConsentShiftId) {
-        try { localStorage.removeItem('kandb-gps-consent-shift'); } catch { /* storage may be unavailable */ }
-        setGpsConsentShiftId(null);
+    let stopped = false;
+    const handled = new Set<string>();
+    const respondToRequest = (item: {id:string}) => {
+      if (handled.has(item.id)) return;
+      handled.add(item.id);
+      setLocationRequestMessage('An administrator requested your current location. Capturing one GPS point now…');
+      if (!navigator.geolocation) {
+        void request('post', '/api/location-requests/' + item.id + '/respond', { status: 'failed', message: 'Location is not available on this device.' }).catch(() => undefined);
+        setLocationRequestMessage('Location is unavailable on this device. Please contact your administrator.');
+        return;
       }
-      return;
-    }
-    if (gpsConsentShiftId === myToday.id || consentPromptedShiftRef.current === myToday.id) return;
-    consentPromptedShiftRef.current = myToday.id;
-    const accepted = window.confirm('Your shift was started by an administrator. K&B shares your live work location with authorised administrators only while the shift is active. Android shows a persistent tracking notification. Do you agree to location sharing for this shift?');
-    if (accepted) {
-      try { localStorage.setItem('kandb-gps-consent-shift', myToday.id); } catch { /* in-memory consent still applies for this app session */ }
-      setGpsConsentShiftId(myToday.id);
-      setGpsMessage('Location sharing consent recorded for this shift.');
-    } else {
-      setGpsMessage('You did not agree to location sharing. This shift is being ended; contact an administrator if this was unexpected.');
-      void request('post', '/api/attendance/check-out').then(() => refresh()).catch(() => setGpsMessage('Location sharing was declined, but the shift could not be ended automatically. Please contact an administrator.'));
-    }
-  }, [admin, activeShift, myToday?.id, gpsConsentShiftId, request, refresh]);
-
-  useEffect(() => {
-    if (!activeShift || admin || gpsConsentShiftId !== myToday?.id || !Capacitor.isNativePlatform()) return;
-    let cancelled = false;
-    let watcherId: string | null = null;
-    const startBackgroundTracking = async () => {
-      try {
-        const watcher = await BackgroundGeolocation.addWatcher({
-          backgroundTitle: 'K&B work location active',
-          backgroundMessage: 'Your location is shared with K&B admin only during this active shift. Tracking stops when you check out.',
-          requestPermissions: true,
-          stale: false,
-          distanceFilter: 10
-        }, (location, error) => {
-          if (cancelled) return;
-          if (error || !location) {
-            const reason = error?.code === 'NOT_AUTHORIZED' ? 'Location permission was turned off' : 'Phone location services are unavailable';
-            void nativeApiPost<{monitoring?:boolean;deadlineAt?:string;remainingSeconds?:number;reason?:string}>('/api/attendance/gps-lost', { reason })
-              .then(result => {
-                if (cancelled) return;
-                if (!result.data.monitoring && result.data.reason === 'no-active-shift') {
-                  if (watcherId) void BackgroundGeolocation.removeWatcher({ id: watcherId });
-                  setGpsMessage('The shift is no longer active. Background location tracking has stopped.');
-                  void refresh();
-                } else if (!result.data.monitoring && result.data.reason === 'restart-required') {
-                  if (watcherId) void BackgroundGeolocation.removeWatcher({ id: watcherId });
-                  setGpsMessage('This shift was cancelled after the GPS grace period. An administrator must restart it before tracking can resume.');
-                  void refresh();
-                } else if (result.data.monitoring && result.data.deadlineAt) {
-                  setGpsDeadline(result.data.deadlineAt);
-                  const minutes = Math.max(0, Math.ceil(Number(result.data.remainingSeconds || 0) / 60));
-                  setGpsMessage('GPS is unavailable. Turn it back on within 15 minutes. About ' + minutes + ' minutes remain. Your shift stays active during this grace period.');
-                } else if (result.data.reason === 'holiday-exempt') setGpsMessage('GPS monitoring is paused for your pending/approved holiday date.');
-              })
-              .catch(() => { if (!cancelled) setGpsMessage('GPS status could not be checked. Restore location and internet access; contact an admin if this continues.'); });
-            return;
-          }
-          void nativeApiPost<{gpsRestored?:boolean}>('/api/locations', {
-            latitude: location.latitude,
-            longitude: location.longitude,
-            accuracy: location.accuracy,
-            capturedAt: new Date(location.time || Date.now()).toISOString(),
-            source: 'android-background-service'
-          }).then(async result => {
-            if (cancelled) return;
-            if (result.data.gpsRestored) {
-              setGpsDeadline(null);
-              setGpsMessage('GPS restored. Your shift continues normally, including while the screen is locked.');
-              await refresh();
-            } else setGpsMessage('Background GPS tracking is active. Android shows a persistent location notification while your shift is open.');
-          }).catch(error => {
-            if (cancelled) return;
-            if ((error as Error & {status?:number}).status === 403 && watcherId) {
-              void BackgroundGeolocation.removeWatcher({ id: watcherId });
-              setGpsMessage('The server confirmed that your shift is no longer active. Background location tracking has stopped.');
-            } else setGpsMessage('Background GPS is active, but the latest point could not reach the server. Check your internet connection.');
-          });
-        });
-        if (cancelled) await BackgroundGeolocation.removeWatcher({ id: watcher });
-        else {
-          watcherId = watcher;
-          setGpsMessage('Background GPS tracking is active. A persistent Android notification shows when your location is being shared.');
-        }
-      } catch {
-        if (!cancelled) setGpsMessage('Background GPS could not start. Allow precise location and notifications in Android settings, then reopen the app.');
-      }
-    };
-    void startBackgroundTracking();
-    return () => {
-      cancelled = true;
-      if (watcherId) void BackgroundGeolocation.removeWatcher({ id: watcherId });
-    };
-  }, [activeShift, admin, refresh, gpsConsentShiftId, myToday?.id]);
-
-  useEffect(() => {
-    if (!activeShift || admin || gpsConsentShiftId !== myToday?.id || Capacitor.isNativePlatform() || !navigator.geolocation) return;
-    let cancelled = false;
-    let inFlight = false;
-    const captureLocation = () => {
-      if (cancelled || inFlight || document.visibilityState !== 'visible') return;
-      inFlight = true;
       navigator.geolocation.getCurrentPosition(async position => {
+        let address = 'Address unavailable; open this point in Google Maps.';
         try {
-          const saved = await request('post', '/api/locations', {
+          const url = 'https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=' + position.coords.latitude + '&lon=' + position.coords.longitude;
+          const response = await fetch(url, { headers: { 'Accept-Language': 'en' } });
+          if (response.ok) {
+            const place = await response.json() as {display_name?:string};
+            if (place.display_name) address = place.display_name.slice(0, 500);
+          }
+        } catch { /* Coordinates remain available even if reverse geocoding is unavailable. */ }
+        try {
+          await request('post', '/api/location-requests/' + item.id + '/respond', {
+            status: 'captured',
             latitude: position.coords.latitude,
             longitude: position.coords.longitude,
             accuracy: position.coords.accuracy,
-            capturedAt: new Date().toISOString()
+            address,
           });
-          if (!cancelled) {
-            setGpsMessage(saved.data.gpsRestored ? 'GPS restored. Your shift continues normally.' : 'Work location sharing is active. Last update: ' + new Date().toLocaleTimeString());
-            if (saved.data.gpsRestored) { setGpsDeadline(null); await refresh(); }
-          }
+          if (!stopped) setLocationRequestMessage('Your one-time location was shared with the administrator at ' + new Date().toLocaleTimeString() + '. No further tracking is active.');
         } catch {
-          if (!cancelled) setGpsMessage('Location update failed. Check your connection and location permission.');
-        } finally {
-          inFlight = false;
+          if (!stopped) setLocationRequestMessage('Your location was captured but could not be sent. Check your internet connection.');
         }
-      }, async error => {
-        if (error.code === 3) {
-          if (!cancelled) setGpsMessage('Location request timed out. This can happen with a weak signal or connection; your shift will not be cancelled for a timeout. Checking again shortly.');
-          inFlight = false;
-          return;
-        }
-        try {
-          const reason = error.code === 1 ? 'Location permission denied' : 'GPS location unavailable';
-          const result = await request('post', '/api/attendance/gps-lost', { reason });
-          if (result.data.monitoring && result.data.deadlineAt) {
-            setGpsDeadline(result.data.deadlineAt);
-            const minutes = Math.max(0, Math.ceil(Number(result.data.remainingSeconds || 0) / 60));
-            if (!cancelled) setGpsMessage('GPS is unavailable. Turn it back on within 15 minutes. About ' + minutes + ' minutes remain. Your shift will be cancelled only after the grace period.');
-          } else if (result.data.reason === 'holiday-exempt') {
-            setGpsMessage('GPS monitoring is paused for your pending/approved holiday date.');
-          } else if (result.data.reason === 'restart-required') {
-            setGpsMessage('This shift was cancelled after the GPS grace period. An administrator must restart it before tracking can resume.');
-            await refresh();
-          } else if (result.data.reason === 'no-active-shift') {
-            setGpsMessage('The shift is no longer active. Location sharing has stopped.');
-            await refresh();
-          }
-        } catch { if (!cancelled) setGpsMessage('GPS is unavailable. Reconnect and restore location; the 15-minute grace timer will be enforced by the server once detected.'); }
-        inFlight = false;
-      }, { enableHighAccuracy: true, maximumAge: 10000, timeout: 20000 });
+      }, error => {
+        const message = error.code === 1 ? 'Location permission was denied.' : 'The phone could not get a GPS fix.';
+        void request('post', '/api/location-requests/' + item.id + '/respond', { status: 'failed', message }).catch(() => undefined);
+        if (!stopped) setLocationRequestMessage(message + ' The administrator will see that the location was unavailable.');
+      }, { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 });
     };
-    captureLocation();
-    const interval = window.setInterval(captureLocation, 30000);
-    const onVisibilityChange = () => { if (document.visibilityState === 'visible') captureLocation(); };
-    document.addEventListener('visibilitychange', onVisibilityChange);
-    return () => {
-      cancelled = true;
-      window.clearInterval(interval);
-      document.removeEventListener('visibilitychange', onVisibilityChange);
+    const poll = async () => {
+      if (stopped || document.visibilityState !== 'visible') return;
+      try {
+        const result = await request('get', '/api/location-requests/pending');
+        for (const item of (result.data.items || []) as Array<{id:string}>) respondToRequest(item);
+      } catch { /* Keep the app usable if a background poll briefly fails. */ }
     };
-  }, [activeShift, admin, request, refresh, gpsConsentShiftId, myToday?.id]);
+    void poll();
+    const timer = window.setInterval(() => { void poll(); }, 7000);
+    const onVisibility = () => { if (document.visibilityState === 'visible') void poll(); };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => { stopped = true; window.clearInterval(timer); document.removeEventListener('visibilitychange', onVisibility); };
+  }, [admin, request]);
 
   async function shift(action: 'check-in' | 'check-out') {
     setBusy(true);
     try {
-      let coords: Record<string, number> = {};
-      if (action === 'check-in' && !window.confirm('K&B will share your live work location with authorised administrators while your shift is active. Android will show a persistent tracking notification. Tracking stops when you check out. Do you agree and want to start your shift?')) return;
-      if (action === 'check-in' && Capacitor.isNativePlatform()) {
-        const notificationPermission = await LocalNotifications.requestPermissions();
-        if (notificationPermission.display !== 'granted') throw new Error('Allow Android notifications so the app can show its visible location-tracking notification during your shift.');
-      }
-      if (action === 'check-in' && navigator.geolocation) {
-        try {
-          const p = await new Promise<GeolocationPosition>((resolve, reject) => navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 9000, maximumAge: 30000 }));
-          coords = { latitude: p.coords.latitude, longitude: p.coords.longitude, accuracy: p.coords.accuracy };
-        } catch {
-          setGpsMessage('Location permission is required to start a shift.');
-          throw new Error('Enable GPS/location permission before starting your shift.');
-        }
-      }
-      const result = await request('post', '/api/attendance/' + action, { ...coords, dayType, capturedAt: new Date().toISOString() });
-      if (action === 'check-in' && result.data.id) {
-        try { localStorage.setItem('kandb-gps-consent-shift', result.data.id); } catch { /* in-memory consent still applies for this app session */ }
-        setGpsConsentShiftId(result.data.id);
-      } else if (action === 'check-out') {
-        consentPromptedShiftRef.current = myToday?.id || null;
-        try { localStorage.removeItem('kandb-gps-consent-shift'); } catch { /* storage may be unavailable */ }
-        setGpsConsentShiftId(null);
-      }
+      await request('post', '/api/attendance/' + action, { dayType, capturedAt: new Date().toISOString() });
       await refresh();
       onDataChanged?.();
       flash(action === 'check-in' ? 'You are checked in for today.' : 'Your shift has been checked out.');
@@ -623,7 +489,7 @@ export default function StaffOperations({ session, customers, flash, compact = f
       <div className="ops-panel-head"><div><span className="eyebrow">ATTENDANCE</span><h2>My workday</h2><p>Record your shift start and finish. Work location is shared with authorised Admins during an active shift. On Android, background tracking continues with a persistent notification and stops at checkout.</p></div><span className={'ops-pill ' + (activeShift ? 'is-live' : 'is-idle')}>{activeShift ? 'ON SHIFT' : myToday?.dayType === 'Absent' ? 'ABSENT' : myToday?.checkOutAt ? 'SHIFT COMPLETE' : 'OFF SHIFT'}</span></div>
       <div className="ops-clock-row"><div><small>CHECK IN</small><strong>{myToday?.dayType === 'Absent' ? 'Absent' : myToday ? stamp(myToday.checkInAt) : 'Not checked in'}</strong></div><div><small>CHECK OUT</small><strong>{myToday?.dayType === 'Absent' ? '—' : myToday?.checkOutAt ? stamp(myToday.checkOutAt) : '—'}</strong></div></div>
       <div className="ops-actions"><label className="ops-day-type">Attendance type <select value={dayType} disabled={!!myToday} onChange={e=>setDayType(e.target.value as 'Full day'|'Half day')}><option>Full day</option><option>Half day</option></select></label>{!myToday ? <button className="btn primary" disabled={busy} onClick={() => shift('check-in')}>Check in and start shift</button> : activeShift ? <button className="btn danger" disabled={busy} onClick={() => shift('check-out')}>Check out and end shift</button> : <span className="ops-complete">{myToday.dayType === 'Absent' ? 'Today’s attendance is marked absent.' : 'Today’s attendance is complete.'}</span>}</div>
-      <p className="ops-gps-note">{gpsMessage}{gpsRemainingMinutes !== null ? ' Time remaining: about ' + gpsRemainingMinutes + ' minute(s).' : ''}</p>
+      <p className="ops-gps-note">{locationRequestMessage}</p>
     </section>}
 
     {admin && <section className="panel ops-panel finance-chart-panel">
