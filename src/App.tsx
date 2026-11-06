@@ -9,6 +9,7 @@ import FinanceWorkspace from './FinanceWorkspace';
 import SubscriptionWorkspace from './SubscriptionWorkspace';
 import InvoiceWorkspace from './InvoiceWorkspace';
 import InventoryWorkspace from './InventoryWorkspace';
+import GpsTrackingWorkspace from './GpsTrackingWorkspace';
 import InstallationsWorkspace from './InstallationsWorkspace';
 import CalendarWorkspace from './CalendarWorkspace';
 import { useAppPreferences } from './appPreferences';
@@ -1331,6 +1332,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
           onSave={savePayment}
         />
       )}
+      {!isAdmin && <StaffLocationResponder />}
       {permissionSetupOpen && <StaffPermissionSetup onComplete={() => { localStorage.setItem('kb-staff-permissions-v1', 'done'); setPermissionSetupOpen(false); }} />}
       {completingTask && <TaskCompletionModal task={completingTask} onClose={() => setCompletingTask(null)} onComplete={(photo: File | null, video: File | null) => completeTaskWithEvidence(completingTask, photo, video)} />}
       {taskPreview && <Modal title={taskPreview.name} subtitle="Task completion evidence" onClose={() => setTaskPreview(null)}><div className="complaint-preview">{taskPreview.mimeType.startsWith('video/') ? <video src={taskPreview.dataUrl} controls playsInline /> : <img src={taskPreview.dataUrl} alt={taskPreview.name}/>}</div><div className="form-actions"><a className="btn secondary" href={taskPreview.dataUrl} download={taskPreview.name}>Download evidence</a><button type="button" className="btn primary" onClick={() => setTaskPreview(null)}>Close</button></div></Modal>}
@@ -1787,6 +1789,54 @@ function StaffModal({ onClose, onSave }: any) {
   const [busy, setBusy] = useState(false);
   return <Modal title="Create staff account" subtitle="Give this team member a secure sign-in." onClose={onClose}><form className="form-grid" onSubmit={async e => { e.preventDefault(); setBusy(true); await onSave(form); setBusy(false); }}><Field label="Staff full name"><input required value={form.displayName} onChange={e => setForm({ ...form, displayName: e.target.value })} /></Field><Field label="Staff user ID"><input required minLength={3} maxLength={32} pattern="[a-zA-Z0-9_-]{3,32}" value={form.userId} onChange={e => setForm({ ...form, userId: e.target.value })} /></Field><Field label="Temporary password" wide><input required type="password" minLength={10} value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} /></Field><p className="form-hint">Use at least 10 characters and share it privately. Admin can reset it from Staff if needed.</p><div className="form-actions"><button type="button" className="btn secondary" onClick={onClose}>Cancel</button><button className="btn primary" disabled={busy}>{busy ? 'Creating…' : 'Create account'}</button></div></form></Modal>;
 }
+function StaffLocationResponder() {
+  useEffect(() => {
+    let stopped = false;
+    let polling = false;
+    const handled = new Set<string>();
+    const respond = (requestId:string) => {
+      if (handled.has(requestId)) return;
+      handled.add(requestId);
+      if (!navigator.geolocation) {
+        void api.post('/api/location-requests/'+requestId+'/respond',{status:'failed',message:'Location is not available on this device.'}).catch(()=>undefined);
+        return;
+      }
+      navigator.geolocation.getCurrentPosition(async position => {
+        let address='Address unavailable; open this point in Google Maps.';
+        try {
+          const url='https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat='+position.coords.latitude+'&lon='+position.coords.longitude;
+          const response=await fetch(url,{headers:{'Accept-Language':'en'}});
+          if(response.ok){const place=await response.json() as {display_name?:string};if(place.display_name)address=place.display_name.slice(0,500);}
+        } catch { /* Coordinates remain usable if reverse geocoding is unavailable. */ }
+        try {
+          await api.post('/api/location-requests/'+requestId+'/respond',{
+            status:'captured',latitude:position.coords.latitude,longitude:position.coords.longitude,
+            accuracy:position.coords.accuracy,address
+          });
+        } catch { /* The request remains visible to the administrator as pending until it expires. */ }
+      }, error => {
+        const message=error.code===1?'Staff location permission was denied.':'Phone GPS could not get a current location.';
+        void api.post('/api/location-requests/'+requestId+'/respond',{status:'failed',message}).catch(()=>undefined);
+      },{enableHighAccuracy:true,maximumAge:0,timeout:20000});
+    };
+    const poll=async()=>{
+      if(stopped||polling||document.visibilityState!=='visible')return;
+      polling=true;
+      try{
+        const result=await api.get('/api/location-requests/pending');
+        for(const item of (result.data.items||[]) as Array<{id:string}>)respond(item.id);
+      }catch{/* Retry on the next foreground poll. */}
+      finally{polling=false;}
+    };
+    void poll();
+    const timer=window.setInterval(()=>{void poll();},7000);
+    const onVisibility=()=>{if(document.visibilityState==='visible')void poll();};
+    document.addEventListener('visibilitychange',onVisibility);
+    return()=>{stopped=true;window.clearInterval(timer);document.removeEventListener('visibilitychange',onVisibility);};
+  },[]);
+  return null;
+}
+
 function StaffPermissionSetup({ onComplete }: { onComplete:()=>void }) {
   const [busy,setBusy]=useState(false);
   const [message,setMessage]=useState('');
