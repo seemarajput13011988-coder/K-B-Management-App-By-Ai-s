@@ -17,90 +17,9 @@ function indiaDateParts() {
 function sha(value: string) { return createHash('sha256').update(value).digest('hex'); }
 
 export async function runGpsGracePeriod() {
-  const [attendance, holidays] = await Promise.all([
-    readCollection('attendance', 1000),
-    readCollection('holiday_requests', 1000),
-  ]);
-  const current = Date.now();
-  for (const item of attendance) {
-    if (!item.gpsIssueStartedAt || item.checkOutAt || item.gpsRestartRequired) continue;
-    const startedAt = Date.parse(String(item.gpsIssueStartedAt));
-    if (!Number.isFinite(startedAt)) continue;
-    const elapsed = current - startedAt;
-    const exempt = holidays.some(request =>
-      request.userId === item.userId &&
-      ['pending', 'approved'].includes(String(request.status)) &&
-      String(request.startDate || '') <= String(item.workDate || '') &&
-      String(request.endDate || '') >= String(item.workDate || '')
-    );
-    if (exempt) continue;
-
-    const stages = [
-      { minute: 5, stage: 1, message: 'GPS is still unavailable. Please turn it back on within 10 minutes.' },
-      { minute: 10, stage: 2, message: 'Only 5 minutes remain. Turn GPS/location back on to keep your shift active.' },
-      { minute: 14, stage: 3, message: 'Final reminder: your shift will be cancelled in about 1 minute if GPS is not restored.' },
-    ];
-    const attendanceRef = firestore.collection('attendance').doc(String(item.id));
-    const issueId = String(item.gpsIssueId || sha(String(item.id) + '|' + String(item.gpsIssueStartedAt)).slice(0, 16));
-    for (const stage of stages) {
-      if (elapsed < stage.minute * 60000) continue;
-      const notificationRef = firestore.collection('staff_notifications').doc(String(item.id) + '-gps-' + issueId + '-' + stage.stage);
-      await firestore.runTransaction(async transaction => {
-        const latest = await transaction.get(attendanceRef);
-        const data = latest.data();
-        const issueTime = Date.parse(String(data?.gpsIssueStartedAt || ''));
-        if (!latest.exists || !data || data.gpsIssueStartedAt !== item.gpsIssueStartedAt || data.checkOutAt ||
-            data.gpsRestartRequired || !Number.isFinite(issueTime) || Date.now() - issueTime < stage.minute * 60000 ||
-            Number(data.gpsReminderStage || 0) >= stage.stage) return;
-        transaction.update(attendanceRef, { gpsReminderStage: stage.stage });
-        transaction.set(notificationRef, {
-          recipientId: String(item.userId), recipientRole: 'staff', type: 'gps-reminder',
-          title: 'GPS reminder', message: stage.message, createdAt: now(), read: false, attendanceId: String(item.id),
-        }, { merge: true });
-      });
-    }
-
-    if (elapsed >= 15 * 60000) {
-      const cancelledAt = now();
-      const cancellationNotificationRef = firestore.collection('staff_notifications').doc(String(item.id) + '-gps-' + issueId + '-cancelled');
-      const auditRef = firestore.collection('audit_logs').doc('gps-cancelled-' + String(item.id) + '-' + issueId);
-      const didCancel = await firestore.runTransaction(async transaction => {
-        const latest = await transaction.get(attendanceRef);
-        const data = latest.data();
-        const issueTime = Date.parse(String(data?.gpsIssueStartedAt || ''));
-        if (!latest.exists || !data || data.gpsIssueStartedAt !== item.gpsIssueStartedAt || data.checkOutAt ||
-            data.gpsRestartRequired || !Number.isFinite(issueTime) || Date.now() - issueTime < 15 * 60000) return false;
-        transaction.update(attendanceRef, {
-          checkOutAt: cancelledAt, status: 'Cancelled - GPS unavailable', gpsStatus: 'disabled',
-          gpsCancelled: true, gpsRestartRequired: true, gpsCancelledAt: cancelledAt,
-          gpsCancellationReason: data.gpsIssueReason || 'GPS was not restored within 15 minutes',
-          shiftEvents: FieldValue.arrayUnion({ type: 'gps-cancelled', at: cancelledAt, reason: 'GPS was not restored within 15 minutes' }),
-        });
-        transaction.set(cancellationNotificationRef, {
-          recipientId: String(item.userId), recipientRole: 'staff', type: 'gps-cancelled',
-          title: 'Shift cancelled', message: 'Your shift was cancelled because GPS was not restored within 15 minutes. Contact an admin to restart it.',
-          createdAt: cancelledAt, read: false, attendanceId: String(item.id),
-        }, { merge: true });
-        transaction.set(auditRef, {
-          actorId: 'system', actorName: 'K&B Attendance Monitor', action: 'GPS_CANCEL_SHIFT',
-          entityType: 'attendance', entityId: String(item.id),
-          description: 'Automatically cancelled shift after the 15-minute GPS grace period',
-          createdAt: cancelledAt, serverCreatedAt: FieldValue.serverTimestamp(),
-        }, { merge: true });
-        return true;
-      });
-      if (didCancel) {
-        const admins = (await readCollection('users', 500)).filter(entry => entry.role === 'admin' && entry.active === true);
-        await Promise.all(admins.map(admin => firestore.collection('staff_notifications')
-          .doc(String(item.id) + '-gps-' + issueId + '-cancelled-admin-' + String(admin.id)).set({
-            recipientId: String(admin.id), recipientRole: 'admin', type: 'gps-cancelled-admin',
-            title: 'Staff shift cancelled for GPS',
-            message: String(item.displayName || 'A staff member') + ' did not restore GPS/location within 15 minutes. The shift was automatically cancelled.',
-            createdAt: cancelledAt, read: false, attendanceId: String(item.id),
-          }, { merge: true })));
-      }
-    }
-  }
+  // Location is now captured only in response to an administrator's explicit request.
+  // Attendance must never be warned, blocked, or cancelled because of background GPS.
+  return;
 }
 
 export async function sendTaskDueReminders() {
