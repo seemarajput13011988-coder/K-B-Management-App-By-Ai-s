@@ -821,6 +821,8 @@ export async function apiHandler(req: any, res: any) {
         const id=decodeURIComponent(path.slice('/api/inventory/'.length,-'/movements'.length).replace(/\/$/,''));
         const itemRef=db.collection('inventory').doc(id), itemSnap=await itemRef.get();
         if (!itemSnap.exists) { send(res,404,{error:'Inventory item not found.'}); return; }
+        const inventoryRecord=itemSnap.data()||{};
+        if (user.role!=='admin' && inventoryRecord.assignedTo!==user.uid) { send(res,403,{error:'You can view only inventory assigned to your account.'}); return; }
         if (method==='GET') {
           const items=(await list('inventory_movements')).filter(item=>item.itemId===id).sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||'')));
           send(res,200,{items}); return;
