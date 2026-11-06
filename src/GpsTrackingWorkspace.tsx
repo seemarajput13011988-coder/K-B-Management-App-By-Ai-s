@@ -67,6 +67,33 @@ export default function GpsTrackingWorkspace({flash}:{flash:(message:string)=>vo
     }finally{setBusyStaffId('');}
   }
 
+  // Keep the selected staff member's map data fresh while the admin is viewing it.
+  // The first request returns the latest stored point immediately; later requests
+  // pick up new points uploaded by the staff phone's Android foreground service.
+  useEffect(()=>{
+    if(!selectedStaff || section!=='live') return;
+    let active=true;
+    const refresh=async()=>{
+      try{
+        const result=await api.get<{item?:LiveLocation|null;isFresh?:boolean;ageSeconds?:number|null;status?:string;deadlineAt?:string;cancelled?:boolean}>('/api/staff/'+encodeURIComponent(selectedStaff.id)+'/live-location');
+        if(!active)return;
+        const item=result.data.item||null;
+        setLocationStatus(result.data.status || (result.data.isFresh?'live':'stale'));
+        setGpsDeadline(result.data.deadlineAt||null);
+        setGpsCancelled(result.data.cancelled===true);
+        if(item)setLiveLocation(item);
+        setLocationFresh(result.data.isFresh===true);
+        setLocationAge(result.data.ageSeconds??(item?Math.max(0,Math.floor((Date.now()-new Date(item.capturedAt).getTime())/1000)):null));
+      }catch{
+        // Keep the last successful point visible and let its age/status communicate staleness.
+        if(active)setLocationFresh(false);
+      }
+    };
+    void refresh();
+    const timer=window.setInterval(()=>void refresh(),10000);
+    return()=>{active=false;window.clearInterval(timer);};
+  },[selectedStaff?.id,section]);
+
   async function saveLocation() {
     if(!liveLocation)return;
     try{
