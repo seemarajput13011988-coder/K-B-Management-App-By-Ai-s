@@ -1904,3 +1904,18 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
 @media(prefers-reduced-motion:reduce){
   *,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
 }
+
+
+/* K&B welcome animation */
+.kb-welcome-intro{position:fixed;inset:0;z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:13px;overflow:hidden;background:radial-gradient(circle at 50% 38%,#254a70 0%,#142943 42%,#0b1729 100%);color:#fff;animation:kbIntroFade .45s ease both}
+.kb-welcome-orbit{width:112px;height:112px;position:relative;display:grid;place-items:center}.kb-welcome-mark{width:76px;height:76px;border-radius:24px;display:grid;place-items:center;background:linear-gradient(145deg,#ffbd68,#e57b2b);box-shadow:0 12px 40px #f09a4b55;animation:kbMarkPop .75s cubic-bezier(.2,.8,.2,1) both}
+.kb-welcome-orbit>span{position:absolute;inset:0;border:1px solid #ffc47b66;border-radius:50%;animation:kbOrbit 2s ease-out infinite}.kb-welcome-orbit>span:nth-child(2){animation-delay:.55s}.kb-welcome-orbit>span:nth-child(3){animation-delay:1.1s}
+.kb-welcome-brand{font:800 23px Manrope,sans-serif;letter-spacing:1.4px;animation:kbTextUp .65s .2s both}.kb-welcome-brand b{color:#ffc27b}.kb-welcome-caption{font:700 9px 'DM Sans',sans-serif;letter-spacing:3.5px;color:#b9c9dc;animation:kbTextUp .65s .32s both}
+.kb-welcome-loading{width:100px;height:3px;border-radius:9px;background:#ffffff25;margin-top:16px;overflow:hidden}.kb-welcome-loading i{display:block;width:42%;height:100%;border-radius:9px;background:#ffb25f;animation:kbLoad 1.2s ease-in-out infinite}
+@keyframes kbIntroFade{from{opacity:0}to{opacity:1}}@keyframes kbMarkPop{from{opacity:0;transform:scale(.65) rotate(-12deg)}to{opacity:1;transform:scale(1) rotate(0)}}@keyframes kbTextUp{from{opacity:0;transform:translateY(9px)}to{opacity:1;transform:translateY(0)}}@keyframes kbOrbit{0%{transform:scale(.68);opacity:.7}100%{transform:scale(1.35);opacity:0}}@keyframes kbLoad{0%{transform:translateX(-110%)}100%{transform:translateX(260%)}}
+@media(prefers-reduced-motion:reduce){.kb-welcome-intro,.kb-welcome-mark,.kb-welcome-orbit>span,.kb-welcome-brand,.kb-welcome-caption,.kb-welcome-loading i{animation:none!important}}
+
+
+/* Automatic festival accents: India-local festival calendar */
+:root[data-festival-theme="holi"]{--kb-accent:#b23bbd;--kb-line:#f0d9ef}:root[data-festival-theme="rakhi"]{--kb-accent:#bd7b20;--kb-line:#f0dfc4}:root[data-festival-theme="janmashtami"]{--kb-accent:#2869b7;--kb-line:#d7e5f6}:root[data-festival-theme="ganesh"]{--kb-accent:#d66b2c;--kb-line:#f4dfd1}:root[data-festival-theme="navratri"]{--kb-accent:#b83b4b;--kb-line:#f2d9dc}:root[data-festival-theme="dussehra"]{--kb-accent:#c65d24;--kb-line:#f1dfd2}:root[data-festival-theme="diwali"]{--kb-accent:#d88922;--kb-line:#f3dfb8}:root[data-festival-theme="sankranti"]{--kb-accent:#268b9a;--kb-line:#d2e9ec}:root[data-festival-theme="vasant"]{--kb-accent:#b58a22;--kb-line:#eee5bd}:root[data-festival-theme="ramnavami"]{--kb-accent:#bd5d27;--kb-line:#f0dfd3}
+:root[data-festival-theme] .btn.primary{background:linear-gradient(135deg,var(--kb-accent),color-mix(in srgb,var(--kb-accent),#172b45 24%))}:root[data-festival-theme] .welcome-strip{border-color:var(--kb-line)}:root[data-festival-theme] .panel,:root[data-festival-theme] .ops-panel,:root[data-festival-theme] .task-card{border-color:var(--kb-line)}
