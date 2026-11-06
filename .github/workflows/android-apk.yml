@@ -10,6 +10,7 @@ on:
       - safe-firebase-migration-copilot-review
       - render-backend-migration
       - on-demand-gps-proof-permissions
+      - ui-rebuild-gps-holidays-api-fixes
       - quality-audit-2026-11-06
       - fix-android-document-picker-2026-11-06
     paths:
