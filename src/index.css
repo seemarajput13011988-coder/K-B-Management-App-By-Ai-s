@@ -1976,3 +1976,27 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
 @media(max-width:700px){.kb-festival-hero{min-height:125px;margin-bottom:16px;padding:18px 17px;border-radius:15px}.kb-festival-hero h2{font-size:20px}.kb-festival-hero p{max-width:75%;font-size:10px}.kb-festival-seal{width:58px;height:58px;flex-basis:58px;margin-right:5%;font-size:29px}.kb-festival-float-0{right:20%;font-size:22px}.kb-festival-float-1{right:7%;font-size:17px}.kb-festival-float-2{right:34%;font-size:14px}.kb-festival-float-3{right:5%;font-size:14px}.kb-festival-float-4{right:29%;font-size:12px}}
 @media(max-width:420px){.kb-festival-hero{padding:15px 13px;gap:8px}.kb-festival-hero h2{font-size:17px}.kb-festival-hero p{max-width:100%;font-size:9px}.kb-festival-kicker{font-size:8px;letter-spacing:1.3px}.kb-festival-seal{width:46px;height:46px;flex-basis:46px;margin-right:2%;font-size:24px}.kb-festival-hero:before{right:-30px}}
 @media(prefers-reduced-motion:reduce){.kb-festival-float,.kb-festival-seal,.kb-festival-spark{animation:none}}
+
+
+/* Calendar festivals and holiday markers */
+.calendar-dot.festival-dot{background:#d89a32}
+.calendar-day.has-festival{background:linear-gradient(145deg,#fff9e9,var(--surface,#f8fafc) 72%)}
+.calendar-day.has-festival>span{color:#9a6418}
+.calendar-day.has-festival.selected{background:var(--accent-soft,#eaf1ff)}
+.festival-event .calendar-event-icon{background:#fff4d8;color:#a66b13}
+[data-theme="dark"] .calendar-day.has-festival{background:linear-gradient(145deg,#302719,#101b2b 78%)}
+[data-theme="dark"] .calendar-day.has-festival>span{color:#f2c66d}
+[data-theme="dark"] .festival-event .calendar-event-icon{background:#3b3020;color:#f2c66d}
+
+/* Internet-inspired festival artwork: signal rings and connected nodes */
+.kb-festival-network{position:absolute;z-index:1;right:12%;top:50%;width:190px;height:120px;transform:translateY(-50%);display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,.22);pointer-events:none}
+.kb-festival-network svg{width:82px;height:82px;stroke-width:1.35;filter:drop-shadow(0 0 16px rgba(255,255,255,.22));animation:kbSignalPulse 3.2s ease-in-out infinite}
+.kb-festival-network span{position:absolute;bottom:1px;right:0;left:0;text-align:center;font-size:8px;font-weight:900;letter-spacing:1.6px;color:rgba(255,255,255,.55)}
+.kb-festival-network i{position:absolute;width:7px;height:7px;border-radius:50%;background:#ffd27a;box-shadow:0 0 14px #ffd27a;animation:kbNodeGlow 2.2s ease-in-out infinite}
+.kb-festival-network i:nth-of-type(1){top:12px;left:24px}
+.kb-festival-network i:nth-of-type(2){top:35px;right:16px;animation-delay:.55s}
+.kb-festival-network i:nth-of-type(3){bottom:23px;left:10px;animation-delay:1.1s}
+@keyframes kbSignalPulse{0%,100%{transform:scale(.94);opacity:.68}50%{transform:scale(1.06);opacity:1}}
+@keyframes kbNodeGlow{0%,100%{opacity:.45;transform:scale(.8)}50%{opacity:1;transform:scale(1.35)}}
+@media(max-width:700px){.kb-festival-network{right:3%;width:105px;height:90px;opacity:.6}.kb-festival-network svg{width:58px;height:58px}.kb-festival-network span{font-size:6px;letter-spacing:.8px}.kb-festival-seal{margin-right:0;flex-basis:58px;width:58px;height:58px;font-size:28px}}
+@media(prefers-reduced-motion:reduce){.kb-festival-network svg,.kb-festival-network i{animation:none}}
