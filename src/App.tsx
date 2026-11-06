@@ -48,6 +48,7 @@ import {
 type Session={token:string;expiresAt:number;user:{id:string;userId:string;displayName:string;role:'admin'|'staff';active:boolean;canManageAdmins?:boolean}};
 type AppNotification={id:string;title:string;message:string;createdAt:string;read:boolean;type:string};
 type RetentionReviewItem={id:string;collection:string;collectionLabel:string;recordLabel:string;createdAt:string};
+type StaffRegistrationRequest={id:string;userId:string;displayName:string;phone?:string;reason?:string;status:'pending'|'approved'|'rejected';createdAt:string;reviewedAt?:string;};
 const getToken=()=>{try{return (JSON.parse(localStorage.getItem('kb-customer-session')||'null') as Session|null)?.token||'';}catch{return '';}};
 const api={get:(url:string)=>client.get(url+(url.includes('?')?'&':'?')+'sessionToken='+encodeURIComponent(getToken())),post:(url:string,data?:Record<string,unknown>)=>client.post(url,{...(data||{}),sessionToken:getToken()}),put:(url:string,data?:Record<string,unknown>)=>client.put(url,{...(data||{}),sessionToken:getToken()}),delete:(url:string)=>client.delete(url+'?sessionToken='+encodeURIComponent(getToken()))};
 type Customer = {
@@ -164,6 +165,8 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   const [complaints, setComplaints] = useState<Complaint[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [staff, setStaff] = useState<Staff[]>([]);
+  const [staffRegistrationRequests,setStaffRegistrationRequests]=useState<StaffRegistrationRequest[]>([]);
+  const [staffRequestPasswords,setStaffRequestPasswords]=useState<Record<string,string>>({});
   const [adminAccounts, setAdminAccounts] = useState<AdminAccount[]>([]);
   const [showAdminModal, setShowAdminModal] = useState(false);
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
@@ -252,8 +255,9 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
       setComplaints((t.data.items || []).map((item: Complaint) => ({ ...item, status: item.status === 'Open' ? 'Pending' : item.status === 'In progress' ? 'In Progress' : item.status === 'Resolved' ? 'Solved' : item.status })));
       setTasks(w.data.items || []);
       if (isAdmin) {
-        const s = await api.get('/api/staff');
+        const [s, requests] = await Promise.all([api.get('/api/staff'),api.get('/api/staff-registration-requests')]);
         setStaff(s.data.items || []);
+        setStaffRegistrationRequests(requests.data.items || []);
         try {
           const review = await api.get('/api/retention/review');
           setRetentionItems((review.data.items || []) as RetentionReviewItem[]);
@@ -520,6 +524,17 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
       flash(message);
       throw new Error(message);
     }
+  }
+  async function reviewStaffRequest(item:StaffRegistrationRequest,status:'approved'|'rejected') {
+    const password=staffRequestPasswords[item.id]||'';
+    if(status==='approved'&&password.length<10){flash('Enter a temporary password of at least 10 characters.');return;}
+    if(!window.confirm(status==='approved'?'Approve '+item.displayName+' and create the staff account?':'Decline '+item.displayName+' staff access request?'))return;
+    try{
+      await api.put('/api/staff-registration-requests/'+item.id,{status,...(status==='approved'?{password}:{})});
+      setStaffRequestPasswords(current=>{const next={...current};delete next[item.id];return next;});
+      await load(true);
+      flash(status==='approved'?'Staff request approved and account created.':'Staff request declined.');
+    }catch(error){flash(error instanceof Error?error.message:'Could not review staff request.');}
   }
   async function createStaff(data: { userId: string; displayName: string; password: string }) {
     try {
@@ -1099,6 +1114,15 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
           )}
 
           {page === 'Staff' && isAdmin && (
+            <>
+            <section className="panel table-panel staff-registration-requests">
+              <div className="toolbar"><div><h2>Staff access requests</h2><p className="subtle">Review new staff sign-up requests here or from notifications.</p></div><span className="result-count">{staffRegistrationRequests.filter(item=>item.status==='pending').length} pending</span></div>
+              {staffRegistrationRequests.filter(item=>item.status==='pending').map(item=><article className="staff-request-card" key={item.id}>
+                <div><b>{item.displayName} · {item.userId}</b><p>{item.reason||'No additional note provided.'}</p><small>{item.phone?'Phone: '+item.phone+' · ':''}Submitted {new Date(item.createdAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'})}</small></div>
+                <div className="staff-request-actions"><input type="password" minLength={10} autoComplete="new-password" placeholder="Temporary password (10+ chars)" value={staffRequestPasswords[item.id]||''} onChange={e=>setStaffRequestPasswords(current=>({...current,[item.id]:e.target.value}))}/><button className="btn primary compact" disabled={(staffRequestPasswords[item.id]||'').length<10} onClick={()=>void reviewStaffRequest(item,'approved')}>Accept</button><button className="btn danger compact" onClick={()=>void reviewStaffRequest(item,'rejected')}>Decline</button></div>
+              </article>)}
+              {!staffRegistrationRequests.some(item=>item.status==='pending')&&<p className="staff-record-empty">No pending staff access requests.</p>}
+            </section>
             <section className="panel table-panel">
               <div className="toolbar"><div className="searchbox"><Search size={17}/><input value={staffSearch} onChange={e => setStaffSearch(e.target.value)} placeholder="Search staff name or user ID..."/></div><span className="result-count">{filteredStaff.length} of {staff.length} members</span></div>
               <div className="table-wrap"><table><thead><tr><th>STAFF MEMBER</th><th>USER ID</th><th>ASSIGNED CUSTOMERS</th><th>COLLECTIONS RECORDED</th><th>ACCESS</th><th>ACTIONS</th></tr></thead><tbody>
@@ -1140,6 +1164,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                 </section>
               </section>}
             </section>
+            </>
           )}
 
           {page === taskPage && (
