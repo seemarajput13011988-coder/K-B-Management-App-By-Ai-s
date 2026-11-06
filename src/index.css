@@ -1932,7 +1932,7 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
 :root[data-festival-theme] .sidebar{background-image:radial-gradient(circle at 0 0,var(--kb-line),transparent 38%)}
 :root[data-festival-theme] .topbar{background-image:linear-gradient(90deg,var(--kb-line),transparent 48%)}
 :root[data-festival-theme] .panel,:root[data-festival-theme] .ops-panel,:root[data-festival-theme] .task-card{background-image:radial-gradient(circle at 100% 0,var(--kb-line),transparent 46%)}
-:root[data-festival-theme] .brand-mark{box-shadow:0 5px 18px color-mix(in srgb,var(--kb-accent),transparent 78%)}
+:root[data-festival-theme] .brand-mark{box-shadow:0 5px 18px rgba(20,36,61,.12)}
 @media(max-width:900px){.kb-festival-ribbon{max-width:190px;margin:0 8px;padding:6px 9px}.kb-festival-note{display:none}}
 @media(max-width:600px){.kb-festival-ribbon{max-width:130px;margin:0 5px;padding:5px 7px;gap:5px}.kb-festival-ribbon strong{font-size:9px}.kb-festival-icon{font-size:14px}}
 @media(prefers-reduced-motion:reduce){.kb-festival-ribbon{animation:none}}
