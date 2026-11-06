@@ -4,7 +4,7 @@ on:
     - cron: '*/5 * * * *'
   workflow_dispatch:
   push:
-    branches: [render-backend-migration, quality-audit-2026-11-06]
+    branches: [render-backend-migration, quality-audit-2026-11-06, whole-app-stability-audit-2026-11-06]
     paths: ["render-backend/**", "src/**", "package.json", "package-lock.json", ".github/workflows/render-backend-check.yml"]
   pull_request:
     branches: [main]
@@ -22,6 +22,7 @@ jobs:
           node-version: 22
       - run: npm install
       - run: npm run typecheck
+      - run: npm test
       - name: Verify staff registration route contracts
         working-directory: .
         run: |

@@ -1,6 +1,6 @@
 import { createHash, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 import { firestore as db, FieldValue } from './firestore-adapter.js';
-import { buildCustomerLedger, hasOverlappingSubscription, hasAdminManagementAccess, isValidDateKey, isValidDateRange, routePath, subscriptionExpiryKind, taskReminderKind, isSixMonthReviewDue } from './route-path.js';
+import { buildCustomerLedger, hasOverlappingSubscription, hasAdminManagementAccess, isValidDateKey, isValidDateRange, routePath, subscriptionExpiryKind, taskReminderKind, isSixMonthReviewDue, isValidPayrollInput } from './route-path.js';
 
 
 type Role = 'admin' | 'staff';
@@ -778,9 +778,8 @@ export async function apiHandler(req: any, res: any) {
         if (!allow(user,['admin'],res)) return;
         const staffUserId = clean(req.body?.staffUserId,128), period = clean(req.body?.period,7);
         const amount = Number(req.body?.amount), paidAt = clean(req.body?.paidAt,10), payMethod = clean(req.body?.method,50);
-        const monthNumber = Number(period.slice(5,7));
-        if (!staffUserId || !monthPattern.test(period) || monthNumber < 1 || monthNumber > 12 || !validMoney(amount) || amount <= 0 || !datePattern.test(paidAt) || !isValidDateKey(paidAt) || !payMethod) {
-          send(res,400,{error:'Enter a valid staff member, month, salary amount, payment date and method.'}); return;
+        if (!isValidPayrollInput({ staffUserId, period, amount, paidAt, method: payMethod })) {
+          send(res,400,{error:'Check the salary form: select an active staff member, choose a valid month and payment date, enter an amount above zero (up to INR 1,000,000), and choose a payment method.'}); return;
         }
         const staff = await getDoc('users',staffUserId);
         if (!staff || staff.role !== 'staff' || staff.active !== true) { send(res,404,{error:'Active staff account not found.'}); return; }
