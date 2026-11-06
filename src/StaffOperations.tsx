@@ -9,7 +9,6 @@ type StaffRegistrationRequest = { id: string; userId: string; displayName: strin
 type Visit = { id: string; customerName: string; purpose: string; notes: string; visitedAt: string; staffName: string };
 type Announcement = { id: string; title: string; message: string; createdAt: string; createdByName: string };
 type Message = { id: string; senderName: string; recipientName: string; message: string; createdAt: string };
-type Location = { userId: string; displayName: string; latitude: number; longitude: number; accuracy: number; capturedAt: string };
 type Payment = { id: string; recordedBy?: string; recordedByName?: string; amount: number; paidAt: string };
 type ChatGroup = { id: string; name: string; memberIds: string[]; memberNames: string[] };
 type GroupMessage = { id: string; groupId: string; senderId: string; senderName: string; message: string; createdAt: string };
@@ -57,8 +56,6 @@ export default function StaffOperations({ session, customers, flash, compact = f
   const [visits, setVisits] = useState<Visit[]>([]);
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
-  const [locations, setLocations] = useState<Location[]>([]);
-  const [locationHistory, setLocationHistory] = useState<Location[]>([]);
   const [admins, setAdmins] = useState<Array<{id:string;userId:string;displayName:string;active:boolean}>>([]);
   const [adminForm, setAdminForm] = useState({userId:'',displayName:'',password:''});
   const [registrationRequests, setRegistrationRequests] = useState<StaffRegistrationRequest[]>([]);
@@ -134,10 +131,8 @@ export default function StaffOperations({ session, customers, flash, compact = f
       setGroups(availableGroups);
       setSelectedGroupId(current => current && availableGroups.some(group => group.id === current) ? current : availableGroups[0]?.id || '');
       if (admin) {
-        const [l, s, h, rr] = await Promise.all([request('get', '/api/locations'), request('get', '/api/staff'), request('get', '/api/locations/history'), request('get', '/api/staff-registration-requests')]);
-        setLocations(l.data.items || []);
+        const [s, rr] = await Promise.all([request('get', '/api/staff'), request('get', '/api/staff-registration-requests')]);
         setStaff(s.data.items || []);
-        setLocationHistory(h.data.items || []);
         setRegistrationRequests(rr.data.items || []);
       }
       if (superAdmin) {
@@ -168,31 +163,6 @@ export default function StaffOperations({ session, customers, flash, compact = f
     return () => { stopped = true; window.clearInterval(timer); };
   }, [admin, request]);
 
-  useEffect(() => {
-    if (!admin) return;
-    let stopped = false;
-    let pending = false;
-    const updateLiveLocations = async () => {
-      if (stopped || pending || document.visibilityState !== 'visible') return;
-      pending = true;
-      try {
-        const result = await request('get', '/api/locations');
-        if (!stopped) setLocations(result.data.items || []);
-      } catch {
-        // Keep the last successfully received location visible if a refresh briefly fails.
-      } finally {
-        pending = false;
-      }
-    };
-    const interval = window.setInterval(updateLiveLocations, 15000);
-    const onVisibilityChange = () => { if (document.visibilityState === 'visible') updateLiveLocations(); };
-    document.addEventListener('visibilitychange', onVisibilityChange);
-    return () => {
-      stopped = true;
-      window.clearInterval(interval);
-      document.removeEventListener('visibilitychange', onVisibilityChange);
-    };
-  }, [admin, request]);
 
   useEffect(() => {
     selectedGroupRef.current = selectedGroupId;
@@ -500,22 +470,9 @@ export default function StaffOperations({ session, customers, flash, compact = f
       <div className="finance-chart-legend"><span><i className="income-dot"/> Full day</span><span><i className="expense-dot"/> Half day (0.5)</span></div>
     </section>}
 
-    {admin && <section className="panel ops-panel">
-      <div className="ops-panel-head"><div><span className="eyebrow">TEAM VISIBILITY · LIVE</span><h2>Live staff locations</h2><p>Staff locations refresh every 15 seconds. Select a staff member below and open their latest reported GPS point in Google Maps. Location is available only when the staff member has shared it during a shift.</p></div><button className="btn secondary compact" onClick={refresh}>Refresh now</button></div>
-      <div className="ops-location-list">{staff.map(member => {
-        const loc = locations.find(item => item.userId === member.id);
-        const shiftRecord = sortedAttendance.find(item => item.userId === member.id && item.workDate === today);
-        const locationAge = loc ? Date.now() - new Date(loc.capturedAt).getTime() : Number.POSITIVE_INFINITY;
-        const locationStatus = locationAge < 90000 ? 'Live · Updated ' : 'Last known · Updated ';
-        const selectedType = staffDayTypes[member.id] || 'Full day';
-        return <article className="ops-location-card" key={member.id}><div className="ops-person"><span className="avatar">{member.displayName.slice(0, 2).toUpperCase()}</span><div><b>{member.displayName}</b><small>{shiftRecord?.dayType === 'Absent' ? 'Marked absent today' : shiftRecord?.checkOutAt ? 'Checked out ' + stamp(shiftRecord.checkOutAt) : shiftRecord ? 'Checked in ' + stamp(shiftRecord.checkInAt) : 'No attendance today'}</small></div></div><div className="ops-location-detail">{loc ? <><span>{locationStatus}{stamp(loc.capturedAt)}</span><small>Accuracy approx. {Math.round(loc.accuracy)} m</small><a className="btn secondary compact" href={'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(loc.latitude + ',' + loc.longitude)} target="_blank" rel="noreferrer">View location in Google Maps ↗</a></> : <span>No location shared during this shift yet</span>}{!shiftRecord && <label className="ops-day-type">Attendance type <select value={selectedType} onChange={e=>setStaffDayTypes(current=>({...current,[member.id]:e.target.value as 'Full day'|'Half day'|'Absent'}))}><option>Full day</option><option>Half day</option><option>Absent</option></select></label>}{!shiftRecord ? selectedType === 'Absent' ? <button className="btn danger compact" disabled={busy || !member.active} onClick={() => adminAbsent(member.id)}>Mark absent</button> : <button className="btn primary compact" disabled={busy || !member.active} onClick={() => adminShift(member.id, 'admin-start', selectedType)}>Start shift</button> : shiftRecord.gpsRestartRequired ? <button className="btn primary compact" disabled={busy || !member.active} onClick={() => adminShift(member.id, 'admin-start', selectedType === 'Absent' ? 'Full day' : selectedType)}>Admin restart required</button> : shiftRecord.checkOutAt ? <span className="ops-complete">Shift completed</span> : <button className="btn danger compact" disabled={busy} onClick={() => adminShift(member.id, 'admin-end')}>End shift</button>}</div></article>;
-      })}{!staff.length && <p className="ops-empty">Staff accounts will appear here after they are created.</p>}</div>
-    </section>}
 
-    {admin && <section className="panel ops-panel">
-      <div className="ops-panel-head"><div><span className="eyebrow">GPS AUDIT TRAIL</span><h2>Location history</h2><p>Location points recorded during active shifts. Open any point in Google Maps.</p></div><span className="ops-pill">{locationHistory.length} RECENT POINTS</span></div>
-      <div className="ops-history-list">{locationHistory.slice(0,40).map((point,index)=><article className="ops-history-row" key={point.userId+'-'+point.capturedAt+'-'+index}><div><b>{point.displayName}</b><small>{stamp(point.capturedAt)}</small></div><span>±{Math.round(point.accuracy||0)} m</span><a href={'https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(point.latitude+','+point.longitude)} target="_blank" rel="noreferrer">Open map ↗</a></article>)}{!locationHistory.length && <p className="ops-empty">No GPS points have been recorded yet.</p>}</div>
-    </section>}
+
+
 
     <div className="ops-two-col">
       <section className="panel ops-panel">
