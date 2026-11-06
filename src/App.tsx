@@ -76,9 +76,9 @@ type Payment = {
   recordedBy?: string;
   recordedByName?: string;
 };
-type Staff = { id: string; userId: string; displayName: string; role: 'staff'; active: boolean };
+type Staff = { id: string; userId: string; displayName: string; role: 'staff'; active: boolean; phone?: string; createdAt?: string };
 type AdminAccount = { id: string; userId: string; displayName: string; role: 'admin'; active: boolean; canManageAdmins?: boolean; isSuperAdmin?: boolean };
-type AttendanceRecord = { id: string; userId: string; displayName: string; workDate: string; checkInAt: string; checkOutAt?: string; dayType?: 'Full day' | 'Half day' | 'Absent'; status?: string };
+type AttendanceRecord = { id: string; userId: string; displayName: string; workDate: string; checkInAt: string; checkOutAt?: string; dayType?: 'Full day' | 'Half day' | 'Absent'; status?: string; correctionReason?: string; correctedAt?: string; correctedByName?: string };
 type Task = { id: string; title: string; details: string; assignedTo: string; assignedToName: string; priority: 'Low' | 'Normal' | 'High'; dueDate: string; status: 'Pending' | 'In progress' | 'Completed'; createdAt: string; createdByName: string; attachments?: Array<{mediaId:string;fileName:string;mimeType:string;size:number}> };
 type Complaint = {
   id: string;
@@ -171,6 +171,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   const [showAdminModal, setShowAdminModal] = useState(false);
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
   const [selectedStaffProfileId, setSelectedStaffProfileId] = useState('');
+  const [attendanceEdit,setAttendanceEdit]=useState<{record:AttendanceRecord;dayType:'Full day'|'Half day'|'Absent';reason:string}|null>(null);
   const [showTask, setShowTask] = useState(false);
   const [permissionSetupOpen, setPermissionSetupOpen] = useState(false);
   const [completingTask, setCompletingTask] = useState<Task | null>(null);
@@ -414,6 +415,9 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   const selectedStaffPayments = payments.filter(payment => payment.recordedBy === selectedStaffProfileId).sort((a, b) => b.paidAt.localeCompare(a.paidAt));
   const selectedStaffAttendance = attendanceRecords.filter(record => record.userId === selectedStaffProfileId).sort((a, b) => b.workDate.localeCompare(a.workDate));
   const selectedStaffAttendanceEquivalent = selectedStaffAttendance.filter(record => record.dayType !== 'Absent' && String(record.status || '').toLowerCase() !== 'absent').reduce((sum, record) => sum + (record.dayType === 'Half day' ? 0.5 : 1), 0);
+  const selectedStaffFullDays=selectedStaffAttendance.filter(record=>(record.dayType||'Full day')==='Full day'&&String(record.status||'').toLowerCase()!=='absent').length;
+  const selectedStaffHalfDays=selectedStaffAttendance.filter(record=>record.dayType==='Half day').length;
+  const selectedStaffAbsentDays=selectedStaffAttendance.filter(record=>record.dayType==='Absent'||String(record.status||'').toLowerCase()==='absent').length;
   const selectedStaffTasks = tasks.filter(task => task.assignedTo === selectedStaffProfileId);
   const selectedStaffCollected = selectedStaffPayments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
   const visiblePlans = plans.filter(plan => {
@@ -524,6 +528,14 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
       flash(message);
       throw new Error(message);
     }
+  }
+  async function saveStaffAttendanceCorrection(event:FormEvent) {
+    event.preventDefault();
+    if(!attendanceEdit||!attendanceEdit.reason.trim())return;
+    try{
+      await api.put('/api/attendance/'+attendanceEdit.record.id+'/day-type',{dayType:attendanceEdit.dayType,reason:attendanceEdit.reason});
+      setAttendanceEdit(null); await load(true); flash('Attendance updated by administrator and audit logged.');
+    }catch(error){flash(error instanceof Error?error.message:'Could not update attendance.');}
   }
   async function reviewStaffRequest(item:StaffRegistrationRequest,status:'approved'|'rejected') {
     const password=staffRequestPasswords[item.id]||'';
@@ -1141,19 +1153,26 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                 })}
               </div>
               {selectedStaffProfile && <section className="staff-personal-record">
-                <div className="staff-record-heading"><div><span className="eyebrow">INDIVIDUAL STAFF FILE</span><h2>{selectedStaffProfile.displayName}</h2><p>{selectedStaffProfile.userId} · {selectedStaffProfile.active ? 'Active account' : 'Access disabled'}</p></div><button className="btn secondary compact" onClick={() => setSelectedStaffProfileId('')}>Close record</button></div>
+                <div className="staff-record-heading"><div><span className="eyebrow">INDIVIDUAL STAFF FILE</span><h2>{selectedStaffProfile.displayName}</h2><p>{selectedStaffProfile.userId} · {selectedStaffProfile.active ? 'Active account' : 'Access disabled'}{selectedStaffProfile.phone?' · '+selectedStaffProfile.phone:''}{selectedStaffProfile.createdAt?' · Joined '+new Date(selectedStaffProfile.createdAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'}):''}</p></div><button className="btn secondary compact" onClick={() => setSelectedStaffProfileId('')}>Close record</button></div>
                 <div className="staff-record-metrics">
                   <article><small>Total collected</small><strong>{money(selectedStaffCollected)}</strong><span>{selectedStaffPayments.length} payment records</span></article>
                   <article><small>Attendance days</small><strong>{selectedStaffAttendanceEquivalent.toLocaleString('en-IN')}</strong><span>{selectedStaffAttendance.filter(record => !!record.checkOutAt && record.dayType !== 'Absent').length} completed shifts</span></article>
+                  <article><small>Absent days</small><strong>{selectedStaffAbsentDays}</strong><span>Admin-marked absence records</span></article>
                   <article><small>Assigned customers</small><strong>{customers.filter(customer => customer.assignedTo === selectedStaffProfile.id).length}</strong><span>Currently assigned</span></article>
                   <article><small>Assigned tasks</small><strong>{selectedStaffTasks.length}</strong><span>{selectedStaffTasks.filter(task => task.status === 'Completed').length} completed</span></article>
                 </div>
+                <section className="staff-record-section staff-record-work">
+                  <div className="staff-record-section-head"><h3>Attendance breakdown</h3><span>{selectedStaffAttendance.length} dated records</span></div>
+                  <div className="staff-attendance-breakdown">
+                    {[{label:'Full day',count:selectedStaffFullDays},{label:'Half day',count:selectedStaffHalfDays},{label:'No attendance / absent',count:selectedStaffAbsentDays}].map(item=><div className="staff-attendance-stat" key={item.label}><div><b>{item.label}</b><strong>{item.count}</strong></div><div className="staff-attendance-track"><i style={{width:(selectedStaffAttendance.length?item.count/selectedStaffAttendance.length*100:0)+'%'}}/></div></div>)}
+                  </div>
+                </section>
                 <div className="staff-record-columns">
                   <section className="staff-record-section"><div className="staff-record-section-head"><h3>Payment history</h3><span>{selectedStaffPayments.length} records</span></div>
                     {selectedStaffPayments.length ? <div className="table-wrap"><table><thead><tr><th>DATE</th><th>CUSTOMER</th><th>AMOUNT</th><th>METHOD</th><th>MONTH</th></tr></thead><tbody>{selectedStaffPayments.map(payment => <tr key={payment.id}><td>{dateLabel(payment.paidAt)}</td><td>{payment.customerName}</td><td className="amount">{money(payment.amount)}</td><td>{payment.method}</td><td>{payment.month}</td></tr>)}</tbody></table></div> : <p className="staff-record-empty">No payments have been recorded by this staff member yet.</p>}
                   </section>
                   <section className="staff-record-section"><div className="staff-record-section-head"><h3>Attendance history</h3><span>{selectedStaffAttendanceEquivalent.toLocaleString('en-IN')} day equivalents</span></div>
-                    {selectedStaffAttendance.length ? <div className="table-wrap"><table><thead><tr><th>WORK DATE</th><th>CHECK IN</th><th>CHECK OUT</th><th>STATUS</th></tr></thead><tbody>{selectedStaffAttendance.map(record => <tr key={record.id}><td>{dateLabel(record.workDate)}</td><td>{dateLabel(record.checkInAt)} {record.checkInAt ? new Date(record.checkInAt).toLocaleTimeString('en-IN', {hour:'2-digit',minute:'2-digit'}) : ''}</td><td>{record.checkOutAt ? new Date(record.checkOutAt).toLocaleTimeString('en-IN', {hour:'2-digit',minute:'2-digit'}) : 'Not checked out'}</td><td><span className={'status ' + (record.checkOutAt ? 'active' : 'inactive')}>{record.dayType === 'Absent' ? 'Absent' : (record.dayType === 'Half day' ? 'Half day · ' : '') + (record.checkOutAt ? 'Completed' : 'Open shift')}</span></td></tr>)}</tbody></table></div> : <p className="staff-record-empty">No attendance records are available for this staff member.</p>}
+                    {selectedStaffAttendance.length ? <div className="table-wrap"><table><thead><tr><th>WORK DATE</th><th>SHIFT START</th><th>SHIFT END</th><th>DAY TYPE / STATUS</th><th>LAST CORRECTION</th><th>ACTIONS</th></tr></thead><tbody>{selectedStaffAttendance.map(record => <tr key={record.id}><td>{dateLabel(record.workDate)}</td><td>{record.checkInAt?new Date(record.checkInAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'}):'—'}</td><td>{record.checkOutAt?new Date(record.checkOutAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'}):'Not checked out'}</td><td><span className={'status ' + (record.checkOutAt||record.dayType==='Absent'?'active':'inactive')}>{record.dayType==='Absent'?'Absent':(record.dayType==='Half day'?'Half day · ':'Full day · ')+(record.checkOutAt?'Completed':'Open shift')}</span>{record.correctionReason&&<small>{record.correctionReason}</small>}</td><td>{record.correctedAt?new Date(record.correctedAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'})+' · '+(record.correctedByName||'Admin'):'—'}</td><td><button className="btn secondary compact" onClick={()=>setAttendanceEdit({record,dayType:record.dayType||'Full day',reason:''})}>Correct</button></td></tr>)}</tbody></table></div> : <p className="staff-record-empty">No attendance records are available for this staff member.</p>}
                   </section>
                 </div>
                 <section className="staff-record-section staff-record-work"><div className="staff-record-section-head"><h3>Assigned customer list</h3><span>{customers.filter(customer => customer.assignedTo === selectedStaffProfile.id).length} customers</span></div>
