@@ -99,7 +99,7 @@ jobs:
               end = s.find("}", pos)
               if end < 0:
                   raise SystemExit("Could not find end of app dependencies block")
-              s = s[:end] + line + "\\n" + s[end:]
+              s = s[:end] + line + "\n" + s[end:]
               p.write_text(s)
           print("Google Play Services Location dependency is configured.")
           PY
