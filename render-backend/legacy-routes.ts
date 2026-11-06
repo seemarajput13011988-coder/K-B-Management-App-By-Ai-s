@@ -130,6 +130,44 @@ function protectedRoute(roles: Role[], handler: Handler): RouterMiddleware[] {
   }];
 }
 
+
+type EvidenceInput = { fileName?: unknown; mimeType?: unknown; dataBase64?: unknown };
+async function saveEvidenceFiles(collectionName: string, parentField: string, parentId: string, user: UserRecord, rawFiles: unknown[]) {
+  if (rawFiles.length > 2) throw new Error('Attach no more than one photo and one video.');
+  const prepared = rawFiles.map((raw, index) => {
+    const file = (raw || {}) as EvidenceInput;
+    const fileName = cleanText(file.fileName, 120) || ('evidence-' + (index + 1));
+    const mimeType = cleanText(file.mimeType, 100).toLowerCase();
+    const dataBase64 = typeof file.dataBase64 === 'string' ? file.dataBase64 : '';
+    if (!/^image\/(jpeg|png|webp)$|^video\/(mp4|webm|quicktime)$/.test(mimeType)) throw new Error('Use JPG, PNG or WEBP photos, or MP4, WEBM or MOV videos.');
+    const maxBytes = mimeType.startsWith('image/') ? 2 * 1024 * 1024 : 8 * 1024 * 1024;
+    if (!dataBase64 || dataBase64.length > Math.ceil(maxBytes * 4 / 3) + 8) throw new Error('An attachment is empty or too large.');
+    const buffer = Buffer.from(dataBase64, 'base64');
+    if (!buffer.length || buffer.length > maxBytes || buffer.toString('base64').replace(/=+$/, '') !== dataBase64.replace(/=+$/, '')) throw new Error('Attachment data is invalid or exceeds the allowed size.');
+    return { fileName, mimeType, dataBase64, size: buffer.length, mediaId: randomBytes(12).toString('hex') };
+  });
+  const collection = firestore.collection(collectionName);
+  const batch = firestore.batch();
+  const createdAt = new Date().toISOString();
+  const metadata = prepared.map(file => {
+    const chunkSize = 400000;
+    const chunkCount = Math.ceil(file.dataBase64.length / chunkSize);
+    batch.set(collection.doc(), { [parentField]: parentId, mediaId: file.mediaId, chunkIndex: -1, fileName: file.fileName, mimeType: file.mimeType, size: file.size, chunkCount, createdAt, uploadedBy: user.id, uploadedByName: user.displayName });
+    for (let index = 0; index < chunkCount; index += 1) batch.set(collection.doc(), { [parentField]: parentId, mediaId: file.mediaId, chunkIndex: index, data: file.dataBase64.slice(index * chunkSize, (index + 1) * chunkSize) });
+    return { mediaId: file.mediaId, fileName: file.fileName, mimeType: file.mimeType, size: file.size, createdAt };
+  });
+  if (prepared.length) await batch.commit();
+  return metadata;
+}
+async function readEvidenceFile(collectionName: string, parentField: string, parentId: string, mediaId: string) {
+  const snapshot = await firestore.collection(collectionName).where(parentField, '==', parentId).where('mediaId', '==', mediaId).get();
+  if (snapshot.empty) return null;
+  const docs = snapshot.docs.map(doc => doc.data()).sort((a, b) => Number(a.chunkIndex) - Number(b.chunkIndex));
+  const metadata = docs.find(doc => Number(doc.chunkIndex) === -1);
+  if (!metadata) return null;
+  return { fileName: metadata.fileName, mimeType: metadata.mimeType, dataBase64: docs.filter(doc => Number(doc.chunkIndex) >= 0).map(doc => String(doc.data || '')).join('') };
+}
+
 async function writeAudit(user: UserRecord, action: string, entityType: string, entityId: string, description: string) {
   await db.add('audit_logs', [{
     actorId: user.id,
@@ -549,7 +587,10 @@ export const handler = router({
   }),
 
   'POST /api/complaints': protectedRoute(['admin', 'staff'], async ({ body }, user) => {
-    const input = (body || {}) as Complaint;
+    const rawInput = (body || {}) as Record<string, unknown>;
+    const input = rawInput as unknown as Complaint;
+    const evidenceFiles = Array.isArray(rawInput.attachments) ? rawInput.attachments : [];
+    if (user.role === 'staff' && evidenceFiles.length === 0) return error('Attach at least one photo or video before submitting a complaint.', 400);
     const complaintFor = input.complaintFor === 'Staff' ? 'Staff' : 'Customer';
     const customerId = cleanText(input.customerId, 128);
     const staffId = cleanText(input.staffId, 128);
@@ -596,10 +637,17 @@ export const handler = router({
     };
     if (!record.subject) return error('A complaint subject is required.', 400);
     const [id] = await db.add('complaints', [record as unknown as Record<string, unknown>]);
-    return id ? json({ id, ...record }, 201) : error('Could not create complaint.', 500);
+    if (!id) return error('Could not create complaint.', 500);
+    try {
+      const attachments = await saveEvidenceFiles('complaint_media', 'complaintId', id, user, evidenceFiles);
+      return json({ id, ...record, attachments }, 201);
+    } catch (err) {
+      await db.delete('complaints', [id]);
+      return error(err instanceof Error ? err.message : 'Could not save complaint evidence.', 400);
+    }
   }),
 
-  'PUT /api/complaints/:id': protectedRoute(['admin', 'staff'], async ({ params, body }, user) => {
+  'PUT /api/complaints/:id': protectedRoute(['admin'], async ({ params, body }, user) => {
     const input = (body || {}) as Complaint;
     const [existing] = await db.get<Complaint>('complaints', [params.id], { consistent: true });
     if (!existing) return error('Complaint not found.', 404);
@@ -701,7 +749,11 @@ export const handler = router({
 
   'GET /api/tasks': protectedRoute(['admin', 'staff'], async (_ctx, user) => {
     const result = await db.list<TaskRecord>('tasks', { limit: 200 });
-    const items = user.role === 'admin' ? result.items : result.items.filter(task => task.assignedTo === user.id);
+    const mediaSnapshot = await firestore.collection('task_media').where('chunkIndex', '==', -1).limit(500).get();
+    const mediaByTask = new Map<string, Array<Record<string, unknown>>>();
+    mediaSnapshot.docs.forEach(doc => { const item = doc.data(); const list = mediaByTask.get(String(item.taskId)) || []; list.push({ mediaId: item.mediaId, fileName: item.fileName, mimeType: item.mimeType, size: item.size, createdAt: item.createdAt }); mediaByTask.set(String(item.taskId), list); });
+    const withMedia = result.items.map(item => ({ ...item, attachments: mediaByTask.get(String(item.id)) || [] }));
+    const items = user.role === 'admin' ? withMedia : withMedia.filter(task => task.assignedTo === user.id);
     return json({ items });
   }),
 
@@ -720,6 +772,28 @@ export const handler = router({
     return id ? json({ id, ...record }, 201) : error('Could not assign task.', 500);
   }),
 
+  'POST /api/tasks/:id/media': protectedRoute(['admin', 'staff'], async ({ params, body }, user) => {
+    const [task] = await db.get<TaskRecord>('tasks', [params.id], { consistent: true });
+    if (!task) return error('Task not found.', 404);
+    if (user.role === 'staff' && task.assignedTo !== user.id) return error('You can upload evidence only to your assigned tasks.', 403);
+    const input = (body || {}) as Record<string, unknown>;
+    const files = Array.isArray(input.attachments) ? input.attachments : [input];
+    try {
+      const attachments = await saveEvidenceFiles('task_media', 'taskId', params.id, user, files);
+      if (!attachments.length) return error('Select at least one photo or video.', 400);
+      await writeAudit(user, 'UPLOAD', 'task', params.id, 'Uploaded task completion evidence for ' + task.title);
+      return json({ attachments }, 201);
+    } catch (err) { return error(err instanceof Error ? err.message : 'Could not save task evidence.', 400); }
+  }),
+
+  'GET /api/tasks/:id/media/:mediaId': protectedRoute(['admin', 'staff'], async ({ params }, user) => {
+    const [task] = await db.get<TaskRecord>('tasks', [params.id], { consistent: true });
+    if (!task) return error('Task not found.', 404);
+    if (user.role === 'staff' && task.assignedTo !== user.id) return error('You do not have access to this task evidence.', 403);
+    const file = await readEvidenceFile('task_media', 'taskId', params.id, params.mediaId);
+    return file ? json(file) : error('Attachment not found.', 404);
+  }),
+
   'PUT /api/tasks/:id': protectedRoute(['admin', 'staff'], async ({ params, body }, user) => {
     const input = (body || {}) as Record<string, unknown>;
     const status = ['Pending', 'In progress', 'Completed'].includes(String(input.status)) ? String(input.status) : '';
@@ -727,7 +801,11 @@ export const handler = router({
     const [task] = await db.get<TaskRecord>('tasks', [params.id], { consistent: true });
     if (!task) return error('Task not found.', 404);
     if (user.role === 'staff' && task.assignedTo !== user.id) return error('You can update only tasks assigned to your account.', 403);
-    const [updated] = await db.tx.update('tasks', [{ id: params.id, record: { status } }], { patch: true });
+    if (user.role === 'staff' && status === 'Completed') {
+      const evidence = await firestore.collection('task_media').where('taskId', '==', params.id).where('chunkIndex', '==', -1).limit(1).get();
+      if (evidence.empty) return error('Upload at least one task photo or video before marking it completed.', 400);
+    }
+    const [updated] = await db.tx.update('tasks', [{ id: params.id, record: { status, ...(status === 'Completed' ? { completedAt: new Date().toISOString(), completedBy: user.id, completedByName: user.displayName } : {}) } }], { patch: true });
     return updated ? json({ updated: true }) : error('Could not update task.', 500);
   }),
 
