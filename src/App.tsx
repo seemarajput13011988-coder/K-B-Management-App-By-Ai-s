@@ -813,11 +813,11 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
           <div className="crumb">
             Workspace <span>/</span> <strong>{page}</strong>
           </div>
-          <FestivalBadge/>
           <div className="top-actions">
             <span className="system-status">
               <i /> All systems operational
             </span>
+            <FestivalBadge/>
             <div className="preference-controls">
               <label className="language-control" title="App language"><span>🌐</span><select aria-label="App language" value={language} onChange={event => setLanguage(event.target.value as 'en' | 'hi' | 'gu')}><option value="en">English</option><option value="hi">हिन्दी</option><option value="gu">ગુજરાતી</option></select></label>
               <button className="theme-toggle" onClick={toggleTheme} title={theme === 'dark' ? 'Switch to day mode' : 'Switch to night mode'} aria-label={theme === 'dark' ? 'Switch to day mode' : 'Switch to night mode'}>{theme === 'dark' ? '☀️' : '🌙'}<span>{theme === 'dark' ? 'Day' : 'Night'}</span></button>
