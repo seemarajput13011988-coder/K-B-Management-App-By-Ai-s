@@ -83,7 +83,7 @@ export default function GpsTrackingWorkspace({flash}:{flash:(message:string)=>vo
       <button className={section==='saved'?'active':''} onClick={()=>setSection('saved')}><Save size={15}/> Saved Locations <span>{saved.length}</span></button>
     </div>
     {section==='request' ? <>
-      <div className="gps-notice"><MapPin size={17}/><span>Choose a staff member and press Get Location. Their app must be open, online and allowed to use location. The app captures one GPS point in response to this request.</span></div>
+      <div className="gps-notice"><MapPin size={17}/><span>Choose a staff member and press Get Location. The staff app now checks for admin requests automatically while it is running and sends one fresh GPS point when permission and GPS are available. Closed-app/background capture still requires the dedicated Android foreground-location service; this screen will not falsely report a location until the phone actually responds.</span></div>
       {loading?<p className="ops-empty">Loading staff…</p>:<div className="gps-staff-list">
         {staff.map(member=><article className="gps-staff-row" key={member.id}>
           <div className="gps-avatar"><MapPin size={17}/></div>
@@ -94,8 +94,8 @@ export default function GpsTrackingWorkspace({flash}:{flash:(message:string)=>vo
       </div>}
       {activeRequest&&<div className="gps-result">
         <div className="gps-result-head"><div><strong>{activeRequest.staffName}</strong><small>Location request · {stamp(activeRequest.createdAt)}</small></div><span className={'gps-status '+activeRequest.status}>{activeRequest.status==='pending'?'Waiting for staff':activeRequest.status==='captured'?'Location received':activeRequest.status==='expired'?'Request expired':'Unavailable'}</span></div>
-        {activeRequest.status==='pending'&&<p className="gps-wait"><span className="gps-spinner"/> Waiting for the staff app to respond. Keep this screen open.</p>}
-        {(activeRequest.status==='unavailable'||activeRequest.status==='expired')&&<p className="gps-error">{activeRequest.status==='expired'?'The staff app did not respond within two minutes. Ask the staff member to open the app, then request again.':activeRequest.responseMessage||'Location could not be captured. Check GPS permission, then request again.'}</p>}
+        {activeRequest.status==='pending'&&<p className="gps-wait"><span className="gps-spinner"/> Waiting for a fresh GPS response from the staff phone. A location is shown only after the phone returns a valid reading.</p>}
+        {(activeRequest.status==='unavailable'||activeRequest.status==='expired')&&<p className="gps-error">{activeRequest.status==='expired'?'The staff phone did not return a location before this request expired. Check that the phone is online, GPS is enabled and the K&B app has location permission.':activeRequest.responseMessage||'Location could not be captured. Check GPS permission, then request again.'}</p>}
         {activeRequest.status==='captured'&&<>
           <div className="gps-address"><MapPin size={18}/><div><strong>{activeRequest.address||'Address not available'}</strong><small>Captured {stamp(activeRequest.capturedAt)}</small></div></div>
           <div className="gps-coordinates"><div><small>Latitude</small><strong>{Number(activeRequest.latitude).toFixed(6)}</strong></div><div><small>Longitude</small><strong>{Number(activeRequest.longitude).toFixed(6)}</strong></div><div><small>Accuracy</small><strong>±{Math.round(activeRequest.accuracy||0)} m</strong></div></div>
