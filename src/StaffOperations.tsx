@@ -73,7 +73,6 @@ export default function StaffOperations({ session, customers, flash, compact = f
   const [groupMemberIds, setGroupMemberIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [locationRequestMessage, setLocationRequestMessage] = useState('Your current location is shared only when an administrator requests it.');
   const [announcementForm, setAnnouncementForm] = useState({ title: '', message: '' });
   const [messageForm, setMessageForm] = useState({ recipientId: '', message: '' });
   const [visitForm, setVisitForm] = useState({ customerId: customers[0]?.id || '', purpose: 'Installation / service visit', notes: '' });
@@ -194,61 +193,6 @@ export default function StaffOperations({ session, customers, flash, compact = f
     };
   }, [selectedGroupId, request]);
 
-
-  useEffect(() => {
-    if (admin) return;
-    let stopped = false;
-    const handled = new Set<string>();
-    const respondToRequest = (item: {id:string}) => {
-      if (handled.has(item.id)) return;
-      handled.add(item.id);
-      setLocationRequestMessage('An administrator requested your current location. Capturing one GPS point now…');
-      if (!navigator.geolocation) {
-        void request('post', '/api/location-requests/' + item.id + '/respond', { status: 'failed', message: 'Location is not available on this device.' }).catch(() => undefined);
-        setLocationRequestMessage('Location is unavailable on this device. Please contact your administrator.');
-        return;
-      }
-      navigator.geolocation.getCurrentPosition(async position => {
-        let address = 'Address unavailable; open this point in Google Maps.';
-        try {
-          const url = 'https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=' + position.coords.latitude + '&lon=' + position.coords.longitude;
-          const response = await fetch(url, { headers: { 'Accept-Language': 'en' } });
-          if (response.ok) {
-            const place = await response.json() as {display_name?:string};
-            if (place.display_name) address = place.display_name.slice(0, 500);
-          }
-        } catch { /* Coordinates remain available even if reverse geocoding is unavailable. */ }
-        try {
-          await request('post', '/api/location-requests/' + item.id + '/respond', {
-            status: 'captured',
-            latitude: position.coords.latitude,
-            longitude: position.coords.longitude,
-            accuracy: position.coords.accuracy,
-            address,
-          });
-          if (!stopped) setLocationRequestMessage('Your one-time location was shared with the administrator at ' + new Date().toLocaleTimeString() + '. No further tracking is active.');
-        } catch {
-          if (!stopped) setLocationRequestMessage('Your location was captured but could not be sent. Check your internet connection.');
-        }
-      }, error => {
-        const message = error.code === 1 ? 'Location permission was denied.' : 'The phone could not get a GPS fix.';
-        void request('post', '/api/location-requests/' + item.id + '/respond', { status: 'failed', message }).catch(() => undefined);
-        if (!stopped) setLocationRequestMessage(message + ' The administrator will see that the location was unavailable.');
-      }, { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 });
-    };
-    const poll = async () => {
-      if (stopped || document.visibilityState !== 'visible') return;
-      try {
-        const result = await request('get', '/api/location-requests/pending');
-        for (const item of (result.data.items || []) as Array<{id:string}>) respondToRequest(item);
-      } catch { /* Keep the app usable if a background poll briefly fails. */ }
-    };
-    void poll();
-    const timer = window.setInterval(() => { void poll(); }, 7000);
-    const onVisibility = () => { if (document.visibilityState === 'visible') void poll(); };
-    document.addEventListener('visibilitychange', onVisibility);
-    return () => { stopped = true; window.clearInterval(timer); document.removeEventListener('visibilitychange', onVisibility); };
-  }, [admin, request]);
 
   async function shift(action: 'check-in' | 'check-out') {
     setBusy(true);
@@ -459,7 +403,7 @@ export default function StaffOperations({ session, customers, flash, compact = f
       <div className="ops-panel-head"><div><span className="eyebrow">ATTENDANCE</span><h2>My workday</h2><p>Record your shift start and finish. Work location is shared with authorised Admins during an active shift. On Android, background tracking continues with a persistent notification and stops at checkout.</p></div><span className={'ops-pill ' + (activeShift ? 'is-live' : 'is-idle')}>{activeShift ? 'ON SHIFT' : myToday?.dayType === 'Absent' ? 'ABSENT' : myToday?.checkOutAt ? 'SHIFT COMPLETE' : 'OFF SHIFT'}</span></div>
       <div className="ops-clock-row"><div><small>CHECK IN</small><strong>{myToday?.dayType === 'Absent' ? 'Absent' : myToday ? stamp(myToday.checkInAt) : 'Not checked in'}</strong></div><div><small>CHECK OUT</small><strong>{myToday?.dayType === 'Absent' ? '—' : myToday?.checkOutAt ? stamp(myToday.checkOutAt) : '—'}</strong></div></div>
       <div className="ops-actions"><label className="ops-day-type">Attendance type <select value={dayType} disabled={!!myToday} onChange={e=>setDayType(e.target.value as 'Full day'|'Half day')}><option>Full day</option><option>Half day</option></select></label>{!myToday ? <button className="btn primary" disabled={busy} onClick={() => shift('check-in')}>Check in and start shift</button> : activeShift ? <button className="btn danger" disabled={busy} onClick={() => shift('check-out')}>Check out and end shift</button> : <span className="ops-complete">{myToday.dayType === 'Absent' ? 'Today’s attendance is marked absent.' : 'Today’s attendance is complete.'}</span>}</div>
-      <p className="ops-gps-note">{locationRequestMessage}</p>
+      <p className="ops-gps-note">Your location is shared only when an administrator sends a one-time request. No continuous tracking is active.</p>
     </section>}
 
     {admin && <section className="panel ops-panel finance-chart-panel">
