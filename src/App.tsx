@@ -424,6 +424,17 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   }
 
 
+  async function deleteNotification(item: AppNotification) {
+    if (!window.confirm('Delete this notification?')) return;
+    try {
+      await api.delete('/api/notifications/' + item.id);
+      setNotifications(current => current.filter(entry => entry.id !== item.id));
+      flash('Notification deleted.');
+    } catch (error) {
+      flash(error instanceof Error ? error.message : 'Could not delete notification.');
+    }
+  }
+
   async function markNotificationsRead() {
     const unread = notifications.filter(item => !item.read);
     await Promise.all(unread.map(item => api.put('/api/notifications/' + item.id, { read: true }).catch(() => undefined)));
@@ -793,7 +804,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
               </button>
               {notificationsOpen && <div className="notification-popover">
                 <div className="notification-popover-head"><b>Notifications</b><button onClick={markNotificationsRead} disabled={!notifications.some(item=>!item.read)}>Mark all read</button></div>
-                {notifications.slice(0,12).map(item=><article className={'notification-item '+(!item.read?'unread':'')} key={item.id}><b>{item.title}</b><p>{item.message}</p><small>{item.createdAt ? new Date(item.createdAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'}) : ''}</small></article>)}
+                {notifications.slice(0,12).map(item=><article className={'notification-item '+(!item.read?'unread':'')} key={item.id}><div className="notification-item-head"><b>{item.title}</b><button type="button" className="row-action danger" aria-label="Delete notification" title="Delete notification" onClick={()=>void deleteNotification(item)}><Trash2 size={13}/></button></div><p>{item.message}</p><small>{item.createdAt ? new Date(item.createdAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'}) : ''}</small></article>)}
                 {!notifications.length && <p className="notification-empty">You’re all caught up.</p>}
               </div>}
             </div>
