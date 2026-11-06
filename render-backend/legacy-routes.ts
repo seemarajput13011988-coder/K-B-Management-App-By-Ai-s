@@ -808,8 +808,10 @@ export const handler = router({
     if (user.role === 'staff' && task.status === 'In progress' && status === 'Pending') return error('Staff cannot move a task backwards to Pending.', 403);
     if (user.role === 'staff' && status === 'Completed') {
       const evidence = await firestore.collection('task_media').where('taskId', '==', params.id).where('chunkIndex', '==', -1).limit(100).get();
-      if (!evidence.docs.some(doc => doc.data().uploadedBy === user.id)) return error('Upload at least one of your own task photos or videos before marking it completed.', 400);
-      if (evidence.empty) return error('Upload at least one task photo or video before marking it completed.', 400);
+      const ownEvidence = evidence.docs.filter(doc => doc.data().uploadedBy === user.id);
+      const hasPhoto = ownEvidence.some(doc => String(doc.data().mimeType || '').startsWith('image/'));
+      const hasVideo = ownEvidence.some(doc => String(doc.data().mimeType || '').startsWith('video/'));
+      if (!hasPhoto || !hasVideo) return error('Upload both your own task photo and task video before marking it completed.', 400);
     }
     const [updated] = await db.tx.update('tasks', [{ id: params.id, record: { status, updatedAt: new Date().toISOString(), updatedBy: user.id, updatedByName: user.displayName, ...(status === 'Completed' ? { completedAt: new Date().toISOString(), completedBy: user.id, completedByName: user.displayName } : {}) } }], { patch: true });
     return updated ? json({ updated: true }) : error('Could not update task.', 500);
