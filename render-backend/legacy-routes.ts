@@ -1197,9 +1197,9 @@ export const handler = router({
     const workDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
     const attendance = await db.list<Record<string, unknown>>('attendance', { limit: 1000 });
     const active = attendance.items
-      .filter(item => item.userId === params.id && item.workDate === workDate && !item.checkOutAt)
+      .filter(item => item.userId === params.id && item.workDate === workDate)
       .sort((a, b) => String(b.checkInAt || '').localeCompare(String(a.checkInAt || '')))[0];
-    if (!active) return json({ status: 'shift-not-active', item: null, isFresh: false, ageSeconds: null });
+    if (!active || (active.checkOutAt && !active.gpsRestartRequired && !active.gpsCancelled)) return json({ status: 'shift-not-active', item: null, isFresh: false, ageSeconds: null });
     
     const [location] = await db.get<Record<string, unknown>>('staff_live_locations', [params.id], { consistent: true });
     const gpsOff = Boolean(active.gpsIssueStartedAt || active.gpsRestartRequired || active.gpsStatus === 'disabled');
