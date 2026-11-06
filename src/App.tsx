@@ -2301,12 +2301,15 @@ const FESTIVAL_DATES:Record<string,FestivalInfo>={
   '2026-04-19':{name:'Akha Trij · Akshaya Tritiya',theme:'vasant'},
   '2026-07-16':{name:'Ahmedabad Jagannath Rath Yatra',theme:'rath-yatra'},
   '2026-07-29':{name:'Guru Purnima',theme:'vasant'},
+  '2026-08-17':{name:'Nag Panchami',theme:'navratri'},
   '2026-08-28':{name:'Raksha Bandhan',theme:'rakhi'},
   '2026-09-01':{name:'Nag Pancham',theme:'navratri'},
   '2026-09-02':{name:'Randhan Chhath',theme:'rakhi'},
   '2026-09-03':{name:'Shitala Satam',theme:'rakhi'},
   '2026-09-04':{name:'Krishna Janmashtami',theme:'janmashtami'},
-  '2026-09-14':{name:'Ganesh Chaturthi',theme:'ganesh'},
+  '2026-09-14':{name:'Ganesh Chaturthi · Hartalika Teej',theme:'ganesh'},
+  '2026-09-25':{name:'Anant Chaturdashi · Ganesh Visarjan',theme:'ganesh'},
+  '2026-09-26':{name:'Bhadarvi Poonam · Ambaji Mela',theme:'navratri'},
   '2026-10-19':{name:'Durga Ashtami · Maha Navami',theme:'navratri'},
   '2026-10-20':{name:'Vijayadashami · Dussehra',theme:'dussehra'},
   '2026-10-25':{name:'Sharad Purnima',theme:'vasant'},
@@ -2328,9 +2331,9 @@ const FESTIVAL_DATES:Record<string,FestivalInfo>={
   '2027-01-15':{name:'Makar Sankranti · Uttarayan',theme:'sankranti'},
   '2027-02-11':{name:'Vasant Panchami',theme:'vasant'},
   '2027-03-06':{name:'Maha Shivaratri',theme:'shivratri'},
-  '2027-03-21':{name:'Holi · Holika Dahan',theme:'holi'},
-  '2027-03-22':{name:'Dhuleti',theme:'holi'},
-  '2027-04-07':{name:'Gudi Padwa · Chaitra Navratri',theme:'navratri'},
+  '2027-03-21':{name:'Holika Dahan',theme:'holi'},
+  '2027-03-22':{name:'Holi · Dhuleti',theme:'holi'},
+  '2027-04-07':{name:'Gudi Padwa · Ugadi · Chaitra Navratri',theme:'navratri'},
   '2027-04-14':{name:'Durga Ashtami',theme:'navratri'},
   '2027-04-15':{name:'Rama Navami',theme:'ramnavami'},
   '2027-04-20':{name:'Hanuman Jayanti',theme:'ramnavami'},
@@ -2365,6 +2368,7 @@ const FESTIVAL_DATES:Record<string,FestivalInfo>={
   '2027-11-13':{name:'Dev Diwali · Kartik Purnima',theme:'diwali'}
 };
 for(const [start,count,name,theme] of [
+  ['2026-03-19',9,'Chaitra Navratri','navratri'],
   ['2026-10-11',9,'Sharad Navratri','navratri'],
   ['2027-04-07',9,'Chaitra Navratri','navratri'],
   ['2027-09-30',9,'Sharad Navratri','navratri']
