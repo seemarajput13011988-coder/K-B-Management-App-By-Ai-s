@@ -32,7 +32,14 @@ jobs:
           grep -Fq "path === '/api/staff-registration-requests' && method === 'GET'" render-backend/api-handler.ts
           grep -Fq "path.startsWith('/api/staff-registration-requests/') && method === 'PUT'" render-backend/api-handler.ts
           grep -Fq "if (!allow(user, ['admin'], res)) return;" render-backend/api-handler.ts
-          echo "Public request/status and admin-only list/review handlers are present."
+          grep -Fq "'POST /api/location-requests'" render-backend/legacy-routes.ts
+          grep -Fq "'GET /api/location-requests/pending'" render-backend/legacy-routes.ts
+          grep -Fq "'POST /api/location-requests/:id/respond'" render-backend/legacy-routes.ts
+          grep -Fq "'GET /api/location-requests/:id'" render-backend/legacy-routes.ts
+          grep -Fq "'GET /api/saved-locations'" render-backend/legacy-routes.ts
+          grep -Fq "'POST /api/saved-locations'" render-backend/legacy-routes.ts
+          grep -Fq "app.use(legacyHandler)" render-backend/server.ts
+          echo "Public request/status, admin-only review, and staff GPS route handlers are present."
   web:
     runs-on: ubuntu-latest
     steps:
@@ -78,6 +85,23 @@ jobs:
               exit 1
             fi
           done
+          # One-time staff GPS request routes must be registered and protected.
+          for spec in "GET /api/location-requests/pending" "GET /api/saved-locations" "POST /api/location-requests"; do
+            method="${spec%% *}"
+            path="${spec#* }"
+            status=$(curl --silent --show-error --max-time 30 -o /tmp/kb-gps-route.json -w '%{http_code}' -X "$method" "$base$path" -H 'Content-Type: application/json' --data '{}')
+            if [ "$status" != "401" ]; then
+              cat /tmp/kb-gps-route.json
+              echo "::error::Expected protected GPS route $method $path to return HTTP 401 without a session, received HTTP $status."
+              exit 1
+            fi
+          done
+          status=$(curl --silent --show-error --max-time 30 -o /tmp/kb-gps-route.json -w '%{http_code}' -X POST "$base/api/location-requests/__smoke__/respond" -H 'Content-Type: application/json' --data '{"status":"failed"}')
+          if [ "$status" != "401" ]; then
+            cat /tmp/kb-gps-route.json
+            echo "::error::Expected protected GPS response route to return HTTP 401 without a session, received HTTP $status."
+            exit 1
+          fi
           # Every UI delete action must resolve to a protected API route, not a generic 404.
           for path in "/api/tasks/__smoke__" "/api/complaints/__smoke__" "/api/customers/__smoke__" "/api/plans/__smoke__" "/api/payments/__smoke__" "/api/payroll/__smoke__" "/api/installations/__smoke__" "/api/notifications/__smoke__" "/api/staff/__smoke__" "/api/visits/__smoke__"; do
             status=$(curl --silent --show-error --max-time 30 -o /tmp/kb-delete-route.json -w '%{http_code}' -X DELETE "$base$path")
