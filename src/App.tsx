@@ -1,7 +1,7 @@
 import { Component, useEffect, useMemo, useRef, useState } from 'react';
 import type { ErrorInfo, FormEvent, ReactNode } from 'react';
 import { Capacitor, registerPlugin } from '@capacitor/core';
-import type { BackgroundGeolocationPlugin } from '@capacitor-community/background-geolocation';
+
 import { Filesystem } from '@capacitor/filesystem';
 import { Camera } from '@capacitor/camera';
 import { Geolocation } from '@capacitor/geolocation';
@@ -52,7 +52,8 @@ type StaffRegistrationRequest={id:string;userId:string;displayName:string;phone?
 type StaffHolidayRequest={id:string;userId:string;displayName:string;startDate:string;endDate:string;reason:string;status:'pending'|'approved'|'rejected';createdAt:string;reviewedAt?:string;reviewedByName?:string};
 const getToken=()=>{try{return (JSON.parse(sessionStorage.getItem('kb-customer-session')||'null') as Session|null)?.token||'';}catch{return '';}};
 const api={get:(url:string)=>client.get(url+(url.includes('?')?'&':'?')+'sessionToken='+encodeURIComponent(getToken())),post:(url:string,data?:Record<string,unknown>)=>client.post(url,{...(data||{}),sessionToken:getToken()}),put:(url:string,data?:Record<string,unknown>)=>client.put(url,{...(data||{}),sessionToken:getToken()}),delete:(url:string)=>client.delete(url+'?sessionToken='+encodeURIComponent(getToken()))};
-const BackgroundGeolocation = registerPlugin<BackgroundGeolocationPlugin>('BackgroundGeolocation');
+interface WorkLocationTrackingPlugin { startTracking(options: { token: string; apiBaseUrl: string }): Promise<{ started: boolean }>; stopTracking(): Promise<{ stopped: boolean }>; }
+const WorkLocationTracking = registerPlugin<WorkLocationTrackingPlugin>('WorkLocationTracking');
 type Customer = {
   id: string;
   name: string;
@@ -1877,19 +1878,25 @@ function StaffLocationResponder({ activeShift, userId }: { activeShift: boolean;
         const workDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
         const active = (result.data.items || []).some((item: AttendanceRecord) => item.userId === sessionStorageUserId() && item.workDate === workDate && !item.checkOutAt && item.dayType !== 'Absent');
         if (!stopped) setShiftActive(active);
-      } catch { /* Retain the last confirmed shift state if the API is temporarily unavailable. */ }
+      } catch { /* Keep the last confirmed shift state if the API is temporarily unavailable. */ }
     };
     setShiftActive(activeShift);
     void checkShift();
     const timer = window.setInterval(checkShift, 15000);
     return () => { stopped = true; window.clearInterval(timer); };
   }, [activeShift, userId]);
+
   useEffect(() => {
-    if (!shiftActive) return;
     let stopped = false;
-    let sending = false;
-    let watcherId: string | null = null;
     let browserTimer: number | null = null;
+    const stopNativeTracking = () => {
+      if (Capacitor.isNativePlatform()) void WorkLocationTracking.stopTracking().catch(() => undefined);
+    };
+
+    if (!shiftActive) {
+      stopNativeTracking();
+      return;
+    }
 
     const reportGpsUnavailable = (reason: string) => {
       if (stopped) return;
@@ -1907,51 +1914,21 @@ function StaffLocationResponder({ activeShift, userId }: { activeShift: boolean;
           reportGpsUnavailable('Location permission denied');
           return;
         }
-        const watcher = await BackgroundGeolocation.addWatcher({
-          backgroundTitle: 'K&B work location active',
-          backgroundMessage: 'Your location is shared with authorised K&B administrators only during your active shift. Tracking stops when you check out.',
-          requestPermissions: true,
-          stale: false,
-          distanceFilter: 10,
-        }, (location, error) => {
-          if (stopped) return;
-          if (error || !location) {
-            reportGpsUnavailable(error?.code === 'NOT_AUTHORIZED' ? 'Location permission was turned off' : 'Phone location services are unavailable');
-            return;
-          }
-          if (sending) return;
-          sending = true;
-          void nativeApiPost<{ gpsRestored?: boolean }>('/api/staff/live-location', {
-            latitude: location.latitude,
-            longitude: location.longitude,
-            accuracy: location.accuracy,
-            capturedAt: new Date(location.time || Date.now()).toISOString(),
-            source: 'android-background-service',
-          }).then(result => {
-            if (!stopped && result.data.gpsRestored) {
-              // A fresh point clears any server-side GPS grace period.
-            }
-          }).catch(error => {
-            if (stopped) return;
-            if ([403, 409].includes((error as Error & { status?: number }).status || 0)) {
-              if (watcherId) void BackgroundGeolocation.removeWatcher({ id: watcherId });
-            }
-          }).finally(() => { sending = false; });
-        });
-        if (stopped) await BackgroundGeolocation.removeWatcher({ id: watcher });
-        else watcherId = watcher;
+        const token = getToken();
+        if (!token) return;
+        const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'https://kandb-management-nexus-api-zv7f.onrender.com';
+        await WorkLocationTracking.startTracking({ token, apiBaseUrl });
       } catch {
         reportGpsUnavailable('Phone location services are unavailable');
       }
     };
 
     const publishBrowser = () => {
-      if (stopped || sending || document.visibilityState !== 'visible') return;
+      if (stopped || document.visibilityState !== 'visible') return;
       if (!navigator.geolocation) {
         reportGpsUnavailable('GPS location unavailable');
         return;
       }
-      sending = true;
       navigator.geolocation.getCurrentPosition(async position => {
         try {
           await api.post('/api/staff/live-location', {
@@ -1962,11 +1939,10 @@ function StaffLocationResponder({ activeShift, userId }: { activeShift: boolean;
             source: 'staff-app-foreground',
           });
         } catch {
-          // Keep the last confirmed point; the admin screen will show its age.
-        } finally { sending = false; }
+          // Keep the last confirmed point; the admin screen displays its age.
+        }
       }, error => {
         reportGpsUnavailable(error.code === 1 ? 'Location permission denied' : 'GPS location unavailable');
-        sending = false;
       }, { enableHighAccuracy: true, maximumAge: 5000, timeout: 12000 });
     };
 
@@ -1984,10 +1960,10 @@ function StaffLocationResponder({ activeShift, userId }: { activeShift: boolean;
       };
     }
 
-    return () => {
-      stopped = true;
-      if (watcherId) void BackgroundGeolocation.removeWatcher({ id: watcherId });
-    };
+    // Intentionally do not stop the native foreground service from a React
+    // unmount/Activity destroy: Android may destroy the WebView when the user
+    // swipes the app away. The service stops on checkout or server rejection.
+    return () => { stopped = true; };
   }, [shiftActive]);
   return null;
 }
