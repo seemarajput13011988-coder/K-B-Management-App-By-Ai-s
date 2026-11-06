@@ -752,7 +752,7 @@ export const handler = router({
     const mediaSnapshot = await firestore.collection('task_media').where('chunkIndex', '==', -1).limit(500).get();
     const mediaByTask = new Map<string, Array<Record<string, unknown>>>();
     mediaSnapshot.docs.forEach(doc => { const item = doc.data(); const list = mediaByTask.get(String(item.taskId)) || []; list.push({ mediaId: item.mediaId, fileName: item.fileName, mimeType: item.mimeType, size: item.size, createdAt: item.createdAt }); mediaByTask.set(String(item.taskId), list); });
-    const withMedia = result.items.map(item => ({ ...item, attachments: mediaByTask.get(String(item.id)) || [] }));
+    const withMedia = (result.items as Array<TaskRecord & { id: string }>).map(item => ({ ...item, attachments: mediaByTask.get(String(item.id)) || [] }));
     const items = user.role === 'admin' ? withMedia : withMedia.filter(task => task.assignedTo === user.id);
     return json({ items });
   }),
