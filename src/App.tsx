@@ -1444,7 +1444,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
         />
       )}
       {!isAdmin && <StaffLocationResponder />}
-      {permissionSetupOpen && <StaffPermissionSetup onComplete={() => { localStorage.setItem('kb-staff-permissions-v1', 'done'); setPermissionSetupOpen(false); }} />}
+      {permissionSetupOpen && <StaffPermissionSetup onComplete={(locationGranted = false) => { if (locationGranted) localStorage.setItem('kb-staff-permissions-v1', 'done'); setPermissionSetupOpen(false); }} />}
       {completingTask && <TaskCompletionModal task={completingTask} onClose={() => setCompletingTask(null)} onComplete={(photo: File | null, video: File | null) => completeTaskWithEvidence(completingTask, photo, video)} />}
       {taskPreview && <Modal title={taskPreview.name} subtitle="Task completion evidence" onClose={() => setTaskPreview(null)}><div className="complaint-preview">{taskPreview.mimeType.startsWith('video/') ? <video src={taskPreview.dataUrl} controls playsInline /> : <img src={taskPreview.dataUrl} alt={taskPreview.name}/>}</div><div className="form-actions"><a className="btn secondary" href={taskPreview.dataUrl} download={taskPreview.name}>Download evidence</a><button type="button" className="btn primary" onClick={() => setTaskPreview(null)}>Close</button></div></Modal>}
       {showComplaint && (
@@ -1944,35 +1944,43 @@ function StaffLocationResponder() {
   return null;
 }
 
-function StaffPermissionSetup({ onComplete }: { onComplete:()=>void }) {
+function StaffPermissionSetup({ onComplete }: { onComplete:(locationGranted?:boolean)=>void }) {
   const [busy,setBusy]=useState(false);
   const [message,setMessage]=useState('');
   async function requestPermissions() {
-    setBusy(true);setMessage('Requesting Android permissions…');
-    const outcomes:string[]=[];
+    setBusy(true);
+    setMessage('Checking Android permissions…');
     try {
-      const result=await Filesystem.requestPermissions();
-      outcomes.push('Storage/media access: '+String(result.publicStorage||'handled by Android picker'));
-    } catch { outcomes.push('Storage/media: Android will ask when you select a file.'); }
-    try {
-      const location=await Geolocation.requestPermissions();
-      outcomes.push('Location: '+String(location.location||'requested'));
-    } catch { outcomes.push('Location: not granted yet. Enable it in Android settings to respond to admin GPS requests.'); }
-    try {
-      const camera=await Camera.requestPermissions();
-      outcomes.push('Camera: '+String(camera.camera||'requested'));
-    } catch { outcomes.push('Camera: not granted yet. Allow it when capturing task evidence.'); }
-    outcomes.push('Notifications: requested automatically when the app starts.');
-    setMessage(outcomes.join('\n'));
-    localStorage.setItem('kb-staff-permissions-v1','done');
-    setBusy(false);
-    onComplete();
+      let location = await Geolocation.checkPermissions();
+      if (location.location !== 'granted') location = await Geolocation.requestPermissions();
+      const locationGranted = location.location === 'granted';
+      const outcomes:string[]=['Location: '+String(location.location||'not granted')];
+      try {
+        const result=await Filesystem.requestPermissions();
+        outcomes.push('Storage/media access: '+String(result.publicStorage||'handled by Android picker'));
+      } catch { outcomes.push('Storage/media: Android will ask when you select a file.'); }
+      try {
+        const camera=await Camera.requestPermissions();
+        outcomes.push('Camera: '+String(camera.camera||'requested'));
+      } catch { outcomes.push('Camera: not granted yet. Allow it when capturing task evidence.'); }
+      outcomes.push('Notifications: requested automatically when the app starts.');
+      setMessage(outcomes.join('\\n'));
+      if (locationGranted) {
+        localStorage.setItem('kb-staff-permissions-v1','done');
+        onComplete(true);
+      } else {
+        localStorage.removeItem('kb-staff-permissions-v1');
+        setMessage(outcomes.join('\\n')+'\\n\\nLocation permission is required for admin GPS requests. Enable it in Android settings, then tap Allow required permissions again. Setup will stay open until location is granted.');
+      }
+    } catch(error) {
+      setMessage(error instanceof Error?error.message:'Could not check Android permissions. Please try again.');
+    } finally { setBusy(false); }
   }
-  return <Modal title="Set up staff app permissions" subtitle="Allow the permissions needed for task evidence, admin GPS requests and notifications." onClose={onComplete}>
+  return <Modal title="Set up staff app permissions" subtitle="Allow the permissions needed for task evidence, admin GPS requests and notifications." onClose={()=>onComplete(false)}>
     <div className="form-grid">
-      <div className="form-hint">Your location is shared only when an administrator requests it. Once you grant location permission here, future requests use that saved permission and will not ask you again. Camera access is used for task and complaint evidence. Android’s file picker controls access to selected photos and videos.</div>
+      <div className="form-hint">Your location is shared only when an administrator requests it. Once location permission is granted here, future requests reuse it and will not ask again. Camera access is used for task and complaint evidence. Android’s file picker controls access to selected photos and videos.</div>
       {message&&<p className="form-hint" style={{whiteSpace:'pre-line'}}>{message}</p>}
-      <div className="form-actions"><button className="btn primary" disabled={busy} onClick={()=>void requestPermissions()}>{busy?'Requesting…':'Allow required permissions'}</button><button type="button" className="btn secondary" onClick={onComplete}>Continue for now</button></div>
+      <div className="form-actions"><button className="btn primary" disabled={busy} onClick={()=>void requestPermissions()}>{busy?'Checking…':'Allow required permissions'}</button><button type="button" className="btn secondary" onClick={()=>onComplete(false)}>Continue for now</button></div>
     </div>
   </Modal>;
 }
@@ -2281,19 +2289,66 @@ function Modal({ title, subtitle, onClose, children }: any) {
 function FestivalTheme(){
   useEffect(()=>{
     const dates:Record<string,{name:string;theme:string}>={
-      '2026-03-03':{name:'Holi',theme:'holi'},'2026-03-04':{name:'Holi',theme:'holi'},
-      '2026-08-27':{name:'Raksha Bandhan',theme:'rakhi'},'2026-08-28':{name:'Raksha Bandhan',theme:'rakhi'},
-      '2026-09-04':{name:'Janmashtami',theme:'janmashtami'},'2026-09-14':{name:'Ganesh Chaturthi',theme:'ganesh'},
-      '2026-10-11':{name:'Navratri',theme:'navratri'},'2026-10-12':{name:'Navratri',theme:'navratri'},'2026-10-13':{name:'Navratri',theme:'navratri'},'2026-10-14':{name:'Navratri',theme:'navratri'},'2026-10-15':{name:'Navratri',theme:'navratri'},'2026-10-16':{name:'Navratri',theme:'navratri'},'2026-10-17':{name:'Navratri',theme:'navratri'},'2026-10-18':{name:'Navratri',theme:'navratri'},'2026-10-19':{name:'Navratri',theme:'navratri'},'2026-10-20':{name:'Dussehra',theme:'dussehra'},
-      '2026-11-06':{name:'Diwali celebrations',theme:'diwali'},'2026-11-07':{name:'Diwali celebrations',theme:'diwali'},'2026-11-08':{name:'Diwali',theme:'diwali'},'2026-11-09':{name:'Diwali celebrations',theme:'diwali'},'2026-11-10':{name:'Govardhan Puja',theme:'diwali'},'2026-11-11':{name:'Bhai Dooj',theme:'diwali'},
-      '2027-01-14':{name:'Makar Sankranti',theme:'sankranti'},'2027-02-11':{name:'Vasant Panchami',theme:'vasant'},'2027-03-21':{name:'Holika Dahan',theme:'holi'},'2027-03-22':{name:'Holi',theme:'holi'},
-      '2027-04-07':{name:'Chaitra Navratri',theme:'navratri'},'2027-04-15':{name:'Ram Navami',theme:'ramnavami'},'2027-04-20':{name:'Hanuman Jayanti',theme:'ramnavami'},
-      '2027-08-17':{name:'Raksha Bandhan',theme:'rakhi'},'2027-08-25':{name:'Janmashtami',theme:'janmashtami'},'2027-09-04':{name:'Ganesh Chaturthi',theme:'ganesh'},
-      '2027-09-30':{name:'Navratri',theme:'navratri'},'2027-10-01':{name:'Navratri',theme:'navratri'},'2027-10-02':{name:'Navratri',theme:'navratri'},'2027-10-03':{name:'Navratri',theme:'navratri'},'2027-10-04':{name:'Navratri',theme:'navratri'},'2027-10-05':{name:'Navratri',theme:'navratri'},'2027-10-06':{name:'Navratri',theme:'navratri'},'2027-10-07':{name:'Durga Ashtami',theme:'navratri'},'2027-10-08':{name:'Navratri',theme:'navratri'},'2027-10-09':{name:'Dussehra',theme:'dussehra'},
-      '2027-10-27':{name:'Diwali celebrations',theme:'diwali'},'2027-10-28':{name:'Diwali celebrations',theme:'diwali'},'2027-10-29':{name:'Diwali',theme:'diwali'},'2027-10-30':{name:'Diwali celebrations',theme:'diwali'},'2027-10-31':{name:'Bhai Dooj',theme:'diwali'}
+      '2026-11-05':{name:'Vagh Baras',theme:'diwali'},
+      '2026-11-06':{name:'Dhanteras',theme:'diwali'},
+      '2026-11-07':{name:'Kali Chaudas',theme:'diwali'},
+      '2026-11-08':{name:'Diwali · Chopda Pujan',theme:'diwali'},
+      '2026-11-09':{name:'Govardhan Puja · Annakut',theme:'diwali'},
+      '2026-11-10':{name:'Bestu Varas · Gujarati New Year',theme:'diwali'},
+      '2026-11-11':{name:'Bhai Beej',theme:'diwali'},
+      '2026-11-14':{name:'Labh Pancham',theme:'diwali'},
+      '2026-11-16':{name:'Jalaram Jayanti',theme:'diwali'},
+      '2026-11-20':{name:'Dev Uthi Ekadashi',theme:'diwali'},
+      '2026-11-21':{name:'Tulsi Vivah',theme:'diwali'},
+      '2026-11-24':{name:'Dev Diwali',theme:'diwali'},
+      '2027-01-15':{name:'Uttarayan · Makar Sankranti',theme:'sankranti'},
+      '2027-02-11':{name:'Vasant Panchami',theme:'vasant'},
+      '2027-03-06':{name:'Maha Shivaratri',theme:'shivratri'},
+      '2027-03-21':{name:'Holika Dahan',theme:'holi'},
+      '2027-03-22':{name:'Dhuleti · Holi',theme:'holi'},
+      '2027-04-07':{name:'Chaitra Navratri · Gujarati New Year observances',theme:'navratri'},
+      '2027-04-15':{name:'Ram Navami',theme:'ramnavami'},
+      '2027-04-20':{name:'Hanuman Jayanti',theme:'ramnavami'},
+      '2027-05-09':{name:'Akshaya Tritiya · Akha Trij',theme:'vasant'},
+      '2027-07-05':{name:'Jagannath Rath Yatra',theme:'rath-yatra'},
+      '2027-07-18':{name:'Guru Purnima',theme:'vasant'},
+      '2027-08-17':{name:'Raksha Bandhan',theme:'rakhi'},
+      '2027-08-22':{name:'Nag Pancham',theme:'navratri'},
+      '2027-08-23':{name:'Randhan Chhath',theme:'rakhi'},
+      '2027-08-24':{name:'Shitala Satam',theme:'rakhi'},
+      '2027-08-25':{name:'Krishna Janmashtami',theme:'janmashtami'},
+      '2027-09-04':{name:'Ganesh Chaturthi',theme:'ganesh'},
+      '2027-10-09':{name:'Dussehra · Vijayadashami',theme:'dussehra'},
+      '2027-10-18':{name:'Karwa Chauth',theme:'rakhi'},
+      '2027-10-26':{name:'Vagh Baras',theme:'diwali'},
+      '2027-10-27':{name:'Dhanteras · Kali Chaudas',theme:'diwali'},
+      '2027-10-28':{name:'Narak Chaturdashi',theme:'diwali'},
+      '2027-10-29':{name:'Diwali · Chopda Pujan',theme:'diwali'},
+      '2027-10-30':{name:'Govardhan Puja · Bestu Varas',theme:'diwali'},
+      '2027-10-31':{name:'Bhai Beej',theme:'diwali'},
+      '2027-11-03':{name:'Labh Pancham',theme:'diwali'},
+      '2027-11-04':{name:'Chhath Puja',theme:'diwali'},
+      '2027-11-14':{name:'Dev Diwali',theme:'diwali'}
     };
-    const apply=()=>{const date=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());const festival=dates[date];if(festival){document.documentElement.dataset.festivalTheme=festival.theme;document.documentElement.dataset.festivalName=festival.name;}else{delete document.documentElement.dataset.festivalTheme;delete document.documentElement.dataset.festivalName;}};
-    apply();const timer=window.setInterval(apply,60_000);return()=>{window.clearInterval(timer);delete document.documentElement.dataset.festivalTheme;delete document.documentElement.dataset.festivalName;};
+    const addRange=(start:string,count:number,name:string,theme:string)=>{
+      const [year,month,day]=start.split('-').map(Number);
+      const date=new Date(Date.UTC(year,month-1,day));
+      for(let offset=0;offset<count;offset++){
+        const current=new Date(date.getTime()+offset*86400000);
+        const key=current.getUTCFullYear()+'-'+String(current.getUTCMonth()+1).padStart(2,'0')+'-'+String(current.getUTCDate()).padStart(2,'0');
+        dates[key]={name,theme};
+      }
+    };
+    addRange('2027-09-30',9,'Sharad Navratri','navratri');
+    const apply=()=>{
+      const date=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+      const festival=dates[date];
+      if(festival){document.documentElement.dataset.festivalTheme=festival.theme;document.documentElement.dataset.festivalName=festival.name;}
+      else{delete document.documentElement.dataset.festivalTheme;delete document.documentElement.dataset.festivalName;}
+    };
+    apply();
+    const timer=window.setInterval(apply,60_000);
+    return()=>{window.clearInterval(timer);delete document.documentElement.dataset.festivalTheme;delete document.documentElement.dataset.festivalName;};
   },[]);
   return null;
 }
