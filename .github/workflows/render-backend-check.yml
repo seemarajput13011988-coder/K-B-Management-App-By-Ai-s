@@ -78,6 +78,16 @@ jobs:
               exit 1
             fi
           done
+          # Every UI delete action must resolve to a protected API route, not a generic 404.
+          for path in "/api/tasks/__smoke__" "/api/complaints/__smoke__" "/api/customers/__smoke__" "/api/plans/__smoke__" "/api/payments/__smoke__" "/api/payroll/__smoke__" "/api/installations/__smoke__" "/api/notifications/__smoke__" "/api/staff/__smoke__" "/api/visits/__smoke__"; do
+            status=$(curl --silent --show-error --max-time 30 -o /tmp/kb-delete-route.json -w '%{http_code}' -X DELETE "$base$path")
+            if [ "$status" != "401" ]; then
+              cat /tmp/kb-delete-route.json
+              echo "::error::Expected protected delete route $path to return HTTP 401 without a session, received HTTP $status."
+              exit 1
+            fi
+          done
+          echo "All delete endpoints are registered and require authentication."
           status=$(curl --silent --show-error --max-time 30 -o /tmp/kb-protected-route.json -w '%{http_code}' -X PUT "$base/api/attendance/__smoke__/day-type" -H 'Content-Type: application/json' --data '{}')
           if [ "$status" != "401" ]; then
             cat /tmp/kb-protected-route.json
