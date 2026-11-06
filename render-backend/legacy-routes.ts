@@ -66,7 +66,7 @@ type Complaint = {
   resolutionDetails?: string;
 };
 type SessionRecord = { userId: string; expiresAt: number };
-type TaskRecord = { title: string; details: string; assignedTo: string; assignedToName: string; priority: string; dueDate: string; status: string; createdAt: string; createdBy: string; createdByName: string };
+type TaskRecord = { title: string; details: string; assignedTo: string; assignedToName: string; priority: string; dueDate: string; status: string; createdAt: string; createdBy: string; createdByName: string; updatedAt?: string; updatedBy?: string; updatedByName?: string; completedAt?: string; completedBy?: string; completedByName?: string };
 type PlanRecord = { id?: string; name: string; provider: string; speed: string; data: string; price: number; note: string; details?: string; connectionType: string; featured: boolean; active: boolean };
 const defaultPlans: PlanRecord[] = [
   { name: 'RailWire 30 Mbps', provider: 'RailWire', speed: '30 Mbps', data: '1.5 TB', price: 549, note: 'Popular home plan', connectionType: 'Fiber', featured: true, active: true },
