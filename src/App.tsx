@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Capacitor } from '@capacitor/core';
+import { Filesystem } from '@capacitor/filesystem';
+import { Camera } from '@capacitor/camera';
+import { Geolocation } from '@capacitor/geolocation';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { PushNotifications } from '@capacitor/push-notifications';
 import StaffOperations from './StaffOperations';
@@ -8,6 +11,7 @@ import FinanceWorkspace from './FinanceWorkspace';
 import SubscriptionWorkspace from './SubscriptionWorkspace';
 import InvoiceWorkspace from './InvoiceWorkspace';
 import InventoryWorkspace from './InventoryWorkspace';
+import GpsTrackingWorkspace from './GpsTrackingWorkspace';
 import InstallationsWorkspace from './InstallationsWorkspace';
 import CalendarWorkspace from './CalendarWorkspace';
 import { useAppPreferences } from './appPreferences';
@@ -44,6 +48,8 @@ import {
 type Session={token:string;expiresAt:number;user:{id:string;userId:string;displayName:string;role:'admin'|'staff';active:boolean;canManageAdmins?:boolean}};
 type AppNotification={id:string;title:string;message:string;createdAt:string;read:boolean;type:string};
 type RetentionReviewItem={id:string;collection:string;collectionLabel:string;recordLabel:string;createdAt:string};
+type StaffRegistrationRequest={id:string;userId:string;displayName:string;phone?:string;reason?:string;status:'pending'|'approved'|'rejected';createdAt:string;reviewedAt?:string;};
+type StaffHolidayRequest={id:string;userId:string;displayName:string;startDate:string;endDate:string;reason:string;status:'pending'|'approved'|'rejected';createdAt:string;reviewedAt?:string;reviewedByName?:string};
 const getToken=()=>{try{return (JSON.parse(localStorage.getItem('kb-customer-session')||'null') as Session|null)?.token||'';}catch{return '';}};
 const api={get:(url:string)=>client.get(url+(url.includes('?')?'&':'?')+'sessionToken='+encodeURIComponent(getToken())),post:(url:string,data?:Record<string,unknown>)=>client.post(url,{...(data||{}),sessionToken:getToken()}),put:(url:string,data?:Record<string,unknown>)=>client.put(url,{...(data||{}),sessionToken:getToken()}),delete:(url:string)=>client.delete(url+'?sessionToken='+encodeURIComponent(getToken()))};
 type Customer = {
@@ -71,10 +77,10 @@ type Payment = {
   recordedBy?: string;
   recordedByName?: string;
 };
-type Staff = { id: string; userId: string; displayName: string; role: 'staff'; active: boolean };
+type Staff = { id: string; userId: string; displayName: string; role: 'staff'; active: boolean; phone?: string; createdAt?: string };
 type AdminAccount = { id: string; userId: string; displayName: string; role: 'admin'; active: boolean; canManageAdmins?: boolean; isSuperAdmin?: boolean };
-type AttendanceRecord = { id: string; userId: string; displayName: string; workDate: string; checkInAt: string; checkOutAt?: string; dayType?: 'Full day' | 'Half day' | 'Absent'; status?: string };
-type Task = { id: string; title: string; details: string; assignedTo: string; assignedToName: string; priority: 'Low' | 'Normal' | 'High'; dueDate: string; status: 'Pending' | 'In progress' | 'Completed'; createdAt: string; createdByName: string };
+type AttendanceRecord = { id: string; userId: string; displayName: string; workDate: string; checkInAt: string; checkOutAt?: string; dayType?: 'Full day' | 'Half day' | 'Absent'; status?: string; correctionReason?: string; correctedAt?: string; correctedByName?: string; startedByAdmin?: string; endedByAdminName?: string; endedByName?: string; attendanceSource?: string; absenceReason?: string };
+type Task = { id: string; title: string; details: string; assignedTo: string; assignedToName: string; priority: 'Low' | 'Normal' | 'High'; dueDate: string; status: 'Pending' | 'In progress' | 'Completed'; createdAt: string; createdByName: string; updatedAt?: string; completedAt?: string; attachments?: Array<{mediaId:string;fileName:string;mimeType:string;size:number}> };
 type Complaint = {
   id: string;
   complaintFor: 'Customer' | 'Staff';
@@ -143,6 +149,10 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
     const timer = window.setInterval(() => setLocalHour(new Date().getHours()), 60_000);
     return () => window.clearInterval(timer);
   }, []);
+  useEffect(() => {
+    if (session.user.role !== 'staff' || !Capacitor.isNativePlatform()) return;
+    if (localStorage.getItem('kb-staff-permissions-v1') !== 'done') setPermissionSetupOpen(true);
+  }, [session.user.id, session.user.role]);
   const greeting = localHour < 12
     ? ({ en: 'Good morning', hi: 'सुप्रभात', gu: 'સુપ્રભાત' }[language])
     : localHour < 17
@@ -156,11 +166,21 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   const [complaints, setComplaints] = useState<Complaint[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [staff, setStaff] = useState<Staff[]>([]);
+  const [staffRegistrationRequests,setStaffRegistrationRequests]=useState<StaffRegistrationRequest[]>([]);
+  const [staffHolidayRequests,setStaffHolidayRequests]=useState<StaffHolidayRequest[]>([]);
+  const [staffInventory,setStaffInventory]=useState<any[]>([]);
+  const [staffInstallations,setStaffInstallations]=useState<any[]>([]);
+  const [staffPayroll,setStaffPayroll]=useState<any[]>([]);
+  const [staffRequestPasswords,setStaffRequestPasswords]=useState<Record<string,string>>({});
   const [adminAccounts, setAdminAccounts] = useState<AdminAccount[]>([]);
   const [showAdminModal, setShowAdminModal] = useState(false);
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
   const [selectedStaffProfileId, setSelectedStaffProfileId] = useState('');
+  const [attendanceEdit,setAttendanceEdit]=useState<{record:AttendanceRecord;dayType:'Full day'|'Half day'|'Absent';reason:string}|null>(null);
   const [showTask, setShowTask] = useState(false);
+  const [permissionSetupOpen, setPermissionSetupOpen] = useState(false);
+  const [completingTask, setCompletingTask] = useState<Task | null>(null);
+  const [taskPreview, setTaskPreview] = useState<{name:string;mimeType:string;dataUrl:string}|null>(null);
   const [showStaff, setShowStaff] = useState(false);
   const [resetStaff, setResetStaff] = useState<Staff | null>(null);
   const [editStaffUserId, setEditStaffUserId] = useState<Staff | null>(null);
@@ -241,8 +261,13 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
       setComplaints((t.data.items || []).map((item: Complaint) => ({ ...item, status: item.status === 'Open' ? 'Pending' : item.status === 'In progress' ? 'In Progress' : item.status === 'Resolved' ? 'Solved' : item.status })));
       setTasks(w.data.items || []);
       if (isAdmin) {
-        const s = await api.get('/api/staff');
+        const [s, requests, inventoryResult, installationResult, payrollResult, holidayResult] = await Promise.all([api.get('/api/staff'),api.get('/api/staff-registration-requests'),api.get('/api/inventory'),api.get('/api/installations'),api.get('/api/payroll'),api.get('/api/holidays')]);
         setStaff(s.data.items || []);
+        setStaffRegistrationRequests(requests.data.items || []);
+        setStaffHolidayRequests(holidayResult.data.items || []);
+        setStaffInventory(inventoryResult.data.items || []);
+        setStaffInstallations(installationResult.data.items || []);
+        setStaffPayroll(payrollResult.data.items || []);
         try {
           const review = await api.get('/api/retention/review');
           setRetentionItems((review.data.items || []) as RetentionReviewItem[]);
@@ -399,7 +424,13 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   const selectedStaffPayments = payments.filter(payment => payment.recordedBy === selectedStaffProfileId).sort((a, b) => b.paidAt.localeCompare(a.paidAt));
   const selectedStaffAttendance = attendanceRecords.filter(record => record.userId === selectedStaffProfileId).sort((a, b) => b.workDate.localeCompare(a.workDate));
   const selectedStaffAttendanceEquivalent = selectedStaffAttendance.filter(record => record.dayType !== 'Absent' && String(record.status || '').toLowerCase() !== 'absent').reduce((sum, record) => sum + (record.dayType === 'Half day' ? 0.5 : 1), 0);
+  const selectedStaffFullDays=selectedStaffAttendance.filter(record=>(record.dayType||'Full day')==='Full day'&&String(record.status||'').toLowerCase()!=='absent').length;
+  const selectedStaffHalfDays=selectedStaffAttendance.filter(record=>record.dayType==='Half day').length;
+  const selectedStaffAbsentDays=selectedStaffAttendance.filter(record=>record.dayType==='Absent'||String(record.status||'').toLowerCase()==='absent').length;
   const selectedStaffTasks = tasks.filter(task => task.assignedTo === selectedStaffProfileId);
+  const selectedStaffInventory=staffInventory.filter(item=>item.assignedTo===selectedStaffProfileId);
+  const selectedStaffInstallations=staffInstallations.filter(item=>item.assignedTo===selectedStaffProfileId);
+  const selectedStaffPayroll=staffPayroll.filter(item=>item.staffUserId===selectedStaffProfileId).sort((a,b)=>String(b.paidAt||'').localeCompare(String(a.paidAt||'')));
   const selectedStaffCollected = selectedStaffPayments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
   const visiblePlans = plans.filter(plan => {
     const matchesStatus = planFilter === 'All' || (planFilter === 'Active' ? plan.active : !plan.active);
@@ -412,6 +443,17 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
     window.setTimeout(() => setNotice(''), 3200);
   }
 
+
+  async function deleteNotification(item: AppNotification) {
+    if (!window.confirm('Delete this notification?')) return;
+    try {
+      await api.delete('/api/notifications/' + item.id);
+      setNotifications(current => current.filter(entry => entry.id !== item.id));
+      flash('Notification deleted.');
+    } catch (error) {
+      flash(error instanceof Error ? error.message : 'Could not delete notification.');
+    }
+  }
 
   async function markNotificationsRead() {
     const unread = notifications.filter(item => !item.read);
@@ -499,6 +541,36 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
       throw new Error(message);
     }
   }
+  async function saveStaffAttendanceCorrection(event:FormEvent) {
+    event.preventDefault();
+    if(!attendanceEdit||!attendanceEdit.reason.trim())return;
+    try{
+      await api.put('/api/attendance/'+attendanceEdit.record.id+'/day-type',{dayType:attendanceEdit.dayType,reason:attendanceEdit.reason});
+      setAttendanceEdit(null); await load(true); flash('Attendance updated by administrator and audit logged.');
+    }catch(error){flash(error instanceof Error?error.message:'Could not update attendance.');}
+  }
+  async function reviewHolidayRequest(item:StaffHolidayRequest,status:'approved'|'rejected') {
+    if (!window.confirm((status==='approved'?'Approve':'Decline')+' '+item.displayName+' holiday request for '+item.startDate+' to '+item.endDate+'?')) return;
+    try {
+      await api.put('/api/holidays/'+item.id,{status});
+      await load(true);
+      flash(status==='approved'?'Holiday request approved.':'Holiday request declined.');
+    } catch (error) {
+      flash(error instanceof Error?error.message:'Could not review the holiday request.');
+    }
+  }
+
+  async function reviewStaffRequest(item:StaffRegistrationRequest,status:'approved'|'rejected') {
+    const password=staffRequestPasswords[item.id]||'';
+    if(status==='approved'&&password.length<10){flash('Enter a temporary password of at least 10 characters.');return;}
+    if(!window.confirm(status==='approved'?'Approve '+item.displayName+' and create the staff account?':'Decline '+item.displayName+' staff access request?'))return;
+    try{
+      await api.put('/api/staff-registration-requests/'+item.id,{status,...(status==='approved'?{password}:{})});
+      setStaffRequestPasswords(current=>{const next={...current};delete next[item.id];return next;});
+      await load(true);
+      flash(status==='approved'?'Staff request approved and account created.':'Staff request declined.');
+    }catch(error){flash(error instanceof Error?error.message:'Could not review staff request.');}
+  }
   async function createStaff(data: { userId: string; displayName: string; password: string }) {
     try {
       await api.post('/api/staff', data);
@@ -577,27 +649,19 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
     }
   }
   async function saveComplaint(data: any) {
-    let createdId = '';
     try {
       const { photoFile, videoFile, ...fields } = data;
-      const created = await api.post('/api/complaints', fields);
-      createdId = String(created.data.id || '');
-      if (!createdId) throw new Error('Complaint was created but the server did not return its ID.');
-      for (const file of [photoFile, videoFile].filter((item): item is File => item instanceof File)) {
-        const dataBase64 = await fileAsBase64(file);
-        await api.post('/api/complaints/' + createdId + '/media', { fileName: file.name, mimeType: file.type, dataBase64 });
-      }
+      const attachments = await Promise.all([photoFile, videoFile].filter((item): item is File => item instanceof File).map(async file => ({
+        fileName: file.name,
+        mimeType: file.type,
+        dataBase64: await fileAsBase64(file),
+      })));
+      await api.post('/api/complaints', { ...fields, attachments });
       setShowComplaint(false);
       await load();
-      flash('Complaint saved successfully.');
+      flash('Complaint saved with its evidence.');
     } catch (err) {
-      if (createdId) {
-        setShowComplaint(false);
-        await load();
-        flash(err instanceof Error ? 'Complaint saved, but an attachment could not be uploaded: ' + err.message : 'Complaint saved, but an attachment could not be uploaded.');
-      } else {
-        flash(err instanceof Error ? err.message : 'Could not add complaint.');
-      }
+      flash(err instanceof Error ? err.message : 'Could not add complaint. Please check the evidence and try again.');
     }
   }
   async function saveTask(data: { title: string; details: string; assignedTo: string; priority: string; dueDate: string }) {
@@ -610,13 +674,49 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
       flash(err instanceof Error ? err.message : 'Could not assign task');
     }
   }
+  async function deleteTask(task: Task) {
+    if (!isAdmin || !window.confirm('Delete task "' + task.title + '"? Its evidence files will also be removed.')) return;
+    try {
+      await api.delete('/api/tasks/' + task.id);
+      await load();
+      flash('Task deleted.');
+    } catch (error) {
+      flash(error instanceof Error ? error.message : 'Could not delete task.');
+    }
+  }
   async function updateTask(task: Task, status: string) {
+    if (!isAdmin && status === 'Completed') {
+      setCompletingTask(task);
+      return;
+    }
     try {
       await api.put('/api/tasks/' + task.id, { status });
       await load();
       flash('Task status updated');
     } catch (err) {
       flash(err instanceof Error ? err.message : 'Could not update task');
+    }
+  }
+  async function completeTaskWithEvidence(task: Task, photoFile: File | null, videoFile: File | null) {
+    const files = [photoFile, videoFile].filter((item): item is File => item instanceof File);
+    if (!(photoFile instanceof File) || !(videoFile instanceof File)) { flash('Both a task photo and a task video are required before completion.'); return; }
+    try {
+      const attachments = await Promise.all(files.map(async file => ({ fileName: file.name, mimeType: file.type, dataBase64: await fileAsBase64(file) })));
+      await api.post('/api/tasks/' + task.id + '/media', { attachments });
+      await api.put('/api/tasks/' + task.id, { status: 'Completed' });
+      setCompletingTask(null);
+      await load();
+      flash('Task completed with evidence uploaded.');
+    } catch (err) {
+      flash(err instanceof Error ? err.message : 'Could not complete task. Check the evidence upload and try again.');
+    }
+  }
+  async function openTaskAttachment(task: Task, attachment: NonNullable<Task['attachments']>[number]) {
+    try {
+      const result = await api.get('/api/tasks/' + task.id + '/media/' + attachment.mediaId);
+      setTaskPreview({ name: result.data.fileName || attachment.fileName, mimeType: result.data.mimeType, dataUrl: 'data:' + result.data.mimeType + ';base64,' + result.data.dataBase64 });
+    } catch (err) {
+      flash(err instanceof Error ? err.message : 'Could not open task evidence.');
     }
   }
   async function updateComplaint(item: Complaint, patch: Record<string, unknown>) {
@@ -658,6 +758,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
     { label: 'Inventory', icon: ClipboardList },
     { label: 'Installations', icon: MapPin },
     ...(isAdmin ? [{ label: 'Plans & Pricing', icon: Wifi }] : []),
+    ...(isAdmin ? [{ label: 'GPS Tracking', icon: MapPin }] : []),
     ...(isAdmin ? [{ label: 'Staff', icon: UserRound, count: staff.length }] : []),
     ...(canManageAdmins ? [{ label: 'Admin Accounts', icon: ShieldCheck, count: adminAccounts.length || undefined }] : []),
     ...(isAdmin ? [{ label: 'Invoices', icon: ReceiptText }] : []),
@@ -763,7 +864,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
               </button>
               {notificationsOpen && <div className="notification-popover">
                 <div className="notification-popover-head"><b>Notifications</b><button onClick={markNotificationsRead} disabled={!notifications.some(item=>!item.read)}>Mark all read</button></div>
-                {notifications.slice(0,12).map(item=><article className={'notification-item '+(!item.read?'unread':'')} key={item.id}><b>{item.title}</b><p>{item.message}</p><small>{item.createdAt ? new Date(item.createdAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'}) : ''}</small></article>)}
+                {notifications.slice(0,12).map(item=><article className={'notification-item '+(!item.read?'unread':'')} key={item.id}><div className="notification-item-head" style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8}}><b>{item.title}</b><button type="button" className="row-action danger" aria-label="Delete notification" title="Delete notification" onClick={()=>void deleteNotification(item)}><Trash2 size={13}/></button></div><p>{item.message}</p><small>{item.createdAt ? new Date(item.createdAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'}) : ''}</small></article>)}
                 {!notifications.length && <p className="notification-empty">You’re all caught up.</p>}
               </div>}
             </div>
@@ -853,6 +954,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
           {page === 'Finance & Billing' && isAdmin && <FinanceWorkspace session={session} customers={customers} payments={payments} flash={flash} />}
           {page === 'Subscriptions' && <SubscriptionWorkspace customers={customers} plans={plans} isAdmin={isAdmin} flash={flash} />}
           {page === 'Inventory' && <InventoryWorkspace isAdmin={isAdmin} flash={flash} />}
+          {page === 'GPS Tracking' && isAdmin && <GpsTrackingWorkspace flash={flash} />}
           {page === 'Installations' && <InstallationsWorkspace customers={customers} staff={staff} isAdmin={isAdmin} flash={flash} />}
           {page === 'Overview' && !isAdmin && <StaffOperations session={session} customers={customers} flash={flash} compact onDataChanged={() => { void load(true); }} />}
 
@@ -1038,7 +1140,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
 
           {page === 'Admin Accounts' && canManageAdmins && (
             <section className="panel table-panel">
-              <div className="toolbar"><div><h2>Admin accounts</h2><p className="subtle">Only the original Brajraj account can create additional admins.</p></div><span className="result-count">{adminAccounts.length} admins</span></div>
+              <div className="toolbar"><div><h2>Admin accounts</h2><p className="subtle">Only the primary super-admin account can create additional admins.</p></div><span className="result-count">{adminAccounts.length} admins</span></div>
               <div className="table-wrap staff-table-wrap"><table><thead><tr><th>ADMIN</th><th>USER ID</th><th>ACCESS</th><th>ROLE</th><th>ACTIONS</th></tr></thead><tbody>
                 {adminAccounts.map(account => <tr key={account.id}><td><strong>{account.displayName}</strong></td><td>{account.userId}</td><td><span className={'status ' + (account.active ? 'active' : 'inactive')}>{account.active ? 'Active' : 'Disabled'}</span></td><td>{account.canManageAdmins || account.isSuperAdmin ? 'Super admin' : 'Admin'}</td><td>{account.canManageAdmins || account.isSuperAdmin || account.id === session.user.id ? <span className="subtle">Protected</span> : <button className="row-action danger" title="Remove admin account" onClick={() => removeAdmin(account)}><Trash2 size={15}/></button>}</td></tr>)}
               </tbody></table></div>
@@ -1047,13 +1149,32 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
           )}
 
           {page === 'Staff' && isAdmin && (
+            <>
+            <section className="panel table-panel staff-registration-requests">
+              <div className="toolbar"><div><h2>Staff access requests</h2><p className="subtle">Review new staff sign-up requests here or from notifications.</p></div><span className="result-count">{staffRegistrationRequests.filter(item=>item.status==='pending').length} pending</span></div>
+              {staffRegistrationRequests.filter(item=>item.status==='pending').map(item=><article className="staff-request-card" key={item.id}>
+                <div><b>{item.displayName} · {item.userId}</b><p>{item.reason||'No additional note provided.'}</p><small>{item.phone?'Phone: '+item.phone+' · ':''}Submitted {new Date(item.createdAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'})}</small></div>
+                <div className="staff-request-actions"><input type="password" minLength={10} autoComplete="new-password" placeholder="Temporary password (10+ chars)" value={staffRequestPasswords[item.id]||''} onChange={e=>setStaffRequestPasswords(current=>({...current,[item.id]:e.target.value}))}/><button className="btn primary compact" disabled={(staffRequestPasswords[item.id]||'').length<10} onClick={()=>void reviewStaffRequest(item,'approved')}>Accept</button><button className="btn danger compact" onClick={()=>void reviewStaffRequest(item,'rejected')}>Decline</button></div>
+              </article>)}
+              {!staffRegistrationRequests.some(item=>item.status==='pending')&&<p className="staff-record-empty">No pending staff access requests.</p>}
+            </section>
+            <section className="panel table-panel staff-holiday-requests">
+              <div className="toolbar"><div><h2>Staff holiday requests</h2><p className="subtle">Approve or decline leave requests submitted by staff members.</p></div><span className="result-count">{staffHolidayRequests.filter(item=>item.status==='pending').length} pending</span></div>
+              <div className="staff-holiday-list">
+                {staffHolidayRequests.map(item=><article className="staff-request-card" key={item.id}>
+                  <div><b>{item.displayName} · {item.startDate}{item.endDate!==item.startDate?' to '+item.endDate:''}</b><p>{item.reason}</p><small>Requested {new Date(item.createdAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'})}{item.reviewedAt?' · Reviewed '+new Date(item.reviewedAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'}):''}</small></div>
+                  <div className="staff-request-actions"><span className={'status '+(item.status==='approved'?'active':item.status==='rejected'?'inactive':'')}>{item.status.toUpperCase()}</span>{item.status==='pending'&&<><button className="btn primary compact" onClick={()=>void reviewHolidayRequest(item,'approved')}>Approve</button><button className="btn danger compact" onClick={()=>void reviewHolidayRequest(item,'rejected')}>Decline</button></>}</div>
+                </article>)}
+                {!staffHolidayRequests.length&&<p className="staff-record-empty">No holiday requests have been submitted yet.</p>}
+              </div>
+            </section>
             <section className="panel table-panel">
               <div className="toolbar"><div className="searchbox"><Search size={17}/><input value={staffSearch} onChange={e => setStaffSearch(e.target.value)} placeholder="Search staff name or user ID..."/></div><span className="result-count">{filteredStaff.length} of {staff.length} members</span></div>
               <div className="table-wrap"><table><thead><tr><th>STAFF MEMBER</th><th>USER ID</th><th>ASSIGNED CUSTOMERS</th><th>COLLECTIONS RECORDED</th><th>ACCESS</th><th>ACTIONS</th></tr></thead><tbody>
                 {filteredStaff.map(member => {
                   const assigned = customers.filter(c => c.assignedTo === member.id).length;
                   const total = payments.filter(p => p.recordedBy === member.id).reduce((sum, p) => sum + Number(p.amount || 0), 0);
-                  return <tr key={member.id}><td data-label="Staff member"><b>{member.displayName}</b></td><td data-label="User ID">{member.userId}</td><td data-label="Assigned customers">{assigned}</td><td data-label="Collections" className="amount">{money(total)}</td><td data-label="Access"><span className={'status ' + (member.active ? 'active' : 'inactive')}>{member.active ? 'Active' : 'Disabled'}</span></td><td data-label="Actions"><div className="staff-actions"><button className="btn secondary compact" onClick={() => updateStaff(member, { active: !member.active })}>{member.active ? 'Disable' : 'Enable'}</button><button className="row-action" title="Change username" onClick={() => setEditStaffUserId(member)}><Pencil size={15} /></button><button className="row-action" title="Reset password" onClick={() => setResetStaff(member)}><LockKeyhole size={15} /></button><button className="row-action danger" title="Delete staff account" onClick={() => removeStaff(member)}><Trash2 size={15} /></button></div></td></tr>;
+                  return <tr key={member.id}><td data-label="Staff member"><button type="button" className="text-btn" onClick={()=>setSelectedStaffProfileId(member.id)}><b>{member.displayName}</b> <Eye size={13}/></button></td><td data-label="User ID">{member.userId}</td><td data-label="Assigned customers">{assigned}</td><td data-label="Collections" className="amount">{money(total)}</td><td data-label="Access"><span className={'status ' + (member.active ? 'active' : 'inactive')}>{member.active ? 'Active' : 'Disabled'}</span></td><td data-label="Actions"><div className="staff-actions"><button className="btn secondary compact" onClick={() => updateStaff(member, { active: !member.active })}>{member.active ? 'Disable' : 'Enable'}</button><button className="row-action" title="Change username" onClick={() => setEditStaffUserId(member)}><Pencil size={15} /></button><button className="row-action" title="Reset password" onClick={() => setResetStaff(member)}><LockKeyhole size={15} /></button><button className="row-action danger" title="Delete staff account" onClick={() => removeStaff(member)}><Trash2 size={15} /></button></div></td></tr>;
                 })}
               </tbody></table></div>
               {!filteredStaff.length && <Empty icon={<UserRound />} title={staff.length ? 'No matching staff' : 'No staff accounts yet'} text={staff.length ? 'Try another staff name or user ID.' : 'Create a staff account, then assign customers to that person from the customer form.'} action={!staff.length ? 'Add staff member' : undefined} onClick={() => setShowStaff(true)} />}
@@ -1065,19 +1186,26 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                 })}
               </div>
               {selectedStaffProfile && <section className="staff-personal-record">
-                <div className="staff-record-heading"><div><span className="eyebrow">INDIVIDUAL STAFF FILE</span><h2>{selectedStaffProfile.displayName}</h2><p>{selectedStaffProfile.userId} · {selectedStaffProfile.active ? 'Active account' : 'Access disabled'}</p></div><button className="btn secondary compact" onClick={() => setSelectedStaffProfileId('')}>Close record</button></div>
+                <div className="staff-record-heading"><div><span className="eyebrow">INDIVIDUAL STAFF FILE</span><h2>{selectedStaffProfile.displayName}</h2><p>{selectedStaffProfile.userId} · {selectedStaffProfile.active ? 'Active account' : 'Access disabled'}{selectedStaffProfile.phone?' · '+selectedStaffProfile.phone:''}{selectedStaffProfile.createdAt?' · Joined '+new Date(selectedStaffProfile.createdAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'}):''}</p></div><button className="btn secondary compact" onClick={() => setSelectedStaffProfileId('')}>Close record</button></div>
                 <div className="staff-record-metrics">
                   <article><small>Total collected</small><strong>{money(selectedStaffCollected)}</strong><span>{selectedStaffPayments.length} payment records</span></article>
                   <article><small>Attendance days</small><strong>{selectedStaffAttendanceEquivalent.toLocaleString('en-IN')}</strong><span>{selectedStaffAttendance.filter(record => !!record.checkOutAt && record.dayType !== 'Absent').length} completed shifts</span></article>
+                  <article><small>Absent days</small><strong>{selectedStaffAbsentDays}</strong><span>Admin-marked absence records</span></article>
                   <article><small>Assigned customers</small><strong>{customers.filter(customer => customer.assignedTo === selectedStaffProfile.id).length}</strong><span>Currently assigned</span></article>
                   <article><small>Assigned tasks</small><strong>{selectedStaffTasks.length}</strong><span>{selectedStaffTasks.filter(task => task.status === 'Completed').length} completed</span></article>
                 </div>
+                <section className="staff-record-section staff-record-work">
+                  <div className="staff-record-section-head"><h3>Attendance breakdown</h3><span>{selectedStaffAttendance.length} dated records</span></div>
+                  <div className="staff-attendance-breakdown">
+                    {[{label:'Full day',count:selectedStaffFullDays},{label:'Half day',count:selectedStaffHalfDays},{label:'No attendance / absent',count:selectedStaffAbsentDays}].map(item=><div className="staff-attendance-stat" key={item.label}><div><b>{item.label}</b><strong>{item.count}</strong></div><div className="staff-attendance-track" style={{height:9,background:'var(--border,#e3e8ef)',borderRadius:99,overflow:'hidden'}}><i style={{display:'block',height:'100%',width:(selectedStaffAttendance.length?item.count/selectedStaffAttendance.length*100:0)+'%',background:'var(--accent,#3569c8)',borderRadius:99}}/></div></div>)}
+                  </div>
+                </section>
                 <div className="staff-record-columns">
                   <section className="staff-record-section"><div className="staff-record-section-head"><h3>Payment history</h3><span>{selectedStaffPayments.length} records</span></div>
                     {selectedStaffPayments.length ? <div className="table-wrap"><table><thead><tr><th>DATE</th><th>CUSTOMER</th><th>AMOUNT</th><th>METHOD</th><th>MONTH</th></tr></thead><tbody>{selectedStaffPayments.map(payment => <tr key={payment.id}><td>{dateLabel(payment.paidAt)}</td><td>{payment.customerName}</td><td className="amount">{money(payment.amount)}</td><td>{payment.method}</td><td>{payment.month}</td></tr>)}</tbody></table></div> : <p className="staff-record-empty">No payments have been recorded by this staff member yet.</p>}
                   </section>
                   <section className="staff-record-section"><div className="staff-record-section-head"><h3>Attendance history</h3><span>{selectedStaffAttendanceEquivalent.toLocaleString('en-IN')} day equivalents</span></div>
-                    {selectedStaffAttendance.length ? <div className="table-wrap"><table><thead><tr><th>WORK DATE</th><th>CHECK IN</th><th>CHECK OUT</th><th>STATUS</th></tr></thead><tbody>{selectedStaffAttendance.map(record => <tr key={record.id}><td>{dateLabel(record.workDate)}</td><td>{dateLabel(record.checkInAt)} {record.checkInAt ? new Date(record.checkInAt).toLocaleTimeString('en-IN', {hour:'2-digit',minute:'2-digit'}) : ''}</td><td>{record.checkOutAt ? new Date(record.checkOutAt).toLocaleTimeString('en-IN', {hour:'2-digit',minute:'2-digit'}) : 'Not checked out'}</td><td><span className={'status ' + (record.checkOutAt ? 'active' : 'inactive')}>{record.dayType === 'Absent' ? 'Absent' : (record.dayType === 'Half day' ? 'Half day · ' : '') + (record.checkOutAt ? 'Completed' : 'Open shift')}</span></td></tr>)}</tbody></table></div> : <p className="staff-record-empty">No attendance records are available for this staff member.</p>}
+                    {selectedStaffAttendance.length ? <div className="table-wrap"><table><thead><tr><th>WORK DATE</th><th>SHIFT START</th><th>SHIFT END</th><th>DAY TYPE / STATUS</th><th>LAST CORRECTION</th><th>ACTIONS</th></tr></thead><tbody>{selectedStaffAttendance.map(record => <tr key={record.id}><td>{dateLabel(record.workDate)}</td><td>{record.checkInAt?new Date(record.checkInAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'}):'—'}<small>{record.startedByAdmin?'Started by '+record.startedByAdmin:record.attendanceSource==='Admin'?'Started/marked by Admin':'Staff shift start'}</small></td><td>{record.checkOutAt?new Date(record.checkOutAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'}):'Not checked out'}{record.checkOutAt&&<small>{record.endedByAdminName?'Ended by '+record.endedByAdminName:record.endedByName?'Ended by '+record.endedByName:''}</small>}</td><td><span className={'status ' + (record.checkOutAt||record.dayType==='Absent'?'active':'inactive')}>{record.dayType==='Absent'?'Absent':(record.dayType==='Half day'?'Half day · ':'Full day · ')+(record.checkOutAt?'Completed':'Open shift')}</span>{record.absenceReason&&<small>{record.absenceReason}</small>}{record.correctionReason&&<small>Correction: {record.correctionReason}</small>}</td><td>{record.correctedAt?new Date(record.correctedAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'})+' · '+(record.correctedByName||'Admin'):'—'}</td><td><button className="btn secondary compact" onClick={()=>setAttendanceEdit({record,dayType:record.dayType||'Full day',reason:''})}>Correct</button></td></tr>)}</tbody></table></div> : <p className="staff-record-empty">No attendance records are available for this staff member.</p>}
                   </section>
                 </div>
                 <section className="staff-record-section staff-record-work"><div className="staff-record-section-head"><h3>Assigned customer list</h3><span>{customers.filter(customer => customer.assignedTo === selectedStaffProfile.id).length} customers</span></div>
@@ -1086,8 +1214,19 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                 <section className="staff-record-section staff-record-work"><div className="staff-record-section-head"><h3>Task progress</h3><span>{selectedStaffTasks.length} tasks</span></div>
                   {selectedStaffTasks.length ? <div className="staff-record-customer-list">{selectedStaffTasks.map(task => <div key={task.id}><b>{task.title}</b><span>{task.priority} priority · Due {dateLabel(task.dueDate)}</span><strong>{task.status}</strong></div>)}</div> : <p className="staff-record-empty">No tasks assigned to this staff member.</p>}
                 </section>
+                <section className="staff-record-section staff-record-work"><div className="staff-record-section-head"><h3>Assigned inventory</h3><span>{selectedStaffInventory.length} items</span></div>
+                  {selectedStaffInventory.length?<div className="staff-record-customer-list">{selectedStaffInventory.map(item=><div key={item.id}><b>{item.name} · {item.sku}</b><span>{item.category} · {item.quantity} {item.unit} · {item.location||'No location'}</span><strong>{item.createdAt?'Assigned/added '+new Date(item.createdAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'}):'Assignment date not available'}</strong></div>)}</div>:<p className="staff-record-empty">No inventory is currently assigned to this staff member.</p>}
+                </section>
+                <section className="staff-record-section staff-record-work"><div className="staff-record-section-head"><h3>Installation jobs</h3><span>{selectedStaffInstallations.length} jobs</span></div>
+                  {selectedStaffInstallations.length?<div className="staff-record-customer-list">{selectedStaffInstallations.map(item=><div key={item.id}><b>{item.customerName} · {item.type}</b><span>{item.address} · Scheduled {dateLabel(item.scheduledDate)}</span><strong>{item.status} · Created {item.createdAt?new Date(item.createdAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'}):'—'}{item.updatedAt?' · Updated '+new Date(item.updatedAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'}):''}</strong></div>)}</div>:<p className="staff-record-empty">No installation jobs are assigned to this staff member.</p>}
+                </section>
+                <section className="staff-record-section staff-record-work"><div className="staff-record-section-head"><h3>Salary history</h3><span>{selectedStaffPayroll.length} records</span></div>
+                  {selectedStaffPayroll.length?<div className="staff-record-customer-list">{selectedStaffPayroll.map(item=><div key={item.id}><b>{money(item.amount)} · {item.period}</b><span>Paid {item.paidAt} · {item.method}</span><strong>Recorded {item.createdAt?new Date(item.createdAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'}):'—'} · {item.recordedByName||'Admin'}</strong></div>)}</div>:<p className="staff-record-empty">No salary payments recorded for this staff member.</p>}
+                </section>
               </section>}
             </section>
+            {attendanceEdit&&<Modal title="Correct staff attendance" subtitle={attendanceEdit.record.displayName+' · '+attendanceEdit.record.workDate} onClose={()=>setAttendanceEdit(null)}><form className="form-grid" onSubmit={saveStaffAttendanceCorrection}><Field label="Attendance type"><select value={attendanceEdit.dayType} onChange={e=>setAttendanceEdit({...attendanceEdit,dayType:e.target.value as 'Full day'|'Half day'|'Absent'})}><option>Full day</option><option>Half day</option><option>Absent</option></select></Field><Field label="Reason for correction" wide><textarea required minLength={3} maxLength={300} value={attendanceEdit.reason} onChange={e=>setAttendanceEdit({...attendanceEdit,reason:e.target.value})} placeholder="Explain why this attendance record is being corrected"/></Field><div className="modal-actions"><button type="button" className="btn secondary" onClick={()=>setAttendanceEdit(null)}>Cancel</button><button className="btn primary">Save correction</button></div></form></Modal>}
+            </>
           )}
 
           {page === taskPage && (
@@ -1105,9 +1244,11 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                     <div className="task-card-top"><span className={'priority ' + task.priority.toLowerCase()}>{task.priority} priority</span><span className={'task-state ' + task.status.toLowerCase().replace(/ /g, '-')}>{task.status}</span></div>
                     <h3>{task.title}</h3>
                     {task.details && <p>{task.details}</p>}
-                    <div className="task-meta"><span><UserRound size={14}/>{isAdmin ? task.assignedToName : 'Assigned to you'}</span><span><CalendarDays size={14}/>Due {dateLabel(task.dueDate)}</span><span>Created by {task.createdByName}</span></div>
+                    <div className="task-meta"><span><UserRound size={14}/>{isAdmin ? task.assignedToName : 'Assigned to you'}</span><span><CalendarDays size={14}/>Due {dateLabel(task.dueDate)}</span><span>Created by {task.createdByName} · {task.createdAt?new Date(task.createdAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'}):'Date not available'}</span>{task.updatedAt&&<span>Updated {new Date(task.updatedAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'})}</span>}{task.completedAt&&<span>Completed {new Date(task.completedAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'})}</span>}</div>
                   </div>
+                  {task.attachments?.length ? <div className="task-evidence-list"><span>{task.attachments.length} evidence file(s)</span>{task.attachments.map(file => <button type="button" className="text-btn" key={file.mediaId} onClick={() => void openTaskAttachment(task, file)}>{file.mimeType.startsWith('video/') ? 'View video' : 'View photo'}</button>)}</div> : null}
                   <label className="task-status-control"><span>Progress</span><select value={task.status} onChange={e => updateTask(task, e.target.value)}><option>Pending</option><option>In progress</option><option>Completed</option></select></label>
+                  {isAdmin && <button type="button" className="btn danger compact" onClick={()=>void deleteTask(task)}><Trash2 size={14}/> Delete task</button>}
                 </article>
               ))}</div> : <Empty icon={<ClipboardList />} title={isAdmin ? 'No tasks assigned yet' : 'No work assigned yet'} text={isAdmin ? 'Create a task and assign it to an active staff member.' : 'Your administrator will assign work here when it is ready.'} action={isAdmin ? 'Assign first task' : undefined} onClick={() => setShowTask(true)} />}
             </section>
@@ -1230,14 +1371,14 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
               </div>
               <div className="complaint-list">
                 {complaints.map(c => {
-                  const canUpdate = isAdmin || c.assignedTo === session.user.id;
+                  const canUpdate = isAdmin;
                   const targetName = c.complaintFor === 'Staff' ? (c.staffName || 'Staff member') : (c.customerName || 'Customer');
                   return <article className="complaint-card" key={c.id}>
                     <div className="complaint-card-head">
                       <div className="complaint-symbol"><MessageSquare size={18}/></div>
                       <div className="complaint-info">
                         <strong>{c.subject}</strong>
-                        <span>{c.complaintFor || 'Customer'} · {targetName} · {dateLabel(c.createdAt)}</span>
+                        <span>{c.complaintFor || 'Customer'} · {targetName} · Submitted {c.createdAt?new Date(c.createdAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'}):'—'}</span>
                         <small>{c.details || 'No additional details.'}</small>
                       </div>
                       <span className={'priority ' + String(c.priority || 'Normal').toLowerCase()}>{c.priority || 'Normal'}</span>
@@ -1246,7 +1387,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                       <span><b>Assigned to:</b> {c.assignedToName || 'Not assigned'}</span>
                       <span><b>Raised by:</b> {c.createdByName || '—'}</span>
                       {c.resolvedByName && <span><b>Solved by:</b> {c.resolvedByName}</span>}
-                      {c.resolvedAt && <span><b>Solved on:</b> {dateLabel(c.resolvedAt)}</span>}
+                      {c.resolvedAt && <span><b>Solved on:</b> {new Date(c.resolvedAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'})}</span>}
                     </div>
                     {c.locationText && <p className="complaint-location"><MapPin size={14}/>{c.locationText} <a href={Number.isFinite(c.latitude) && Number.isFinite(c.longitude) ? 'https://www.google.com/maps?q=' + c.latitude + ',' + c.longitude : 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(c.locationText)} target="_blank" rel="noreferrer">Open map</a></p>}
                     <div className="complaint-controls">
@@ -1302,6 +1443,10 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
           onSave={savePayment}
         />
       )}
+      {!isAdmin && <StaffLocationResponder />}
+      {permissionSetupOpen && <StaffPermissionSetup onComplete={() => { localStorage.setItem('kb-staff-permissions-v1', 'done'); setPermissionSetupOpen(false); }} />}
+      {completingTask && <TaskCompletionModal task={completingTask} onClose={() => setCompletingTask(null)} onComplete={(photo: File | null, video: File | null) => completeTaskWithEvidence(completingTask, photo, video)} />}
+      {taskPreview && <Modal title={taskPreview.name} subtitle="Task completion evidence" onClose={() => setTaskPreview(null)}><div className="complaint-preview">{taskPreview.mimeType.startsWith('video/') ? <video src={taskPreview.dataUrl} controls playsInline /> : <img src={taskPreview.dataUrl} alt={taskPreview.name}/>}</div><div className="form-actions"><a className="btn secondary" href={taskPreview.dataUrl} download={taskPreview.name}>Download evidence</a><button type="button" className="btn primary" onClick={() => setTaskPreview(null)}>Close</button></div></Modal>}
       {showComplaint && (
         <ComplaintModal
           customers={customers}
@@ -1755,6 +1900,104 @@ function StaffModal({ onClose, onSave }: any) {
   const [busy, setBusy] = useState(false);
   return <Modal title="Create staff account" subtitle="Give this team member a secure sign-in." onClose={onClose}><form className="form-grid" onSubmit={async e => { e.preventDefault(); setBusy(true); await onSave(form); setBusy(false); }}><Field label="Staff full name"><input required value={form.displayName} onChange={e => setForm({ ...form, displayName: e.target.value })} /></Field><Field label="Staff user ID"><input required minLength={3} maxLength={32} pattern="[a-zA-Z0-9_-]{3,32}" value={form.userId} onChange={e => setForm({ ...form, userId: e.target.value })} /></Field><Field label="Temporary password" wide><input required type="password" minLength={10} value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} /></Field><p className="form-hint">Use at least 10 characters and share it privately. Admin can reset it from Staff if needed.</p><div className="form-actions"><button type="button" className="btn secondary" onClick={onClose}>Cancel</button><button className="btn primary" disabled={busy}>{busy ? 'Creating…' : 'Create account'}</button></div></form></Modal>;
 }
+function StaffLocationResponder() {
+  useEffect(() => {
+    let stopped = false;
+    let polling = false;
+    const handled = new Set<string>();
+    const respond = (requestId:string) => {
+      if (handled.has(requestId)) return;
+      handled.add(requestId);
+      Geolocation.getCurrentPosition({enableHighAccuracy:true,maximumAge:0,timeout:20000}).then(async position => {
+        let address='Address unavailable; open this point in Google Maps.';
+        try {
+          const url='https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat='+position.coords.latitude+'&lon='+position.coords.longitude;
+          const response=await fetch(url,{headers:{'Accept-Language':'en'}});
+          if(response.ok){const place=await response.json() as {display_name?:string};if(place.display_name)address=place.display_name.slice(0,500);}
+        } catch { /* Coordinates remain usable if reverse geocoding is unavailable. */ }
+        try {
+          await api.post('/api/location-requests/'+requestId+'/respond',{
+            status:'captured',latitude:position.coords.latitude,longitude:position.coords.longitude,
+            accuracy:position.coords.accuracy,address
+          });
+        } catch { /* The request remains visible to the administrator as pending until it expires. */ }
+      }).catch(error => {
+        const message=String(error?.message||'Phone GPS could not get a current location.');
+        void api.post('/api/location-requests/'+requestId+'/respond',{status:'failed',message}).catch(()=>undefined);
+      });
+    };
+    const poll=async()=>{
+      if(stopped||polling||document.visibilityState!=='visible')return;
+      polling=true;
+      try{
+        const result=await api.get('/api/location-requests/pending');
+        for(const item of (result.data.items||[]) as Array<{id:string}>)respond(item.id);
+      }catch{/* Retry on the next foreground poll. */}
+      finally{polling=false;}
+    };
+    void poll();
+    const timer=window.setInterval(()=>{void poll();},7000);
+    const onVisibility=()=>{if(document.visibilityState==='visible')void poll();};
+    document.addEventListener('visibilitychange',onVisibility);
+    return()=>{stopped=true;window.clearInterval(timer);document.removeEventListener('visibilitychange',onVisibility);};
+  },[]);
+  return null;
+}
+
+function StaffPermissionSetup({ onComplete }: { onComplete:()=>void }) {
+  const [busy,setBusy]=useState(false);
+  const [message,setMessage]=useState('');
+  async function requestPermissions() {
+    setBusy(true);setMessage('Requesting Android permissions…');
+    const outcomes:string[]=[];
+    try {
+      const result=await Filesystem.requestPermissions();
+      outcomes.push('Storage/media access: '+String(result.publicStorage||'handled by Android picker'));
+    } catch { outcomes.push('Storage/media: Android will ask when you select a file.'); }
+    try {
+      const location=await Geolocation.requestPermissions();
+      outcomes.push('Location: '+String(location.location||'requested'));
+    } catch { outcomes.push('Location: not granted yet. Enable it in Android settings to respond to admin GPS requests.'); }
+    try {
+      const camera=await Camera.requestPermissions();
+      outcomes.push('Camera: '+String(camera.camera||'requested'));
+    } catch { outcomes.push('Camera: not granted yet. Allow it when capturing task evidence.'); }
+    outcomes.push('Notifications: requested automatically when the app starts.');
+    setMessage(outcomes.join('\n'));
+    localStorage.setItem('kb-staff-permissions-v1','done');
+    setBusy(false);
+    onComplete();
+  }
+  return <Modal title="Set up staff app permissions" subtitle="Allow the permissions needed for task evidence, admin GPS requests and notifications." onClose={onComplete}>
+    <div className="form-grid">
+      <div className="form-hint">The app uses your location only when an administrator sends a one-time request. It does not track you continuously. Camera access is used for task and complaint evidence. Android’s file picker controls access to selected photos and videos.</div>
+      {message&&<p className="form-hint" style={{whiteSpace:'pre-line'}}>{message}</p>}
+      <div className="form-actions"><button className="btn primary" disabled={busy} onClick={()=>void requestPermissions()}>{busy?'Requesting…':'Allow required permissions'}</button><button type="button" className="btn secondary" onClick={onComplete}>Continue for now</button></div>
+    </div>
+  </Modal>;
+}
+
+function TaskCompletionModal({ task, onClose, onComplete }: any) {
+  const [photo, setPhoto] = useState<File | null>(null);
+  const [video, setVideo] = useState<File | null>(null);
+  const [busy, setBusy] = useState(false);
+  function valid(file: File, kind: 'photo'|'video') {
+    const allowed = kind === 'photo' ? ['image/jpeg','image/png','image/webp'] : ['video/mp4','video/webm','video/quicktime'];
+    const limit = kind === 'photo' ? 2 * 1024 * 1024 : 8 * 1024 * 1024;
+    if (!allowed.includes(file.type)) { window.alert(kind === 'photo' ? 'Choose a JPG, PNG or WEBP photo.' : 'Choose an MP4, WEBM or MOV video.'); return false; }
+    if (file.size > limit) { window.alert(kind === 'photo' ? 'Photo must be 2 MB or smaller.' : 'Video must be 8 MB or smaller.'); return false; }
+    return true;
+  }
+  return <Modal title="Complete task with evidence" subtitle={task.title} onClose={onClose}>
+    <form className="form-grid" onSubmit={async event => { event.preventDefault(); if (!photo || !video) { window.alert('Both a task photo and a task video are required.'); return; } setBusy(true); await onComplete(photo, video); setBusy(false); }}>
+      <p className="form-hint">Both a photo and a video are required. The task remains open until both files upload successfully.</p>
+      <Field label="Task photo (required)" wide><input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={event => { const file=event.target.files?.[0]||null; setPhoto(file&&valid(file,'photo')?file:null); }}/>{photo&&<small>{photo.name} · {(photo.size/1024).toFixed(0)} KB</small>}</Field>
+      <Field label="Task video (required)" wide><input type="file" accept="video/mp4,video/webm,video/quicktime" capture="environment" onChange={event => { const file=event.target.files?.[0]||null; setVideo(file&&valid(file,'video')?file:null); }}/>{video&&<small>{video.name} · {(video.size/1024/1024).toFixed(1)} MB</small>}</Field>
+      <div className="form-actions"><button type="button" className="btn secondary" onClick={onClose}>Cancel</button><button className="btn primary" disabled={busy||!photo||!video}>{busy?'Uploading evidence…':'Upload and complete task'}</button></div>
+    </form>
+  </Modal>;
+}
+
 function TaskModal({ staff, onClose, onSave }: any) {
   const [form, setForm] = useState({ title: '', details: '', assignedTo: staff[0]?.id || '', priority: 'Normal', dueDate: new Date().toISOString().slice(0, 10) });
   const [busy, setBusy] = useState(false);
@@ -1994,12 +2237,12 @@ function ComplaintModal({ customers, staff, session, onClose, onSave }: any) {
         {Number.isFinite(f.latitude) && Number.isFinite(f.longitude) && <a href={'https://www.google.com/maps?q=' + f.latitude + ',' + f.longitude} target="_blank" rel="noreferrer">Location captured · Open map</a>}
         {locationError && <small>{locationError}</small>}
       </div>
-      <Field label="Photo (optional)" wide><input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={event => { const file = event.target.files?.[0] || null; if (file && validateFile(file, 'photo')) setPhotoFile(file); else setPhotoFile(null); }}/>{photoFile && <small className="complaint-file-name">{photoFile.name} · {(photoFile.size / 1024).toFixed(0)} KB</small>}</Field>
+      <Field label={isAdmin ? "Photo (optional)" : "Photo (required for staff)"} wide><input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={event => { const file = event.target.files?.[0] || null; if (file && validateFile(file, 'photo')) setPhotoFile(file); else setPhotoFile(null); }}/>{photoFile && <small className="complaint-file-name">{photoFile.name} · {(photoFile.size / 1024).toFixed(0)} KB</small>}</Field>
       <Field label="Video (optional)" wide><input type="file" accept="video/mp4,video/webm,video/quicktime" onChange={event => { const file = event.target.files?.[0] || null; if (file && validateFile(file, 'video')) setVideoFile(file); else setVideoFile(null); }}/>{videoFile && <small className="complaint-file-name">{videoFile.name} · {(videoFile.size / 1024 / 1024).toFixed(1)} MB</small>}</Field>
       {isAdmin && <Field label="Assign complaint to" wide><select value={f.assignedTo} onChange={event => setF({ ...f, assignedTo: event.target.value })}><option value="">Leave unassigned</option>{activeStaff.map((member: Staff) => <option value={member.id} key={member.id}>{member.displayName}</option>)}</select></Field>}
       <div className="form-actions"><button type="button" className="btn secondary" onClick={onClose}>Cancel</button><button className="btn primary" disabled={saving}>{saving ? 'Saving complaint…' : 'Create complaint'}</button></div>
     </form>
-    <p className="form-hint">Photos up to 2 MB and videos up to 8 MB are saved with the complaint. Location can be entered manually if GPS permission is unavailable.</p>
+    <p className="form-hint">Staff must attach at least one photo or video. Photos up to 2 MB and videos up to 8 MB are saved with the complaint. Admins may submit without evidence.</p>
   </Modal>;
 }
 function Field({ label, children, wide }: any) {
@@ -2051,7 +2294,7 @@ function LoginScreen({onLogin}:{onLogin:(id:string,pw:string,role:'admin'|'staff
  const [registrationError,setRegistrationError]=useState(false);
  const [registrationStatus,setRegistrationStatus]=useState<{status:'pending'|'approved'|'rejected';createdAt:string;reviewedAt?:string|null;reviewedByName?:string|null}|null>(null);
  useEffect(()=>{let stopped=false;let saved:{id:string;trackingCode:string}|null=null;try{const raw=localStorage.getItem('kandb-staff-registration');if(raw)saved=JSON.parse(raw) as {id:string;trackingCode:string};}catch{localStorage.removeItem('kandb-staff-registration');}if(!saved)return;const poll=()=>getStaffRegistrationStatus(saved!.id,saved!.trackingCode).then(result=>{if(!stopped)setRegistrationStatus(result);}).catch(()=>{if(!stopped){localStorage.removeItem('kandb-staff-registration');setRegistrationStatus(null);}});void poll();const timer=window.setInterval(poll,20000);return()=>{stopped=true;window.clearInterval(timer);};},[]);
- function choose(nextRole:'admin'|'staff'){setRole(nextRole);setId(nextRole==='admin'?'Brajraj':'');setPw('');setMsg('');}
+ function choose(nextRole:'admin'|'staff'){setRole(nextRole);setId('');setPw('');setMsg('');}
  async function submit(e:FormEvent){e.preventDefault();setMsg('');try{if(role)await onLogin(id,pw,role);}catch(err){setMsg(err instanceof Error?err.message:'Sign-in failed.');}}
  async function submitRegistration(){setRegistrationBusy(true);setRegistrationMessage('');setRegistrationError(false);try{const result=await submitStaffRegistrationRequest(registration);localStorage.setItem('kandb-staff-registration',JSON.stringify({id:result.id,trackingCode:result.trackingCode}));setRegistrationStatus({status:'pending',createdAt:new Date().toISOString()});setRegistrationMessage(result.message);setRegistrationOpen(false);setRegistration({userId:'',displayName:'',phone:'',reason:''});}catch(err){setRegistrationMessage(err instanceof Error?err.message:'Could not submit your request.');setRegistrationError(true);}finally{setRegistrationBusy(false);}}
  return <div className="auth-shell"><div className="auth-side"><div className="auth-brand"><div className="brand-mark"><Signal/></div><strong>K&B NET SERVICE</strong></div><div className="auth-promo"><span className="auth-kicker">K&B OPERATIONS</span><h1>Every customer connection, in view.</h1><p>Customer records, staff assignments, collections and service requests in one shared workspace.</p></div></div><div className="auth-main"><form className="auth-card" onSubmit={submit}><div className="auth-icon">{role==='staff'?<UserRound/>:<ShieldCheck/>}</div><span className="eyebrow">SECURE SIGN IN</span><h2>{role?(role==='admin'?'Admin sign in':'Staff sign in'):'Welcome to K&B'}</h2><p>{role?'Enter your '+role+' account details to continue.':'Choose how you want to sign in.'}</p>
@@ -2069,3 +2312,5 @@ function LoginScreen({onLogin}:{onLogin:(id:string,pw:string,role:'admin'|'staff
  <div className="auth-security"><KeyRound size={14}/> Keep your password private. Access is based on your account role.</div></form></div></div>;
 }
 export default App;
+
+

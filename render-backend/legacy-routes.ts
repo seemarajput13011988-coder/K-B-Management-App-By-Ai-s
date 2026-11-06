@@ -14,8 +14,9 @@ type UserRecord = {
   salt: string;
   passwordHash: string;
   createdAt: string;
+  phone?: string;
 };
-type SafeUser = Pick<UserRecord, 'id' | 'userId' | 'displayName' | 'role' | 'active'>;
+type SafeUser = Pick<UserRecord, 'id' | 'userId' | 'displayName' | 'role' | 'active' | 'createdAt' | 'phone'>;
 type Customer = {
   id: string;
   name: string;
@@ -65,7 +66,7 @@ type Complaint = {
   resolutionDetails?: string;
 };
 type SessionRecord = { userId: string; expiresAt: number };
-type TaskRecord = { title: string; details: string; assignedTo: string; assignedToName: string; priority: string; dueDate: string; status: string; createdAt: string; createdBy: string; createdByName: string };
+type TaskRecord = { title: string; details: string; assignedTo: string; assignedToName: string; priority: string; dueDate: string; status: string; createdAt: string; createdBy: string; createdByName: string; updatedAt?: string; updatedBy?: string; updatedByName?: string; completedAt?: string; completedBy?: string; completedByName?: string };
 type PlanRecord = { id?: string; name: string; provider: string; speed: string; data: string; price: number; note: string; details?: string; connectionType: string; featured: boolean; active: boolean };
 const defaultPlans: PlanRecord[] = [
   { name: 'RailWire 30 Mbps', provider: 'RailWire', speed: '30 Mbps', data: '1.5 TB', price: 549, note: 'Popular home plan', connectionType: 'Fiber', featured: true, active: true },
@@ -85,6 +86,8 @@ const safeUser = (user: UserRecord): SafeUser => ({
   displayName: user.displayName,
   role: user.role,
   active: user.active,
+  createdAt: user.createdAt,
+  phone: user.phone || '',
 });
 const hashPassword = (password: string, salt: string) =>
   scryptSync(password, salt, 64).toString('hex');
@@ -128,6 +131,44 @@ function protectedRoute(roles: Role[], handler: Handler): RouterMiddleware[] {
     if (!roles.includes(user.role)) return error('You do not have permission to perform this action.', 403);
     return handler(ctx, user);
   }];
+}
+
+
+type EvidenceInput = { fileName?: unknown; mimeType?: unknown; dataBase64?: unknown };
+async function saveEvidenceFiles(collectionName: string, parentField: string, parentId: string, user: UserRecord, rawFiles: unknown[]) {
+  if (rawFiles.length > 2) throw new Error('Attach no more than one photo and one video.');
+  const prepared = rawFiles.map((raw, index) => {
+    const file = (raw || {}) as EvidenceInput;
+    const fileName = cleanText(file.fileName, 120) || ('evidence-' + (index + 1));
+    const mimeType = cleanText(file.mimeType, 100).toLowerCase();
+    const dataBase64 = typeof file.dataBase64 === 'string' ? file.dataBase64 : '';
+    if (!/^image\/(jpeg|png|webp)$|^video\/(mp4|webm|quicktime)$/.test(mimeType)) throw new Error('Use JPG, PNG or WEBP photos, or MP4, WEBM or MOV videos.');
+    const maxBytes = mimeType.startsWith('image/') ? 2 * 1024 * 1024 : 8 * 1024 * 1024;
+    if (!dataBase64 || dataBase64.length > Math.ceil(maxBytes * 4 / 3) + 8) throw new Error('An attachment is empty or too large.');
+    const buffer = Buffer.from(dataBase64, 'base64');
+    if (!buffer.length || buffer.length > maxBytes || buffer.toString('base64').replace(/=+$/, '') !== dataBase64.replace(/=+$/, '')) throw new Error('Attachment data is invalid or exceeds the allowed size.');
+    return { fileName, mimeType, dataBase64, size: buffer.length, mediaId: randomBytes(12).toString('hex') };
+  });
+  const collection = firestore.collection(collectionName);
+  const batch = firestore.batch();
+  const createdAt = new Date().toISOString();
+  const metadata = prepared.map(file => {
+    const chunkSize = 400000;
+    const chunkCount = Math.ceil(file.dataBase64.length / chunkSize);
+    batch.set(collection.doc(), { [parentField]: parentId, mediaId: file.mediaId, chunkIndex: -1, fileName: file.fileName, mimeType: file.mimeType, size: file.size, chunkCount, createdAt, uploadedBy: user.id, uploadedByName: user.displayName });
+    for (let index = 0; index < chunkCount; index += 1) batch.set(collection.doc(), { [parentField]: parentId, mediaId: file.mediaId, chunkIndex: index, data: file.dataBase64.slice(index * chunkSize, (index + 1) * chunkSize) });
+    return { mediaId: file.mediaId, fileName: file.fileName, mimeType: file.mimeType, size: file.size, createdAt };
+  });
+  if (prepared.length) await batch.commit();
+  return metadata;
+}
+async function readEvidenceFile(collectionName: string, parentField: string, parentId: string, mediaId: string) {
+  const snapshot = await firestore.collection(collectionName).where(parentField, '==', parentId).where('mediaId', '==', mediaId).get();
+  if (snapshot.empty) return null;
+  const docs = snapshot.docs.map(doc => doc.data()).sort((a, b) => Number(a.chunkIndex) - Number(b.chunkIndex));
+  const metadata = docs.find(doc => Number(doc.chunkIndex) === -1);
+  if (!metadata) return null;
+  return { fileName: metadata.fileName, mimeType: metadata.mimeType, dataBase64: docs.filter(doc => Number(doc.chunkIndex) >= 0).map(doc => String(doc.data || '')).join('') };
 }
 
 async function writeAudit(user: UserRecord, action: string, entityType: string, entityId: string, description: string) {
@@ -549,7 +590,10 @@ export const handler = router({
   }),
 
   'POST /api/complaints': protectedRoute(['admin', 'staff'], async ({ body }, user) => {
-    const input = (body || {}) as Complaint;
+    const rawInput = (body || {}) as Record<string, unknown>;
+    const input = rawInput as unknown as Complaint;
+    const evidenceFiles = Array.isArray(rawInput.attachments) ? rawInput.attachments : [];
+    if (user.role === 'staff' && evidenceFiles.length === 0) return error('Attach at least one photo or video before submitting a complaint.', 400);
     const complaintFor = input.complaintFor === 'Staff' ? 'Staff' : 'Customer';
     const customerId = cleanText(input.customerId, 128);
     const staffId = cleanText(input.staffId, 128);
@@ -596,10 +640,17 @@ export const handler = router({
     };
     if (!record.subject) return error('A complaint subject is required.', 400);
     const [id] = await db.add('complaints', [record as unknown as Record<string, unknown>]);
-    return id ? json({ id, ...record }, 201) : error('Could not create complaint.', 500);
+    if (!id) return error('Could not create complaint.', 500);
+    try {
+      const attachments = await saveEvidenceFiles('complaint_media', 'complaintId', id, user, evidenceFiles);
+      return json({ id, ...record, attachments }, 201);
+    } catch (err) {
+      await db.delete('complaints', [id]);
+      return error(err instanceof Error ? err.message : 'Could not save complaint evidence.', 400);
+    }
   }),
 
-  'PUT /api/complaints/:id': protectedRoute(['admin', 'staff'], async ({ params, body }, user) => {
+  'PUT /api/complaints/:id': protectedRoute(['admin'], async ({ params, body }, user) => {
     const input = (body || {}) as Complaint;
     const [existing] = await db.get<Complaint>('complaints', [params.id], { consistent: true });
     if (!existing) return error('Complaint not found.', 404);
@@ -634,7 +685,7 @@ export const handler = router({
     return updated ? json({ updated: true }) : error('Could not update complaint.', 500);
   }),
 
-  'POST /api/complaints/:id/media': protectedRoute(['admin', 'staff'], async ({ params, body }, user) => {
+  'POST /api/complaints/:id/media': protectedRoute(['admin'], async ({ params, body }, user) => {
     const [ticket] = await db.get<Complaint>('complaints', [params.id], { consistent: true });
     if (!ticket) return error('Complaint not found.', 404);
     if (user.role === 'staff' && ticket.createdBy !== user.id && ticket.assignedTo !== user.id && ticket.staffId !== user.id) {
@@ -701,7 +752,11 @@ export const handler = router({
 
   'GET /api/tasks': protectedRoute(['admin', 'staff'], async (_ctx, user) => {
     const result = await db.list<TaskRecord>('tasks', { limit: 200 });
-    const items = user.role === 'admin' ? result.items : result.items.filter(task => task.assignedTo === user.id);
+    const mediaSnapshot = await firestore.collection('task_media').where('chunkIndex', '==', -1).limit(500).get();
+    const mediaByTask = new Map<string, Array<Record<string, unknown>>>();
+    mediaSnapshot.docs.forEach(doc => { const item = doc.data(); const list = mediaByTask.get(String(item.taskId)) || []; list.push({ mediaId: item.mediaId, fileName: item.fileName, mimeType: item.mimeType, size: item.size, createdAt: item.createdAt }); mediaByTask.set(String(item.taskId), list); });
+    const withMedia = (result.items as Array<TaskRecord & { id: string }>).map(item => ({ ...item, attachments: mediaByTask.get(String(item.id)) || [] }));
+    const items = user.role === 'admin' ? withMedia : withMedia.filter(task => task.assignedTo === user.id);
     return json({ items });
   }),
 
@@ -715,9 +770,31 @@ export const handler = router({
     if (!title || !assignedTo || !/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) return error('Enter a task title, active staff member and valid due date.', 400);
     const [staffMember] = await db.get<UserRecord>('users', [assignedTo], { consistent: true });
     if (!staffMember || staffMember.role !== 'staff' || !staffMember.active) return error('Choose an active staff account.', 400);
-    const record: TaskRecord = { title, details, assignedTo, assignedToName: staffMember.displayName, priority, dueDate, status: 'Pending', createdAt: new Date().toISOString().slice(0, 10), createdBy: user.id, createdByName: user.displayName };
+    const record: TaskRecord = { title, details, assignedTo, assignedToName: staffMember.displayName, priority, dueDate, status: 'Pending', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), createdBy: user.id, createdByName: user.displayName };
     const [id] = await db.add('tasks', [record as unknown as Record<string, unknown>]);
     return id ? json({ id, ...record }, 201) : error('Could not assign task.', 500);
+  }),
+
+  'POST /api/tasks/:id/media': protectedRoute(['admin', 'staff'], async ({ params, body }, user) => {
+    const [task] = await db.get<TaskRecord>('tasks', [params.id], { consistent: true });
+    if (!task) return error('Task not found.', 404);
+    if (user.role === 'staff' && task.assignedTo !== user.id) return error('You can upload evidence only to your assigned tasks.', 403);
+    const input = (body || {}) as Record<string, unknown>;
+    const files = Array.isArray(input.attachments) ? input.attachments : [input];
+    try {
+      const attachments = await saveEvidenceFiles('task_media', 'taskId', params.id, user, files);
+      if (!attachments.length) return error('Select at least one photo or video.', 400);
+      await writeAudit(user, 'UPLOAD', 'task', params.id, 'Uploaded task completion evidence for ' + task.title);
+      return json({ attachments }, 201);
+    } catch (err) { return error(err instanceof Error ? err.message : 'Could not save task evidence.', 400); }
+  }),
+
+  'GET /api/tasks/:id/media/:mediaId': protectedRoute(['admin', 'staff'], async ({ params }, user) => {
+    const [task] = await db.get<TaskRecord>('tasks', [params.id], { consistent: true });
+    if (!task) return error('Task not found.', 404);
+    if (user.role === 'staff' && task.assignedTo !== user.id) return error('You do not have access to this task evidence.', 403);
+    const file = await readEvidenceFile('task_media', 'taskId', params.id, params.mediaId);
+    return file ? json(file) : error('Attachment not found.', 404);
   }),
 
   'PUT /api/tasks/:id': protectedRoute(['admin', 'staff'], async ({ params, body }, user) => {
@@ -727,13 +804,28 @@ export const handler = router({
     const [task] = await db.get<TaskRecord>('tasks', [params.id], { consistent: true });
     if (!task) return error('Task not found.', 404);
     if (user.role === 'staff' && task.assignedTo !== user.id) return error('You can update only tasks assigned to your account.', 403);
-    const [updated] = await db.tx.update('tasks', [{ id: params.id, record: { status } }], { patch: true });
+    if (user.role === 'staff' && task.status === 'Completed' && status !== 'Completed') return error('Completed tasks cannot be reopened by staff.', 403);
+    if (user.role === 'staff' && task.status === 'In progress' && status === 'Pending') return error('Staff cannot move a task backwards to Pending.', 403);
+    if (user.role === 'staff' && status === 'Completed') {
+      const evidence = await firestore.collection('task_media').where('taskId', '==', params.id).where('chunkIndex', '==', -1).limit(100).get();
+      const ownEvidence = evidence.docs.filter(doc => doc.data().uploadedBy === user.id);
+      const hasPhoto = ownEvidence.some(doc => String(doc.data().mimeType || '').startsWith('image/'));
+      const hasVideo = ownEvidence.some(doc => String(doc.data().mimeType || '').startsWith('video/'));
+      if (!hasPhoto || !hasVideo) return error('Upload both your own task photo and task video before marking it completed.', 400);
+    }
+    const [updated] = await db.tx.update('tasks', [{ id: params.id, record: { status, updatedAt: new Date().toISOString(), updatedBy: user.id, updatedByName: user.displayName, ...(status === 'Completed' ? { completedAt: new Date().toISOString(), completedBy: user.id, completedByName: user.displayName } : {}) } }], { patch: true });
     return updated ? json({ updated: true }) : error('Could not update task.', 500);
   }),
 
   'DELETE /api/tasks/:id': protectedRoute(['admin'], async ({ params }, user) => {
     const [task] = await db.get<TaskRecord>('tasks', [params.id], { consistent: true });
     if (!task) return error('Task not found.', 404);
+    const media = await firestore.collection('task_media').where('taskId', '==', params.id).get();
+    for (let offset = 0; offset < media.docs.length; offset += 400) {
+      const batch = firestore.batch();
+      media.docs.slice(offset, offset + 400).forEach(doc => batch.delete(doc.ref));
+      await batch.commit();
+    }
     const [deleted] = await db.delete('tasks', [params.id]);
     if (!deleted) return error('Could not delete task.', 500);
     await writeAudit(user, 'DELETE', 'task', params.id, 'Deleted task: ' + task.title);
@@ -746,18 +838,14 @@ export const handler = router({
   }),
 
   'POST /api/attendance/check-in': protectedRoute(['staff'], async ({ body }, user) => {
-    const input = (body || {}) as Record<string, unknown>;
     const workDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
     const result = await db.list<Record<string, unknown>>('attendance', { limit: 500 });
     if (result.items.some(item => item.userId === user.id && item.workDate === workDate)) return error('Attendance has already been recorded for today.', 409);
-    const record: Record<string, unknown> = { userId: user.id, displayName: user.displayName, workDate, checkInAt: cleanText(input.capturedAt, 40) || new Date().toISOString(), status: 'Checked in' };
+    const startedAt = new Date().toISOString();
+    const record: Record<string, unknown> = { userId: user.id, displayName: user.displayName, workDate, checkInAt: startedAt, createdAt: startedAt, status: 'Checked in', attendanceSource: 'Staff' };
     const [id] = await db.add('attendance', [record]);
     if (!id) return error('Could not save your check-in.', 500);
-    const latitude = Number(input.latitude);
-    const longitude = Number(input.longitude);
-    if (Number.isFinite(latitude) && Number.isFinite(longitude) && Math.abs(latitude) <= 90 && Math.abs(longitude) <= 180) {
-      await db.add('locations', [{ attendanceId: id, userId: user.id, displayName: user.displayName, latitude, longitude, accuracy: Number(input.accuracy) || 0, capturedAt: record.checkInAt }]);
-    }
+    // Attendance check-in no longer collects or stores GPS coordinates.
     return json({ id, ...record }, 201);
   }),
 
@@ -784,78 +872,10 @@ export const handler = router({
     return json({ updated: true });
   }),
 
-  'POST /api/attendance/gps-lost': protectedRoute(['staff'], async ({ body }, user) => {
-    const reason = cleanText(body?.reason, 100);
-    if (!isConfirmedGpsLossReason(reason)) {
-      return error('A confirmed location permission or phone location-service loss is required.', 400);
-    }
-    const today = new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit',
-    }).format(new Date());
-    const [attendanceResult, holidayResult] = await Promise.all([
-      db.list<Record<string, unknown>>('attendance', { limit: 1000 }),
-      db.list<Record<string, unknown>>('holiday_requests', { limit: 500 }),
-    ]);
-    const todays = attendanceResult.items
-      .filter(item => item.userId === user.id && item.workDate === today)
-      .sort((a, b) => String(b.checkInAt || '').localeCompare(String(a.checkInAt || '')));
-    const active = todays.find(item => !item.checkOutAt);
-    if (!active) {
-      const latest = todays[0];
-      return json({ monitoring: false, reason: latest?.gpsRestartRequired || latest?.gpsCancelled ? 'restart-required' : 'no-active-shift' });
-    }
-    const holidayExempt = holidayResult.items.some(request =>
-      request.userId === user.id &&
-      ['pending', 'approved'].includes(String(request.status)) &&
-      String(request.startDate || '') <= today &&
-      String(request.endDate || '') >= today
-    );
-    if (holidayExempt) return json({ monitoring: false, reason: 'holiday-exempt' });
-
-    const attendanceRef = firestore.collection('attendance').doc(String(active.id));
-    let outcome: { monitoring: boolean; reason?: string; deadlineAt?: string; remainingSeconds?: number } = {
-      monitoring: false, reason: 'no-active-shift',
-    };
-    await firestore.runTransaction(async transaction => {
-      const snapshot = await transaction.get(attendanceRef);
-      if (!snapshot.exists) {
-        outcome = { monitoring: false, reason: 'no-active-shift' };
-        return;
-      }
-      const latest = snapshot.data() || {};
-      if (latest.checkOutAt) {
-        outcome = { monitoring: false, reason: 'no-active-shift' };
-        return;
-      }
-      if (latest.gpsRestartRequired === true || latest.gpsCancelled === true) {
-        outcome = { monitoring: false, reason: 'restart-required' };
-        return;
-      }
-      const existingTime = typeof latest.gpsIssueStartedAt === 'string'
-        ? Date.parse(latest.gpsIssueStartedAt)
-        : Number.NaN;
-      const startedAt = Number.isFinite(existingTime) ? existingTime : Date.now();
-      const startedAtIso = new Date(startedAt).toISOString();
-      const updates: Record<string, unknown> = {
-        gpsIssueReason: reason,
-        gpsStatus: 'disabled',
-      };
-      if (!Number.isFinite(existingTime)) {
-        updates.gpsIssueStartedAt = startedAtIso;
-        updates.gpsIssueId = randomBytes(12).toString('hex');
-        updates.gpsReminderStage = 0;
-        updates.shiftEvents = FieldValue.arrayUnion({
-          type: 'gps-lost', at: startedAtIso, reason,
-        });
-      }
-      transaction.update(attendanceRef, updates);
-      outcome = {
-        monitoring: true,
-        deadlineAt: new Date(startedAt + 15 * 60 * 1000).toISOString(),
-        remainingSeconds: Math.max(0, Math.ceil((startedAt + 15 * 60 * 1000 - Date.now()) / 1000)),
-      };
-    });
-    return json(outcome);
+  'POST /api/attendance/gps-lost': protectedRoute(['staff'], async () => {
+    // Legacy clients are told to stop shift GPS monitoring. Attendance is never
+    // blocked or cancelled because location permission is unavailable.
+    return json({ monitoring: false, reason: 'no-active-shift', trackingDisabled: true });
   }),
 
   'POST /api/attendance/check-out': protectedRoute(['staff'], async (_ctx, user) => {
@@ -869,6 +889,9 @@ export const handler = router({
       id: String(existing.id),
       record: {
         checkOutAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        endedBy: user.id,
+        endedByName: user.displayName,
         status: 'Completed',
         gpsStatus: existing.gpsIssueStartedAt ? 'disabled-at-checkout' : (existing.gpsStatus || 'enabled'),
         gpsIssueStartedAt: FieldValue.delete(),
@@ -894,7 +917,7 @@ export const handler = router({
     if (latest && !latest.checkOutAt && latest.dayType !== 'Absent') return error('End this staff member’s active shift before marking absent.', 409);
     const absence = {
       userId: member.id, displayName: member.displayName, workDate,
-      checkInAt: '', checkOutAt: new Date().toISOString(), status: 'Absent', dayType: 'Absent',
+      checkInAt: '', checkOutAt: new Date().toISOString(), createdAt: latest?.createdAt || new Date().toISOString(), updatedAt: new Date().toISOString(), status: 'Absent', dayType: 'Absent',
       absenceReason: reason, markedAbsentBy: admin.displayName, attendanceSource: 'Admin',
     };
     if (latest) {
@@ -935,6 +958,7 @@ export const handler = router({
       displayName: member.displayName,
       workDate,
       checkInAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
       status: 'Checked in',
       startedByAdmin: admin.displayName,
       attendanceSource: 'Admin',
@@ -961,7 +985,10 @@ export const handler = router({
       id: String(existing.id),
       record: {
         checkOutAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
         status: 'Completed',
+        endedByAdminId: admin.id,
+        endedByAdminName: admin.displayName,
         endedByAdmin: admin.displayName,
         gpsIssueStartedAt: FieldValue.delete(),
         gpsIssueId: FieldValue.delete(),
@@ -1058,6 +1085,91 @@ export const handler = router({
     return json({ updated: true, status });
   }),
 
+  'POST /api/location-requests': protectedRoute(['admin'], async ({ body }, admin) => {
+    const staffId = cleanText(body?.staffId, 128);
+    const [member] = await db.get<UserRecord>('users', [staffId], { consistent: true });
+    if (!member || member.role !== 'staff' || !member.active) return error('Choose an active staff member.', 400);
+    const createdAt = new Date().toISOString();
+    const record = { staffId: member.id, staffName: member.displayName, requestedBy: admin.id, requestedByName: admin.displayName, status: 'pending', createdAt, expiresAt: new Date(Date.now() + 2 * 60 * 1000).toISOString() };
+    const [id] = await db.add('location_requests', [record]);
+    if (!id) return error('Could not send the location request.', 500);
+    await db.add('staff_notifications', [{ recipientId: member.id, recipientRole: 'staff', type: 'location-request', title: 'Admin requested your location', message: admin.displayName + ' requested a one-time current GPS location. Open the app to respond.', relatedId: id, createdAt, read: false }]);
+    await writeAudit(admin, 'REQUEST_LOCATION', 'staff_location', id, 'Requested a one-time location from ' + member.displayName);
+    return json({ id, ...record }, 201);
+  }),
+
+  'GET /api/location-requests/pending': protectedRoute(['staff'], async (_ctx, user) => {
+    const result = await db.list<Record<string, unknown>>('location_requests', { limit: 100 });
+    const nowTime = Date.now();
+    const items = result.items.filter(item => item.staffId === user.id && item.status === 'pending' && new Date(String(item.expiresAt || 0)).getTime() > nowTime);
+    return json({ items });
+  }),
+
+  'POST /api/location-requests/:id/respond': protectedRoute(['staff'], async ({ params, body }, user) => {
+    const [request] = await db.get<Record<string, unknown>>('location_requests', [params.id], { consistent: true });
+    if (!request || request.staffId !== user.id) return error('Location request not found.', 404);
+    if (request.status !== 'pending' || new Date(String(request.expiresAt || 0)).getTime() <= Date.now()) return error('This location request has expired or was already answered.', 409);
+    const input = (body || {}) as Record<string, unknown>;
+    const status = input.status === 'failed' ? 'unavailable' : 'captured';
+    const latitude = Number(input.latitude), longitude = Number(input.longitude);
+    if (status === 'captured' && (!Number.isFinite(latitude) || !Number.isFinite(longitude) || Math.abs(latitude) > 90 || Math.abs(longitude) > 180)) return error('A valid current GPS location is required.', 400);
+    const capturedAt = new Date().toISOString();
+    const patch: Record<string, unknown> = {
+      status,
+      capturedAt,
+      responseMessage: status === 'unavailable' ? cleanText(input.message, 240) || 'Staff location was unavailable.' : '',
+      ...(status === 'captured' ? {
+        latitude, longitude,
+        accuracy: Math.min(Math.max(Number(input.accuracy) || 0, 0), 100000),
+        address: cleanText(input.address, 500) || 'Address not available; open in Google Maps.',
+      } : {}),
+    };
+    const [updated] = await db.tx.update('location_requests', [{ id: params.id, record: patch }], { patch: true });
+    if (updated) await writeAudit(user, 'SHARE_LOCATION', 'staff_location', params.id, 'Shared a one-time GPS location in response to an admin request.');
+    return updated ? json({ updated: true, status }) : error('Could not submit the location response.', 500);
+  }),
+
+  'GET /api/location-requests/:id': protectedRoute(['admin'], async ({ params }) => {
+    const [stored] = await db.get<Record<string, unknown>>('location_requests', [params.id], { consistent: true });
+    if (!stored) return error('Location request not found.', 404);
+    let item: Record<string, unknown> = { ...stored, id: params.id };
+    if (item.status === 'pending' && new Date(String(item.expiresAt || 0)).getTime() <= Date.now()) {
+      await db.tx.update('location_requests', [{ id: params.id, record: { status: 'expired' } }], { patch: true });
+      item = { ...item, status: 'expired' };
+    }
+    return json({ item });
+  }),
+
+  'GET /api/saved-locations': protectedRoute(['admin'], async () => {
+    const result = await db.list<Record<string, unknown>>('saved_locations', { limit: 500 });
+    return json({ items: result.items.sort((a, b) => String(b.savedAt || '').localeCompare(String(a.savedAt || ''))) });
+  }),
+
+  'POST /api/saved-locations': protectedRoute(['admin'], async ({ body }, admin) => {
+    const requestId = cleanText(body?.requestId, 128);
+    const [request] = await db.get<Record<string, unknown>>('location_requests', [requestId], { consistent: true });
+    if (!request || request.status !== 'captured') return error('Only a successfully captured location can be saved.', 400);
+    if (request.savedLocationId) return error('This location has already been saved.', 409);
+    const record = {
+      staffId: String(request.staffId || ''),
+      staffName: String(request.staffName || 'Staff member'),
+      latitude: Number(request.latitude),
+      longitude: Number(request.longitude),
+      accuracy: Number(request.accuracy || 0),
+      address: cleanText(request.address, 500),
+      capturedAt: String(request.capturedAt || ''),
+      savedAt: new Date().toISOString(),
+      savedBy: admin.id,
+      savedByName: admin.displayName,
+      requestId,
+    };
+    const [id] = await db.add('saved_locations', [record]);
+    if (!id) return error('Could not save this location.', 500);
+    await db.tx.update('location_requests', [{ id: requestId, record: { savedLocationId: id } }], { patch: true });
+    await writeAudit(admin, 'SAVE_LOCATION', 'saved_location', id, 'Saved the location of ' + record.staffName);
+    return json({ id, ...record }, 201);
+  }),
+
   'GET /api/locations': protectedRoute(['admin'], async () => {
     const today = new Intl.DateTimeFormat('en-CA', {
       timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit',
@@ -1099,60 +1211,8 @@ export const handler = router({
     return json({ items });
   }),
 
-  'POST /api/locations': protectedRoute(['staff'], async ({ body }, user) => {
-    const input = (body || {}) as Record<string, unknown>;
-    const latitude = Number(input.latitude);
-    const longitude = Number(input.longitude);
-    if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || Math.abs(latitude) > 90 || Math.abs(longitude) > 180) {
-      return error('A valid GPS location is required.', 400);
-    }
-    const today = new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit',
-    }).format(new Date());
-    const shifts = await db.list<Record<string, unknown>>('attendance', { limit: 1000 });
-    const active = shifts.items
-      .filter(item => item.userId === user.id && item.workDate === today && !item.checkOutAt)
-      .sort((a, b) => String(b.checkInAt || '').localeCompare(String(a.checkInAt || '')))[0];
-    if (!active || active.gpsRestartRequired === true || active.gpsCancelled === true) {
-      return error('Location can be shared only during an active, authorised shift.', 403);
-    }
-
-    const attendanceRef = firestore.collection('attendance').doc(String(active.id));
-    const locationRef = firestore.collection('locations').doc();
-    const capturedAt = new Date().toISOString();
-    const record = {
-      attendanceId: String(active.id),
-      userId: user.id,
-      displayName: user.displayName,
-      latitude,
-      longitude,
-      accuracy: Math.min(Math.max(Number(input.accuracy) || 0, 0), 100000),
-      capturedAt,
-    };
-    let saved = false;
-    let gpsRestored = false;
-    await firestore.runTransaction(async transaction => {
-      const snapshot = await transaction.get(attendanceRef);
-      if (!snapshot.exists) return;
-      const shift = snapshot.data() || {};
-      if (shift.checkOutAt || shift.gpsRestartRequired === true || shift.gpsCancelled === true) return;
-      gpsRestored = Boolean(shift.gpsIssueStartedAt);
-      transaction.create(locationRef, record);
-      if (gpsRestored) {
-        transaction.update(attendanceRef, {
-          gpsIssueStartedAt: FieldValue.delete(),
-          gpsIssueId: FieldValue.delete(),
-          gpsIssueReason: FieldValue.delete(),
-          gpsReminderStage: FieldValue.delete(),
-          gpsStatus: 'enabled',
-          gpsRestoredAt: capturedAt,
-          shiftEvents: FieldValue.arrayUnion({ type: 'gps-restored', at: capturedAt }),
-        });
-      }
-      saved = true;
-    });
-    if (!saved) return error('Location can be shared only during an active shift.', 403);
-    return json({ id: locationRef.id, saved: true, gpsRestored }, 201);
+  'POST /api/locations': protectedRoute(['staff'], async () => {
+    return error('Continuous GPS tracking is disabled. Location is shared only in response to an administrator request.', 410);
   }),
 
   'GET /api/announcements': protectedRoute(['admin', 'staff'], async () => {

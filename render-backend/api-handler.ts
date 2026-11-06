@@ -748,6 +748,14 @@ export async function apiHandler(req: any, res: any) {
         await db.collection('staff_notifications').doc(id).update({read:req.body?.read !== false,readAt:now()});
         send(res,200,{updated:true}); return;
       }
+      if (path.startsWith('/api/notifications/') && method === 'DELETE') {
+        const user = await requireUser(req);
+        if (!user) { send(res,401,{error:'Your session has expired. Please sign in again.'}); return; }
+        const id = routeId(path,'/api/notifications'), existing = await getDoc('staff_notifications',id);
+        if (!existing || (String(existing.recipientId || '') !== user.uid && String(existing.recipientId || '') !== user.userId)) { send(res,404,{error:'Notification not found.'}); return; }
+        await db.collection('staff_notifications').doc(id).delete();
+        send(res,200,{deleted:true}); return;
+      }
       if (method === 'POST' && path === '/api/push-tokens') {
         const user = await requireUser(req);
         if (!user) { send(res,401,{error:'Your session has expired. Please sign in again.'}); return; }
@@ -772,6 +780,16 @@ export async function apiHandler(req: any, res: any) {
           .sort((a,b) => String(b.paidAt || '').localeCompare(String(a.paidAt || '')));
         send(res,200,{items}); return;
       }
+      if (path.startsWith('/api/payroll/') && method === 'DELETE') {
+        const user = await requireUser(req);
+        if (!user) { send(res,401,{error:'Your session has expired. Please sign in again.'}); return; }
+        if (!allow(user,['admin'],res)) return;
+        const id = routeId(path,'/api/payroll'), existing = await getDoc('payroll',id);
+        if (!existing) { send(res,404,{error:'Salary record not found.'}); return; }
+        await db.collection('payroll').doc(id).delete();
+        await audit(user,'DELETE','payroll',id,'Deleted salary record for '+String(existing.staffName||'staff')+' ('+String(existing.period||'')+')');
+        send(res,200,{deleted:true}); return;
+      }
       if (path === '/api/payroll' && method === 'POST') {
         const user = await requireUser(req);
         if (!user) { send(res,401,{error:'Your session has expired. Please sign in again.'}); return; }
@@ -795,18 +813,22 @@ export async function apiHandler(req: any, res: any) {
       if (path === '/api/inventory' && method === 'GET') {
         const user = await requireUser(req);
         if (!user) { send(res,401,{error:'Your session has expired. Please sign in again.'}); return; }
-        const items = await list('inventory');
-        send(res,200,{items:user.role === 'admin' ? items : items.map(({unitCost,supplier,...item}) => item)}); return;
+        const allItems = await list('inventory');
+        const visibleItems = user.role === 'admin' ? allItems : allItems.filter(item => item.assignedTo === user.uid).map(({unitCost,supplier,...item}) => item);
+        send(res,200,{items:visibleItems}); return;
       }
       if (path === '/api/inventory' && method === 'POST') {
         const user = await requireUser(req);
         if (!user) { send(res,401,{error:'Your session has expired. Please sign in again.'}); return; }
         if (!allow(user,['admin'],res)) return;
         const body=req.body||{}, name=clean(body.name,120), sku=clean(body.sku,60), category=clean(body.category,80);
+        const assignedTo=clean(body.assignedTo,128);
+        const assignedStaff=assignedTo?await getDoc('users',assignedTo):null;
+        if (assignedTo&&(!assignedStaff||assignedStaff.role!=='staff'||assignedStaff.active!==true)) { send(res,400,{error:'Choose an active staff member for this inventory assignment.'}); return; }
         const quantity=Number(body.quantity), minimumQuantity=Number(body.minimumQuantity);
         if (!name || !sku || !category || !Number.isInteger(quantity) || quantity<0 || !Number.isInteger(minimumQuantity) || minimumQuantity<0) { send(res,400,{error:'Enter a valid item name, SKU, category and stock quantities.'}); return; }
         if ((await list('inventory')).some(item => String(item.sku||'').toLowerCase()===sku.toLowerCase())) { send(res,409,{error:'That SKU is already in the inventory.'}); return; }
-        const record={name,sku,category,unit:clean(body.unit,30)||'pcs',quantity,minimumQuantity,unitCost:Number(body.unitCost||0),supplier:clean(body.supplier,120),location:clean(body.location,120),notes:clean(body.notes,500),active:body.active!==false,createdAt:now(),createdBy:user.uid};
+        const record={name,sku,category,unit:clean(body.unit,30)||'pcs',quantity,minimumQuantity,unitCost:Number(body.unitCost||0),supplier:clean(body.supplier,120),location:clean(body.location,120),notes:clean(body.notes,500),assignedTo:assignedTo||'',assignedToName:assignedStaff?clean(assignedStaff.displayName,80):'',active:body.active!==false,createdAt:now(),createdBy:user.uid};
         const ref=await db.collection('inventory').add(record);
         await audit(user,'CREATE','inventory',ref.id,'Added inventory item '+name);
         send(res,201,{id:ref.id,...record}); return;
@@ -817,6 +839,8 @@ export async function apiHandler(req: any, res: any) {
         const id=decodeURIComponent(path.slice('/api/inventory/'.length,-'/movements'.length).replace(/\/$/,''));
         const itemRef=db.collection('inventory').doc(id), itemSnap=await itemRef.get();
         if (!itemSnap.exists) { send(res,404,{error:'Inventory item not found.'}); return; }
+        const inventoryRecord=itemSnap.data()||{};
+        if (user.role!=='admin' && inventoryRecord.assignedTo!==user.uid) { send(res,403,{error:'You can view only inventory assigned to your account.'}); return; }
         if (method==='GET') {
           const items=(await list('inventory_movements')).filter(item=>item.itemId===id).sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||'')));
           send(res,200,{items}); return;
@@ -845,9 +869,11 @@ export async function apiHandler(req: any, res: any) {
         if (!allow(user,['admin'],res)) return;
         const id=routeId(path,'/api/inventory'), existing=await getDoc('inventory',id);
         if (!existing) { send(res,404,{error:'Inventory item not found.'}); return; }
-        const body=req.body||{}, quantity=Number(body.quantity), minimumQuantity=Number(body.minimumQuantity);
+        const body=req.body||{}, quantity=Number(body.quantity), minimumQuantity=Number(body.minimumQuantity), assignedTo=clean(body.assignedTo,128);
+        const assignedStaff=assignedTo?await getDoc('users',assignedTo):null;
+        if (assignedTo&&(!assignedStaff||assignedStaff.role!=='staff'||assignedStaff.active!==true)) { send(res,400,{error:'Choose an active staff member for this inventory assignment.'}); return; }
         if (!clean(body.name,120)||!clean(body.sku,60)||!clean(body.category,80)||!Number.isInteger(quantity)||quantity<0||!Number.isInteger(minimumQuantity)||minimumQuantity<0) { send(res,400,{error:'Enter valid inventory details.'}); return; }
-        const patch={name:clean(body.name,120),sku:clean(body.sku,60),category:clean(body.category,80),unit:clean(body.unit,30)||'pcs',quantity,minimumQuantity,unitCost:Number(body.unitCost||0),supplier:clean(body.supplier,120),location:clean(body.location,120),notes:clean(body.notes,500),active:body.active!==false,updatedAt:now()};
+        const patch={name:clean(body.name,120),sku:clean(body.sku,60),category:clean(body.category,80),unit:clean(body.unit,30)||'pcs',quantity,minimumQuantity,unitCost:Number(body.unitCost||0),supplier:clean(body.supplier,120),location:clean(body.location,120),notes:clean(body.notes,500),assignedTo:assignedTo||'',assignedToName:assignedStaff?clean(assignedStaff.displayName,80):'',active:body.active!==false,updatedAt:now()};
         await db.collection('inventory').doc(id).update(patch);
         await audit(user,'UPDATE','inventory',id,'Updated inventory item '+patch.name);
         send(res,200,{updated:true}); return;
@@ -889,6 +915,16 @@ export async function apiHandler(req: any, res: any) {
         await db.collection('installations').doc(id).update(patch);
         await audit(user,'UPDATE','installation',id,'Updated installation job status to '+status);
         send(res,200,{updated:true}); return;
+      }
+      if (path.startsWith('/api/installations/') && method==='DELETE') {
+        const user=await requireUser(req);
+        if (!user) { send(res,401,{error:'Your session has expired. Please sign in again.'}); return; }
+        const id=routeId(path,'/api/installations'), existing=await getDoc('installations',id);
+        if (!existing) { send(res,404,{error:'Installation job not found.'}); return; }
+        if (user.role!=='admin' && existing.assignedTo!==user.uid) { send(res,403,{error:'You can delete only installation jobs assigned to your account.'}); return; }
+        await db.collection('installations').doc(id).delete();
+        await audit(user,'DELETE','installation',id,'Deleted installation job for '+String(existing.customerName||'customer'));
+        send(res,200,{deleted:true}); return;
       }
       send(res,404,{error:'This API route was not found.'});
     } catch (error: any) {
