@@ -1989,11 +1989,11 @@ function TaskCompletionModal({ task, onClose, onComplete }: any) {
     return true;
   }
   return <Modal title="Complete task with evidence" subtitle={task.title} onClose={onClose}>
-    <form className="form-grid" onSubmit={async event => { event.preventDefault(); if (!photo && !video) { window.alert('Attach at least one photo or video.'); return; } setBusy(true); await onComplete(photo, video); setBusy(false); }}>
-      <p className="form-hint">At least one photo or video is required. The task will remain open until the upload succeeds.</p>
-      <Field label="Task photo (optional if video attached)" wide><input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={event => { const file=event.target.files?.[0]||null; setPhoto(file&&valid(file,'photo')?file:null); }}/>{photo&&<small>{photo.name} · {(photo.size/1024).toFixed(0)} KB</small>}</Field>
-      <Field label="Task video (optional if photo attached)" wide><input type="file" accept="video/mp4,video/webm,video/quicktime" capture="environment" onChange={event => { const file=event.target.files?.[0]||null; setVideo(file&&valid(file,'video')?file:null); }}/>{video&&<small>{video.name} · {(video.size/1024/1024).toFixed(1)} MB</small>}</Field>
-      <div className="form-actions"><button type="button" className="btn secondary" onClick={onClose}>Cancel</button><button className="btn primary" disabled={busy||(!photo&&!video)}>{busy?'Uploading evidence…':'Upload and complete task'}</button></div>
+    <form className="form-grid" onSubmit={async event => { event.preventDefault(); if (!photo || !video) { window.alert('Both a task photo and a task video are required.'); return; } setBusy(true); await onComplete(photo, video); setBusy(false); }}>
+      <p className="form-hint">Both a photo and a video are required. The task remains open until both files upload successfully.</p>
+      <Field label="Task photo (required)" wide><input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={event => { const file=event.target.files?.[0]||null; setPhoto(file&&valid(file,'photo')?file:null); }}/>{photo&&<small>{photo.name} · {(photo.size/1024).toFixed(0)} KB</small>}</Field>
+      <Field label="Task video (required)" wide><input type="file" accept="video/mp4,video/webm,video/quicktime" capture="environment" onChange={event => { const file=event.target.files?.[0]||null; setVideo(file&&valid(file,'video')?file:null); }}/>{video&&<small>{video.name} · {(video.size/1024/1024).toFixed(1)} MB</small>}</Field>
+      <div className="form-actions"><button type="button" className="btn secondary" onClick={onClose}>Cancel</button><button className="btn primary" disabled={busy||!photo||!video}>{busy?'Uploading evidence…':'Upload and complete task'}</button></div>
     </form>
   </Modal>;
 }
