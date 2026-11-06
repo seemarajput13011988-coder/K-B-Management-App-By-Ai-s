@@ -2206,7 +2206,6 @@ function ComplaintModal({ customers, staff, session, onClose, onSave }: any) {
       event.preventDefault();
       if (f.complaintFor === 'Customer' && !f.customerId) { window.alert('Select a customer.'); return; }
       if (f.complaintFor === 'Staff' && !(isAdmin ? f.staffId : session.user.id)) { window.alert('Select a staff member.'); return; }
-      if (!isAdmin && !photoFile && !videoFile) { window.alert('Attach at least one photo or video before submitting a complaint.'); return; }
       setSaving(true);
       await onSave({ ...f, customerName: customer?.name || '', staffId: isAdmin ? f.staffId : session.user.id, photoFile, videoFile });
       setSaving(false);
