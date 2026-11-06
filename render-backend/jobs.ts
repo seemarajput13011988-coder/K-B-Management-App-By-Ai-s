@@ -17,9 +17,100 @@ function indiaDateParts() {
 function sha(value: string) { return createHash('sha256').update(value).digest('hex'); }
 
 export async function runGpsGracePeriod() {
-  // Location is now captured only in response to an administrator's explicit request.
-  // Attendance must never be warned, blocked, or cancelled because of background GPS.
-  return;
+  const records = await readCollection('attendance', 1000);
+  const requests = await readCollection('holiday_requests', 1000);
+  const users = await readCollection('users', 500);
+  const currentTime = Date.now();
+
+  for (const item of records) {
+    if (!item.id || !item.gpsIssueStartedAt || item.checkOutAt || item.gpsRestartRequired) continue;
+    const issueTime = Date.parse(String(item.gpsIssueStartedAt));
+    if (!Number.isFinite(issueTime)) continue;
+    const elapsed = currentTime - issueTime;
+    const exempt = requests.some(request =>
+      request.userId === item.userId &&
+      ['pending', 'approved'].includes(String(request.status)) &&
+      String(request.startDate || '') <= String(item.workDate || '') &&
+      String(request.endDate || '') >= String(item.workDate || '')
+    );
+    if (exempt) continue;
+
+    const issueId = String(item.gpsIssueId || sha(String(item.id) + '|' + String(item.gpsIssueStartedAt)).slice(0, 16));
+    const attendanceRef = firestore.collection('attendance').doc(String(item.id));
+    const reminders = [
+      { minute: 5, stage: 1, message: 'GPS is still unavailable. Please restore location within 10 minutes.' },
+      { minute: 10, stage: 2, message: 'Only 5 minutes remain in the GPS restoration period.' },
+      { minute: 14, stage: 3, message: 'Final GPS reminder: the active shift will be cancelled in about 1 minute if location is not restored.' },
+    ];
+
+    for (const reminder of reminders) {
+      if (elapsed < reminder.minute * 60000) continue;
+      const notificationRef = firestore.collection('staff_notifications').doc(String(item.id) + '-gps-' + issueId + '-' + reminder.stage);
+      await firestore.runTransaction(async transaction => {
+        const latest = await transaction.get(attendanceRef);
+        const current = latest.data();
+        const currentIssueTime = Date.parse(String(current?.gpsIssueStartedAt || ''));
+        if (!latest.exists || !current || current.gpsIssueStartedAt !== item.gpsIssueStartedAt ||
+            current.checkOutAt || current.gpsRestartRequired || !Number.isFinite(currentIssueTime) ||
+            Date.now() - currentIssueTime < reminder.minute * 60000 ||
+            Number(current.gpsReminderStage || 0) >= reminder.stage) return;
+        transaction.update(attendanceRef, { gpsReminderStage: reminder.stage });
+        transaction.set(notificationRef, {
+          recipientId: String(item.userId), recipientRole: 'staff', type: 'gps-reminder',
+          title: 'GPS restoration reminder', message: reminder.message,
+          createdAt: now(), read: false, attendanceId: String(item.id),
+        }, { merge: true });
+      });
+    }
+
+    if (elapsed < 15 * 60000) continue;
+    const cancelledAt = now();
+    const cancellationNotificationRef = firestore.collection('staff_notifications').doc(String(item.id) + '-gps-' + issueId + '-cancelled');
+    const cancellationAuditRef = firestore.collection('audit_logs').doc('gps-cancelled-' + String(item.id) + '-' + issueId);
+    const didCancel = await firestore.runTransaction(async transaction => {
+      const latest = await transaction.get(attendanceRef);
+      const current = latest.data();
+      const currentIssueTime = Date.parse(String(current?.gpsIssueStartedAt || ''));
+      if (!latest.exists || !current || current.gpsIssueStartedAt !== item.gpsIssueStartedAt ||
+          current.checkOutAt || current.gpsRestartRequired || !Number.isFinite(currentIssueTime) ||
+          Date.now() - currentIssueTime < 15 * 60000) return false;
+      transaction.update(attendanceRef, {
+        checkOutAt: cancelledAt,
+        status: 'Cancelled - GPS unavailable',
+        gpsStatus: 'disabled',
+        gpsCancelled: true,
+        gpsRestartRequired: true,
+        gpsCancelledAt: cancelledAt,
+        gpsCancellationReason: current.gpsIssueReason || 'GPS was not restored within 15 minutes',
+        shiftEvents: FieldValue.arrayUnion({ type: 'gps-cancelled', at: cancelledAt, reason: 'GPS was not restored within 15 minutes' }),
+      });
+      transaction.set(cancellationNotificationRef, {
+        recipientId: String(item.userId), recipientRole: 'staff', type: 'gps-cancelled',
+        title: 'Shift cancelled',
+        message: 'Your shift was automatically cancelled because GPS/location was not restored within 15 minutes. Contact an administrator to restart it.',
+        createdAt: cancelledAt, read: false, attendanceId: String(item.id),
+      }, { merge: true });
+      transaction.set(cancellationAuditRef, {
+        actorId: 'system', actorName: 'K&B GPS monitor', action: 'GPS_SHIFT_CANCELLED',
+        entityType: 'attendance', entityId: String(item.id),
+        description: 'Automatically cancelled ' + String(item.displayName || 'staff shift') + ' after the 15-minute GPS restoration period.',
+        createdAt: cancelledAt, serverCreatedAt: FieldValue.serverTimestamp(),
+      }, { merge: true });
+      return true;
+    });
+    if (!didCancel) continue;
+
+    const admins = users.filter(entry => entry.role === 'admin' && entry.active === true);
+    await Promise.all(admins.map(admin => {
+      const notificationRef = firestore.collection('staff_notifications').doc(String(item.id) + '-gps-' + issueId + '-cancelled-admin-' + String(admin.id));
+      return notificationRef.set({
+        recipientId: String(admin.id), recipientRole: 'admin', type: 'gps-cancelled-admin',
+        title: 'Staff shift cancelled for GPS',
+        message: String(item.displayName || 'A staff member') + ' did not restore GPS/location within 15 minutes. The shift was automatically cancelled.',
+        createdAt: cancelledAt, read: false, attendanceId: String(item.id),
+      }, { merge: true });
+    }));
+  }
 }
 
 export async function sendTaskDueReminders() {
