@@ -58,7 +58,7 @@ export default function GpsTrackingWorkspace({flash}:{flash:(message:string)=>vo
     try {
       const result=await api.post<LocationRequest>('/api/location-requests',{staffId:member.id});
       setActiveRequest(result.data as LocationRequest);
-      flash('One-time location request sent to '+member.displayName+'.');
+      flash('Location request sent to '+member.displayName+'.');
     }catch(error){flash(error instanceof Error?error.message:'Could not request this staff member’s location.');}
     finally{setBusyStaffId('');}
   }
@@ -75,7 +75,7 @@ export default function GpsTrackingWorkspace({flash}:{flash:(message:string)=>vo
 
   return <section className="panel gps-workspace">
     <div className="toolbar">
-      <div><h2>GPS Tracking</h2><p className="subtle">Request a staff member’s current location only when needed. No continuous tracking.</p></div>
+      <div><h2>GPS Tracking</h2><p className="subtle">Get a fresh location from a staff phone when it is online and the app is open.</p></div>
       <button className="btn secondary" onClick={()=>void load()} disabled={loading}><RefreshCw size={15}/> Refresh</button>
     </div>
     <div className="gps-tabs">
@@ -83,7 +83,7 @@ export default function GpsTrackingWorkspace({flash}:{flash:(message:string)=>vo
       <button className={section==='saved'?'active':''} onClick={()=>setSection('saved')}><Save size={15}/> Saved Locations <span>{saved.length}</span></button>
     </div>
     {section==='request' ? <>
-      <div className="gps-notice"><MapPin size={17}/><span>Choose a staff member and press Get Location. The staff app now checks for admin requests automatically while it is running and sends one fresh GPS point when permission and GPS are available. Closed-app/background capture still requires the dedicated Android foreground-location service; this screen will not falsely report a location until the phone actually responds.</span></div>
+      <div className="gps-notice"><MapPin size={17}/><span>Choose a staff member and tap Get Location. Their phone uses the location permission already granted during setup, without asking again. The staff app must be online and open to respond.</span></div>
       {loading?<p className="ops-empty">Loading staff…</p>:<div className="gps-staff-list">
         {staff.map(member=><article className="gps-staff-row" key={member.id}>
           <div className="gps-avatar"><MapPin size={17}/></div>
