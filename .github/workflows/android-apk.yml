@@ -1,4 +1,5 @@
 name: Build private Android APK
+# Layout and frontend changes must always produce a fresh installable APK.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -7,8 +8,14 @@ on:
     branches:
       - firebase-migration
       - safe-firebase-migration-copilot-review
+      - render-backend-migration
+      - on-demand-gps-proof-permissions
+      - ui-rebuild-gps-holidays-api-fixes
+      - quality-audit-2026-11-06
+      - fix-android-document-picker-2026-11-06
     paths:
       - "src/**"
+      - "render-backend/**"
       - "public/**"
       - "index.html"
       - "package.json"
@@ -39,6 +46,18 @@ jobs:
       - uses: android-actions/setup-android@v4
       - name: Install Android build platform
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - name: Validate required release secrets
+        env:
+          ANDROID_GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.ANDROID_GOOGLE_SERVICES_JSON_BASE64 }}
+        run: |
+          missing=()
+          if [ -z "$ANDROID_GOOGLE_SERVICES_JSON_BASE64" ]; then missing+=("ANDROID_GOOGLE_SERVICES_JSON_BASE64"); fi
+          if [ "${#missing[@]}" -gt 0 ]; then
+            printf 'Missing required GitHub repository secrets: %s\\n' "${missing[@]}"
+            echo "::error::Add the missing release secrets before building the production APK."
+            exit 1
+          fi
+          echo "All required release secrets are present."
       - name: Install dependencies and build web app
         env:
           # Firebase web config is public client configuration, not a private key.
@@ -49,8 +68,7 @@ jobs:
           VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.VITE_FIREBASE_STORAGE_BUCKET || 'kandb-net-sevice.firebasestorage.app' }}
           VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID || '847932976304' }}
           VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID || '1:847932976304:web:87148565df2a329a5f9f75' }}
-          VITE_FIREBASE_FUNCTIONS_URL: https://asia-south1-kandb-net-sevice.cloudfunctions.net/api
-          VITE_GOOGLE_MAPS_API_KEY: ${{ secrets.VITE_GOOGLE_MAPS_API_KEY }}
+          VITE_API_BASE_URL: https://kandb-management-nexus-api-zv7f.onrender.com
         run: |
           npm install
           npx tsc --noEmit
@@ -59,10 +77,98 @@ jobs:
           npm --prefix functions test
           npx cap add android
           npx cap sync android
+      - name: Add native Android Save As document picker
+        run: |
+          PACKAGE_DIR=android/app/src/main/java/kandbnet/service2010
+          mkdir -p "$PACKAGE_DIR"
+          cat > "$PACKAGE_DIR/DocumentSaverPlugin.java" <<'JAVA'
+          package kandbnet.service2010;
+
+          import android.app.Activity;
+          import android.content.Intent;
+          import android.net.Uri;
+          import android.util.Base64;
+          import androidx.activity.result.ActivityResult;
+          import com.getcapacitor.JSObject;
+          import com.getcapacitor.Plugin;
+          import com.getcapacitor.PluginCall;
+          import com.getcapacitor.PluginMethod;
+          import com.getcapacitor.annotation.ActivityCallback;
+          import com.getcapacitor.annotation.CapacitorPlugin;
+          import java.io.OutputStream;
+
+          @CapacitorPlugin(name = "DocumentSaver")
+          public class DocumentSaverPlugin extends Plugin {
+            @PluginMethod
+            public void saveFile(PluginCall call) {
+              String fileName = call.getString("fileName");
+              String mimeType = call.getString("mimeType");
+              String dataBase64 = call.getString("dataBase64");
+              if (fileName == null || fileName.trim().isEmpty() || mimeType == null || dataBase64 == null) {
+                call.reject("A file name, file type, and file data are required.");
+                return;
+              }
+              Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+              intent.addCategory(Intent.CATEGORY_OPENABLE);
+              intent.setType(mimeType);
+              intent.putExtra(Intent.EXTRA_TITLE, fileName);
+              startActivityForResult(call, intent, "handleSaveResult");
+            }
+
+            @ActivityCallback
+            private void handleSaveResult(PluginCall call, ActivityResult result) {
+              if (call == null) return;
+              if (result == null || result.getResultCode() != Activity.RESULT_OK || result.getData() == null) {
+                call.reject("Save cancelled. No file was written.");
+                return;
+              }
+              Uri uri = result.getData().getData();
+              if (uri == null) {
+                call.reject("Android did not return a destination for the file.");
+                return;
+              }
+              try {
+                String encoded = call.getString("dataBase64");
+                byte[] bytes = Base64.decode(encoded, Base64.DEFAULT);
+                try (OutputStream output = getContext().getContentResolver().openOutputStream(uri, "w")) {
+                  if (output == null) throw new IllegalStateException("Android could not open the selected file.");
+                  output.write(bytes);
+                  output.flush();
+                }
+                JSObject response = new JSObject();
+                response.put("uri", uri.toString());
+                call.resolve(response);
+              } catch (Exception error) {
+                call.reject("Could not save the selected file: " + error.getMessage(), error);
+              }
+            }
+          }
+          JAVA
+          cat > "$PACKAGE_DIR/MainActivity.java" <<'JAVA'
+          package kandbnet.service2010;
+
+          import android.os.Bundle;
+          import com.getcapacitor.BridgeActivity;
+
+          public class MainActivity extends BridgeActivity {
+            @Override
+            public void onCreate(Bundle savedInstanceState) {
+              registerPlugin(DocumentSaverPlugin.class);
+              super.onCreate(savedInstanceState);
+            }
+          }
+          JAVA
+          # Capacitor's generated project uses Java MainActivity; remove any
+          # generated Kotlin counterpart so the app has a single entry point.
+          rm -f android/app/src/main/java/kandbnet/service2010/MainActivity.kt
       - name: Configure and validate Firebase Cloud Messaging for Android
         env:
           ANDROID_GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.ANDROID_GOOGLE_SERVICES_JSON_BASE64 }}
         run: |
+          if [ -z "$ANDROID_GOOGLE_SERVICES_JSON_BASE64" ]; then
+            echo "::error::Set ANDROID_GOOGLE_SERVICES_JSON_BASE64 to enable Android Firebase Cloud Messaging. The final app requires remote notifications."
+            exit 1
+          fi
           if [ -n "$ANDROID_GOOGLE_SERVICES_JSON_BASE64" ]; then
             printf '%s' "$ANDROID_GOOGLE_SERVICES_JSON_BASE64" | base64 --decode > android/app/google-services.json
             node <<'NODE'
@@ -83,7 +189,8 @@ jobs:
           console.log('Firebase Android config validated for the K&B project and app package.');
           NODE
           else
-            echo "::warning::FCM is not configured for this build. Add the ANDROID_GOOGLE_SERVICES_JSON_BASE64 repository secret."
+            echo "::error::FCM config missing."
+            exit 1
           fi
       - name: Assemble debug APK
         run: cd android && ./gradlew --no-daemon assembleDebug
