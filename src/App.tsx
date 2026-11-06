@@ -1462,7 +1462,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
           onSave={savePayment}
         />
       )}
-      {!isAdmin && <StaffLocationResponder activeShift={staffShiftActive} />}
+      {!isAdmin && <StaffLocationResponder activeShift={staffShiftActive} userId={session.user.id} />}
       {permissionSetupOpen && <StaffPermissionSetup onComplete={(locationGranted = false) => { if (locationGranted) localStorage.setItem('kb-staff-permissions-v1', 'done'); setPermissionSetupOpen(false); }} />}
       {completingTask && <TaskCompletionModal task={completingTask} onClose={() => setCompletingTask(null)} onComplete={(photo: File | null, video: File | null) => completeTaskWithEvidence(completingTask, photo, video)} />}
       {taskPreview && <Modal title={taskPreview.name} subtitle="Task completion evidence" onClose={() => setTaskPreview(null)}><div className="complaint-preview">{taskPreview.mimeType.startsWith('video/') ? <video src={taskPreview.dataUrl} controls playsInline /> : <img src={taskPreview.dataUrl} alt={taskPreview.name}/>}</div><div className="form-actions"><a className="btn secondary" href={taskPreview.dataUrl} download={taskPreview.name}>Download evidence</a><button type="button" className="btn primary" onClick={() => setTaskPreview(null)}>Close</button></div></Modal>}
@@ -1919,7 +1919,7 @@ function StaffModal({ onClose, onSave }: any) {
   const [busy, setBusy] = useState(false);
   return <Modal title="Create staff account" subtitle="Give this team member a secure sign-in." onClose={onClose}><form className="form-grid" onSubmit={async e => { e.preventDefault(); setBusy(true); await onSave(form); setBusy(false); }}><Field label="Staff full name"><input required value={form.displayName} onChange={e => setForm({ ...form, displayName: e.target.value })} /></Field><Field label="Staff user ID"><input required minLength={3} maxLength={32} pattern="[a-zA-Z0-9_-]{3,32}" value={form.userId} onChange={e => setForm({ ...form, userId: e.target.value })} /></Field><Field label="Temporary password" wide><input required type="password" minLength={10} value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} /></Field><p className="form-hint">Use at least 10 characters and share it privately. Admin can reset it from Staff if needed.</p><div className="form-actions"><button type="button" className="btn secondary" onClick={onClose}>Cancel</button><button className="btn primary" disabled={busy}>{busy ? 'Creating…' : 'Create account'}</button></div></form></Modal>;
 }
-function StaffLocationResponder({ activeShift }: { activeShift: boolean }) {
+function StaffLocationResponder({ activeShift, userId }: { activeShift: boolean; userId: string }) {
   const [shiftActive, setShiftActive] = useState(activeShift);
   useEffect(() => {
     let stopped = false;
@@ -1935,7 +1935,7 @@ function StaffLocationResponder({ activeShift }: { activeShift: boolean }) {
     void checkShift();
     const timer = window.setInterval(checkShift, 15000);
     return () => { stopped = true; window.clearInterval(timer); };
-  }, [activeShift]);
+  }, [activeShift, userId]);
   useEffect(() => {
     if (!shiftActive) return;
     let stopped = false;
