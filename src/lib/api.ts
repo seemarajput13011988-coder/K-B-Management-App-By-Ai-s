@@ -77,12 +77,25 @@ export const api = {
 };
 export async function signInAppUser(userId: string, password: string, role: 'admin'|'staff') {
   const url = new URL('/api/auth/login', API_BASE);
-  const response = await fetch(url.toString(), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ userId: userId.trim(), password }),
-    cache: 'no-store',
-  });
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 45000);
+  let response: Response;
+  try {
+    response = await fetch(url.toString(), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: userId.trim(), password }),
+      cache: 'no-store',
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw new Error('Sign-in took too long. Please check your internet connection and try again.');
+    }
+    throw new Error('Could not reach the K&B server. Check your internet connection and try again.');
+  } finally {
+    window.clearTimeout(timeout);
+  }
   let data: any = {};
   try { data = await response.json(); } catch { data = {}; }
   if (!response.ok) throw new Error(typeof data.error === 'string' ? data.error : 'Sign-in failed. Check your user ID and password.');
