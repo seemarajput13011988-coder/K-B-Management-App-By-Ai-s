@@ -1183,6 +1183,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                 </section>
               </section>}
             </section>
+            {attendanceEdit&&<Modal title="Correct staff attendance" subtitle={attendanceEdit.record.displayName+' · '+attendanceEdit.record.workDate} onClose={()=>setAttendanceEdit(null)}><form className="form-grid" onSubmit={saveStaffAttendanceCorrection}><Field label="Attendance type"><select value={attendanceEdit.dayType} onChange={e=>setAttendanceEdit({...attendanceEdit,dayType:e.target.value as 'Full day'|'Half day'|'Absent'})}><option>Full day</option><option>Half day</option><option>Absent</option></select></Field><Field label="Reason for correction" wide><textarea required minLength={3} maxLength={300} value={attendanceEdit.reason} onChange={e=>setAttendanceEdit({...attendanceEdit,reason:e.target.value})} placeholder="Explain why this attendance record is being corrected"/></Field><div className="modal-actions"><button type="button" className="btn secondary" onClick={()=>setAttendanceEdit(null)}>Cancel</button><button className="btn primary">Save correction</button></div></form></Modal>}
             </>
           )}
 
