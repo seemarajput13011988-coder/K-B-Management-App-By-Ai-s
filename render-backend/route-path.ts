@@ -36,6 +36,30 @@ export function isValidDateKey(value: unknown): boolean {
 }
 
 
+
+export type PayrollValidationInput = {
+  staffUserId: unknown;
+  period: unknown;
+  amount: unknown;
+  paidAt: unknown;
+  method: unknown;
+};
+
+/** Shared, unit-tested validation for a salary payment before Firestore access. */
+export function isValidPayrollInput(input: PayrollValidationInput): boolean {
+  const staffUserId = typeof input.staffUserId === 'string' ? input.staffUserId.trim() : '';
+  const period = typeof input.period === 'string' ? input.period.trim() : '';
+  const paidAt = typeof input.paidAt === 'string' ? input.paidAt.trim() : '';
+  const method = typeof input.method === 'string' ? input.method.trim() : '';
+  const amount = typeof input.amount === 'number' ? input.amount : Number.NaN;
+  const monthMatch = /^(\\d{4})-(\\d{2})$/.exec(period);
+  const dateMatch = /^(\\d{4})-(\\d{2})-(\\d{2})$/.exec(paidAt);
+  if (!staffUserId || !method || method.length > 50 || !Number.isFinite(amount) || amount <= 0 || amount > 1000000 || !monthMatch || !dateMatch) return false;
+  const month = Number(monthMatch[2]);
+  if (month < 1 || month > 12) return false;
+  return isValidDateKey(paidAt);
+}
+
 export function isValidDateRange(startDate: unknown, endDate: unknown): boolean {
   return isValidDateKey(startDate) && isValidDateKey(endDate) && String(endDate) >= String(startDate);
 }
