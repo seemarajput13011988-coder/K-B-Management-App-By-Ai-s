@@ -699,7 +699,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   }
   async function completeTaskWithEvidence(task: Task, photoFile: File | null, videoFile: File | null) {
     const files = [photoFile, videoFile].filter((item): item is File => item instanceof File);
-    if (!files.length) { flash('Attach at least one task photo or video before completing it.'); return; }
+    if (!(photoFile instanceof File) || !(videoFile instanceof File)) { flash('Both a task photo and a task video are required before completion.'); return; }
     try {
       const attachments = await Promise.all(files.map(async file => ({ fileName: file.name, mimeType: file.type, dataBase64: await fileAsBase64(file) })));
       await api.post('/api/tasks/' + task.id + '/media', { attachments });
