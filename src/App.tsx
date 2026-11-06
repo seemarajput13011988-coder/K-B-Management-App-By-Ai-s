@@ -624,6 +624,16 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
       flash(err instanceof Error ? err.message : 'Could not assign task');
     }
   }
+  async function deleteTask(task: Task) {
+    if (!isAdmin || !window.confirm('Delete task "' + task.title + '"? Its evidence files will also be removed.')) return;
+    try {
+      await api.delete('/api/tasks/' + task.id);
+      await load();
+      flash('Task deleted.');
+    } catch (error) {
+      flash(error instanceof Error ? error.message : 'Could not delete task.');
+    }
+  }
   async function updateTask(task: Task, status: string) {
     if (!isAdmin && status === 'Completed') {
       setCompletingTask(task);
@@ -1151,6 +1161,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                   </div>
                   {task.attachments?.length ? <div className="task-evidence-list"><span>{task.attachments.length} evidence file(s)</span>{task.attachments.map(file => <button type="button" className="text-btn" key={file.mediaId} onClick={() => void openTaskAttachment(task, file)}>{file.mimeType.startsWith('video/') ? 'View video' : 'View photo'}</button>)}</div> : null}
                   <label className="task-status-control"><span>Progress</span><select value={task.status} onChange={e => updateTask(task, e.target.value)}><option>Pending</option><option>In progress</option><option>Completed</option></select></label>
+                  {isAdmin && <button type="button" className="btn danger compact" onClick={()=>void deleteTask(task)}><Trash2 size={14}/> Delete task</button>}
                 </article>
               ))}</div> : <Empty icon={<ClipboardList />} title={isAdmin ? 'No tasks assigned yet' : 'No work assigned yet'} text={isAdmin ? 'Create a task and assign it to an active staff member.' : 'Your administrator will assign work here when it is ready.'} action={isAdmin ? 'Assign first task' : undefined} onClick={() => setShowTask(true)} />}
             </section>
