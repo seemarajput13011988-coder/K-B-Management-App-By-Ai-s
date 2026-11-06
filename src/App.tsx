@@ -1964,13 +1964,13 @@ function StaffPermissionSetup({ onComplete }: { onComplete:(locationGranted?:boo
         outcomes.push('Camera: '+String(camera.camera||'requested'));
       } catch { outcomes.push('Camera: not granted yet. Allow it when capturing task evidence.'); }
       outcomes.push('Notifications: requested automatically when the app starts.');
-      setMessage(outcomes.join('\\n'));
+      setMessage(outcomes.join('\n'));
       if (locationGranted) {
         localStorage.setItem('kb-staff-permissions-v1','done');
         onComplete(true);
       } else {
         localStorage.removeItem('kb-staff-permissions-v1');
-        setMessage(outcomes.join('\\n')+'\\n\\nLocation permission is required for admin GPS requests. Enable it in Android settings, then tap Allow required permissions again. Setup will stay open until location is granted.');
+        setMessage(outcomes.join('\n')+'\n\nLocation permission is required for admin GPS requests. Enable it in Android settings, then tap Allow required permissions again. Setup will stay open until location is granted.');
       }
     } catch(error) {
       setMessage(error instanceof Error?error.message:'Could not check Android permissions. Please try again.');
@@ -2306,7 +2306,7 @@ function FestivalTheme(){
       '2027-03-06':{name:'Maha Shivaratri',theme:'shivratri'},
       '2027-03-21':{name:'Holika Dahan',theme:'holi'},
       '2027-03-22':{name:'Dhuleti · Holi',theme:'holi'},
-      '2027-04-07':{name:'Chaitra Navratri · Gujarati New Year observances',theme:'navratri'},
+      '2027-04-07':{name:'Chaitra Navratri · Gudi Padwa',theme:'navratri'},
       '2027-04-15':{name:'Ram Navami',theme:'ramnavami'},
       '2027-04-20':{name:'Hanuman Jayanti',theme:'ramnavami'},
       '2027-05-09':{name:'Akshaya Tritiya · Akha Trij',theme:'vasant'},
