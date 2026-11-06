@@ -7,6 +7,7 @@ on:
     branches:
       - main
       - safe-firebase-migration-copilot-review
+      - on-demand-gps-proof-permissions
     paths:
       - "src/**"
       - "package.json"
