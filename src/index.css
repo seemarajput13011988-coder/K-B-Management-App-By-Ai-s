@@ -2002,14 +2002,33 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
 @media(prefers-reduced-motion:reduce){.kb-festival-network svg,.kb-festival-network i{animation:none}}
 
 
-/* K&B mobile menu: keep the drawer fully opaque above the dimmed page. */
-.sidebar{background:linear-gradient(180deg,#14243c 0%,#1c3555 100%)!important;opacity:1!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;isolation:isolate}
-.sidebar.mobile-open{z-index:30}
-.scrim{z-index:29}
+/* K&B mobile menu: opaque drawer above the scrim on every theme. */
+.sidebar{
+  background-color:#14243c!important;
+  background-image:linear-gradient(180deg,#14243c 0%,#1c3555 100%)!important;
+  opacity:1!important;
+  backdrop-filter:none!important;
+  -webkit-backdrop-filter:none!important;
+  isolation:isolate;
+}
+.sidebar.mobile-open{z-index:1001!important}
+.scrim{z-index:1000!important;background:rgba(12,23,39,.68)!important}
+button,.btn,.nav-item{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+button:not(:disabled),.btn:not(:disabled){pointer-events:auto}
 
-/* Diwali diyas: a single level baseline with equal spacing, not scattered floats. */
-.kb-diya-row{position:absolute;left:40%;right:17%;bottom:10%;z-index:1;display:flex;align-items:flex-end;justify-content:space-evenly;gap:clamp(7px,1.5vw,16px);pointer-events:none}
-.kb-diya-row span{display:block;flex:0 0 auto;font-size:clamp(21px,2.5vw,31px);line-height:1;transform:none;filter:drop-shadow(0 4px 7px rgba(0,0,0,.2));animation:kbDiyaGlow 2.4s ease-in-out infinite}
+/* Diwali diyas: five equal columns on one centred baseline at every screen size. */
+.kb-diya-row{
+  position:absolute;left:50%!important;right:auto!important;bottom:10%;
+  transform:translateX(-50%);width:min(360px,46%);
+  z-index:1;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));
+  justify-items:center;align-items:end;gap:0!important;pointer-events:none;
+}
+.kb-diya-row span{
+  display:block;width:100%;text-align:center;flex:none;
+  font-size:clamp(21px,2.5vw,31px);line-height:1;transform:none;
+  filter:drop-shadow(0 4px 7px rgba(0,0,0,.2));
+  animation:kbDiyaGlow 2.4s ease-in-out infinite;
+}
 @keyframes kbDiyaGlow{0%,100%{opacity:.9;filter:drop-shadow(0 3px 5px rgba(0,0,0,.18))}50%{opacity:1;filter:drop-shadow(0 0 10px rgba(255,211,117,.85))}}
-@media(max-width:700px){.kb-diya-row{left:39%;right:14%;bottom:9%;gap:6px}.kb-diya-row span{font-size:21px}}
-@media(max-width:380px){.kb-diya-row{left:36%;right:12%;gap:4px}.kb-diya-row span{font-size:18px}}
+@media(max-width:700px){.kb-diya-row{width:54%;bottom:9%}.kb-diya-row span{font-size:21px}}
+@media(max-width:380px){.kb-diya-row{width:58%;bottom:8%}.kb-diya-row span{font-size:18px}}
