@@ -1908,7 +1908,7 @@ function StaffLocationResponder() {
     const respond = (requestId:string) => {
       if (handled.has(requestId)) return;
       handled.add(requestId);
-      Geolocation.getCurrentPosition({enableHighAccuracy:true,maximumAge:0,timeout:20000}).then(async position => {
+      Geolocation.checkPermissions().then(permission=>{if(permission.location!=='granted')throw new Error('Location permission is not enabled. Please enable it in Android settings.');return Geolocation.getCurrentPosition({enableHighAccuracy:true,maximumAge:0,timeout:20000});}).then(async position => {
         let address='Address unavailable; open this point in Google Maps.';
         try {
           const url='https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat='+position.coords.latitude+'&lon='+position.coords.longitude;
@@ -1936,7 +1936,7 @@ function StaffLocationResponder() {
       finally{polling=false;}
     };
     void poll();
-    const timer=window.setInterval(()=>{void poll();},7000);
+    const timer=window.setInterval(()=>{void poll();},1200);
     const onVisibility=()=>{if(document.visibilityState==='visible')void poll();};
     document.addEventListener('visibilitychange',onVisibility);
     return()=>{stopped=true;window.clearInterval(timer);document.removeEventListener('visibilitychange',onVisibility);};
@@ -1970,7 +1970,7 @@ function StaffPermissionSetup({ onComplete }: { onComplete:()=>void }) {
   }
   return <Modal title="Set up staff app permissions" subtitle="Allow the permissions needed for task evidence, admin GPS requests and notifications." onClose={onComplete}>
     <div className="form-grid">
-      <div className="form-hint">The app uses your location only when an administrator sends a one-time request. It does not track you continuously. Camera access is used for task and complaint evidence. Android’s file picker controls access to selected photos and videos.</div>
+      <div className="form-hint">Your location is shared only when an administrator requests it. Once you grant location permission here, future requests use that saved permission and will not ask you again. Camera access is used for task and complaint evidence. Android’s file picker controls access to selected photos and videos.</div>
       {message&&<p className="form-hint" style={{whiteSpace:'pre-line'}}>{message}</p>}
       <div className="form-actions"><button className="btn primary" disabled={busy} onClick={()=>void requestPermissions()}>{busy?'Requesting…':'Allow required permissions'}</button><button type="button" className="btn secondary" onClick={onComplete}>Continue for now</button></div>
     </div>
@@ -2277,12 +2277,35 @@ function Modal({ title, subtitle, onClose, children }: any) {
   );
 }
 
+
+function FestivalTheme(){
+  useEffect(()=>{
+    const dates:Record<string,{name:string;theme:string}>={
+      '2026-03-03':{name:'Holi',theme:'holi'},'2026-03-04':{name:'Holi',theme:'holi'},
+      '2026-08-27':{name:'Raksha Bandhan',theme:'rakhi'},'2026-08-28':{name:'Raksha Bandhan',theme:'rakhi'},
+      '2026-09-04':{name:'Janmashtami',theme:'janmashtami'},'2026-09-14':{name:'Ganesh Chaturthi',theme:'ganesh'},
+      '2026-10-11':{name:'Navratri',theme:'navratri'},'2026-10-12':{name:'Navratri',theme:'navratri'},'2026-10-13':{name:'Navratri',theme:'navratri'},'2026-10-14':{name:'Navratri',theme:'navratri'},'2026-10-15':{name:'Navratri',theme:'navratri'},'2026-10-16':{name:'Navratri',theme:'navratri'},'2026-10-17':{name:'Navratri',theme:'navratri'},'2026-10-18':{name:'Navratri',theme:'navratri'},'2026-10-19':{name:'Navratri',theme:'navratri'},'2026-10-20':{name:'Dussehra',theme:'dussehra'},
+      '2026-11-06':{name:'Diwali celebrations',theme:'diwali'},'2026-11-07':{name:'Diwali celebrations',theme:'diwali'},'2026-11-08':{name:'Diwali',theme:'diwali'},'2026-11-09':{name:'Diwali celebrations',theme:'diwali'},'2026-11-10':{name:'Govardhan Puja',theme:'diwali'},'2026-11-11':{name:'Bhai Dooj',theme:'diwali'},
+      '2027-01-14':{name:'Makar Sankranti',theme:'sankranti'},'2027-02-11':{name:'Vasant Panchami',theme:'vasant'},'2027-03-21':{name:'Holika Dahan',theme:'holi'},'2027-03-22':{name:'Holi',theme:'holi'},
+      '2027-04-07':{name:'Chaitra Navratri',theme:'navratri'},'2027-04-15':{name:'Ram Navami',theme:'ramnavami'},'2027-04-20':{name:'Hanuman Jayanti',theme:'ramnavami'},
+      '2027-08-17':{name:'Raksha Bandhan',theme:'rakhi'},'2027-08-25':{name:'Janmashtami',theme:'janmashtami'},'2027-09-04':{name:'Ganesh Chaturthi',theme:'ganesh'},
+      '2027-09-30':{name:'Navratri',theme:'navratri'},'2027-10-01':{name:'Navratri',theme:'navratri'},'2027-10-02':{name:'Navratri',theme:'navratri'},'2027-10-03':{name:'Navratri',theme:'navratri'},'2027-10-04':{name:'Navratri',theme:'navratri'},'2027-10-05':{name:'Navratri',theme:'navratri'},'2027-10-06':{name:'Navratri',theme:'navratri'},'2027-10-07':{name:'Durga Ashtami',theme:'navratri'},'2027-10-08':{name:'Navratri',theme:'navratri'},'2027-10-09':{name:'Dussehra',theme:'dussehra'},
+      '2027-10-27':{name:'Diwali celebrations',theme:'diwali'},'2027-10-28':{name:'Diwali celebrations',theme:'diwali'},'2027-10-29':{name:'Diwali',theme:'diwali'},'2027-10-30':{name:'Diwali celebrations',theme:'diwali'},'2027-10-31':{name:'Bhai Dooj',theme:'diwali'}
+    };
+    const apply=()=>{const date=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());const festival=dates[date];if(festival){document.documentElement.dataset.festivalTheme=festival.theme;document.documentElement.dataset.festivalName=festival.name;}else{delete document.documentElement.dataset.festivalTheme;delete document.documentElement.dataset.festivalName;}};
+    apply();const timer=window.setInterval(apply,60_000);return()=>{window.clearInterval(timer);delete document.documentElement.dataset.festivalTheme;delete document.documentElement.dataset.festivalName;};
+  },[]);
+  return null;
+}
+function WelcomeIntro(){return <div className="kb-welcome-intro" role="status" aria-label="Welcome to K&B Management Nexus"><div className="kb-welcome-orbit"><span/><span/><span/><div className="kb-welcome-mark"><Signal size={34}/></div></div><div className="kb-welcome-brand">K&amp;B <b>NET SERVICE</b></div><div className="kb-welcome-caption">MANAGEMENT NEXUS</div><div className="kb-welcome-loading"><i/></div></div>;}
 function App(){
- const [session,setSession]=useState<Session|null>(null);const [checking,setChecking]=useState(true);
+ const [session,setSession]=useState<Session|null>(null);const [checking,setChecking]=useState(true);const [showWelcome,setShowWelcome]=useState(true);
+ useEffect(()=>{const timer=window.setTimeout(()=>setShowWelcome(false),1500);return()=>window.clearTimeout(timer);},[]);
  useEffect(()=>{let live=true;async function restore(){localStorage.removeItem('kb-customer-session');const raw=sessionStorage.getItem('kb-customer-session');if(!raw){setChecking(false);return;}try{const old=JSON.parse(raw) as Session;const r=await client.get('/api/auth/me?sessionToken='+encodeURIComponent(old.token));if(live)setSession({...old,user:r.data.user});}catch{sessionStorage.removeItem('kb-customer-session');}finally{if(live)setChecking(false);}}restore();return()=>{live=false;};},[]);
  async function login(userId:string,password:string,expectedRole:'admin'|'staff'){const next=await signInAppUser(userId,password,expectedRole) as Session;if(next.user.role!==expectedRole){await signOutAppUser();throw new Error(expectedRole==='admin'?'This account is not an admin account. Choose Staff Sign In instead.':'This account is not a staff account. Choose Admin Sign In instead.');}sessionStorage.setItem('kb-customer-session',JSON.stringify(next));setSession(next);}
- if(checking)return <div className="loading-cover"><div className="loader"/><span>Preparing secure sign-in…</span></div>;
- return session?<Workspace session={session} onLogout={()=>{signOutAppUser().catch(()=>undefined);sessionStorage.removeItem('kb-customer-session');localStorage.removeItem('kb-customer-session');setSession(null);}}/>:<LoginScreen onLogin={login}/>;
+ if(showWelcome)return <><FestivalTheme/><WelcomeIntro/></>;
+ if(checking)return <><FestivalTheme/><div className="loading-cover"><div className="loader"/><span>Preparing secure sign-in…</span></div></>;
+ return <><FestivalTheme/>{session?<Workspace session={session} onLogout={()=>{signOutAppUser().catch(()=>undefined);sessionStorage.removeItem('kb-customer-session');localStorage.removeItem('kb-customer-session');setSession(null);}}/>:<LoginScreen onLogin={login}/>}</>;
 }
 function LoginScreen({onLogin}:{onLogin:(id:string,pw:string,role:'admin'|'staff')=>Promise<void>}){
  const [role,setRole]=useState<'admin'|'staff'|null>(null);
