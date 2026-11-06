@@ -1,0 +1,33 @@
+name: Backend Keep Alive
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-keep-alive
+  cancel-in-progress: true
+
+jobs:
+  ping-backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Ping Render backend health endpoint
+        env:
+          HEALTH_URL: https://kandb-management-nexus-api-zv7f.onrender.com/api/_healthcheck
+        run: |
+          set -eu
+          echo "Pinging backend health endpoint..."
+          curl --fail --silent --show-error \
+            --connect-timeout 15 \
+            --max-time 45 \
+            --retry 2 \
+            --retry-delay 5 \
+            "$HEALTH_URL"
+          echo
+          echo "Backend health check completed successfully."
