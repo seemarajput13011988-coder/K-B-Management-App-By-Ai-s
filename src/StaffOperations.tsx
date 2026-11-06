@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { api as client } from './lib/api';
-import { Geolocation } from '@capacitor/geolocation';
 
 type Session = { token: string; user: { id: string; displayName: string; role: 'admin' | 'staff'; isSuperAdmin?: boolean } };
 type Attendance = { id: string; userId: string; displayName: string; workDate: string; checkInAt: string; checkOutAt?: string; dayType?: 'Full day' | 'Half day' | 'Absent'; correctionReason?: string; gpsRestartRequired?: boolean; gpsCancelled?: boolean; status?: string };
@@ -150,49 +149,6 @@ export default function StaffOperations({ session, customers, flash, compact = f
 
   useEffect(() => { refresh(); }, [refresh]);
 
-  // Respond to an administrator's one-time GPS request while this staff app is running.
-  // A separate Android foreground-service implementation is required for closed-app tracking.
-  useEffect(() => {
-    if (admin) return;
-    let stopped = false;
-    const checkLocationRequests = async () => {
-      try {
-        const result = await request('get', '/api/location-requests/pending');
-        const pending = (result.data.items || []) as Array<{id:string}>;
-        for (const item of pending) {
-          if (stopped || handledLocationRequests.current.has(item.id)) continue;
-          handledLocationRequests.current.add(item.id);
-          try {
-            const position = await Geolocation.getCurrentPosition({
-              enableHighAccuracy: true,
-              timeout: 18000,
-              maximumAge: 0,
-            });
-            await request('post', '/api/location-requests/' + item.id + '/respond', {
-              latitude: position.coords.latitude,
-              longitude: position.coords.longitude,
-              accuracy: position.coords.accuracy || 0,
-              address: 'Current GPS coordinates; open in Google Maps',
-              capturedAt: new Date(position.timestamp).toISOString(),
-            });
-            flash('Your current location was shared with an administrator who requested it.');
-          } catch (locationError) {
-            const message = locationError instanceof Error ? locationError.message : 'Location permission is unavailable.';
-            await request('post', '/api/location-requests/' + item.id + '/respond', {
-              status: 'failed',
-              message: message.slice(0, 220),
-            }).catch(() => undefined);
-            flash('An administrator requested your location, but GPS could not be read. Check your location permission and GPS setting.');
-          }
-        }
-      } catch {
-        // Network may be offline; retry on the next poll without blocking other app actions.
-      }
-    };
-    void checkLocationRequests();
-    const timer = window.setInterval(() => { void checkLocationRequests(); }, 5000);
-    return () => { stopped = true; window.clearInterval(timer); };
-  }, [admin, request, flash]);
 
 
   useEffect(() => {
