@@ -1846,9 +1846,8 @@ function StaffPermissionSetup({ onComplete }: { onComplete:()=>void }) {
       outcomes.push('Storage/media access: '+String(result.publicStorage||'handled by Android picker'));
     } catch { outcomes.push('Storage/media: Android will ask when you select a file.'); }
     try {
-      await Geolocation.requestPermissions();
-      await Geolocation.getCurrentPosition({enableHighAccuracy:true,timeout:15000,maximumAge:0});
-      outcomes.push('Location: allowed');
+      const location=await Geolocation.requestPermissions();
+      outcomes.push('Location: '+String(location.location||'requested'));
     } catch { outcomes.push('Location: not granted yet. Enable it in Android settings to respond to admin GPS requests.'); }
     try {
       const camera=await Camera.requestPermissions();
