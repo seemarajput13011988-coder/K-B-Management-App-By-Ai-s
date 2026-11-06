@@ -1085,6 +1085,38 @@ export const handler = router({
     return json({ updated: true, status });
   }),
 
+  'POST /api/staff/live-location': protectedRoute(['staff'], async ({ body }, user) => {
+    const latitude = Number(body?.latitude), longitude = Number(body?.longitude);
+    const accuracy = Number(body?.accuracy || 0);
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude) ||
+        Math.abs(latitude) > 90 || Math.abs(longitude) > 180 ||
+        !Number.isFinite(accuracy) || accuracy < 0 || accuracy > 100000) {
+      return error('A valid GPS reading is required.', 400);
+    }
+    const capturedAt = new Date().toISOString();
+    const record = {
+      id: user.id, staffId: user.id, staffName: user.displayName,
+      latitude, longitude, accuracy, capturedAt,
+      source: 'staff-app-foreground',
+    };
+    await db.add('staff_live_locations', [record]);
+    return json({ updated: true, capturedAt });
+  }),
+
+  'GET /api/staff/:id/live-location': protectedRoute(['admin'], async ({ params }) => {
+    const [member] = await db.get<UserRecord>('users', [params.id], { consistent: true });
+    if (!member || member.role !== 'staff' || !member.active) return error('Active staff member not found.', 404);
+    const [location] = await db.get<Record<string, unknown>>('staff_live_locations', [params.id], { consistent: true });
+    if (!location) return error('No live location has been shared by this staff phone yet. The staff app must be open with location permission enabled.', 404);
+    const capturedAt = String(location.capturedAt || '');
+    const ageMs = capturedAt ? Math.max(0, Date.now() - new Date(capturedAt).getTime()) : Number.POSITIVE_INFINITY;
+    return json({
+      item: location,
+      isFresh: Number.isFinite(ageMs) && ageMs <= 90000,
+      ageSeconds: Number.isFinite(ageMs) ? Math.floor(ageMs / 1000) : null,
+    });
+  }),
+
   'POST /api/location-requests': protectedRoute(['admin'], async ({ body }, admin) => {
     const staffId = cleanText(body?.staffId, 128);
     const [member] = await db.get<UserRecord>('users', [staffId], { consistent: true });
