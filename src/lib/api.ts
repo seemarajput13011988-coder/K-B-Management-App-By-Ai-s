@@ -4,7 +4,7 @@ const API_BASE = import.meta.env.VITE_API_BASE_URL || 'https://kandb-management-
 type ApiResult<T = any> = { data: T };
 type LocalSession = { token: string; expiresAt: number; user: { id: string; userId: string; displayName: string; role: 'admin'|'staff'; active: boolean; canManageAdmins?: boolean } };
 function storedToken(): string {
-  try { return (JSON.parse(localStorage.getItem('kb-customer-session') || 'null') as LocalSession | null)?.token || ''; }
+  try { return (JSON.parse(sessionStorage.getItem('kb-customer-session') || 'null') as LocalSession | null)?.token || ''; }
   catch { return ''; }
 }
 async function request<T = any>(path: string, method: string, payload?: Record<string, unknown>): Promise<ApiResult<T>> {
@@ -99,12 +99,12 @@ export async function changeAppUserId(currentPassword: string, newUserId: string
   const userId = newUserId.trim();
   if (!/^[a-zA-Z0-9_-]{3,32}$/.test(userId)) throw new Error('Use 3–32 letters, numbers, underscores or hyphens.');
   await api.post('/api/auth/change-user-id', { currentPassword, userId });
-  localStorage.removeItem('kb-customer-session');
+  sessionStorage.removeItem('kb-customer-session');
 }
 export async function changeAppPassword(currentPassword: string, newPassword: string) {
   if (newPassword.length < 10) throw new Error('Choose a password with at least 10 characters.');
   await api.post('/api/auth/change-password', { currentPassword, newPassword });
-  localStorage.removeItem('kb-customer-session');
+  sessionStorage.removeItem('kb-customer-session');
 }
 export async function signOutAppUser() {
   const token = storedToken();
