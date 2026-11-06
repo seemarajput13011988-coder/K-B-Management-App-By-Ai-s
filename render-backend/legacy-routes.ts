@@ -802,7 +802,8 @@ export const handler = router({
     if (!task) return error('Task not found.', 404);
     if (user.role === 'staff' && task.assignedTo !== user.id) return error('You can update only tasks assigned to your account.', 403);
     if (user.role === 'staff' && status === 'Completed') {
-      const evidence = await firestore.collection('task_media').where('taskId', '==', params.id).where('uploadedBy', '==', user.id).where('chunkIndex', '==', -1).limit(1).get();
+      const evidence = await firestore.collection('task_media').where('taskId', '==', params.id).where('chunkIndex', '==', -1).limit(100).get();
+      if (!evidence.docs.some(doc => doc.data().uploadedBy === user.id)) return error('Upload at least one of your own task photos or videos before marking it completed.', 400);
       if (evidence.empty) return error('Upload at least one task photo or video before marking it completed.', 400);
     }
     const [updated] = await db.tx.update('tasks', [{ id: params.id, record: { status, ...(status === 'Completed' ? { completedAt: new Date().toISOString(), completedBy: user.id, completedByName: user.displayName } : {}) } }], { patch: true });
