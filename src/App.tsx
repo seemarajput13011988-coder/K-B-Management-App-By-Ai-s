@@ -79,7 +79,7 @@ type Payment = {
 type Staff = { id: string; userId: string; displayName: string; role: 'staff'; active: boolean; phone?: string; createdAt?: string };
 type AdminAccount = { id: string; userId: string; displayName: string; role: 'admin'; active: boolean; canManageAdmins?: boolean; isSuperAdmin?: boolean };
 type AttendanceRecord = { id: string; userId: string; displayName: string; workDate: string; checkInAt: string; checkOutAt?: string; dayType?: 'Full day' | 'Half day' | 'Absent'; status?: string; correctionReason?: string; correctedAt?: string; correctedByName?: string };
-type Task = { id: string; title: string; details: string; assignedTo: string; assignedToName: string; priority: 'Low' | 'Normal' | 'High'; dueDate: string; status: 'Pending' | 'In progress' | 'Completed'; createdAt: string; createdByName: string; attachments?: Array<{mediaId:string;fileName:string;mimeType:string;size:number}> };
+type Task = { id: string; title: string; details: string; assignedTo: string; assignedToName: string; priority: 'Low' | 'Normal' | 'High'; dueDate: string; status: 'Pending' | 'In progress' | 'Completed'; createdAt: string; createdByName: string; updatedAt?: string; completedAt?: string; attachments?: Array<{mediaId:string;fileName:string;mimeType:string;size:number}> };
 type Complaint = {
   id: string;
   complaintFor: 'Customer' | 'Staff';
@@ -1202,7 +1202,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                     <div className="task-card-top"><span className={'priority ' + task.priority.toLowerCase()}>{task.priority} priority</span><span className={'task-state ' + task.status.toLowerCase().replace(/ /g, '-')}>{task.status}</span></div>
                     <h3>{task.title}</h3>
                     {task.details && <p>{task.details}</p>}
-                    <div className="task-meta"><span><UserRound size={14}/>{isAdmin ? task.assignedToName : 'Assigned to you'}</span><span><CalendarDays size={14}/>Due {dateLabel(task.dueDate)}</span><span>Created by {task.createdByName}</span></div>
+                    <div className="task-meta"><span><UserRound size={14}/>{isAdmin ? task.assignedToName : 'Assigned to you'}</span><span><CalendarDays size={14}/>Due {dateLabel(task.dueDate)}</span><span>Created by {task.createdByName} · {task.createdAt?new Date(task.createdAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'}):'Date not available'}</span>{task.updatedAt&&<span>Updated {new Date(task.updatedAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'})}</span>}{task.completedAt&&<span>Completed {new Date(task.completedAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'})}</span>}</div>
                   </div>
                   {task.attachments?.length ? <div className="task-evidence-list"><span>{task.attachments.length} evidence file(s)</span>{task.attachments.map(file => <button type="button" className="text-btn" key={file.mediaId} onClick={() => void openTaskAttachment(task, file)}>{file.mimeType.startsWith('video/') ? 'View video' : 'View photo'}</button>)}</div> : null}
                   <label className="task-status-control"><span>Progress</span><select value={task.status} onChange={e => updateTask(task, e.target.value)}><option>Pending</option><option>In progress</option><option>Completed</option></select></label>
