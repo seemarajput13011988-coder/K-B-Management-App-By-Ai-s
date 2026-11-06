@@ -1215,6 +1215,7 @@ export const handler = router({
     return json({
       item: location, status: gpsOff ? 'gps-off' : isFresh ? 'live' : 'stale',
       isFresh: isFresh && !gpsOff, ageSeconds, deadlineAt,
+      cancelled: Boolean(active.gpsRestartRequired || active.gpsCancelled),
     });
   }),
 
