@@ -150,8 +150,22 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
     return () => window.clearInterval(timer);
   }, []);
   useEffect(() => {
+    let active = true;
     if (session.user.role !== 'staff' || !Capacitor.isNativePlatform()) return;
-    if (localStorage.getItem('kb-staff-permissions-v1') !== 'done') setPermissionSetupOpen(true);
+    if (localStorage.getItem('kb-staff-permissions-v1') === 'done') return;
+    // A permission already granted in Android settings should be reused silently.
+    Geolocation.checkPermissions().then(permission => {
+      if (!active) return;
+      if (permission.location === 'granted') {
+        localStorage.setItem('kb-staff-permissions-v1', 'done');
+        setPermissionSetupOpen(false);
+      } else {
+        setPermissionSetupOpen(true);
+      }
+    }).catch(() => {
+      if (active) setPermissionSetupOpen(true);
+    });
+    return () => { active = false; };
   }, [session.user.id, session.user.role]);
   const greeting = localHour < 12
     ? ({ en: 'Good morning', hi: 'सुप्रभात', gu: 'સુપ્રભાત' }[language])
