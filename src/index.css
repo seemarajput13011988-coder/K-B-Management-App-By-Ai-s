@@ -2046,3 +2046,14 @@ button:not(:disabled),.btn:not(:disabled){pointer-events:auto}
 .auth-main>.auth-card{flex:none}
 @media(max-width:850px){.auth-main{padding:22px 16px 30px;gap:12px}.auth-main>.kb-festival-hero{min-height:94px;padding:14px 16px;border-radius:15px}.auth-main>.kb-festival-hero .kb-festival-seal{width:48px;height:48px;flex-basis:48px;font-size:24px}.auth-main>.kb-festival-hero .kb-festival-network{display:none}.auth-main>.auth-card{width:min(460px,100%);padding:25px 22px}}
 @media(max-width:420px){.auth-main>.kb-festival-hero .kb-festival-hero-copy p{font-size:10px}.auth-main>.kb-festival-hero .kb-festival-kicker{font-size:8px;letter-spacing:1px}}
+
+
+/* Keep the notification layer above the festival artwork and page content. */
+header.topbar{position:relative;z-index:120;isolation:isolate}
+header.topbar .notification-anchor{position:relative;z-index:122}
+header.topbar .notification-popover{z-index:124;max-height:min(430px,calc(100dvh - 104px));overscroll-behavior:contain}
+
+/* Centre the festival diya optically beside the language and theme controls. */
+.kb-festival-ribbon{align-items:center;align-self:center;vertical-align:middle}
+.kb-festival-ribbon .kb-festival-icon{display:inline-grid;place-items:center;width:22px;height:22px;line-height:1;font-size:17px;flex:0 0 22px;margin:0;padding:0;transform:translateY(0)}
+@media(max-width:600px){.kb-festival-ribbon .kb-festival-icon{width:20px;height:20px;flex-basis:20px;font-size:16px}}
