@@ -1936,3 +1936,43 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
 @media(max-width:900px){.kb-festival-ribbon{max-width:190px;margin:0 8px;padding:6px 9px}.kb-festival-note{display:none}}
 @media(max-width:600px){.kb-festival-ribbon{max-width:130px;margin:0 5px;padding:5px 7px;gap:5px}.kb-festival-ribbon strong{font-size:9px}.kb-festival-icon{font-size:14px}}
 @media(prefers-reduced-motion:reduce){.kb-festival-ribbon{animation:none}}
+
+
+/* Seasonal campaign banner: decorative only, never blocks app controls */
+.kb-festival-hero{position:relative;isolation:isolate;display:flex;align-items:center;justify-content:space-between;gap:20px;min-height:142px;margin:0 0 22px;padding:22px 30px;overflow:hidden;border:1px solid var(--kb-line);border-radius:20px;background:linear-gradient(112deg,var(--kb-accent) 0%,#263a60 72%,#172b45 100%);color:#fff;box-shadow:0 12px 30px rgba(24,39,68,.14)}
+.kb-festival-hero:before,.kb-festival-hero:after{content:"";position:absolute;z-index:-1;border-radius:50%;pointer-events:none}
+.kb-festival-hero:before{width:230px;height:230px;right:13%;top:-145px;background:rgba(255,255,255,.12)}
+.kb-festival-hero:after{width:170px;height:170px;right:28%;bottom:-125px;border:1px solid rgba(255,255,255,.2)}
+.kb-festival-hero-copy{position:relative;z-index:2;max-width:650px;min-width:0}
+.kb-festival-kicker{display:block;margin-bottom:7px;font-size:9px;font-weight:900;letter-spacing:2px;color:rgba(255,255,255,.78)}
+.kb-festival-hero h2{margin:0 0 7px;font-size:clamp(20px,3vw,30px);line-height:1.14;font-weight:850;letter-spacing:-.6px;color:#fff}
+.kb-festival-hero p{margin:0;max-width:560px;font-size:12px;line-height:1.55;color:rgba(255,255,255,.86)}
+.kb-festival-art{position:absolute;inset:0;overflow:hidden;pointer-events:none;z-index:1}
+.kb-festival-float{position:absolute;display:block;filter:drop-shadow(0 5px 8px rgba(0,0,0,.15));opacity:.9;animation:kbFestivalDrift 5.5s ease-in-out infinite}
+.kb-festival-float-0{right:22%;top:17%;font-size:28px;animation-delay:-.8s}
+.kb-festival-float-1{right:11%;top:52%;font-size:20px;animation-delay:-2s}
+.kb-festival-float-2{right:36%;top:61%;font-size:17px;animation-delay:-3.1s}
+.kb-festival-float-3{right:6%;top:12%;font-size:17px;animation-delay:-1.4s}
+.kb-festival-float-4{right:30%;top:13%;font-size:14px;animation-delay:-4s}
+.kb-festival-seal{position:relative;z-index:2;display:grid;place-items:center;flex:0 0 82px;width:82px;height:82px;margin-right:9%;border:1px solid rgba(255,255,255,.48);border-radius:50%;background:rgba(255,255,255,.14);box-shadow:0 0 0 9px rgba(255,255,255,.06),inset 0 0 24px rgba(255,255,255,.12);font-size:39px;animation:kbFestivalSeal 4s ease-in-out infinite}
+.kb-festival-spark{position:absolute;color:rgba(255,255,255,.78);pointer-events:none;animation:kbFestivalTwinkle 2.8s ease-in-out infinite}
+.kb-festival-spark-one{right:43%;top:20%;font-size:21px}
+.kb-festival-spark-two{right:4%;bottom:18%;font-size:27px;animation-delay:-1.2s}
+.kb-festival-holi{background:linear-gradient(112deg,#a92b9c 0%,#e45b77 53%,#7a397f 100%)}
+.kb-festival-diwali{background:linear-gradient(112deg,#a95016 0%,#d88922 48%,#6c2c31 100%)}
+.kb-festival-rakhi{background:linear-gradient(112deg,#a65b28 0%,#c17b3c 52%,#613b63 100%)}
+.kb-festival-janmashtami{background:linear-gradient(112deg,#174e91 0%,#277cb0 52%,#342c70 100%)}
+.kb-festival-ganesh{background:linear-gradient(112deg,#a94322 0%,#d87935 52%,#6b3559 100%)}
+.kb-festival-navratri{background:linear-gradient(112deg,#9e263d 0%,#c14d4c 52%,#642e64 100%)}
+.kb-festival-dussehra{background:linear-gradient(112deg,#9c421c 0%,#d06b2c 52%,#653c35 100%)}
+.kb-festival-sankranti{background:linear-gradient(112deg,#126d83 0%,#2495a0 52%,#23476f 100%)}
+.kb-festival-vasant{background:linear-gradient(112deg,#8a701d 0%,#b39a37 52%,#41644d 100%)}
+.kb-festival-ramnavami{background:linear-gradient(112deg,#99431f 0%,#c96b32 52%,#65402e 100%)}
+.kb-festival-shivratri{background:linear-gradient(112deg,#44326e 0%,#66569c 52%,#253a65 100%)}
+.kb-festival-rath-yatra{background:linear-gradient(112deg,#176c4c 0%,#36966a 52%,#234a58 100%)}
+@keyframes kbFestivalDrift{0%,100%{transform:translate3d(0,0,0) rotate(-5deg)}50%{transform:translate3d(0,-10px,0) rotate(7deg)}}
+@keyframes kbFestivalSeal{0%,100%{transform:translateY(0) rotate(-3deg)}50%{transform:translateY(-5px) rotate(3deg)}}
+@keyframes kbFestivalTwinkle{0%,100%{opacity:.35;transform:scale(.8)}50%{opacity:1;transform:scale(1.18)}}
+@media(max-width:700px){.kb-festival-hero{min-height:125px;margin-bottom:16px;padding:18px 17px;border-radius:15px}.kb-festival-hero h2{font-size:20px}.kb-festival-hero p{max-width:75%;font-size:10px}.kb-festival-seal{width:58px;height:58px;flex-basis:58px;margin-right:5%;font-size:29px}.kb-festival-float-0{right:20%;font-size:22px}.kb-festival-float-1{right:7%;font-size:17px}.kb-festival-float-2{right:34%;font-size:14px}.kb-festival-float-3{right:5%;font-size:14px}.kb-festival-float-4{right:29%;font-size:12px}}
+@media(max-width:420px){.kb-festival-hero{padding:15px 13px;gap:8px}.kb-festival-hero h2{font-size:17px}.kb-festival-hero p{max-width:100%;font-size:9px}.kb-festival-kicker{font-size:8px;letter-spacing:1.3px}.kb-festival-seal{width:46px;height:46px;flex-basis:46px;margin-right:2%;font-size:24px}.kb-festival-hero:before{right:-30px}}
+@media(prefers-reduced-motion:reduce){.kb-festival-float,.kb-festival-seal,.kb-festival-spark{animation:none}}
