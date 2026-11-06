@@ -1354,7 +1354,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                       <div className="complaint-symbol"><MessageSquare size={18}/></div>
                       <div className="complaint-info">
                         <strong>{c.subject}</strong>
-                        <span>{c.complaintFor || 'Customer'} · {targetName} · {dateLabel(c.createdAt)}</span>
+                        <span>{c.complaintFor || 'Customer'} · {targetName} · Submitted {c.createdAt?new Date(c.createdAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'}):'—'}</span>
                         <small>{c.details || 'No additional details.'}</small>
                       </div>
                       <span className={'priority ' + String(c.priority || 'Normal').toLowerCase()}>{c.priority || 'Normal'}</span>
@@ -1363,7 +1363,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                       <span><b>Assigned to:</b> {c.assignedToName || 'Not assigned'}</span>
                       <span><b>Raised by:</b> {c.createdByName || '—'}</span>
                       {c.resolvedByName && <span><b>Solved by:</b> {c.resolvedByName}</span>}
-                      {c.resolvedAt && <span><b>Solved on:</b> {dateLabel(c.resolvedAt)}</span>}
+                      {c.resolvedAt && <span><b>Solved on:</b> {new Date(c.resolvedAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'})}</span>}
                     </div>
                     {c.locationText && <p className="complaint-location"><MapPin size={14}/>{c.locationText} <a href={Number.isFinite(c.latitude) && Number.isFinite(c.longitude) ? 'https://www.google.com/maps?q=' + c.latitude + ',' + c.longitude : 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(c.locationText)} target="_blank" rel="noreferrer">Open map</a></p>}
                     <div className="complaint-controls">
