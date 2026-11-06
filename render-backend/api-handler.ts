@@ -778,7 +778,6 @@ export async function apiHandler(req: any, res: any) {
         if (!allow(user,['admin'],res)) return;
         const staffUserId = clean(req.body?.staffUserId,128), period = clean(req.body?.period,7);
         const amount = Number(req.body?.amount), paidAt = clean(req.body?.paidAt,10), payMethod = clean(req.body?.method,50);
-        const monthNumber = Number(period.slice(5,7));
         if (!isValidPayrollInput({ staffUserId, period, amount, paidAt, method: payMethod })) {
           send(res,400,{error:'Check the salary form: select an active staff member, choose a valid month and payment date, enter an amount above zero (up to INR 1,000,000), and choose a payment method.'}); return;
         }
