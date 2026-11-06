@@ -406,6 +406,21 @@ export default function StaffOperations({ session, customers, flash, compact = f
       <p className="ops-gps-note">Your location is shared only when an administrator sends a one-time request. No continuous tracking is active.</p>
     </section>}
 
+    {admin && <section className="panel ops-panel">
+      <div className="ops-panel-head"><div><span className="eyebrow">STAFF ATTENDANCE</span><h2>Staff shift controls</h2><p>Start, end or correct a staff member’s attendance. GPS is not required for shifts.</p></div></div>
+      <div className="ops-location-list">{staff.map(member => {
+        const shiftRecord = sortedAttendance.find(item => item.userId === member.id && item.workDate === today);
+        const selectedType = staffDayTypes[member.id] || 'Full day';
+        return <article className="ops-location-card" key={member.id}>
+          <div className="ops-person"><span className="avatar">{member.displayName.slice(0,2).toUpperCase()}</span><div><b>{member.displayName}</b><small>{shiftRecord?.dayType === 'Absent' ? 'Marked absent today' : shiftRecord?.checkOutAt ? 'Checked out ' + stamp(shiftRecord.checkOutAt) : shiftRecord ? 'Checked in ' + stamp(shiftRecord.checkInAt) : 'No attendance today'}</small></div></div>
+          <div className="ops-location-detail">
+            {!shiftRecord && <label className="ops-day-type">Attendance type <select value={selectedType} onChange={e=>setStaffDayTypes(current=>({...current,[member.id]:e.target.value as 'Full day'|'Half day'|'Absent'}))}><option>Full day</option><option>Half day</option><option>Absent</option></select></label>}
+            {!shiftRecord ? selectedType === 'Absent' ? <button className="btn danger compact" disabled={busy || !member.active} onClick={() => adminAbsent(member.id)}>Mark absent</button> : <button className="btn primary compact" disabled={busy || !member.active} onClick={() => adminShift(member.id, 'admin-start', selectedType)}>Start shift</button> : shiftRecord.gpsRestartRequired ? <button className="btn primary compact" disabled={busy || !member.active} onClick={() => adminShift(member.id, 'admin-start', selectedType === 'Absent' ? 'Full day' : selectedType)}>Restart shift</button> : shiftRecord.checkOutAt ? <span className="ops-complete">Shift completed</span> : <button className="btn danger compact" disabled={busy} onClick={() => adminShift(member.id, 'admin-end')}>End shift</button>}
+          </div>
+        </article>;
+      })}{!staff.length && <p className="ops-empty">Staff accounts will appear here after they are created.</p>}</div>
+    </section>}
+
     {admin && <section className="panel ops-panel finance-chart-panel">
       <div className="ops-panel-head"><div><span className="eyebrow">WORKFORCE ANALYTICS</span><h2>Monthly attendance trend</h2><p>Full-day and half-day attendance entries for the last six months.</p></div></div>
       <div className="finance-chart" role="img" aria-label="Six month attendance chart">
