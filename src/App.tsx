@@ -166,6 +166,9 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   const [tasks, setTasks] = useState<Task[]>([]);
   const [staff, setStaff] = useState<Staff[]>([]);
   const [staffRegistrationRequests,setStaffRegistrationRequests]=useState<StaffRegistrationRequest[]>([]);
+  const [staffInventory,setStaffInventory]=useState<any[]>([]);
+  const [staffInstallations,setStaffInstallations]=useState<any[]>([]);
+  const [staffPayroll,setStaffPayroll]=useState<any[]>([]);
   const [staffRequestPasswords,setStaffRequestPasswords]=useState<Record<string,string>>({});
   const [adminAccounts, setAdminAccounts] = useState<AdminAccount[]>([]);
   const [showAdminModal, setShowAdminModal] = useState(false);
@@ -256,9 +259,12 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
       setComplaints((t.data.items || []).map((item: Complaint) => ({ ...item, status: item.status === 'Open' ? 'Pending' : item.status === 'In progress' ? 'In Progress' : item.status === 'Resolved' ? 'Solved' : item.status })));
       setTasks(w.data.items || []);
       if (isAdmin) {
-        const [s, requests] = await Promise.all([api.get('/api/staff'),api.get('/api/staff-registration-requests')]);
+        const [s, requests, inventoryResult, installationResult, payrollResult] = await Promise.all([api.get('/api/staff'),api.get('/api/staff-registration-requests'),api.get('/api/inventory'),api.get('/api/installations'),api.get('/api/payroll')]);
         setStaff(s.data.items || []);
         setStaffRegistrationRequests(requests.data.items || []);
+        setStaffInventory(inventoryResult.data.items || []);
+        setStaffInstallations(installationResult.data.items || []);
+        setStaffPayroll(payrollResult.data.items || []);
         try {
           const review = await api.get('/api/retention/review');
           setRetentionItems((review.data.items || []) as RetentionReviewItem[]);
@@ -419,6 +425,9 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   const selectedStaffHalfDays=selectedStaffAttendance.filter(record=>record.dayType==='Half day').length;
   const selectedStaffAbsentDays=selectedStaffAttendance.filter(record=>record.dayType==='Absent'||String(record.status||'').toLowerCase()==='absent').length;
   const selectedStaffTasks = tasks.filter(task => task.assignedTo === selectedStaffProfileId);
+  const selectedStaffInventory=staffInventory.filter(item=>item.assignedTo===selectedStaffProfileId);
+  const selectedStaffInstallations=staffInstallations.filter(item=>item.assignedTo===selectedStaffProfileId);
+  const selectedStaffPayroll=staffPayroll.filter(item=>item.staffUserId===selectedStaffProfileId).sort((a,b)=>String(b.paidAt||'').localeCompare(String(a.paidAt||'')));
   const selectedStaffCollected = selectedStaffPayments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
   const visiblePlans = plans.filter(plan => {
     const matchesStatus = planFilter === 'All' || (planFilter === 'Active' ? plan.active : !plan.active);
@@ -1180,6 +1189,15 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                 </section>
                 <section className="staff-record-section staff-record-work"><div className="staff-record-section-head"><h3>Task progress</h3><span>{selectedStaffTasks.length} tasks</span></div>
                   {selectedStaffTasks.length ? <div className="staff-record-customer-list">{selectedStaffTasks.map(task => <div key={task.id}><b>{task.title}</b><span>{task.priority} priority · Due {dateLabel(task.dueDate)}</span><strong>{task.status}</strong></div>)}</div> : <p className="staff-record-empty">No tasks assigned to this staff member.</p>}
+                </section>
+                <section className="staff-record-section staff-record-work"><div className="staff-record-section-head"><h3>Assigned inventory</h3><span>{selectedStaffInventory.length} items</span></div>
+                  {selectedStaffInventory.length?<div className="staff-record-customer-list">{selectedStaffInventory.map(item=><div key={item.id}><b>{item.name} · {item.sku}</b><span>{item.category} · {item.quantity} {item.unit} · {item.location||'No location'}</span><strong>{item.createdAt?'Assigned/added '+new Date(item.createdAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'}):'Assignment date not available'}</strong></div>)}</div>:<p className="staff-record-empty">No inventory is currently assigned to this staff member.</p>}
+                </section>
+                <section className="staff-record-section staff-record-work"><div className="staff-record-section-head"><h3>Installation jobs</h3><span>{selectedStaffInstallations.length} jobs</span></div>
+                  {selectedStaffInstallations.length?<div className="staff-record-customer-list">{selectedStaffInstallations.map(item=><div key={item.id}><b>{item.customerName} · {item.type}</b><span>{item.address} · Scheduled {dateLabel(item.scheduledDate)}</span><strong>{item.status} · Created {item.createdAt?new Date(item.createdAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'}):'—'}{item.updatedAt?' · Updated '+new Date(item.updatedAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'}):''}</strong></div>)}</div>:<p className="staff-record-empty">No installation jobs are assigned to this staff member.</p>}
+                </section>
+                <section className="staff-record-section staff-record-work"><div className="staff-record-section-head"><h3>Salary history</h3><span>{selectedStaffPayroll.length} records</span></div>
+                  {selectedStaffPayroll.length?<div className="staff-record-customer-list">{selectedStaffPayroll.map(item=><div key={item.id}><b>{money(item.amount)} · {item.period}</b><span>Paid {item.paidAt} · {item.method}</span><strong>Recorded {item.createdAt?new Date(item.createdAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'}):'—'} · {item.recordedByName||'Admin'}</strong></div>)}</div>:<p className="staff-record-empty">No salary payments recorded for this staff member.</p>}
                 </section>
               </section>}
             </section>
