@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { Filesystem } from '@capacitor/filesystem';
+import { Camera } from '@capacitor/camera';
+import { Geolocation } from '@capacitor/geolocation';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { PushNotifications } from '@capacitor/push-notifications';
 import StaffOperations from './StaffOperations';
@@ -1797,11 +1799,7 @@ function StaffLocationResponder() {
     const respond = (requestId:string) => {
       if (handled.has(requestId)) return;
       handled.add(requestId);
-      if (!navigator.geolocation) {
-        void api.post('/api/location-requests/'+requestId+'/respond',{status:'failed',message:'Location is not available on this device.'}).catch(()=>undefined);
-        return;
-      }
-      navigator.geolocation.getCurrentPosition(async position => {
+      Geolocation.getCurrentPosition({enableHighAccuracy:true,maximumAge:0,timeout:20000}).then(async position => {
         let address='Address unavailable; open this point in Google Maps.';
         try {
           const url='https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat='+position.coords.latitude+'&lon='+position.coords.longitude;
@@ -1814,10 +1812,10 @@ function StaffLocationResponder() {
             accuracy:position.coords.accuracy,address
           });
         } catch { /* The request remains visible to the administrator as pending until it expires. */ }
-      }, error => {
-        const message=error.code===1?'Staff location permission was denied.':'Phone GPS could not get a current location.';
+      }).catch(error => {
+        const message=String(error?.message||'Phone GPS could not get a current location.');
         void api.post('/api/location-requests/'+requestId+'/respond',{status:'failed',message}).catch(()=>undefined);
-      },{enableHighAccuracy:true,maximumAge:0,timeout:20000});
+      });
     };
     const poll=async()=>{
       if(stopped||polling||document.visibilityState!=='visible')return;
@@ -1848,14 +1846,13 @@ function StaffPermissionSetup({ onComplete }: { onComplete:()=>void }) {
       outcomes.push('Storage/media access: '+String(result.publicStorage||'handled by Android picker'));
     } catch { outcomes.push('Storage/media: Android will ask when you select a file.'); }
     try {
-      await new Promise<GeolocationPosition>((resolve,reject)=>navigator.geolocation.getCurrentPosition(resolve,reject,{enableHighAccuracy:true,timeout:15000,maximumAge:0}));
+      await Geolocation.requestPermissions();
+      await Geolocation.getCurrentPosition({enableHighAccuracy:true,timeout:15000,maximumAge:0});
       outcomes.push('Location: allowed');
     } catch { outcomes.push('Location: not granted yet. Enable it in Android settings to respond to admin GPS requests.'); }
     try {
-      if(!navigator.mediaDevices?.getUserMedia) throw new Error('Camera permission is not available in this WebView.');
-      const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
-      stream.getTracks().forEach(track=>track.stop());
-      outcomes.push('Camera: allowed');
+      const camera=await Camera.requestPermissions();
+      outcomes.push('Camera: '+String(camera.camera||'requested'));
     } catch { outcomes.push('Camera: not granted yet. Allow it when capturing task evidence.'); }
     outcomes.push('Notifications: requested automatically when the app starts.');
     setMessage(outcomes.join('\n'));
