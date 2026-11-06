@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
-import { Capacitor } from '@capacitor/core';
+import { Capacitor, registerPlugin } from '@capacitor/core';
+import type { BackgroundGeolocationPlugin } from '@capacitor-community/background-geolocation';
 import { Filesystem } from '@capacitor/filesystem';
 import { Camera } from '@capacitor/camera';
 import { Geolocation } from '@capacitor/geolocation';
@@ -15,7 +16,7 @@ import GpsTrackingWorkspace from './GpsTrackingWorkspace';
 import InstallationsWorkspace from './InstallationsWorkspace';
 import CalendarWorkspace from './CalendarWorkspace';
 import { useAppPreferences } from './appPreferences';
-import { api as client, changeAppPassword, changeAppUserId, signInAppUser, signOutAppUser, submitStaffRegistrationRequest, getStaffRegistrationStatus } from './lib/api';
+import { api as client, changeAppPassword, changeAppUserId, signInAppUser, signOutAppUser, submitStaffRegistrationRequest, getStaffRegistrationStatus, nativeApiPost } from './lib/api';
 import {
   Activity,
   Bell,
@@ -52,6 +53,7 @@ type StaffRegistrationRequest={id:string;userId:string;displayName:string;phone?
 type StaffHolidayRequest={id:string;userId:string;displayName:string;startDate:string;endDate:string;reason:string;status:'pending'|'approved'|'rejected';createdAt:string;reviewedAt?:string;reviewedByName?:string};
 const getToken=()=>{try{return (JSON.parse(sessionStorage.getItem('kb-customer-session')||'null') as Session|null)?.token||'';}catch{return '';}};
 const api={get:(url:string)=>client.get(url+(url.includes('?')?'&':'?')+'sessionToken='+encodeURIComponent(getToken())),post:(url:string,data?:Record<string,unknown>)=>client.post(url,{...(data||{}),sessionToken:getToken()}),put:(url:string,data?:Record<string,unknown>)=>client.put(url,{...(data||{}),sessionToken:getToken()}),delete:(url:string)=>client.delete(url+'?sessionToken='+encodeURIComponent(getToken()))};
+const BackgroundGeolocation = registerPlugin<BackgroundGeolocationPlugin>('BackgroundGeolocation');
 type Customer = {
   id: string;
   name: string;
@@ -420,7 +422,8 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   const currentBillingMonth = new Date().toLocaleString('en-IN', { month: 'long', year: 'numeric' });
   const paidByCustomer = new Map<string, number>();
   payments.filter(p => p.month === currentBillingMonth).forEach(p => paidByCustomer.set(p.customerId, (paidByCustomer.get(p.customerId) || 0) + Number(p.amount || 0)));
-  const today = new Date().toISOString().slice(0, 10);
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+  const staffShiftActive = attendanceRecords.some(item => item.userId === session.user.id && item.workDate === today && !item.checkOutAt && item.dayType !== 'Absent');
   const overdueValue = customers.filter(c => c.status === 'Active' && c.dueDate && c.dueDate <= today).reduce((sum, c) => sum + Math.max(0, Number(c.monthlyFee || 0) - (paidByCustomer.get(c.id) || 0)), 0);
   const filtered = useMemo(
     () =>
@@ -1459,7 +1462,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
           onSave={savePayment}
         />
       )}
-      {!isAdmin && <StaffLocationResponder />}
+      {!isAdmin && <StaffLocationResponder activeShift={staffShiftActive} />}
       {permissionSetupOpen && <StaffPermissionSetup onComplete={(locationGranted = false) => { if (locationGranted) localStorage.setItem('kb-staff-permissions-v1', 'done'); setPermissionSetupOpen(false); }} />}
       {completingTask && <TaskCompletionModal task={completingTask} onClose={() => setCompletingTask(null)} onComplete={(photo: File | null, video: File | null) => completeTaskWithEvidence(completingTask, photo, video)} />}
       {taskPreview && <Modal title={taskPreview.name} subtitle="Task completion evidence" onClose={() => setTaskPreview(null)}><div className="complaint-preview">{taskPreview.mimeType.startsWith('video/') ? <video src={taskPreview.dataUrl} controls playsInline /> : <img src={taskPreview.dataUrl} alt={taskPreview.name}/>}</div><div className="form-actions"><a className="btn secondary" href={taskPreview.dataUrl} download={taskPreview.name}>Download evidence</a><button type="button" className="btn primary" onClick={() => setTaskPreview(null)}>Close</button></div></Modal>}
@@ -1916,44 +1919,110 @@ function StaffModal({ onClose, onSave }: any) {
   const [busy, setBusy] = useState(false);
   return <Modal title="Create staff account" subtitle="Give this team member a secure sign-in." onClose={onClose}><form className="form-grid" onSubmit={async e => { e.preventDefault(); setBusy(true); await onSave(form); setBusy(false); }}><Field label="Staff full name"><input required value={form.displayName} onChange={e => setForm({ ...form, displayName: e.target.value })} /></Field><Field label="Staff user ID"><input required minLength={3} maxLength={32} pattern="[a-zA-Z0-9_-]{3,32}" value={form.userId} onChange={e => setForm({ ...form, userId: e.target.value })} /></Field><Field label="Temporary password" wide><input required type="password" minLength={10} value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} /></Field><p className="form-hint">Use at least 10 characters and share it privately. Admin can reset it from Staff if needed.</p><div className="form-actions"><button type="button" className="btn secondary" onClick={onClose}>Cancel</button><button className="btn primary" disabled={busy}>{busy ? 'Creating…' : 'Create account'}</button></div></form></Modal>;
 }
-function StaffLocationResponder() {
+function StaffLocationResponder({ activeShift }: { activeShift: boolean }) {
   useEffect(() => {
+    if (!activeShift) return;
     let stopped = false;
     let sending = false;
-    const publish = async () => {
-      if (stopped || sending || document.visibilityState !== 'visible') return;
-      sending = true;
+    let watcherId: string | null = null;
+    let browserTimer: number | null = null;
+
+    const reportGpsUnavailable = (reason: string) => {
+      if (stopped) return;
+      void api.post('/api/attendance/gps-lost', { reason }).catch(() => undefined);
+    };
+
+    const publishNative = async () => {
       try {
         const permission = await Geolocation.checkPermissions();
-        if (permission.location !== 'granted') return;
-        const position = await Geolocation.getCurrentPosition({
-          enableHighAccuracy: false, maximumAge: 15000, timeout: 10000,
+        if (permission.location !== 'granted') {
+          reportGpsUnavailable('Location permission denied');
+          return;
+        }
+        const watcher = await BackgroundGeolocation.addWatcher({
+          backgroundTitle: 'K&B work location active',
+          backgroundMessage: 'Your location is shared with authorised K&B administrators only during your active shift. Tracking stops when you check out.',
+          requestPermissions: true,
+          stale: false,
+          distanceFilter: 10,
+        }, (location, error) => {
+          if (stopped) return;
+          if (error || !location) {
+            reportGpsUnavailable(error?.code === 'NOT_AUTHORIZED' ? 'Location permission was turned off' : 'Phone location services are unavailable');
+            return;
+          }
+          if (sending) return;
+          sending = true;
+          void nativeApiPost<{ gpsRestored?: boolean }>('/api/staff/live-location', {
+            latitude: location.latitude,
+            longitude: location.longitude,
+            accuracy: location.accuracy,
+            capturedAt: new Date(location.time || Date.now()).toISOString(),
+            source: 'android-background-service',
+          }).then(result => {
+            if (!stopped && result.data.gpsRestored) {
+              // A fresh point clears any server-side GPS grace period.
+            }
+          }).catch(error => {
+            if (stopped) return;
+            if ((error as Error & { status?: number }).status === 403) {
+              if (watcherId) void BackgroundGeolocation.removeWatcher({ id: watcherId });
+            }
+          }).finally(() => { sending = false; });
         });
-        if (stopped) return;
-        await api.post('/api/staff/live-location', {
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-          accuracy: position.coords.accuracy,
-        });
+        if (stopped) await BackgroundGeolocation.removeWatcher({ id: watcher });
+        else watcherId = watcher;
       } catch {
-        // The admin view will show that no fresh location is available.
-      } finally {
-        sending = false;
+        reportGpsUnavailable('Phone location services are unavailable');
       }
     };
-    void publish();
-    const timer = window.setInterval(() => { void publish(); }, 30000);
-    const onVisibility = () => { if (document.visibilityState === 'visible') void publish(); };
-    document.addEventListener('visibilitychange', onVisibility);
+
+    const publishBrowser = () => {
+      if (stopped || sending || document.visibilityState !== 'visible') return;
+      if (!navigator.geolocation) {
+        reportGpsUnavailable('GPS location unavailable');
+        return;
+      }
+      sending = true;
+      navigator.geolocation.getCurrentPosition(async position => {
+        try {
+          await api.post('/api/staff/live-location', {
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+            accuracy: position.coords.accuracy,
+            capturedAt: new Date(position.timestamp).toISOString(),
+            source: 'staff-app-foreground',
+          });
+        } catch {
+          // Keep the last confirmed point; the admin screen will show its age.
+        } finally { sending = false; }
+      }, error => {
+        reportGpsUnavailable(error.code === 1 ? 'Location permission denied' : 'GPS location unavailable');
+        sending = false;
+      }, { enableHighAccuracy: true, maximumAge: 5000, timeout: 12000 });
+    };
+
+    if (Capacitor.isNativePlatform()) {
+      void publishNative();
+    } else {
+      publishBrowser();
+      browserTimer = window.setInterval(publishBrowser, 15000);
+      const onVisibility = () => { if (document.visibilityState === 'visible') publishBrowser(); };
+      document.addEventListener('visibilitychange', onVisibility);
+      return () => {
+        stopped = true;
+        if (browserTimer !== null) window.clearInterval(browserTimer);
+        document.removeEventListener('visibilitychange', onVisibility);
+      };
+    }
+
     return () => {
       stopped = true;
-      window.clearInterval(timer);
-      document.removeEventListener('visibilitychange', onVisibility);
+      if (watcherId) void BackgroundGeolocation.removeWatcher({ id: watcherId });
     };
-  }, []);
+  }, [activeShift]);
   return null;
 }
-
 function StaffPermissionSetup({ onComplete }: { onComplete:(locationGranted?:boolean)=>void }) {
   const [busy,setBusy]=useState(false);
   const [message,setMessage]=useState('');
@@ -1973,7 +2042,10 @@ function StaffPermissionSetup({ onComplete }: { onComplete:(locationGranted?:boo
         const camera=await Camera.requestPermissions();
         outcomes.push('Camera: '+String(camera.camera||'requested'));
       } catch { outcomes.push('Camera: not granted yet. Allow it when capturing task evidence.'); }
-      outcomes.push('Notifications: requested automatically when the app starts.');
+      try {
+        const notifications = await LocalNotifications.requestPermissions();
+        outcomes.push('Notifications: ' + String(notifications.display || 'checked'));
+      } catch { outcomes.push('Notifications: Android may ask when shift tracking starts.'); }
       setMessage(outcomes.join('\n'));
       if (locationGranted) {
         localStorage.setItem('kb-staff-permissions-v1','done');
@@ -1986,9 +2058,9 @@ function StaffPermissionSetup({ onComplete }: { onComplete:(locationGranted?:boo
       setMessage(error instanceof Error?error.message:'Could not check Android permissions. Please try again.');
     } finally { setBusy(false); }
   }
-  return <Modal title="Set up staff app permissions" subtitle="Allow the permissions needed for task evidence, admin GPS requests and notifications." onClose={()=>onComplete(false)}>
+  return <Modal title="Set up staff app permissions" subtitle="Allow the permissions needed for task evidence, active-shift GPS tracking and notifications." onClose={()=>onComplete(false)}>
     <div className="form-grid">
-      <div className="form-hint">Your location is shared only when an administrator requests it. Once location permission is granted here, future requests reuse it and will not ask again. Camera access is used for task and complaint evidence. Android’s file picker controls access to selected photos and videos.</div>
+      <div className="form-hint">Your location is shared with authorised K&B administrators only during an active shift. It stops automatically when you check out. Camera access is used for task and complaint evidence. Android’s file picker controls access to selected photos and videos.</div>
       {message&&<p className="form-hint" style={{whiteSpace:'pre-line'}}>{message}</p>}
       <div className="form-actions"><button className="btn primary" disabled={busy} onClick={()=>void requestPermissions()}>{busy?'Checking…':'Allow required permissions'}</button><button type="button" className="btn secondary" onClick={()=>onComplete(false)}>Continue for now</button></div>
     </div>
