@@ -78,6 +78,31 @@ jobs:
           npm --prefix functions test
           npx cap add android
           npx cap sync android
+          # The native active-shift service uses the fused Android location provider.
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("android/app/build.gradle")
+          if not p.exists():
+              p = Path("android/app/build.gradle.kts")
+          if not p.exists():
+              raise SystemExit("Generated Android app Gradle file was not found")
+          s = p.read_text()
+          dep = "com.google.android.gms:play-services-location:21.3.0"
+          if dep not in s:
+              if p.suffix == ".kts":
+                  line = f'    implementation("{dep}")'
+              else:
+                  line = f"    implementation '{dep}'"
+              pos = s.rfind("dependencies {")
+              if pos < 0:
+                  raise SystemExit("Could not find app dependencies block")
+              end = s.find("}", pos)
+              if end < 0:
+                  raise SystemExit("Could not find end of app dependencies block")
+              s = s[:end] + line + "\\n" + s[end:]
+              p.write_text(s)
+          print("Google Play Services Location dependency is configured.")
+          PY
       - name: Add native Android Save As document picker
         run: |
           PACKAGE_DIR=android/app/src/main/java/kandbnet/service2010
