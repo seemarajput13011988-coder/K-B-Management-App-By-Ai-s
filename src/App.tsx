@@ -50,7 +50,7 @@ type AppNotification={id:string;title:string;message:string;createdAt:string;rea
 type RetentionReviewItem={id:string;collection:string;collectionLabel:string;recordLabel:string;createdAt:string};
 type StaffRegistrationRequest={id:string;userId:string;displayName:string;phone?:string;reason?:string;status:'pending'|'approved'|'rejected';createdAt:string;reviewedAt?:string;};
 type StaffHolidayRequest={id:string;userId:string;displayName:string;startDate:string;endDate:string;reason:string;status:'pending'|'approved'|'rejected';createdAt:string;reviewedAt?:string;reviewedByName?:string};
-const getToken=()=>{try{return (JSON.parse(localStorage.getItem('kb-customer-session')||'null') as Session|null)?.token||'';}catch{return '';}};
+const getToken=()=>{try{return (JSON.parse(sessionStorage.getItem('kb-customer-session')||'null') as Session|null)?.token||'';}catch{return '';}};
 const api={get:(url:string)=>client.get(url+(url.includes('?')?'&':'?')+'sessionToken='+encodeURIComponent(getToken())),post:(url:string,data?:Record<string,unknown>)=>client.post(url,{...(data||{}),sessionToken:getToken()}),put:(url:string,data?:Record<string,unknown>)=>client.put(url,{...(data||{}),sessionToken:getToken()}),delete:(url:string)=>client.delete(url+'?sessionToken='+encodeURIComponent(getToken()))};
 type Customer = {
   id: string;
@@ -2279,10 +2279,10 @@ function Modal({ title, subtitle, onClose, children }: any) {
 
 function App(){
  const [session,setSession]=useState<Session|null>(null);const [checking,setChecking]=useState(true);
- useEffect(()=>{let live=true;async function restore(){const raw=localStorage.getItem('kb-customer-session');if(!raw){setChecking(false);return;}try{const old=JSON.parse(raw) as Session;const r=await client.get('/api/auth/me?sessionToken='+encodeURIComponent(old.token));if(live)setSession({...old,user:r.data.user});}catch{localStorage.removeItem('kb-customer-session');}finally{if(live)setChecking(false);}}restore();return()=>{live=false;};},[]);
- async function login(userId:string,password:string,expectedRole:'admin'|'staff'){const next=await signInAppUser(userId,password,expectedRole) as Session;if(next.user.role!==expectedRole){await signOutAppUser();throw new Error(expectedRole==='admin'?'This account is not an admin account. Choose Staff Sign In instead.':'This account is not a staff account. Choose Admin Sign In instead.');}localStorage.setItem('kb-customer-session',JSON.stringify(next));setSession(next);}
+ useEffect(()=>{let live=true;async function restore(){localStorage.removeItem('kb-customer-session');const raw=sessionStorage.getItem('kb-customer-session');if(!raw){setChecking(false);return;}try{const old=JSON.parse(raw) as Session;const r=await client.get('/api/auth/me?sessionToken='+encodeURIComponent(old.token));if(live)setSession({...old,user:r.data.user});}catch{sessionStorage.removeItem('kb-customer-session');}finally{if(live)setChecking(false);}}restore();return()=>{live=false;};},[]);
+ async function login(userId:string,password:string,expectedRole:'admin'|'staff'){const next=await signInAppUser(userId,password,expectedRole) as Session;if(next.user.role!==expectedRole){await signOutAppUser();throw new Error(expectedRole==='admin'?'This account is not an admin account. Choose Staff Sign In instead.':'This account is not a staff account. Choose Admin Sign In instead.');}sessionStorage.setItem('kb-customer-session',JSON.stringify(next));setSession(next);}
  if(checking)return <div className="loading-cover"><div className="loader"/><span>Preparing secure sign-in…</span></div>;
- return session?<Workspace session={session} onLogout={()=>{signOutAppUser().catch(()=>undefined);localStorage.removeItem('kb-customer-session');setSession(null);}}/>:<LoginScreen onLogin={login}/>;
+ return session?<Workspace session={session} onLogout={()=>{signOutAppUser().catch(()=>undefined);sessionStorage.removeItem('kb-customer-session');localStorage.removeItem('kb-customer-session');setSession(null);}}/>:<LoginScreen onLogin={login}/>;
 }
 function LoginScreen({onLogin}:{onLogin:(id:string,pw:string,role:'admin'|'staff')=>Promise<void>}){
  const [role,setRole]=useState<'admin'|'staff'|null>(null);
