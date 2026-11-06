@@ -773,7 +773,6 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
 
   return (
     <div className="shell">
-      <StaffLocationResponder session={session} flash={flash} />
       <aside className={'sidebar ' + (mobileNav ? 'mobile-open' : '')}>
         <div className="brand">
           <div className="brand-mark">
@@ -2315,45 +2314,4 @@ function LoginScreen({onLogin}:{onLogin:(id:string,pw:string,role:'admin'|'staff
 }
 export default App;
 
-
-function StaffLocationResponder({session,flash}:{session:Session;flash:(message:string)=>void}) {
-  const handled = useRef<Set<string>>(new Set());
-  useEffect(() => {
-    if (session.user.role !== 'staff') return;
-    let stopped = false;
-    const check = async () => {
-      try {
-        const result = await api.get('/api/location-requests/pending');
-        const pending = (result.data.items || []) as Array<{id:string}>;
-        for (const item of pending) {
-          if (stopped || handled.current.has(item.id)) continue;
-          handled.current.add(item.id);
-          try {
-            const position = await Geolocation.getCurrentPosition({enableHighAccuracy:true,timeout:18000,maximumAge:0});
-            await api.post('/api/location-requests/'+item.id+'/respond',{
-              latitude:position.coords.latitude,
-              longitude:position.coords.longitude,
-              accuracy:position.coords.accuracy||0,
-              address:'Current GPS coordinates; open in Google Maps',
-              capturedAt:new Date(position.timestamp).toISOString(),
-            });
-            if (!stopped) flash('Your current location was shared with an administrator who requested it.');
-          } catch(error) {
-            const message=error instanceof Error?error.message:'Location permission is unavailable.';
-            await api.post('/api/location-requests/'+item.id+'/respond',{status:'failed',message:message.slice(0,220)}).catch(()=>undefined);
-            if (!stopped) flash('An administrator requested your location, but GPS could not be read. Check your location permission and GPS setting.');
-          }
-        }
-      } catch {
-        // Network outages are retried on the next check.
-      }
-    };
-    void check();
-    const timer=window.setInterval(()=>{void check();},5000);
-    const onVisibility=()=>{if(document.visibilityState==='visible')void check();};
-    document.addEventListener('visibilitychange',onVisibility);
-    return ()=>{stopped=true;window.clearInterval(timer);document.removeEventListener('visibilitychange',onVisibility);};
-  },[session.user.role,flash]);
-  return null;
-}
 
