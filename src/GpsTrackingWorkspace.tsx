@@ -4,7 +4,7 @@ import { MapPin, RefreshCw, Save, ExternalLink, LocateFixed } from 'lucide-react
 
 type StaffMember = { id: string; displayName: string; active: boolean };
 type LocationRequest = {
-  id: string; staffId: string; staffName: string; status: 'pending'|'captured'|'unavailable';
+  id: string; staffId: string; staffName: string; status: 'pending'|'captured'|'unavailable'|'expired';
   createdAt: string; expiresAt: string; capturedAt?: string; latitude?: number; longitude?: number;
   accuracy?: number; address?: string; responseMessage?: string; savedLocationId?: string;
 };
@@ -93,9 +93,9 @@ export default function GpsTrackingWorkspace({flash}:{flash:(message:string)=>vo
         {!staff.length&&<p className="ops-empty">No active staff accounts found.</p>}
       </div>}
       {activeRequest&&<div className="gps-result">
-        <div className="gps-result-head"><div><strong>{activeRequest.staffName}</strong><small>Location request · {stamp(activeRequest.createdAt)}</small></div><span className={'gps-status '+activeRequest.status}>{activeRequest.status==='pending'?'Waiting for staff':activeRequest.status==='captured'?'Location received':'Unavailable'}</span></div>
+        <div className="gps-result-head"><div><strong>{activeRequest.staffName}</strong><small>Location request · {stamp(activeRequest.createdAt)}</small></div><span className={'gps-status '+activeRequest.status}>{activeRequest.status==='pending'?'Waiting for staff':activeRequest.status==='captured'?'Location received':activeRequest.status==='expired'?'Request expired':'Unavailable'}</span></div>
         {activeRequest.status==='pending'&&<p className="gps-wait"><span className="gps-spinner"/> Waiting for the staff app to respond. Keep this screen open.</p>}
-        {activeRequest.status==='unavailable'&&<p className="gps-error">{activeRequest.responseMessage||'Location could not be captured. Ask the staff member to open the app and check GPS permission, then request again.'}</p>}
+        {(activeRequest.status==='unavailable'||activeRequest.status==='expired')&&<p className="gps-error">{activeRequest.status==='expired'?'The staff app did not respond within two minutes. Ask the staff member to open the app, then request again.':activeRequest.responseMessage||'Location could not be captured. Check GPS permission, then request again.'}</p>}
         {activeRequest.status==='captured'&&<>
           <div className="gps-address"><MapPin size={18}/><div><strong>{activeRequest.address||'Address not available'}</strong><small>Captured {stamp(activeRequest.capturedAt)}</small></div></div>
           <div className="gps-coordinates"><div><small>Latitude</small><strong>{Number(activeRequest.latitude).toFixed(6)}</strong></div><div><small>Longitude</small><strong>{Number(activeRequest.longitude).toFixed(6)}</strong></div><div><small>Accuracy</small><strong>±{Math.round(activeRequest.accuracy||0)} m</strong></div></div>
