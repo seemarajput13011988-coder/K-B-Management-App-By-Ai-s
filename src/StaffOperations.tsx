@@ -77,7 +77,6 @@ export default function StaffOperations({ session, customers, flash, compact = f
   const [messageForm, setMessageForm] = useState({ recipientId: '', message: '' });
   const [visitForm, setVisitForm] = useState({ customerId: customers[0]?.id || '', purpose: 'Installation / service visit', notes: '' });
   const selectedGroupRef = useRef('');
-  const handledLocationRequests = useRef<Set<string>>(new Set());
   const today = localDay();
   const myToday = attendance.filter(item => item.userId === session.user.id && item.workDate === today).sort((a, b) => b.checkInAt.localeCompare(a.checkInAt))[0];
   const activeShift = !!myToday && myToday.dayType !== 'Absent' && !myToday.checkOutAt;
