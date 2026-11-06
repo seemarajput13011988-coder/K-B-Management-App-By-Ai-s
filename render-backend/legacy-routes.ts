@@ -1179,27 +1179,40 @@ export const handler = router({
 
   'POST /api/saved-locations': protectedRoute(['admin'], async ({ body }, admin) => {
     const requestId = cleanText(body?.requestId, 128);
-    const [request] = await db.get<Record<string, unknown>>('location_requests', [requestId], { consistent: true });
-    if (!request || request.status !== 'captured') return error('Only a successfully captured location can be saved.', 400);
-    if (request.savedLocationId) return error('This location has already been saved.', 409);
-    const record = {
-      staffId: String(request.staffId || ''),
-      staffName: String(request.staffName || 'Staff member'),
-      latitude: Number(request.latitude),
-      longitude: Number(request.longitude),
-      accuracy: Number(request.accuracy || 0),
-      address: cleanText(request.address, 500),
-      capturedAt: String(request.capturedAt || ''),
-      savedAt: new Date().toISOString(),
-      savedBy: admin.id,
-      savedByName: admin.displayName,
-      requestId,
+    let record: Record<string, unknown>;
+    if (requestId) {
+      const [request] = await db.get<Record<string, unknown>>('location_requests', [requestId], { consistent: true });
+      if (!request || request.status !== 'captured') return error('Only a successfully captured location can be saved.', 400);
+      if (request.savedLocationId) return error('This location has already been saved.', 409);
+      record = {
+        staffId: String(request.staffId || ''),
+        staffName: String(request.staffName || 'Staff member'),
+        latitude: Number(request.latitude), longitude: Number(request.longitude),
+        accuracy: Number(request.accuracy || 0), address: cleanText(request.address, 500),
+        capturedAt: String(request.capturedAt || ''), requestId,
+      };
+    } else {
+      const staffId = cleanText(body?.staffId, 128);
+      const [member] = await db.get<UserRecord>('users', [staffId], { consistent: true });
+      const latitude = Number(body?.latitude), longitude = Number(body?.longitude);
+      if (!member || member.role !== 'staff' || !member.active) return error('Active staff member not found.', 404);
+      if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || Math.abs(latitude) > 90 || Math.abs(longitude) > 180) return error('A valid live location is required.', 400);
+      record = {
+        staffId, staffName: member.displayName, latitude, longitude,
+        accuracy: Math.min(Math.max(Number(body?.accuracy) || 0, 0), 100000),
+        address: 'Coordinates available in Google Maps.',
+        capturedAt: cleanText(body?.capturedAt, 40) || new Date().toISOString(),
+      };
+    }
+    const savedRecord = {
+      ...record, savedAt: new Date().toISOString(),
+      savedBy: admin.id, savedByName: admin.displayName,
     };
-    const [id] = await db.add('saved_locations', [record]);
+    const [id] = await db.add('saved_locations', [savedRecord]);
     if (!id) return error('Could not save this location.', 500);
-    await db.tx.update('location_requests', [{ id: requestId, record: { savedLocationId: id } }], { patch: true });
-    await writeAudit(admin, 'SAVE_LOCATION', 'saved_location', id, 'Saved the location of ' + record.staffName);
-    return json({ id, ...record }, 201);
+    if (requestId) await db.tx.update('location_requests', [{ id: requestId, record: { savedLocationId: id } }], { patch: true });
+    await writeAudit(admin, 'SAVE_LOCATION', 'saved_location', id, 'Saved the location of ' + String(record.staffName || 'staff member'));
+    return json({ id, ...savedRecord }, 201);
   }),
 
   'GET /api/locations': protectedRoute(['admin'], async () => {
