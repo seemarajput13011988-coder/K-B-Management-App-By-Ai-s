@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api as client } from './lib/api';
-import { Download, Plus, RefreshCw, ReceiptText, TrendingDown, TrendingUp, Wallet } from 'lucide-react';
+import { Download, Plus, RefreshCw, ReceiptText, Trash2, TrendingDown, TrendingUp, Wallet } from 'lucide-react';
 import { exportCsvFile, exportPdfFile } from './lib/file-export';
 
 type Session = { token: string; user: { id: string; displayName: string; role: 'admin' | 'staff' } };
@@ -9,7 +9,7 @@ type Payment = { id: string; customerId: string; customerName: string; amount: n
 type Expense = { id: string; title: string; category: string; amount: number; spentAt: string; method: string; notes?: string; createdByName: string };
 type Invoice = { id: string; customerId: string; customerName: string; period: string; dueDate: string; amount: number; status: string; paidAmount: number };
 type StaffMember = { id: string; displayName: string; userId: string; role: string; active: boolean };
-type PayrollRecord = { id: string; staffUserId: string; staffName: string; period: string; amount: number; paidAt: string; method: string; notes?: string; recordedByName?: string };
+type PayrollRecord = { id: string; staffUserId: string; staffName: string; period: string; amount: number; paidAt: string; method: string; notes?: string; recordedByName?: string; createdAt?: string };
 type LedgerEntry = { id: string; date: string; type: 'Invoice' | 'Payment'; description: string; debit: number; credit: number; balance: number; reference: string };
 type CustomerLedger = { customer: { id: string; name: string; phone?: string; plan?: string }; items: LedgerEntry[]; totalBilled: number; totalPaid: number; balance: number };
 
@@ -187,6 +187,14 @@ export default function FinanceWorkspace({ session, customers, payments, flash, 
     } finally { setBusy(false); }
   }
 
+  async function deleteSalary(item: PayrollRecord) {
+    if (session.user.role !== 'admin' || !window.confirm('Delete this salary record for ' + item.staffName + ' (' + monthName(item.period) + ')? This action will be recorded in the audit log.')) return;
+    setBusy(true);
+    try { await client.delete('/api/payroll/' + item.id + tokenQuery); await load(); flash('Salary record deleted.'); }
+    catch (err) { flash(err instanceof Error ? err.message : 'Could not delete salary record.'); }
+    finally { setBusy(false); }
+  }
+
   async function addExpense(event: React.FormEvent) {
     event.preventDefault();
     setBusy(true);
@@ -222,9 +230,9 @@ export default function FinanceWorkspace({ session, customers, payments, flash, 
         <label className="wide">Notes<input maxLength={300} value={salaryNotes} onChange={e => setSalaryNotes(e.target.value)} placeholder="Optional salary reference"/></label>
         <button className="btn primary" disabled={busy || !staff.length || !salaryStaffId || !salaryAmount}>{busy ? 'Saving…' : 'Record salary'}</button>
       </form>
-      <div className="finance-table-wrap"><table><thead><tr><th>STAFF MEMBER</th><th>MONTH</th><th>PAID DATE</th><th>METHOD</th><th>AMOUNT</th></tr></thead><tbody>
-        {payroll.map(item => <tr key={item.id}><td><b>{item.staffName}</b></td><td>{monthName(item.period)}</td><td>{item.paidAt}</td><td>{item.method}</td><td className="amount">{money(item.amount)}</td></tr>)}
-        {!payroll.length && <tr><td colSpan={5}>No salary payments recorded for this month.</td></tr>}
+      <div className="finance-table-wrap"><table><thead><tr><th>STAFF MEMBER</th><th>MONTH</th><th>PAID DATE</th><th>RECORDED AT</th><th>METHOD</th><th>AMOUNT</th>{session.user.role==='admin'&&<th>ACTIONS</th>}</tr></thead><tbody>
+        {payroll.map(item => <tr key={item.id}><td><b>{item.staffName}</b></td><td>{monthName(item.period)}</td><td>{item.paidAt}</td><td>{item.createdAt?new Date(item.createdAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'}):'—'}</td><td>{item.method}</td><td className="amount">{money(item.amount)}</td>{session.user.role==='admin'&&<td><button className="row-action danger" title="Delete salary record" disabled={busy} onClick={()=>void deleteSalary(item)}><Trash2 size={14}/></button></td>}</tr>)}
+        {!payroll.length && <tr><td colSpan={session.user.role==='admin'?7:6}>No salary payments recorded for this month.</td></tr>}
       </tbody></table></div>
       <div className="finance-foot"><span>{payroll.length} staff payments · Total salary paid: <b>{money(payrollTotal)}</b></span><button className="btn secondary compact" disabled={!payroll.length} onClick={() => downloadCsv('kb-payroll-' + period + '.csv', [['Staff member','Staff ID','Month','Paid date','Method','Amount','Notes'], ...payroll.map(item => [item.staffName, item.staffUserId, monthName(item.period), item.paidAt, item.method, item.amount, item.notes || ''])])}><Download size={14}/> Export payroll</button><button className="btn secondary compact" disabled={!payroll.length} onClick={() => printReport('Payroll · ' + monthName(period), [['Staff member','Staff ID','Month','Paid date','Method','Amount','Notes'], ...payroll.map(item => [item.staffName, item.staffUserId, monthName(item.period), item.paidAt, item.method, money(item.amount), item.notes || ''])])}><ReceiptText size={14}/> Export payroll PDF</button></div>
     </section>
