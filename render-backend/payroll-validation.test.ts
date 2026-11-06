@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { isValidPayrollInput } from '../render-backend/route-path.ts';
+import { isValidPayrollInput } from '../render-backend/route-path.js';
 
 const valid = {
   staffUserId: 'staff-record-123',
