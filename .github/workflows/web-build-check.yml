@@ -8,6 +8,7 @@ on:
       - main
       - safe-firebase-migration-copilot-review
       - on-demand-gps-proof-permissions
+      - ui-rebuild-gps-holidays-api-fixes
     paths:
       - "src/**"
       - "package.json"
