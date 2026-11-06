@@ -748,6 +748,14 @@ export async function apiHandler(req: any, res: any) {
         await db.collection('staff_notifications').doc(id).update({read:req.body?.read !== false,readAt:now()});
         send(res,200,{updated:true}); return;
       }
+      if (path.startsWith('/api/notifications/') && method === 'DELETE') {
+        const user = await requireUser(req);
+        if (!user) { send(res,401,{error:'Your session has expired. Please sign in again.'}); return; }
+        const id = routeId(path,'/api/notifications'), existing = await getDoc('staff_notifications',id);
+        if (!existing || (String(existing.recipientId || '') !== user.uid && String(existing.recipientId || '') !== user.userId)) { send(res,404,{error:'Notification not found.'}); return; }
+        await db.collection('staff_notifications').doc(id).delete();
+        send(res,200,{deleted:true}); return;
+      }
       if (method === 'POST' && path === '/api/push-tokens') {
         const user = await requireUser(req);
         if (!user) { send(res,401,{error:'Your session has expired. Please sign in again.'}); return; }
@@ -771,6 +779,16 @@ export async function apiHandler(req: any, res: any) {
         const items = (await list('payroll')).filter(item => !period || String(item.period || '') === period)
           .sort((a,b) => String(b.paidAt || '').localeCompare(String(a.paidAt || '')));
         send(res,200,{items}); return;
+      }
+      if (path.startsWith('/api/payroll/') && method === 'DELETE') {
+        const user = await requireUser(req);
+        if (!user) { send(res,401,{error:'Your session has expired. Please sign in again.'}); return; }
+        if (!allow(user,['admin'],res)) return;
+        const id = routeId(path,'/api/payroll'), existing = await getDoc('payroll',id);
+        if (!existing) { send(res,404,{error:'Salary record not found.'}); return; }
+        await db.collection('payroll').doc(id).delete();
+        await audit(user,'DELETE','payroll',id,'Deleted salary record for '+String(existing.staffName||'staff')+' ('+String(existing.period||'')+')');
+        send(res,200,{deleted:true}); return;
       }
       if (path === '/api/payroll' && method === 'POST') {
         const user = await requireUser(req);
@@ -897,6 +915,16 @@ export async function apiHandler(req: any, res: any) {
         await db.collection('installations').doc(id).update(patch);
         await audit(user,'UPDATE','installation',id,'Updated installation job status to '+status);
         send(res,200,{updated:true}); return;
+      }
+      if (path.startsWith('/api/installations/') && method==='DELETE') {
+        const user=await requireUser(req);
+        if (!user) { send(res,401,{error:'Your session has expired. Please sign in again.'}); return; }
+        const id=routeId(path,'/api/installations'), existing=await getDoc('installations',id);
+        if (!existing) { send(res,404,{error:'Installation job not found.'}); return; }
+        if (user.role!=='admin' && existing.assignedTo!==user.uid) { send(res,403,{error:'You can delete only installation jobs assigned to your account.'}); return; }
+        await db.collection('installations').doc(id).delete();
+        await audit(user,'DELETE','installation',id,'Deleted installation job for '+String(existing.customerName||'customer'));
+        send(res,200,{deleted:true}); return;
       }
       send(res,404,{error:'This API route was not found.'});
     } catch (error: any) {
