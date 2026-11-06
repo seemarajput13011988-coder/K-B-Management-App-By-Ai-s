@@ -872,10 +872,56 @@ export const handler = router({
     return json({ updated: true });
   }),
 
-  'POST /api/attendance/gps-lost': protectedRoute(['staff'], async () => {
-    // Legacy clients are told to stop shift GPS monitoring. Attendance is never
-    // blocked or cancelled because location permission is unavailable.
-    return json({ monitoring: false, reason: 'no-active-shift', trackingDisabled: true });
+  'POST /api/attendance/gps-lost': protectedRoute(['staff'], async ({ body }, user) => {
+    const workDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+    const attendance = await db.list<Record<string, unknown>>('attendance', { limit: 1000 });
+    const active = attendance.items
+      .filter(item => item.userId === user.id && item.workDate === workDate && !item.checkOutAt && !item.gpsRestartRequired)
+      .sort((a, b) => String(b.checkInAt || '').localeCompare(String(a.checkInAt || '')))[0];
+    if (!active) return json({ monitoring: false, reason: 'no-active-shift' });
+
+    const holidays = await db.list<Record<string, unknown>>('holiday_requests', { limit: 1000 });
+    const exempt = holidays.items.some(item =>
+      item.userId === user.id && ['pending', 'approved'].includes(String(item.status)) &&
+      String(item.startDate || '') <= workDate && String(item.endDate || '') >= workDate
+    );
+    if (exempt) return json({ monitoring: false, reason: 'holiday-exempt' });
+
+    const reason = cleanText(body?.reason, 160);
+    if (!isConfirmedGpsLossReason(reason)) return error('A confirmed GPS or location-permission failure is required.', 400);
+
+    const startedAt = String(active.gpsIssueStartedAt || new Date().toISOString());
+    const issueId = String(active.gpsIssueId || createHash('sha256').update(String(active.id) + '|' + startedAt).digest('hex').slice(0, 16));
+    if (!active.gpsIssueStartedAt || !active.gpsIssueId) {
+      await db.tx.update('attendance', [{
+        id: String(active.id),
+        record: { gpsIssueStartedAt: startedAt, gpsIssueId: issueId, gpsStatus: 'grace-period', gpsIssueReason: reason, gpsReminderStage: 0 },
+      }], { patch: true });
+
+      await db.add('staff_notifications', [{
+        id: String(active.id) + '-gps-' + issueId + '-0',
+        recipientId: user.id, recipientRole: 'staff', type: 'gps-reminder',
+        title: 'GPS is unavailable',
+        message: 'Your shift remains active during a 15-minute GPS restoration period. Restore location to keep the shift active.',
+        createdAt: startedAt, read: false, attendanceId: active.id,
+      }]);
+
+      const users = await db.list<UserRecord>('users', { limit: 500 });
+      const admins = users.items.filter(item => item.role === 'admin' && item.active === true);
+      await Promise.all(admins.map(admin => db.add('staff_notifications', [{
+        id: String(active.id) + '-gps-' + issueId + '-admin-' + admin.id,
+        recipientId: admin.id, recipientRole: 'admin', type: 'gps-issue',
+        title: 'Staff GPS is OFF',
+        message: user.displayName + ' has lost GPS/location during an active shift. The 15-minute restoration period has started.',
+        createdAt: startedAt, read: false, attendanceId: active.id,
+      }])));
+    }
+
+    const deadlineAt = new Date(Date.parse(startedAt) + 15 * 60 * 1000).toISOString();
+    return json({
+      monitoring: true, startedAt, deadlineAt,
+      remainingSeconds: Math.max(0, Math.ceil((Date.parse(deadlineAt) - Date.now()) / 1000)),
+    });
   }),
 
   'POST /api/attendance/check-out': protectedRoute(['staff'], async (_ctx, user) => {
@@ -1083,6 +1129,93 @@ export const handler = router({
     }]);
     await writeAudit(admin, 'UPDATE', 'holiday_request', params.id, 'Holiday request ' + label);
     return json({ updated: true, status });
+  }),
+
+  'POST /api/staff/live-location': protectedRoute(['staff'], async ({ body }, user) => {
+    const latitude = Number(body?.latitude), longitude = Number(body?.longitude);
+    const accuracy = Number(body?.accuracy || 0);
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude) ||
+        Math.abs(latitude) > 90 || Math.abs(longitude) > 180 ||
+        !Number.isFinite(accuracy) || accuracy < 0 || accuracy > 100000) {
+      return error('A valid GPS reading is required.', 400);
+    }
+
+    const workDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+    const attendance = await db.list<Record<string, unknown>>('attendance', { limit: 1000 });
+    const active = attendance.items
+      .filter(item => item.userId === user.id && item.workDate === workDate && !item.checkOutAt)
+      .sort((a, b) => String(b.checkInAt || '').localeCompare(String(a.checkInAt || '')))[0];
+    if (!active || active.gpsRestartRequired) return error('Location can be shared only during an active, authorised shift.', 403);
+
+    if (active.gpsIssueStartedAt && Date.now() - Date.parse(String(active.gpsIssueStartedAt)) >= 15 * 60 * 1000) {
+      return error('The 15-minute GPS grace period has expired. Contact an administrator to restart your shift.', 409);
+    }
+
+    const capturedAt = cleanText(body?.capturedAt, 40) || new Date().toISOString();
+    const record = {
+      id: user.id, staffId: user.id, staffName: user.displayName,
+      latitude, longitude, accuracy, capturedAt,
+      source: cleanText(body?.source, 80) || 'staff-app-background',
+    };
+    await firestore.collection('staff_live_locations').doc(user.id).set(record, { merge: true });
+    await db.add('locations', [{ ...record, id: undefined }]);
+
+    const gpsRestored = Boolean(active.gpsIssueStartedAt);
+    if (gpsRestored) {
+      await db.tx.update('attendance', [{
+        id: String(active.id),
+        record: {
+          gpsIssueStartedAt: FieldValue.delete(), gpsIssueId: FieldValue.delete(),
+          gpsIssueReason: FieldValue.delete(), gpsReminderStage: FieldValue.delete(),
+          gpsStatus: 'active', gpsRestoredAt: capturedAt,
+        },
+      }], { patch: true });
+
+      const notifications = await db.list<Record<string, unknown>>('staff_notifications', { limit: 1000 });
+      const oldGpsNotifications = notifications.items.filter(item =>
+        item.attendanceId === active.id && String(item.type || '').startsWith('gps-')
+      );
+      if (oldGpsNotifications.length) {
+        await db.tx.update('staff_notifications', oldGpsNotifications.map(item => ({
+          id: String(item.id), record: { read: true, resolvedAt: capturedAt },
+        })), { patch: true });
+      }
+      await db.add('staff_notifications', [{
+        recipientId: user.id, recipientRole: 'staff', type: 'gps-restored',
+        title: 'GPS restored', message: 'Your location is available again. Your shift continues normally.',
+        createdAt: capturedAt, read: false, attendanceId: active.id,
+      }]);
+    }
+
+    return json({ updated: true, capturedAt, gpsRestored });
+  }),
+
+  'GET /api/staff/:id/live-location': protectedRoute(['admin'], async ({ params }) => {
+    const [member] = await db.get<UserRecord>('users', [params.id], { consistent: true });
+    if (!member || member.role !== 'staff' || !member.active) return error('Active staff member not found.', 404);
+
+    const workDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+    const attendance = await db.list<Record<string, unknown>>('attendance', { limit: 1000 });
+    const active = attendance.items
+      .filter(item => item.userId === params.id && item.workDate === workDate && !item.checkOutAt)
+      .sort((a, b) => String(b.checkInAt || '').localeCompare(String(a.checkInAt || '')))[0];
+    if (!active) return json({ status: 'shift-not-active', item: null, isFresh: false, ageSeconds: null });
+    
+    const [location] = await db.get<Record<string, unknown>>('staff_live_locations', [params.id], { consistent: true });
+    const gpsOff = Boolean(active.gpsIssueStartedAt || active.gpsRestartRequired || active.gpsStatus === 'disabled');
+    const deadlineAt = active.gpsIssueStartedAt
+      ? new Date(Date.parse(String(active.gpsIssueStartedAt)) + 15 * 60 * 1000).toISOString()
+      : null;
+    if (!location) return json({ status: gpsOff ? 'gps-off' : 'location-unavailable', item: null, isFresh: false, ageSeconds: null, deadlineAt });
+
+    const capturedAt = String(location.capturedAt || '');
+    const ageMs = capturedAt ? Math.max(0, Date.now() - Date.parse(capturedAt)) : Number.POSITIVE_INFINITY;
+    const ageSeconds = Number.isFinite(ageMs) ? Math.floor(ageMs / 1000) : null;
+    const isFresh = Number.isFinite(ageMs) && ageMs <= 90000;
+    return json({
+      item: location, status: gpsOff ? 'gps-off' : isFresh ? 'live' : 'stale',
+      isFresh: isFresh && !gpsOff, ageSeconds, deadlineAt,
+    });
   }),
 
   'POST /api/location-requests': protectedRoute(['admin'], async ({ body }, admin) => {
