@@ -963,7 +963,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
             </div>
           </div>
 
-          {page === 'Calendar' && <CalendarWorkspace tasks={tasks} attendance={attendanceRecords} isAdmin={isAdmin} />}
+          {page === 'Calendar' && <CalendarWorkspace tasks={tasks} attendance={attendanceRecords} isAdmin={isAdmin} festivals={Object.entries(FESTIVAL_DATES).map(([date, festival]) => ({ date, ...festival }))} />}
           {page === 'Salary' && isAdmin && <FinanceWorkspace salaryOnly session={session} customers={customers} payments={payments} flash={flash} />}
           {page === 'My Day' && !isAdmin && <StaffOperations session={session} customers={customers} flash={flash} onDataChanged={() => { void load(true); }} />}
           {page === 'Invoices' && isAdmin && <InvoiceWorkspace customers={customers} plans={plans} flash={flash} />}
@@ -2429,6 +2429,7 @@ function FestivalCelebration(){
   const motifsForDay=motifs[festival.theme]||['✨','🌼','🪷','✨','🌸'];
   return <section className={'kb-festival-hero kb-festival-'+festival.theme} aria-label={festival.name+' celebration'}>
     <div className="kb-festival-art" aria-hidden="true">{motifsForDay.map((motif,index)=><span key={index} className={'kb-festival-float kb-festival-float-'+index}>{motif}</span>)}</div>
+    <div className="kb-festival-network" aria-hidden="true"><Wifi size={72}/><span>K&amp;B CONNECTED CELEBRATIONS</span><i/><i/><i/></div>
     <div className="kb-festival-hero-copy"><span className="kb-festival-kicker">K&amp;B FESTIVE CELEBRATION</span><h2>{festival.name}</h2><p>Wishing our K&amp;B family joy, prosperity and a wonderful celebration.</p></div>
     <div className="kb-festival-seal" aria-hidden="true">{motifsForDay[0]}</div>
     <span className="kb-festival-spark kb-festival-spark-one" aria-hidden="true">✦</span><span className="kb-festival-spark kb-festival-spark-two" aria-hidden="true">✧</span>
