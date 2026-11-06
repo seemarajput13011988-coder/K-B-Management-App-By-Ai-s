@@ -850,6 +850,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
           <div className="crumb">
             Workspace <span>/</span> <strong>{page}</strong>
           </div>
+          <FestivalBadge/>
           <div className="top-actions">
             <span className="system-status">
               <i /> All systems operational
@@ -2286,63 +2287,104 @@ function Modal({ title, subtitle, onClose, children }: any) {
 }
 
 
+type FestivalInfo={name:string;theme:string};
+const FESTIVAL_DATES:Record<string,FestivalInfo>={
+  '2026-01-14':{name:'Makar Sankranti · Uttarayan',theme:'sankranti'},
+  '2026-01-23':{name:'Vasant Panchami',theme:'vasant'},
+  '2026-02-15':{name:'Maha Shivaratri',theme:'shivratri'},
+  '2026-03-02':{name:'Holika Dahan · Holi',theme:'holi'},
+  '2026-03-03':{name:'Dhuleti',theme:'holi'},
+  '2026-03-19':{name:'Gudi Padwa',theme:'vasant'},
+  '2026-03-26':{name:'Rama Navami',theme:'ramnavami'},
+  '2026-04-02':{name:'Hanuman Jayanti',theme:'ramnavami'},
+  '2026-04-19':{name:'Akha Trij · Akshaya Tritiya',theme:'vasant'},
+  '2026-07-16':{name:'Ahmedabad Jagannath Rath Yatra',theme:'rath-yatra'},
+  '2026-07-29':{name:'Guru Purnima',theme:'vasant'},
+  '2026-08-28':{name:'Raksha Bandhan',theme:'rakhi'},
+  '2026-09-01':{name:'Nag Pancham',theme:'navratri'},
+  '2026-09-02':{name:'Randhan Chhath',theme:'rakhi'},
+  '2026-09-03':{name:'Shitala Satam',theme:'rakhi'},
+  '2026-09-04':{name:'Krishna Janmashtami',theme:'janmashtami'},
+  '2026-09-14':{name:'Ganesh Chaturthi',theme:'ganesh'},
+  '2026-10-19':{name:'Durga Ashtami · Maha Navami',theme:'navratri'},
+  '2026-10-20':{name:'Vijayadashami · Dussehra',theme:'dussehra'},
+  '2026-10-25':{name:'Sharad Purnima',theme:'vasant'},
+  '2026-10-29':{name:'Karwa Chauth',theme:'rakhi'},
+  '2026-11-05':{name:'Vagh Baras',theme:'diwali'},
+  '2026-11-06':{name:'Dhanteras',theme:'diwali'},
+  '2026-11-07':{name:'Kali Chaudas · Hanuman Puja',theme:'diwali'},
+  '2026-11-08':{name:'Diwali · Chopda Pujan',theme:'diwali'},
+  '2026-11-09':{name:'Govardhan Puja · Annakut',theme:'diwali'},
+  '2026-11-10':{name:'Bestu Varas · Gujarati New Year',theme:'diwali'},
+  '2026-11-11':{name:'Bhai Beej',theme:'diwali'},
+  '2026-11-14':{name:'Labh Pancham',theme:'diwali'},
+  '2026-11-16':{name:'Jalaram Bapa Jayanti',theme:'diwali'},
+  '2026-11-20':{name:'Devutthana Ekadashi',theme:'diwali'},
+  '2026-11-21':{name:'Tulsi Vivah',theme:'diwali'},
+  '2026-11-24':{name:'Dev Diwali · Kartik Purnima',theme:'diwali'},
+  '2026-12-20':{name:'Gita Jayanti',theme:'vasant'},
+  '2026-12-23':{name:'Dattatreya Jayanti',theme:'vasant'},
+  '2027-01-15':{name:'Makar Sankranti · Uttarayan',theme:'sankranti'},
+  '2027-02-11':{name:'Vasant Panchami',theme:'vasant'},
+  '2027-03-06':{name:'Maha Shivaratri',theme:'shivratri'},
+  '2027-03-21':{name:'Holi · Holika Dahan',theme:'holi'},
+  '2027-03-22':{name:'Dhuleti',theme:'holi'},
+  '2027-04-07':{name:'Gudi Padwa · Chaitra Navratri',theme:'navratri'},
+  '2027-04-14':{name:'Durga Ashtami',theme:'navratri'},
+  '2027-04-15':{name:'Rama Navami',theme:'ramnavami'},
+  '2027-04-20':{name:'Hanuman Jayanti',theme:'ramnavami'},
+  '2027-05-09':{name:'Akha Trij · Akshaya Tritiya',theme:'vasant'},
+  '2027-07-05':{name:'Ahmedabad Jagannath Rath Yatra',theme:'rath-yatra'},
+  '2027-07-14':{name:'Gauri Vrat begins · Devshayani Ekadashi',theme:'navratri'},
+  '2027-07-16':{name:'Jayaparvati Vrat begins',theme:'navratri'},
+  '2027-07-17':{name:'Kokila Vrat',theme:'navratri'},
+  '2027-07-18':{name:'Guru Purnima · Gauri Vrat ends',theme:'vasant'},
+  '2027-07-21':{name:'Jayaparvati Vrat ends',theme:'navratri'},
+  '2027-08-17':{name:'Raksha Bandhan',theme:'rakhi'},
+  '2027-08-22':{name:'Nag Pancham',theme:'navratri'},
+  '2027-08-23':{name:'Randhan Chhath',theme:'rakhi'},
+  '2027-08-24':{name:'Shitala Satam',theme:'rakhi'},
+  '2027-08-25':{name:'Krishna Janmashtami',theme:'janmashtami'},
+  '2027-09-04':{name:'Ganesh Chaturthi',theme:'ganesh'},
+  '2027-10-07':{name:'Durga Ashtami',theme:'navratri'},
+  '2027-10-08':{name:'Maha Navami',theme:'navratri'},
+  '2027-10-09':{name:'Vijayadashami · Dussehra',theme:'dussehra'},
+  '2027-10-14':{name:'Sharad Purnima',theme:'vasant'},
+  '2027-10-18':{name:'Karwa Chauth',theme:'rakhi'},
+  '2027-10-26':{name:'Vagh Baras',theme:'diwali'},
+  '2027-10-27':{name:'Dhanteras · Kali Chaudas',theme:'diwali'},
+  '2027-10-28':{name:'Roop Chaudas',theme:'diwali'},
+  '2027-10-29':{name:'Diwali · Chopda Pujan',theme:'diwali'},
+  '2027-10-30':{name:'Govardhan Puja · Annakut · Bestu Varas',theme:'diwali'},
+  '2027-10-31':{name:'Bhai Beej',theme:'diwali'},
+  '2027-11-03':{name:'Labh Pancham',theme:'diwali'},
+  '2027-11-05':{name:'Jalaram Bapa Jayanti',theme:'diwali'},
+  '2027-11-10':{name:'Devutthana Ekadashi',theme:'diwali'},
+  '2027-11-11':{name:'Tulsi Vivah',theme:'diwali'},
+  '2027-11-13':{name:'Dev Diwali · Kartik Purnima',theme:'diwali'}
+};
+for(const [start,count,name,theme] of [
+  ['2026-10-11',9,'Sharad Navratri','navratri'],
+  ['2027-04-07',9,'Chaitra Navratri','navratri'],
+  ['2027-09-30',9,'Sharad Navratri','navratri']
+] as const){
+  const [year,month,day]=start.split('-').map(Number);
+  const first=Date.UTC(year,month-1,day);
+  for(let offset=0;offset<count;offset++){
+    const date=new Date(first+offset*86400000);
+    const key=date.getUTCFullYear()+'-'+String(date.getUTCMonth()+1).padStart(2,'0')+'-'+String(date.getUTCDate()).padStart(2,'0');
+    if(!FESTIVAL_DATES[key]) FESTIVAL_DATES[key]={name,theme};
+  }
+}
+function currentFestival():FestivalInfo|null{
+  const parts=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());
+  const get=(type:string)=>parts.find(part=>part.type===type)?.value||'';
+  return FESTIVAL_DATES[get('year')+'-'+get('month')+'-'+get('day')]||null;
+}
 function FestivalTheme(){
   useEffect(()=>{
-    const dates:Record<string,{name:string;theme:string}>={
-      '2026-11-05':{name:'Vagh Baras',theme:'diwali'},
-      '2026-11-06':{name:'Dhanteras',theme:'diwali'},
-      '2026-11-07':{name:'Kali Chaudas',theme:'diwali'},
-      '2026-11-08':{name:'Diwali · Chopda Pujan',theme:'diwali'},
-      '2026-11-09':{name:'Govardhan Puja · Annakut',theme:'diwali'},
-      '2026-11-10':{name:'Bestu Varas · Gujarati New Year',theme:'diwali'},
-      '2026-11-11':{name:'Bhai Beej',theme:'diwali'},
-      '2026-11-14':{name:'Labh Pancham',theme:'diwali'},
-      '2026-11-16':{name:'Jalaram Jayanti',theme:'diwali'},
-      '2026-11-20':{name:'Dev Uthi Ekadashi',theme:'diwali'},
-      '2026-11-21':{name:'Tulsi Vivah',theme:'diwali'},
-      '2026-11-24':{name:'Dev Diwali',theme:'diwali'},
-      '2027-01-15':{name:'Uttarayan · Makar Sankranti',theme:'sankranti'},
-      '2027-02-11':{name:'Vasant Panchami',theme:'vasant'},
-      '2027-03-06':{name:'Maha Shivaratri',theme:'shivratri'},
-      '2027-03-21':{name:'Holika Dahan',theme:'holi'},
-      '2027-03-22':{name:'Dhuleti · Holi',theme:'holi'},
-      '2027-04-07':{name:'Chaitra Navratri · Gudi Padwa',theme:'navratri'},
-      '2027-04-15':{name:'Ram Navami',theme:'ramnavami'},
-      '2027-04-20':{name:'Hanuman Jayanti',theme:'ramnavami'},
-      '2027-05-09':{name:'Akshaya Tritiya · Akha Trij',theme:'vasant'},
-      '2027-07-05':{name:'Jagannath Rath Yatra',theme:'rath-yatra'},
-      '2027-07-18':{name:'Guru Purnima',theme:'vasant'},
-      '2027-08-17':{name:'Raksha Bandhan',theme:'rakhi'},
-      '2027-08-22':{name:'Nag Pancham',theme:'navratri'},
-      '2027-08-23':{name:'Randhan Chhath',theme:'rakhi'},
-      '2027-08-24':{name:'Shitala Satam',theme:'rakhi'},
-      '2027-08-25':{name:'Krishna Janmashtami',theme:'janmashtami'},
-      '2027-09-04':{name:'Ganesh Chaturthi',theme:'ganesh'},
-      '2027-10-09':{name:'Dussehra · Vijayadashami',theme:'dussehra'},
-      '2027-10-18':{name:'Karwa Chauth',theme:'rakhi'},
-      '2027-10-26':{name:'Vagh Baras',theme:'diwali'},
-      '2027-10-27':{name:'Dhanteras · Kali Chaudas',theme:'diwali'},
-      '2027-10-28':{name:'Narak Chaturdashi',theme:'diwali'},
-      '2027-10-29':{name:'Diwali · Chopda Pujan',theme:'diwali'},
-      '2027-10-30':{name:'Govardhan Puja · Bestu Varas',theme:'diwali'},
-      '2027-10-31':{name:'Bhai Beej',theme:'diwali'},
-      '2027-11-03':{name:'Labh Pancham',theme:'diwali'},
-      '2027-11-04':{name:'Chhath Puja',theme:'diwali'},
-      '2027-11-14':{name:'Dev Diwali',theme:'diwali'}
-    };
-    const addRange=(start:string,count:number,name:string,theme:string)=>{
-      const [year,month,day]=start.split('-').map(Number);
-      const date=new Date(Date.UTC(year,month-1,day));
-      for(let offset=0;offset<count;offset++){
-        const current=new Date(date.getTime()+offset*86400000);
-        const key=current.getUTCFullYear()+'-'+String(current.getUTCMonth()+1).padStart(2,'0')+'-'+String(current.getUTCDate()).padStart(2,'0');
-        dates[key]={name,theme};
-      }
-    };
-    addRange('2027-09-30',9,'Sharad Navratri','navratri');
     const apply=()=>{
-      const date=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
-      const festival=dates[date];
+      const festival=currentFestival();
       if(festival){document.documentElement.dataset.festivalTheme=festival.theme;document.documentElement.dataset.festivalName=festival.name;}
       else{delete document.documentElement.dataset.festivalTheme;delete document.documentElement.dataset.festivalName;}
     };
@@ -2351,6 +2393,13 @@ function FestivalTheme(){
     return()=>{window.clearInterval(timer);delete document.documentElement.dataset.festivalTheme;delete document.documentElement.dataset.festivalName;};
   },[]);
   return null;
+}
+function FestivalBadge(){
+  const [festival,setFestival]=useState<FestivalInfo|null>(()=>currentFestival());
+  useEffect(()=>{const update=()=>setFestival(currentFestival());const timer=window.setInterval(update,60_000);return()=>window.clearInterval(timer);},[]);
+  if(!festival)return null;
+  const icons:Record<string,string>={holi:'🎨',diwali:'🪔',rakhi:'🎀',janmashtami:'🦚',ganesh:'🪷',navratri:'✨',dussehra:'🏹',sankranti:'🪁',vasant:'🌼',ramnavami:'🚩',shivratri:'🔱','rath-yatra':'🛕'};
+  return <div className="kb-festival-ribbon" title={festival.name} aria-label={'Festival decoration: '+festival.name}><span className="kb-festival-icon">{icons[festival.theme]||'✦'}</span><strong>{festival.name}</strong><span className="kb-festival-note">Festival mode</span></div>;
 }
 function WelcomeIntro(){return <div className="kb-welcome-intro" role="status" aria-label="Welcome to K&B Management Nexus"><div className="kb-welcome-orbit"><span/><span/><span/><div className="kb-welcome-mark"><Signal size={34}/></div></div><div className="kb-welcome-brand">K&amp;B <b>NET SERVICE</b></div><div className="kb-welcome-caption">MANAGEMENT NEXUS</div><div className="kb-welcome-loading"><i/></div></div>;}
 function App(){
