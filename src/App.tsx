@@ -1126,7 +1126,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
 
           {page === 'Admin Accounts' && canManageAdmins && (
             <section className="panel table-panel">
-              <div className="toolbar"><div><h2>Admin accounts</h2><p className="subtle">Only the original Brajraj account can create additional admins.</p></div><span className="result-count">{adminAccounts.length} admins</span></div>
+              <div className="toolbar"><div><h2>Admin accounts</h2><p className="subtle">Only the primary super-admin account can create additional admins.</p></div><span className="result-count">{adminAccounts.length} admins</span></div>
               <div className="table-wrap staff-table-wrap"><table><thead><tr><th>ADMIN</th><th>USER ID</th><th>ACCESS</th><th>ROLE</th><th>ACTIONS</th></tr></thead><tbody>
                 {adminAccounts.map(account => <tr key={account.id}><td><strong>{account.displayName}</strong></td><td>{account.userId}</td><td><span className={'status ' + (account.active ? 'active' : 'inactive')}>{account.active ? 'Active' : 'Disabled'}</span></td><td>{account.canManageAdmins || account.isSuperAdmin ? 'Super admin' : 'Admin'}</td><td>{account.canManageAdmins || account.isSuperAdmin || account.id === session.user.id ? <span className="subtle">Protected</span> : <button className="row-action danger" title="Remove admin account" onClick={() => removeAdmin(account)}><Trash2 size={15}/></button>}</td></tr>)}
               </tbody></table></div>
