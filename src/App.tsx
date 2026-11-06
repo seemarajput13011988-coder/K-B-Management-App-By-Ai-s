@@ -49,6 +49,7 @@ type Session={token:string;expiresAt:number;user:{id:string;userId:string;displa
 type AppNotification={id:string;title:string;message:string;createdAt:string;read:boolean;type:string};
 type RetentionReviewItem={id:string;collection:string;collectionLabel:string;recordLabel:string;createdAt:string};
 type StaffRegistrationRequest={id:string;userId:string;displayName:string;phone?:string;reason?:string;status:'pending'|'approved'|'rejected';createdAt:string;reviewedAt?:string;};
+type StaffHolidayRequest={id:string;userId:string;displayName:string;startDate:string;endDate:string;reason:string;status:'pending'|'approved'|'rejected';createdAt:string;reviewedAt?:string;reviewedByName?:string};
 const getToken=()=>{try{return (JSON.parse(localStorage.getItem('kb-customer-session')||'null') as Session|null)?.token||'';}catch{return '';}};
 const api={get:(url:string)=>client.get(url+(url.includes('?')?'&':'?')+'sessionToken='+encodeURIComponent(getToken())),post:(url:string,data?:Record<string,unknown>)=>client.post(url,{...(data||{}),sessionToken:getToken()}),put:(url:string,data?:Record<string,unknown>)=>client.put(url,{...(data||{}),sessionToken:getToken()}),delete:(url:string)=>client.delete(url+'?sessionToken='+encodeURIComponent(getToken()))};
 type Customer = {
@@ -166,6 +167,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   const [tasks, setTasks] = useState<Task[]>([]);
   const [staff, setStaff] = useState<Staff[]>([]);
   const [staffRegistrationRequests,setStaffRegistrationRequests]=useState<StaffRegistrationRequest[]>([]);
+  const [staffHolidayRequests,setStaffHolidayRequests]=useState<StaffHolidayRequest[]>([]);
   const [staffInventory,setStaffInventory]=useState<any[]>([]);
   const [staffInstallations,setStaffInstallations]=useState<any[]>([]);
   const [staffPayroll,setStaffPayroll]=useState<any[]>([]);
@@ -259,9 +261,10 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
       setComplaints((t.data.items || []).map((item: Complaint) => ({ ...item, status: item.status === 'Open' ? 'Pending' : item.status === 'In progress' ? 'In Progress' : item.status === 'Resolved' ? 'Solved' : item.status })));
       setTasks(w.data.items || []);
       if (isAdmin) {
-        const [s, requests, inventoryResult, installationResult, payrollResult] = await Promise.all([api.get('/api/staff'),api.get('/api/staff-registration-requests'),api.get('/api/inventory'),api.get('/api/installations'),api.get('/api/payroll')]);
+        const [s, requests, inventoryResult, installationResult, payrollResult, holidayResult] = await Promise.all([api.get('/api/staff'),api.get('/api/staff-registration-requests'),api.get('/api/inventory'),api.get('/api/installations'),api.get('/api/payroll'),api.get('/api/holidays')]);
         setStaff(s.data.items || []);
         setStaffRegistrationRequests(requests.data.items || []);
+        setStaffHolidayRequests(holidayResult.data.items || []);
         setStaffInventory(inventoryResult.data.items || []);
         setStaffInstallations(installationResult.data.items || []);
         setStaffPayroll(payrollResult.data.items || []);
@@ -546,6 +549,17 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
       setAttendanceEdit(null); await load(true); flash('Attendance updated by administrator and audit logged.');
     }catch(error){flash(error instanceof Error?error.message:'Could not update attendance.');}
   }
+  async function reviewHolidayRequest(item:StaffHolidayRequest,status:'approved'|'rejected') {
+    if (!window.confirm((status==='approved'?'Approve':'Decline')+' '+item.displayName+' holiday request for '+item.startDate+' to '+item.endDate+'?')) return;
+    try {
+      await api.put('/api/holidays/'+item.id,{status});
+      await load(true);
+      flash(status==='approved'?'Holiday request approved.':'Holiday request declined.');
+    } catch (error) {
+      flash(error instanceof Error?error.message:'Could not review the holiday request.');
+    }
+  }
+
   async function reviewStaffRequest(item:StaffRegistrationRequest,status:'approved'|'rejected') {
     const password=staffRequestPasswords[item.id]||'';
     if(status==='approved'&&password.length<10){flash('Enter a temporary password of at least 10 characters.');return;}
@@ -1143,6 +1157,16 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                 <div className="staff-request-actions"><input type="password" minLength={10} autoComplete="new-password" placeholder="Temporary password (10+ chars)" value={staffRequestPasswords[item.id]||''} onChange={e=>setStaffRequestPasswords(current=>({...current,[item.id]:e.target.value}))}/><button className="btn primary compact" disabled={(staffRequestPasswords[item.id]||'').length<10} onClick={()=>void reviewStaffRequest(item,'approved')}>Accept</button><button className="btn danger compact" onClick={()=>void reviewStaffRequest(item,'rejected')}>Decline</button></div>
               </article>)}
               {!staffRegistrationRequests.some(item=>item.status==='pending')&&<p className="staff-record-empty">No pending staff access requests.</p>}
+            </section>
+            <section className="panel table-panel staff-holiday-requests">
+              <div className="toolbar"><div><h2>Staff holiday requests</h2><p className="subtle">Approve or decline leave requests submitted by staff members.</p></div><span className="result-count">{staffHolidayRequests.filter(item=>item.status==='pending').length} pending</span></div>
+              <div className="staff-holiday-list">
+                {staffHolidayRequests.map(item=><article className="staff-request-card" key={item.id}>
+                  <div><b>{item.displayName} · {item.startDate}{item.endDate!==item.startDate?' to '+item.endDate:''}</b><p>{item.reason}</p><small>Requested {new Date(item.createdAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'})}{item.reviewedAt?' · Reviewed '+new Date(item.reviewedAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'}):''}</small></div>
+                  <div className="staff-request-actions"><span className={'status '+(item.status==='approved'?'active':item.status==='rejected'?'inactive':'')}>{item.status.toUpperCase()}</span>{item.status==='pending'&&<><button className="btn primary compact" onClick={()=>void reviewHolidayRequest(item,'approved')}>Approve</button><button className="btn danger compact" onClick={()=>void reviewHolidayRequest(item,'rejected')}>Decline</button></>}</div>
+                </article>)}
+                {!staffHolidayRequests.length&&<p className="staff-record-empty">No holiday requests have been submitted yet.</p>}
+              </div>
             </section>
             <section className="panel table-panel">
               <div className="toolbar"><div className="searchbox"><Search size={17}/><input value={staffSearch} onChange={e => setStaffSearch(e.target.value)} placeholder="Search staff name or user ID..."/></div><span className="result-count">{filteredStaff.length} of {staff.length} members</span></div>
