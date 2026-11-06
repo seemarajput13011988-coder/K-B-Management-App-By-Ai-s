@@ -423,12 +423,14 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
     await Promise.all(unread.map(item => api.put('/api/notifications/' + item.id, { read: true }).catch(() => undefined)));
     setNotifications(current => current.map(item => ({ ...item, read: true })));
   }
-  async function signOut() {
+  function signOut() {
+    // End the local session immediately; remote cleanup must never block the logout button.
     if (pushToken.current) {
-      try { await api.post('/api/push-tokens', { token: pushToken.current, action: 'unregister' }); } catch { /* Server cleanup can be retried on the next sign-in. */ }
+      const token = pushToken.current;
       pushToken.current = null;
+      void api.post('/api/push-tokens', { token, action: 'unregister' }).catch(() => undefined);
     }
-    try { await api.post('/api/auth/logout'); } catch { /* local sign-out still proceeds */ }
+    void api.post('/api/auth/logout').catch(() => undefined);
     onLogout();
   }
   async function savePlan(form: Omit<Plan, 'id'>) {
@@ -798,7 +800,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
               <strong>{session.user.displayName}</strong>
               <small>{isAdmin ? 'Administrator' : 'Staff member'}</small>
             </div>
-            <button className="row-action" title="Sign out" onClick={signOut}><LogOut size={15} /></button>
+            <button type="button" className="row-action" title="Sign out" aria-label="Sign out" onClick={signOut}><LogOut size={15} /></button>
           </div>
         </div>
       </aside>
