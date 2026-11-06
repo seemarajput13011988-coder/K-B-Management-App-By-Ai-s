@@ -873,6 +873,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
           </div>
         </header>
         <div className="content">
+          <FestivalCelebration/>
           <div className="page-heading">
             <div>
               <div className="eyebrow">
@@ -2400,6 +2401,19 @@ function FestivalBadge(){
   if(!festival)return null;
   const icons:Record<string,string>={holi:'🎨',diwali:'🪔',rakhi:'🎀',janmashtami:'🦚',ganesh:'🪷',navratri:'✨',dussehra:'🏹',sankranti:'🪁',vasant:'🌼',ramnavami:'🚩',shivratri:'🔱','rath-yatra':'🛕'};
   return <div className="kb-festival-ribbon" title={festival.name} aria-label={'Festival decoration: '+festival.name}><span className="kb-festival-icon">{icons[festival.theme]||'✦'}</span><strong>{festival.name}</strong><span className="kb-festival-note">Festival mode</span></div>;
+}
+function FestivalCelebration(){
+  const [festival,setFestival]=useState<FestivalInfo|null>(()=>currentFestival());
+  useEffect(()=>{const update=()=>setFestival(currentFestival());const timer=window.setInterval(update,60_000);return()=>window.clearInterval(timer);},[]);
+  if(!festival)return null;
+  const motifs:Record<string,string[]>={holi:['🎨','🟣','🟡','🩷','🟢'],diwali:['🪔','✨','🌟','🪷','✨'],rakhi:['🎀','🪷','✨','🧵','🌸'],janmashtami:['🦚','🪈','🌼','🪷','✨'],ganesh:['🪷','🐘','🌺','✨','🌼'],navratri:['✨','💃','🥁','🌺','🪔'],dussehra:['🏹','🌼','✨','🚩','🌺'],sankranti:['🪁','🪁','☀️','🎏','✨'],vasant:['🌼','🌸','🦋','🌿','✨'],ramnavami:['🚩','🏹','🌼','🪷','✨'],shivratri:['🔱','🌙','🪷','✨','🌺'],'rath-yatra':['🛕','🌼','🚩','✨','🌺']};
+  const motifsForDay=motifs[festival.theme]||['✨','🌼','🪷','✨','🌸'];
+  return <section className={'kb-festival-hero kb-festival-'+festival.theme} aria-label={festival.name+' celebration'}>
+    <div className="kb-festival-art" aria-hidden="true">{motifsForDay.map((motif,index)=><span key={index} className={'kb-festival-float kb-festival-float-'+index}>{motif}</span>)}</div>
+    <div className="kb-festival-hero-copy"><span className="kb-festival-kicker">K&amp;B FESTIVE CELEBRATION</span><h2>{festival.name}</h2><p>Wishing our K&amp;B family joy, prosperity and a wonderful celebration.</p></div>
+    <div className="kb-festival-seal" aria-hidden="true">{motifsForDay[0]}</div>
+    <span className="kb-festival-spark kb-festival-spark-one" aria-hidden="true">✦</span><span className="kb-festival-spark kb-festival-spark-two" aria-hidden="true">✧</span>
+  </section>;
 }
 function WelcomeIntro(){return <div className="kb-welcome-intro" role="status" aria-label="Welcome to K&B Management Nexus"><div className="kb-welcome-orbit"><span/><span/><span/><div className="kb-welcome-mark"><Signal size={34}/></div></div><div className="kb-welcome-brand">K&amp;B <b>NET SERVICE</b></div><div className="kb-welcome-caption">MANAGEMENT NEXUS</div><div className="kb-welcome-loading"><i/></div></div>;}
 function App(){
