@@ -26,6 +26,7 @@ export default function GpsTrackingWorkspace({flash}:{flash:(message:string)=>vo
   const [locationAge,setLocationAge]=useState<number|null>(null);
   const [locationStatus,setLocationStatus]=useState('location-unavailable');
   const [gpsDeadline,setGpsDeadline]=useState<string|null>(null);
+  const [gpsCancelled,setGpsCancelled]=useState(false);
 
   async function load() {
     setLoading(true);
@@ -49,10 +50,11 @@ export default function GpsTrackingWorkspace({flash}:{flash:(message:string)=>vo
     setLocationFresh(false);
     setLocationAge(null);
     try {
-      const result=await api.get<{item?:LiveLocation|null;isFresh?:boolean;ageSeconds?:number|null;status?:string;deadlineAt?:string}>('/api/staff/'+encodeURIComponent(member.id)+'/live-location');
+      const result=await api.get<{item?:LiveLocation|null;isFresh?:boolean;ageSeconds?:number|null;status?:string;deadlineAt?:string;cancelled?:boolean}>('/api/staff/'+encodeURIComponent(member.id)+'/live-location');
       const status=result.data.status || (result.data.isFresh ? 'live' : 'stale');
       setLocationStatus(status);
       setGpsDeadline(result.data.deadlineAt || null);
+      setGpsCancelled(result.data.cancelled === true);
       setLiveLocation(result.data.item || null);
       setLocationFresh(result.data.isFresh === true);
       setLocationAge(result.data.ageSeconds ?? null);
@@ -102,7 +104,7 @@ export default function GpsTrackingWorkspace({flash}:{flash:(message:string)=>vo
           <div className="gps-address"><MapPin size={18}/><div><strong>{locationFresh?'Latest location received':'Showing last known location'}</strong><small>{locationAge===null?'':locationAge<60?locationAge+' seconds ago':Math.floor(locationAge/60)+' minutes ago'} · Accuracy ±{Math.round(liveLocation.accuracy||0)} m</small></div></div>
           <div className="gps-coordinates"><div><small>Latitude</small><strong>{Number(liveLocation.latitude).toFixed(6)}</strong></div><div><small>Longitude</small><strong>{Number(liveLocation.longitude).toFixed(6)}</strong></div><div><small>Captured</small><strong>{stamp(liveLocation.capturedAt)}</strong></div></div>
           <div className="gps-result-actions"><a className="btn secondary" href={mapsUrl(Number(liveLocation.latitude),Number(liveLocation.longitude))} target="_blank" rel="noreferrer"><ExternalLink size={15}/> Open in Google Maps</a><button className="btn primary" onClick={()=>void saveLocation()}><Save size={15}/> Save Location</button></div>
-        </>:<p className="gps-error">{locationStatus==='gps-off'?'GPS is OFF on this staff phone. The shift GPS grace period is active. '+(gpsDeadline?'Restore GPS before '+stamp(gpsDeadline)+'.':''):locationStatus==='shift-not-active'?'This staff member is not currently on an active shift.': 'No location has been received yet. Check device connectivity and location permission.'}</p>}
+        </>:<p className="gps-error">{locationStatus==='gps-off'?(gpsCancelled?'GPS is OFF and the 15-minute grace period expired. The shift was automatically cancelled; an administrator must restart it.':'GPS is OFF on this staff phone. The shift GPS grace period is active. '+(gpsDeadline?'Restore GPS before '+stamp(gpsDeadline)+'.':'')):locationStatus==='shift-not-active'?'This staff member is not currently on an active shift.': 'No location has been received yet. Check device connectivity and location permission.'}</p>}
       </div>}
     </>:<div className="gps-saved-list">
       {loading?<p className="ops-empty">Loading saved locations…</p>:saved.length?saved.map(item=><article className="gps-saved-card" key={item.id}>
