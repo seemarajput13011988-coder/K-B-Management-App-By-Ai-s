@@ -425,8 +425,33 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
     await Promise.all(unread.map(item => api.put('/api/notifications/' + item.id, { read: true }).catch(() => undefined)));
     setNotifications(current => current.map(item => ({ ...item, read: true })));
   }
-  function signOut() {
-    // End the local session immediately; remote cleanup must never block the logout button.
+  async function signOut() {
+    // Verify the server-side attendance record before allowing staff to sign out.
+    // This prevents the menu logout action from revoking the token used by the
+    // Android foreground location service during an active work shift.
+    if (!isAdmin) {
+      try {
+        const attendance = await api.get('/api/attendance');
+        const workDate = new Intl.DateTimeFormat('en-CA', {
+          timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit'
+        }).format(new Date());
+        const activeShift = (attendance.data.items || []).some((item: AttendanceRecord) =>
+          item.userId === session.user.id &&
+          item.workDate === workDate &&
+          !item.checkOutAt &&
+          item.dayType !== 'Absent'
+        );
+        if (activeShift) {
+          flash('Sign out is unavailable while your work shift is active. Check out first, or ask an administrator to end your shift. Location tracking remains active during the shift.');
+          setMobileNav(false);
+          return;
+        }
+      } catch {
+        flash('Could not verify your attendance. Sign out is blocked until your shift status can be checked.');
+        setMobileNav(false);
+        return;
+      }
+    }
     if (pushToken.current) {
       const token = pushToken.current;
       pushToken.current = null;
