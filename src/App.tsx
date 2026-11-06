@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Capacitor } from '@capacitor/core';
+import { Filesystem } from '@capacitor/filesystem';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { PushNotifications } from '@capacitor/push-notifications';
 import StaffOperations from './StaffOperations';
@@ -143,6 +144,10 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
     const timer = window.setInterval(() => setLocalHour(new Date().getHours()), 60_000);
     return () => window.clearInterval(timer);
   }, []);
+  useEffect(() => {
+    if (session.user.role !== 'staff' || !Capacitor.isNativePlatform()) return;
+    if (localStorage.getItem('kb-staff-permissions-v1') !== 'done') setPermissionSetupOpen(true);
+  }, [session.user.id, session.user.role]);
   const greeting = localHour < 12
     ? ({ en: 'Good morning', hi: 'सुप्रभात', gu: 'સુપ્રભાત' }[language])
     : localHour < 17
@@ -161,6 +166,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
   const [selectedStaffProfileId, setSelectedStaffProfileId] = useState('');
   const [showTask, setShowTask] = useState(false);
+  const [permissionSetupOpen, setPermissionSetupOpen] = useState(false);
   const [completingTask, setCompletingTask] = useState<Task | null>(null);
   const [taskPreview, setTaskPreview] = useState<{name:string;mimeType:string;dataUrl:string}|null>(null);
   const [showStaff, setShowStaff] = useState(false);
@@ -1325,6 +1331,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
           onSave={savePayment}
         />
       )}
+      {permissionSetupOpen && <StaffPermissionSetup onComplete={() => { localStorage.setItem('kb-staff-permissions-v1', 'done'); setPermissionSetupOpen(false); }} />}
       {completingTask && <TaskCompletionModal task={completingTask} onClose={() => setCompletingTask(null)} onComplete={(photo: File | null, video: File | null) => completeTaskWithEvidence(completingTask, photo, video)} />}
       {taskPreview && <Modal title={taskPreview.name} subtitle="Task completion evidence" onClose={() => setTaskPreview(null)}><div className="complaint-preview">{taskPreview.mimeType.startsWith('video/') ? <video src={taskPreview.dataUrl} controls playsInline /> : <img src={taskPreview.dataUrl} alt={taskPreview.name}/>}</div><div className="form-actions"><a className="btn secondary" href={taskPreview.dataUrl} download={taskPreview.name}>Download evidence</a><button type="button" className="btn primary" onClick={() => setTaskPreview(null)}>Close</button></div></Modal>}
       {showComplaint && (
@@ -1780,6 +1787,41 @@ function StaffModal({ onClose, onSave }: any) {
   const [busy, setBusy] = useState(false);
   return <Modal title="Create staff account" subtitle="Give this team member a secure sign-in." onClose={onClose}><form className="form-grid" onSubmit={async e => { e.preventDefault(); setBusy(true); await onSave(form); setBusy(false); }}><Field label="Staff full name"><input required value={form.displayName} onChange={e => setForm({ ...form, displayName: e.target.value })} /></Field><Field label="Staff user ID"><input required minLength={3} maxLength={32} pattern="[a-zA-Z0-9_-]{3,32}" value={form.userId} onChange={e => setForm({ ...form, userId: e.target.value })} /></Field><Field label="Temporary password" wide><input required type="password" minLength={10} value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} /></Field><p className="form-hint">Use at least 10 characters and share it privately. Admin can reset it from Staff if needed.</p><div className="form-actions"><button type="button" className="btn secondary" onClick={onClose}>Cancel</button><button className="btn primary" disabled={busy}>{busy ? 'Creating…' : 'Create account'}</button></div></form></Modal>;
 }
+function StaffPermissionSetup({ onComplete }: { onComplete:()=>void }) {
+  const [busy,setBusy]=useState(false);
+  const [message,setMessage]=useState('');
+  async function requestPermissions() {
+    setBusy(true);setMessage('Requesting Android permissions…');
+    const outcomes:string[]=[];
+    try {
+      const result=await Filesystem.requestPermissions();
+      outcomes.push('Storage/media access: '+String(result.publicStorage||'handled by Android picker'));
+    } catch { outcomes.push('Storage/media: Android will ask when you select a file.'); }
+    try {
+      await new Promise<GeolocationPosition>((resolve,reject)=>navigator.geolocation.getCurrentPosition(resolve,reject,{enableHighAccuracy:true,timeout:15000,maximumAge:0}));
+      outcomes.push('Location: allowed');
+    } catch { outcomes.push('Location: not granted yet. Enable it in Android settings to respond to admin GPS requests.'); }
+    try {
+      if(!navigator.mediaDevices?.getUserMedia) throw new Error('Camera permission is not available in this WebView.');
+      const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
+      stream.getTracks().forEach(track=>track.stop());
+      outcomes.push('Camera: allowed');
+    } catch { outcomes.push('Camera: not granted yet. Allow it when capturing task evidence.'); }
+    outcomes.push('Notifications: requested automatically when the app starts.');
+    setMessage(outcomes.join('\n'));
+    localStorage.setItem('kb-staff-permissions-v1','done');
+    setBusy(false);
+    onComplete();
+  }
+  return <Modal title="Set up staff app permissions" subtitle="Allow the permissions needed for task evidence, admin GPS requests and notifications." onClose={onComplete}>
+    <div className="form-grid">
+      <div className="form-hint">The app uses your location only when an administrator sends a one-time request. It does not track you continuously. Camera access is used for task and complaint evidence. Android’s file picker controls access to selected photos and videos.</div>
+      {message&&<p className="form-hint" style={{whiteSpace:'pre-line'}}>{message}</p>}
+      <div className="form-actions"><button className="btn primary" disabled={busy} onClick={()=>void requestPermissions()}>{busy?'Requesting…':'Allow required permissions'}</button><button type="button" className="btn secondary" onClick={onComplete}>Continue for now</button></div>
+    </div>
+  </Modal>;
+}
+
 function TaskCompletionModal({ task, onClose, onComplete }: any) {
   const [photo, setPhoto] = useState<File | null>(null);
   const [video, setVideo] = useState<File | null>(null);
