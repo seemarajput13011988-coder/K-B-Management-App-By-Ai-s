@@ -1136,6 +1136,85 @@ export const handler = router({
     return json({ updated: true, status });
   }),
 
+  'POST /api/location-requests': protectedRoute(['admin'], async ({ body }, admin) => {
+    const staffId = cleanText(body?.staffId, 128);
+    const [member] = await db.get<UserRecord>('users', [staffId], { consistent: true });
+    if (!member || member.role !== 'staff' || !member.active) return error('Choose an active staff member.', 400);
+    const createdAt = new Date().toISOString();
+    const record = { staffId: member.id, staffName: member.displayName, requestedBy: admin.id, requestedByName: admin.displayName, status: 'pending', createdAt, expiresAt: new Date(Date.now() + 2 * 60 * 1000).toISOString() };
+    const [id] = await db.add('location_requests', [record]);
+    if (!id) return error('Could not send the location request.', 500);
+    await db.add('staff_notifications', [{ recipientId: member.id, recipientRole: 'staff', type: 'location-request', title: 'Admin requested your location', message: admin.displayName + ' requested a one-time current GPS location. Open the app to respond.', relatedId: id, createdAt, read: false }]);
+    await writeAudit(admin, 'REQUEST_LOCATION', 'staff_location', id, 'Requested a one-time location from ' + member.displayName);
+    return json({ id, ...record }, 201);
+  }),
+
+  'GET /api/location-requests/pending': protectedRoute(['staff'], async (_ctx, user) => {
+    const result = await db.list<Record<string, unknown>>('location_requests', { limit: 100 });
+    const nowTime = Date.now();
+    const items = result.items.filter(item => item.staffId === user.id && item.status === 'pending' && new Date(String(item.expiresAt || 0)).getTime() > nowTime);
+    return json({ items });
+  }),
+
+  'POST /api/location-requests/:id/respond': protectedRoute(['staff'], async ({ params, body }, user) => {
+    const [request] = await db.get<Record<string, unknown>>('location_requests', [params.id], { consistent: true });
+    if (!request || request.staffId !== user.id) return error('Location request not found.', 404);
+    if (request.status !== 'pending' || new Date(String(request.expiresAt || 0)).getTime() <= Date.now()) return error('This location request has expired or was already answered.', 409);
+    const input = (body || {}) as Record<string, unknown>;
+    const status = input.status === 'failed' ? 'unavailable' : 'captured';
+    const latitude = Number(input.latitude), longitude = Number(input.longitude);
+    if (status === 'captured' && (!Number.isFinite(latitude) || !Number.isFinite(longitude) || Math.abs(latitude) > 90 || Math.abs(longitude) > 180)) return error('A valid current GPS location is required.', 400);
+    const capturedAt = new Date().toISOString();
+    const patch: Record<string, unknown> = {
+      status,
+      capturedAt,
+      responseMessage: status === 'unavailable' ? cleanText(input.message, 240) || 'Staff location was unavailable.' : '',
+      ...(status === 'captured' ? {
+        latitude, longitude,
+        accuracy: Math.min(Math.max(Number(input.accuracy) || 0, 0), 100000),
+        address: cleanText(input.address, 500) || 'Address not available; open in Google Maps.',
+      } : {}),
+    };
+    const [updated] = await db.tx.update('location_requests', [{ id: params.id, record: patch }], { patch: true });
+    if (updated) await writeAudit(user, 'SHARE_LOCATION', 'staff_location', params.id, 'Shared a one-time GPS location in response to an admin request.');
+    return updated ? json({ updated: true, status }) : error('Could not submit the location response.', 500);
+  }),
+
+  'GET /api/location-requests/:id': protectedRoute(['admin'], async ({ params }) => {
+    const [item] = await db.get<Record<string, unknown>>('location_requests', [params.id], { consistent: true });
+    return item ? json({ item }) : error('Location request not found.', 404);
+  }),
+
+  'GET /api/saved-locations': protectedRoute(['admin'], async () => {
+    const result = await db.list<Record<string, unknown>>('saved_locations', { limit: 500 });
+    return json({ items: result.items.sort((a, b) => String(b.savedAt || '').localeCompare(String(a.savedAt || ''))) });
+  }),
+
+  'POST /api/saved-locations': protectedRoute(['admin'], async ({ body }, admin) => {
+    const requestId = cleanText(body?.requestId, 128);
+    const [request] = await db.get<Record<string, unknown>>('location_requests', [requestId], { consistent: true });
+    if (!request || request.status !== 'captured') return error('Only a successfully captured location can be saved.', 400);
+    if (request.savedLocationId) return error('This location has already been saved.', 409);
+    const record = {
+      staffId: String(request.staffId || ''),
+      staffName: String(request.staffName || 'Staff member'),
+      latitude: Number(request.latitude),
+      longitude: Number(request.longitude),
+      accuracy: Number(request.accuracy || 0),
+      address: cleanText(request.address, 500),
+      capturedAt: String(request.capturedAt || ''),
+      savedAt: new Date().toISOString(),
+      savedBy: admin.id,
+      savedByName: admin.displayName,
+      requestId,
+    };
+    const [id] = await db.add('saved_locations', [record]);
+    if (!id) return error('Could not save this location.', 500);
+    await db.tx.update('location_requests', [{ id: requestId, record: { savedLocationId: id } }], { patch: true });
+    await writeAudit(admin, 'SAVE_LOCATION', 'saved_location', id, 'Saved the location of ' + record.staffName);
+    return json({ id, ...record }, 201);
+  }),
+
   'GET /api/locations': protectedRoute(['admin'], async () => {
     const today = new Intl.DateTimeFormat('en-CA', {
       timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit',
