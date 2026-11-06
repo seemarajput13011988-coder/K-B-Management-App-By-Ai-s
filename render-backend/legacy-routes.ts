@@ -1184,7 +1184,7 @@ export const handler = router({
   'GET /api/location-requests/:id': protectedRoute(['admin'], async ({ params }) => {
     const [stored] = await db.get<Record<string, unknown>>('location_requests', [params.id], { consistent: true });
     if (!stored) return error('Location request not found.', 404);
-    let item = { ...stored, id: params.id };
+    let item: Record<string, unknown> = { ...stored, id: params.id };
     if (item.status === 'pending' && new Date(String(item.expiresAt || 0)).getTime() <= Date.now()) {
       await db.tx.update('location_requests', [{ id: params.id, record: { status: 'expired' } }], { patch: true });
       item = { ...item, status: 'expired' };
