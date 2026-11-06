@@ -682,7 +682,7 @@ export const handler = router({
     return updated ? json({ updated: true }) : error('Could not update complaint.', 500);
   }),
 
-  'POST /api/complaints/:id/media': protectedRoute(['admin', 'staff'], async ({ params, body }, user) => {
+  'POST /api/complaints/:id/media': protectedRoute(['admin'], async ({ params, body }, user) => {
     const [ticket] = await db.get<Complaint>('complaints', [params.id], { consistent: true });
     if (!ticket) return error('Complaint not found.', 404);
     if (user.role === 'staff' && ticket.createdBy !== user.id && ticket.assignedTo !== user.id && ticket.staffId !== user.id) {
@@ -801,6 +801,8 @@ export const handler = router({
     const [task] = await db.get<TaskRecord>('tasks', [params.id], { consistent: true });
     if (!task) return error('Task not found.', 404);
     if (user.role === 'staff' && task.assignedTo !== user.id) return error('You can update only tasks assigned to your account.', 403);
+    if (user.role === 'staff' && task.status === 'Completed' && status !== 'Completed') return error('Completed tasks cannot be reopened by staff.', 403);
+    if (user.role === 'staff' && task.status === 'In progress' && status === 'Pending') return error('Staff cannot move a task backwards to Pending.', 403);
     if (user.role === 'staff' && status === 'Completed') {
       const evidence = await firestore.collection('task_media').where('taskId', '==', params.id).where('chunkIndex', '==', -1).limit(100).get();
       if (!evidence.docs.some(doc => doc.data().uploadedBy === user.id)) return error('Upload at least one of your own task photos or videos before marking it completed.', 400);
@@ -813,6 +815,12 @@ export const handler = router({
   'DELETE /api/tasks/:id': protectedRoute(['admin'], async ({ params }, user) => {
     const [task] = await db.get<TaskRecord>('tasks', [params.id], { consistent: true });
     if (!task) return error('Task not found.', 404);
+    const media = await firestore.collection('task_media').where('taskId', '==', params.id).get();
+    for (let offset = 0; offset < media.docs.length; offset += 400) {
+      const batch = firestore.batch();
+      media.docs.slice(offset, offset + 400).forEach(doc => batch.delete(doc.ref));
+      await batch.commit();
+    }
     const [deleted] = await db.delete('tasks', [params.id]);
     if (!deleted) return error('Could not delete task.', 500);
     await writeAudit(user, 'DELETE', 'task', params.id, 'Deleted task: ' + task.title);
