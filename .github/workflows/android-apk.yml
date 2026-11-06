@@ -162,6 +162,305 @@ jobs:
           # Capacitor's generated project uses Java MainActivity; remove any
           # generated Kotlin counterpart so the app has a single entry point.
           rm -f android/app/src/main/java/kandbnet/service2010/MainActivity.kt
+      - name: Install persistent active-shift Android location service
+        run: |
+          PACKAGE_DIR=android/app/src/main/java/kandbnet/service2010
+          mkdir -p "$PACKAGE_DIR"
+          cat > "$PACKAGE_DIR/WorkLocationTrackingPlugin.java" <<'JAVA'
+          package kandbnet.service2010;
+
+          import android.content.Intent;
+          import android.os.Build;
+          import com.getcapacitor.Plugin;
+          import com.getcapacitor.PluginCall;
+          import com.getcapacitor.PluginMethod;
+          import com.getcapacitor.annotation.CapacitorPlugin;
+          import com.getcapacitor.JSObject;
+
+          @CapacitorPlugin(name = "WorkLocationTracking")
+          public class WorkLocationTrackingPlugin extends Plugin {
+            @PluginMethod
+            public void startTracking(PluginCall call) {
+              String token = call.getString("token");
+              String apiBaseUrl = call.getString("apiBaseUrl");
+              if (token == null || token.trim().isEmpty() || apiBaseUrl == null || !apiBaseUrl.startsWith("https://")) {
+                call.reject("A valid signed-in session and secure K&B API address are required.");
+                return;
+              }
+              Intent intent = new Intent(getContext(), WorkLocationTrackingService.class);
+              intent.setAction(WorkLocationTrackingService.ACTION_START);
+              intent.putExtra(WorkLocationTrackingService.EXTRA_TOKEN, token);
+              intent.putExtra(WorkLocationTrackingService.EXTRA_API_BASE_URL, apiBaseUrl);
+              try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) getContext().startForegroundService(intent);
+                else getContext().startService(intent);
+                JSObject result = new JSObject();
+                result.put("started", true);
+                call.resolve(result);
+              } catch (Exception error) {
+                call.reject("Android could not start the visible work-location service: " + error.getMessage(), error);
+              }
+            }
+
+            @PluginMethod
+            public void stopTracking(PluginCall call) {
+              Intent intent = new Intent(getContext(), WorkLocationTrackingService.class);
+              intent.setAction(WorkLocationTrackingService.ACTION_STOP);
+              try {
+                getContext().startService(intent);
+                JSObject result = new JSObject();
+                result.put("stopped", true);
+                call.resolve(result);
+              } catch (Exception error) {
+                call.reject("Android could not stop work-location sharing: " + error.getMessage(), error);
+              }
+            }
+          }
+          JAVA
+          cat > "$PACKAGE_DIR/WorkLocationTrackingService.java" <<'JAVA'
+          package kandbnet.service2010;
+
+          import android.Manifest;
+          import android.app.Notification;
+          import android.app.NotificationChannel;
+          import android.app.NotificationManager;
+          import android.app.PendingIntent;
+          import android.app.Service;
+          import android.content.Intent;
+          import android.content.pm.PackageManager;
+          import android.content.pm.ServiceInfo;
+          import android.location.Location;
+          import android.os.Build;
+          import android.os.IBinder;
+          import android.os.Looper;
+          import androidx.core.app.NotificationCompat;
+          import androidx.core.content.ContextCompat;
+          import com.google.android.gms.location.FusedLocationProviderClient;
+          import com.google.android.gms.location.LocationCallback;
+          import com.google.android.gms.location.LocationRequest;
+          import com.google.android.gms.location.LocationResult;
+          import com.google.android.gms.location.LocationServices;
+          import com.google.android.gms.location.Priority;
+          import org.json.JSONObject;
+          import java.io.OutputStream;
+          import java.net.HttpURLConnection;
+          import java.net.URL;
+          import java.text.SimpleDateFormat;
+          import java.util.Date;
+          import java.util.Locale;
+          import java.util.TimeZone;
+          import java.util.concurrent.ExecutorService;
+          import java.util.concurrent.Executors;
+
+          public class WorkLocationTrackingService extends Service {
+            public static final String ACTION_START = "kandbnet.service2010.WORK_LOCATION_START";
+            public static final String ACTION_STOP = "kandbnet.service2010.WORK_LOCATION_STOP";
+            public static final String EXTRA_TOKEN = "session_token";
+            public static final String EXTRA_API_BASE_URL = "api_base_url";
+            private static final String PREFS = "kb_work_location_service";
+            private static final String KEY_TOKEN = "token";
+            private static final String KEY_API = "api_base_url";
+            private static final int NOTIFICATION_ID = 7316;
+            private static final String CHANNEL_ID = "kb_active_shift_location";
+            private FusedLocationProviderClient fusedClient;
+            private LocationCallback locationCallback;
+            private final ExecutorService uploader = Executors.newSingleThreadExecutor();
+            private volatile boolean stopping = false;
+            private volatile long lastUploadAt = 0L;
+
+            @Override public void onCreate() {
+              super.onCreate();
+              fusedClient = LocationServices.getFusedLocationProviderClient(this);
+              createNotificationChannel();
+            }
+
+            @Override public int onStartCommand(Intent intent, int flags, int startId) {
+              if (intent != null && ACTION_STOP.equals(intent.getAction())) {
+                stopTrackingAndService();
+                return START_NOT_STICKY;
+              }
+              if (intent != null && ACTION_START.equals(intent.getAction())) {
+                String token = intent.getStringExtra(EXTRA_TOKEN);
+                String api = intent.getStringExtra(EXTRA_API_BASE_URL);
+                if (token == null || token.isEmpty() || api == null || !api.startsWith("https://")) {
+                  stopTrackingAndService();
+                  return START_NOT_STICKY;
+                }
+                getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString(KEY_TOKEN, token).putString(KEY_API, api).apply();
+              }
+              String token = getSharedPreferences(PREFS, MODE_PRIVATE).getString(KEY_TOKEN, null);
+              String api = getSharedPreferences(PREFS, MODE_PRIVATE).getString(KEY_API, null);
+              if (token == null || api == null) {
+                stopSelf();
+                return START_NOT_STICKY;
+              }
+              stopping = false;
+              startVisibleNotification();
+              beginLocationUpdates();
+              return START_STICKY;
+            }
+
+            private void createNotificationChannel() {
+              if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                NotificationChannel channel = new NotificationChannel(CHANNEL_ID, "K&B active-shift location", NotificationManager.IMPORTANCE_LOW);
+                channel.setDescription("Visible notification while your location is shared during an active K&B work shift.");
+                NotificationManager manager = getSystemService(NotificationManager.class);
+                if (manager != null) manager.createNotificationChannel(channel);
+              }
+            }
+
+            private void startVisibleNotification() {
+              Intent launch = getPackageManager().getLaunchIntentForPackage(getPackageName());
+              PendingIntent pending = launch == null ? null : PendingIntent.getActivity(this, 7316, launch,
+                PendingIntent.FLAG_UPDATE_CURRENT | (Build.VERSION.SDK_INT >= 23 ? PendingIntent.FLAG_IMMUTABLE : 0));
+              Notification notification = new NotificationCompat.Builder(this, CHANNEL_ID)
+                .setSmallIcon(getApplicationInfo().icon)
+                .setContentTitle("K&B work location active")
+                .setContentText("Your location is shared with authorised K&B administrators during this active shift. It stops at checkout.")
+                .setOngoing(true)
+                .setCategory(NotificationCompat.CATEGORY_SERVICE)
+                .setPriority(NotificationCompat.PRIORITY_LOW)
+                .setContentIntent(pending)
+                .build();
+              if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION);
+              } else {
+                startForeground(NOTIFICATION_ID, notification);
+              }
+            }
+
+            private boolean hasLocationPermission() {
+              return ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                || ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED;
+            }
+
+            private void beginLocationUpdates() {
+              if (!hasLocationPermission()) {
+                stopTrackingAndService();
+                return;
+              }
+              if (locationCallback != null) fusedClient.removeLocationUpdates(locationCallback);
+              LocationRequest request = new LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 15000L)
+                .setMinUpdateIntervalMillis(10000L)
+                .setMinUpdateDistanceMeters(10f)
+                .build();
+              locationCallback = new LocationCallback() {
+                @Override public void onLocationResult(LocationResult result) {
+                  if (result == null || stopping) return;
+                  Location location = result.getLastLocation();
+                  if (location != null) uploadLocation(location);
+                }
+              };
+              try {
+                fusedClient.requestLocationUpdates(request, locationCallback, Looper.getMainLooper());
+              } catch (SecurityException error) {
+                stopTrackingAndService();
+              }
+            }
+
+            private void uploadLocation(Location location) {
+              long now = System.currentTimeMillis();
+              if (now - lastUploadAt < 9000L || stopping) return;
+              lastUploadAt = now;
+              uploader.execute(() -> {
+                HttpURLConnection connection = null;
+                try {
+                  String token = getSharedPreferences(PREFS, MODE_PRIVATE).getString(KEY_TOKEN, null);
+                  String api = getSharedPreferences(PREFS, MODE_PRIVATE).getString(KEY_API, null);
+                  if (token == null || api == null || stopping) return;
+                  URL url = new URL(api.replaceAll("/+$", "") + "/api/staff/live-location");
+                  connection = (HttpURLConnection) url.openConnection();
+                  connection.setRequestMethod("POST");
+                  connection.setConnectTimeout(15000);
+                  connection.setReadTimeout(15000);
+                  connection.setDoOutput(true);
+                  connection.setRequestProperty("Authorization", "Bearer " + token);
+                  connection.setRequestProperty("Content-Type", "application/json");
+                  JSONObject body = new JSONObject();
+                  body.put("latitude", location.getLatitude());
+                  body.put("longitude", location.getLongitude());
+                  body.put("accuracy", (double) location.getAccuracy());
+                  SimpleDateFormat iso = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US);
+                  iso.setTimeZone(TimeZone.getTimeZone("UTC"));
+                  body.put("capturedAt", iso.format(new Date(location.getTime())));
+                  body.put("source", "android-native-active-shift-service");
+                  byte[] bytes = body.toString().getBytes("UTF-8");
+                  try (OutputStream output = connection.getOutputStream()) { output.write(bytes); output.flush(); }
+                  int status = connection.getResponseCode();
+                  if (status == 401 || status == 403 || status == 409) stopFromServer();
+                } catch (Exception ignored) {
+                  // Temporary network errors retain the last point; the next GPS update retries.
+                } finally {
+                  if (connection != null) connection.disconnect();
+                }
+              });
+            }
+
+            private void stopFromServer() {
+              stopping = true;
+              getSharedPreferences(PREFS, MODE_PRIVATE).edit().clear().apply();
+              stopSelf();
+            }
+
+            private void stopTrackingAndService() {
+              stopping = true;
+              if (fusedClient != null && locationCallback != null) fusedClient.removeLocationUpdates(locationCallback);
+              locationCallback = null;
+              getSharedPreferences(PREFS, MODE_PRIVATE).edit().clear().apply();
+              if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) stopForeground(STOP_FOREGROUND_REMOVE);
+              else stopForeground(true);
+              stopSelf();
+            }
+
+            @Override public void onTaskRemoved(Intent rootIntent) {
+              // Keep the foreground service running when the app is swiped from Recents.
+              super.onTaskRemoved(rootIntent);
+            }
+
+            @Override public void onDestroy() {
+              stopping = true;
+              if (fusedClient != null && locationCallback != null) fusedClient.removeLocationUpdates(locationCallback);
+              uploader.shutdown();
+              super.onDestroy();
+            }
+
+            @Override public IBinder onBind(Intent intent) { return null; }
+          }
+          JAVA
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          manifest = Path("android/app/src/main/AndroidManifest.xml")
+          tree = ET.parse(manifest)
+          root = tree.getroot()
+          ns = "http://schemas.android.com/apk/res/android"
+          ET.register_namespace("android", ns)
+          app = root.find("application")
+          if app is None:
+              raise SystemExit("Android manifest has no application element")
+          service_name = "kandbnet.service2010.WorkLocationTrackingService"
+          existing = next((node for node in app.findall("service") if node.get("{%s}name" % ns) == service_name), None)
+          if existing is None:
+              existing = ET.SubElement(app, "service")
+          existing.set("{%s}name" % ns, service_name)
+          existing.set("{%s}enabled" % ns, "true")
+          existing.set("{%s}exported" % ns, "false")
+          existing.set("{%s}foregroundServiceType" % ns, "location")
+          for permission in ["android.permission.ACCESS_FINE_LOCATION", "android.permission.ACCESS_COARSE_LOCATION", "android.permission.FOREGROUND_SERVICE", "android.permission.FOREGROUND_SERVICE_LOCATION", "android.permission.POST_NOTIFICATIONS", "android.permission.INTERNET"]:
+              if not any(node.get("{%s}name" % ns) == permission for node in root.findall("uses-permission")):
+                  ET.SubElement(root, "uses-permission", {"{%s}name" % ns: permission})
+          tree.write(manifest, encoding="utf-8", xml_declaration=True)
+          PY
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("android/app/src/main/java/kandbnet/service2010/MainActivity.java")
+          s = p.read_text()
+          if "registerPlugin(WorkLocationTrackingPlugin.class);" not in s:
+              s = s.replace("registerPlugin(DocumentSaverPlugin.class);", "registerPlugin(DocumentSaverPlugin.class);\n      registerPlugin(WorkLocationTrackingPlugin.class);")
+          p.write_text(s)
+          if "registerPlugin(WorkLocationTrackingPlugin.class);" not in s:
+              raise SystemExit("Could not register WorkLocationTrackingPlugin in MainActivity")
+          PY
       - name: Configure and validate Firebase Cloud Messaging for Android
         env:
           ANDROID_GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.ANDROID_GOOGLE_SERVICES_JSON_BASE64 }}
