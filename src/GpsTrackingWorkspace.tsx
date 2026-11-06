@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from './lib/api';
-import { MapPin, RefreshCw, Save, ExternalLink, Clock3, LocateFixed } from 'lucide-react';
+import { MapPin, RefreshCw, Save, ExternalLink, LocateFixed } from 'lucide-react';
 
 type StaffMember = { id: string; displayName: string; active: boolean };
 type LocationRequest = {
