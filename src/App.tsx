@@ -74,7 +74,7 @@ type Payment = {
 type Staff = { id: string; userId: string; displayName: string; role: 'staff'; active: boolean };
 type AdminAccount = { id: string; userId: string; displayName: string; role: 'admin'; active: boolean; canManageAdmins?: boolean; isSuperAdmin?: boolean };
 type AttendanceRecord = { id: string; userId: string; displayName: string; workDate: string; checkInAt: string; checkOutAt?: string; dayType?: 'Full day' | 'Half day' | 'Absent'; status?: string };
-type Task = { id: string; title: string; details: string; assignedTo: string; assignedToName: string; priority: 'Low' | 'Normal' | 'High'; dueDate: string; status: 'Pending' | 'In progress' | 'Completed'; createdAt: string; createdByName: string };
+type Task = { id: string; title: string; details: string; assignedTo: string; assignedToName: string; priority: 'Low' | 'Normal' | 'High'; dueDate: string; status: 'Pending' | 'In progress' | 'Completed'; createdAt: string; createdByName: string; attachments?: Array<{mediaId:string;fileName:string;mimeType:string;size:number}> };
 type Complaint = {
   id: string;
   complaintFor: 'Customer' | 'Staff';
@@ -161,6 +161,8 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
   const [selectedStaffProfileId, setSelectedStaffProfileId] = useState('');
   const [showTask, setShowTask] = useState(false);
+  const [completingTask, setCompletingTask] = useState<Task | null>(null);
+  const [taskPreview, setTaskPreview] = useState<{name:string;mimeType:string;dataUrl:string}|null>(null);
   const [showStaff, setShowStaff] = useState(false);
   const [resetStaff, setResetStaff] = useState<Staff | null>(null);
   const [editStaffUserId, setEditStaffUserId] = useState<Staff | null>(null);
@@ -577,27 +579,19 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
     }
   }
   async function saveComplaint(data: any) {
-    let createdId = '';
     try {
       const { photoFile, videoFile, ...fields } = data;
-      const created = await api.post('/api/complaints', fields);
-      createdId = String(created.data.id || '');
-      if (!createdId) throw new Error('Complaint was created but the server did not return its ID.');
-      for (const file of [photoFile, videoFile].filter((item): item is File => item instanceof File)) {
-        const dataBase64 = await fileAsBase64(file);
-        await api.post('/api/complaints/' + createdId + '/media', { fileName: file.name, mimeType: file.type, dataBase64 });
-      }
+      const attachments = await Promise.all([photoFile, videoFile].filter((item): item is File => item instanceof File).map(async file => ({
+        fileName: file.name,
+        mimeType: file.type,
+        dataBase64: await fileAsBase64(file),
+      })));
+      await api.post('/api/complaints', { ...fields, attachments });
       setShowComplaint(false);
       await load();
-      flash('Complaint saved successfully.');
+      flash('Complaint saved with its evidence.');
     } catch (err) {
-      if (createdId) {
-        setShowComplaint(false);
-        await load();
-        flash(err instanceof Error ? 'Complaint saved, but an attachment could not be uploaded: ' + err.message : 'Complaint saved, but an attachment could not be uploaded.');
-      } else {
-        flash(err instanceof Error ? err.message : 'Could not add complaint.');
-      }
+      flash(err instanceof Error ? err.message : 'Could not add complaint. Please check the evidence and try again.');
     }
   }
   async function saveTask(data: { title: string; details: string; assignedTo: string; priority: string; dueDate: string }) {
@@ -611,12 +605,38 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
     }
   }
   async function updateTask(task: Task, status: string) {
+    if (!isAdmin && status === 'Completed') {
+      setCompletingTask(task);
+      return;
+    }
     try {
       await api.put('/api/tasks/' + task.id, { status });
       await load();
       flash('Task status updated');
     } catch (err) {
       flash(err instanceof Error ? err.message : 'Could not update task');
+    }
+  }
+  async function completeTaskWithEvidence(task: Task, photoFile: File | null, videoFile: File | null) {
+    const files = [photoFile, videoFile].filter((item): item is File => item instanceof File);
+    if (!files.length) { flash('Attach at least one task photo or video before completing it.'); return; }
+    try {
+      const attachments = await Promise.all(files.map(async file => ({ fileName: file.name, mimeType: file.type, dataBase64: await fileAsBase64(file) })));
+      await api.post('/api/tasks/' + task.id + '/media', { attachments });
+      await api.put('/api/tasks/' + task.id, { status: 'Completed' });
+      setCompletingTask(null);
+      await load();
+      flash('Task completed with evidence uploaded.');
+    } catch (err) {
+      flash(err instanceof Error ? err.message : 'Could not complete task. Check the evidence upload and try again.');
+    }
+  }
+  async function openTaskAttachment(task: Task, attachment: NonNullable<Task['attachments']>[number]) {
+    try {
+      const result = await api.get('/api/tasks/' + task.id + '/media/' + attachment.mediaId);
+      setTaskPreview({ name: result.data.fileName || attachment.fileName, mimeType: result.data.mimeType, dataUrl: 'data:' + result.data.mimeType + ';base64,' + result.data.dataBase64 });
+    } catch (err) {
+      flash(err instanceof Error ? err.message : 'Could not open task evidence.');
     }
   }
   async function updateComplaint(item: Complaint, patch: Record<string, unknown>) {
@@ -658,6 +678,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
     { label: 'Inventory', icon: ClipboardList },
     { label: 'Installations', icon: MapPin },
     ...(isAdmin ? [{ label: 'Plans & Pricing', icon: Wifi }] : []),
+    ...(isAdmin ? [{ label: 'GPS Tracking', icon: MapPin }] : []),
     ...(isAdmin ? [{ label: 'Staff', icon: UserRound, count: staff.length }] : []),
     ...(canManageAdmins ? [{ label: 'Admin Accounts', icon: ShieldCheck, count: adminAccounts.length || undefined }] : []),
     ...(isAdmin ? [{ label: 'Invoices', icon: ReceiptText }] : []),
@@ -853,6 +874,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
           {page === 'Finance & Billing' && isAdmin && <FinanceWorkspace session={session} customers={customers} payments={payments} flash={flash} />}
           {page === 'Subscriptions' && <SubscriptionWorkspace customers={customers} plans={plans} isAdmin={isAdmin} flash={flash} />}
           {page === 'Inventory' && <InventoryWorkspace isAdmin={isAdmin} flash={flash} />}
+          {page === 'GPS Tracking' && isAdmin && <GpsTrackingWorkspace flash={flash} />}
           {page === 'Installations' && <InstallationsWorkspace customers={customers} staff={staff} isAdmin={isAdmin} flash={flash} />}
           {page === 'Overview' && !isAdmin && <StaffOperations session={session} customers={customers} flash={flash} compact onDataChanged={() => { void load(true); }} />}
 
@@ -1107,6 +1129,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                     {task.details && <p>{task.details}</p>}
                     <div className="task-meta"><span><UserRound size={14}/>{isAdmin ? task.assignedToName : 'Assigned to you'}</span><span><CalendarDays size={14}/>Due {dateLabel(task.dueDate)}</span><span>Created by {task.createdByName}</span></div>
                   </div>
+                  {task.attachments?.length ? <div className="task-evidence-list"><span>{task.attachments.length} evidence file(s)</span>{task.attachments.map(file => <button type="button" className="text-btn" key={file.mediaId} onClick={() => void openTaskAttachment(task, file)}>{file.mimeType.startsWith('video/') ? 'View video' : 'View photo'}</button>)}</div> : null}
                   <label className="task-status-control"><span>Progress</span><select value={task.status} onChange={e => updateTask(task, e.target.value)}><option>Pending</option><option>In progress</option><option>Completed</option></select></label>
                 </article>
               ))}</div> : <Empty icon={<ClipboardList />} title={isAdmin ? 'No tasks assigned yet' : 'No work assigned yet'} text={isAdmin ? 'Create a task and assign it to an active staff member.' : 'Your administrator will assign work here when it is ready.'} action={isAdmin ? 'Assign first task' : undefined} onClick={() => setShowTask(true)} />}
@@ -1230,7 +1253,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
               </div>
               <div className="complaint-list">
                 {complaints.map(c => {
-                  const canUpdate = isAdmin || c.assignedTo === session.user.id;
+                  const canUpdate = isAdmin;
                   const targetName = c.complaintFor === 'Staff' ? (c.staffName || 'Staff member') : (c.customerName || 'Customer');
                   return <article className="complaint-card" key={c.id}>
                     <div className="complaint-card-head">
@@ -1302,6 +1325,8 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
           onSave={savePayment}
         />
       )}
+      {completingTask && <TaskCompletionModal task={completingTask} onClose={() => setCompletingTask(null)} onComplete={(photo: File | null, video: File | null) => completeTaskWithEvidence(completingTask, photo, video)} />}
+      {taskPreview && <Modal title={taskPreview.name} subtitle="Task completion evidence" onClose={() => setTaskPreview(null)}><div className="complaint-preview">{taskPreview.mimeType.startsWith('video/') ? <video src={taskPreview.dataUrl} controls playsInline /> : <img src={taskPreview.dataUrl} alt={taskPreview.name}/>}</div><div className="form-actions"><a className="btn secondary" href={taskPreview.dataUrl} download={taskPreview.name}>Download evidence</a><button type="button" className="btn primary" onClick={() => setTaskPreview(null)}>Close</button></div></Modal>}
       {showComplaint && (
         <ComplaintModal
           customers={customers}
@@ -1755,6 +1780,27 @@ function StaffModal({ onClose, onSave }: any) {
   const [busy, setBusy] = useState(false);
   return <Modal title="Create staff account" subtitle="Give this team member a secure sign-in." onClose={onClose}><form className="form-grid" onSubmit={async e => { e.preventDefault(); setBusy(true); await onSave(form); setBusy(false); }}><Field label="Staff full name"><input required value={form.displayName} onChange={e => setForm({ ...form, displayName: e.target.value })} /></Field><Field label="Staff user ID"><input required minLength={3} maxLength={32} pattern="[a-zA-Z0-9_-]{3,32}" value={form.userId} onChange={e => setForm({ ...form, userId: e.target.value })} /></Field><Field label="Temporary password" wide><input required type="password" minLength={10} value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} /></Field><p className="form-hint">Use at least 10 characters and share it privately. Admin can reset it from Staff if needed.</p><div className="form-actions"><button type="button" className="btn secondary" onClick={onClose}>Cancel</button><button className="btn primary" disabled={busy}>{busy ? 'Creating…' : 'Create account'}</button></div></form></Modal>;
 }
+function TaskCompletionModal({ task, onClose, onComplete }: any) {
+  const [photo, setPhoto] = useState<File | null>(null);
+  const [video, setVideo] = useState<File | null>(null);
+  const [busy, setBusy] = useState(false);
+  function valid(file: File, kind: 'photo'|'video') {
+    const allowed = kind === 'photo' ? ['image/jpeg','image/png','image/webp'] : ['video/mp4','video/webm','video/quicktime'];
+    const limit = kind === 'photo' ? 2 * 1024 * 1024 : 8 * 1024 * 1024;
+    if (!allowed.includes(file.type)) { window.alert(kind === 'photo' ? 'Choose a JPG, PNG or WEBP photo.' : 'Choose an MP4, WEBM or MOV video.'); return false; }
+    if (file.size > limit) { window.alert(kind === 'photo' ? 'Photo must be 2 MB or smaller.' : 'Video must be 8 MB or smaller.'); return false; }
+    return true;
+  }
+  return <Modal title="Complete task with evidence" subtitle={task.title} onClose={onClose}>
+    <form className="form-grid" onSubmit={async event => { event.preventDefault(); if (!photo && !video) { window.alert('Attach at least one photo or video.'); return; } setBusy(true); await onComplete(photo, video); setBusy(false); }}>
+      <p className="form-hint">At least one photo or video is required. The task will remain open until the upload succeeds.</p>
+      <Field label="Task photo (optional if video attached)" wide><input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={event => { const file=event.target.files?.[0]||null; setPhoto(file&&valid(file,'photo')?file:null); }}/>{photo&&<small>{photo.name} · {(photo.size/1024).toFixed(0)} KB</small>}</Field>
+      <Field label="Task video (optional if photo attached)" wide><input type="file" accept="video/mp4,video/webm,video/quicktime" capture="environment" onChange={event => { const file=event.target.files?.[0]||null; setVideo(file&&valid(file,'video')?file:null); }}/>{video&&<small>{video.name} · {(video.size/1024/1024).toFixed(1)} MB</small>}</Field>
+      <div className="form-actions"><button type="button" className="btn secondary" onClick={onClose}>Cancel</button><button className="btn primary" disabled={busy||(!photo&&!video)}>{busy?'Uploading evidence…':'Upload and complete task'}</button></div>
+    </form>
+  </Modal>;
+}
+
 function TaskModal({ staff, onClose, onSave }: any) {
   const [form, setForm] = useState({ title: '', details: '', assignedTo: staff[0]?.id || '', priority: 'Normal', dueDate: new Date().toISOString().slice(0, 10) });
   const [busy, setBusy] = useState(false);
@@ -1963,6 +2009,7 @@ function ComplaintModal({ customers, staff, session, onClose, onSave }: any) {
       event.preventDefault();
       if (f.complaintFor === 'Customer' && !f.customerId) { window.alert('Select a customer.'); return; }
       if (f.complaintFor === 'Staff' && !(isAdmin ? f.staffId : session.user.id)) { window.alert('Select a staff member.'); return; }
+      if (!isAdmin && !photoFile && !videoFile) { window.alert('Attach at least one photo or video before submitting a complaint.'); return; }
       setSaving(true);
       await onSave({ ...f, customerName: customer?.name || '', staffId: isAdmin ? f.staffId : session.user.id, photoFile, videoFile });
       setSaving(false);
@@ -1994,12 +2041,12 @@ function ComplaintModal({ customers, staff, session, onClose, onSave }: any) {
         {Number.isFinite(f.latitude) && Number.isFinite(f.longitude) && <a href={'https://www.google.com/maps?q=' + f.latitude + ',' + f.longitude} target="_blank" rel="noreferrer">Location captured · Open map</a>}
         {locationError && <small>{locationError}</small>}
       </div>
-      <Field label="Photo (optional)" wide><input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={event => { const file = event.target.files?.[0] || null; if (file && validateFile(file, 'photo')) setPhotoFile(file); else setPhotoFile(null); }}/>{photoFile && <small className="complaint-file-name">{photoFile.name} · {(photoFile.size / 1024).toFixed(0)} KB</small>}</Field>
+      <Field label={isAdmin ? "Photo (optional)" : "Photo (required for staff)"} wide><input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={event => { const file = event.target.files?.[0] || null; if (file && validateFile(file, 'photo')) setPhotoFile(file); else setPhotoFile(null); }}/>{photoFile && <small className="complaint-file-name">{photoFile.name} · {(photoFile.size / 1024).toFixed(0)} KB</small>}</Field>
       <Field label="Video (optional)" wide><input type="file" accept="video/mp4,video/webm,video/quicktime" onChange={event => { const file = event.target.files?.[0] || null; if (file && validateFile(file, 'video')) setVideoFile(file); else setVideoFile(null); }}/>{videoFile && <small className="complaint-file-name">{videoFile.name} · {(videoFile.size / 1024 / 1024).toFixed(1)} MB</small>}</Field>
       {isAdmin && <Field label="Assign complaint to" wide><select value={f.assignedTo} onChange={event => setF({ ...f, assignedTo: event.target.value })}><option value="">Leave unassigned</option>{activeStaff.map((member: Staff) => <option value={member.id} key={member.id}>{member.displayName}</option>)}</select></Field>}
       <div className="form-actions"><button type="button" className="btn secondary" onClick={onClose}>Cancel</button><button className="btn primary" disabled={saving}>{saving ? 'Saving complaint…' : 'Create complaint'}</button></div>
     </form>
-    <p className="form-hint">Photos up to 2 MB and videos up to 8 MB are saved with the complaint. Location can be entered manually if GPS permission is unavailable.</p>
+    <p className="form-hint">Staff must attach at least one photo or video. Photos up to 2 MB and videos up to 8 MB are saved with the complaint. Admins may submit without evidence.</p>
   </Modal>;
 }
 function Field({ label, children, wide }: any) {
