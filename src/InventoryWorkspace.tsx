@@ -6,7 +6,7 @@ import { exportCsvFile, exportPdfReport } from './lib/file-export';
 
 type InventoryItem = {
   id: string; name: string; sku: string; category: string; unit: string; quantity: number;
-  minimumQuantity: number; unitCost?: number; supplier?: string; location?: string; notes?: string; assignedTo?: string; assignedToName?: string; active: boolean;
+  minimumQuantity: number; unitCost?: number; supplier?: string; location?: string; notes?: string; assignedTo?: string; assignedToName?: string; active: boolean; createdAt?: string; updatedAt?: string;
 };
 type Movement = {
   id: string; itemName: string; type: 'IN'|'OUT'; quantity: number; quantityBefore: number;
@@ -117,7 +117,7 @@ export default function InventoryWorkspace({isAdmin,flash}:{isAdmin:boolean;flas
     {loading?<p className="ops-empty">Loading inventory…</p>:<div className="inventory-table-wrap"><table className="inventory-table">
       <thead><tr><th>Item</th><th>Category</th><th>In stock</th><th>Minimum</th>{isAdmin&&<th>Unit cost</th>}<th>Assigned to</th><th>Location</th><th>Actions</th></tr></thead>
       <tbody>{items.map(item=><tr key={item.id} className={!item.active?'inventory-archived':''}>
-        <td><strong>{item.name}</strong><small>{item.sku} · {item.unit}</small></td><td>{item.category}</td>
+        <td><strong>{item.name}</strong><small>{item.sku} · {item.unit}</small><small>Added {stamp(item.createdAt||'')}{item.updatedAt?' · Updated '+stamp(item.updatedAt):''}</small></td><td>{item.category}</td>
         <td><span className={'inventory-quantity '+(item.quantity<=item.minimumQuantity?'low':'')}>{item.quantity} {item.unit}</span></td>
         <td>{item.minimumQuantity} {item.unit}</td>{isAdmin&&<td>{money(item.unitCost||0)}</td>}<td>{item.assignedToName||'—'}</td><td>{item.location||'—'}</td>
         <td><div className="inventory-actions">{isAdmin&&<><button className="btn secondary compact" disabled={!item.active} onClick={()=>{setMovementItem(item);setMovementType('OUT');setMovementQuantity('1');}}>Issue</button><button className="btn secondary compact" disabled={!item.active} onClick={()=>{setMovementItem(item);setMovementType('IN');setMovementQuantity('1');}}>Receive</button><button className="btn secondary compact" onClick={()=>openEdit(item)}>Edit / assign</button></>}<button className="btn secondary compact" onClick={()=>void showHistory(item)}>History</button></div></td>
