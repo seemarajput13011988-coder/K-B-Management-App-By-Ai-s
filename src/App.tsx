@@ -1920,8 +1920,24 @@ function StaffModal({ onClose, onSave }: any) {
   return <Modal title="Create staff account" subtitle="Give this team member a secure sign-in." onClose={onClose}><form className="form-grid" onSubmit={async e => { e.preventDefault(); setBusy(true); await onSave(form); setBusy(false); }}><Field label="Staff full name"><input required value={form.displayName} onChange={e => setForm({ ...form, displayName: e.target.value })} /></Field><Field label="Staff user ID"><input required minLength={3} maxLength={32} pattern="[a-zA-Z0-9_-]{3,32}" value={form.userId} onChange={e => setForm({ ...form, userId: e.target.value })} /></Field><Field label="Temporary password" wide><input required type="password" minLength={10} value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} /></Field><p className="form-hint">Use at least 10 characters and share it privately. Admin can reset it from Staff if needed.</p><div className="form-actions"><button type="button" className="btn secondary" onClick={onClose}>Cancel</button><button className="btn primary" disabled={busy}>{busy ? 'Creating…' : 'Create account'}</button></div></form></Modal>;
 }
 function StaffLocationResponder({ activeShift }: { activeShift: boolean }) {
+  const [shiftActive, setShiftActive] = useState(activeShift);
   useEffect(() => {
-    if (!activeShift) return;
+    let stopped = false;
+    const checkShift = async () => {
+      try {
+        const result = await api.get('/api/attendance');
+        const workDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+        const active = (result.data.items || []).some((item: AttendanceRecord) => item.userId === sessionStorageUserId() && item.workDate === workDate && !item.checkOutAt && item.dayType !== 'Absent');
+        if (!stopped) setShiftActive(active);
+      } catch { /* Retain the last confirmed shift state if the API is temporarily unavailable. */ }
+    };
+    setShiftActive(activeShift);
+    void checkShift();
+    const timer = window.setInterval(checkShift, 15000);
+    return () => { stopped = true; window.clearInterval(timer); };
+  }, [activeShift]);
+  useEffect(() => {
+    if (!shiftActive) return;
     let stopped = false;
     let sending = false;
     let watcherId: string | null = null;
@@ -1929,7 +1945,11 @@ function StaffLocationResponder({ activeShift }: { activeShift: boolean }) {
 
     const reportGpsUnavailable = (reason: string) => {
       if (stopped) return;
-      void api.post('/api/attendance/gps-lost', { reason }).catch(() => undefined);
+      const payload = { reason };
+      const update = Capacitor.isNativePlatform()
+        ? nativeApiPost('/api/attendance/gps-lost', payload)
+        : api.post('/api/attendance/gps-lost', payload);
+      void update.catch(() => undefined);
     };
 
     const publishNative = async () => {
@@ -1965,7 +1985,7 @@ function StaffLocationResponder({ activeShift }: { activeShift: boolean }) {
             }
           }).catch(error => {
             if (stopped) return;
-            if ((error as Error & { status?: number }).status === 403) {
+            if ([403, 409].includes((error as Error & { status?: number }).status || 0)) {
               if (watcherId) void BackgroundGeolocation.removeWatcher({ id: watcherId });
             }
           }).finally(() => { sending = false; });
@@ -2020,7 +2040,7 @@ function StaffLocationResponder({ activeShift }: { activeShift: boolean }) {
       stopped = true;
       if (watcherId) void BackgroundGeolocation.removeWatcher({ id: watcherId });
     };
-  }, [activeShift]);
+  }, [shiftActive]);
   return null;
 }
 function StaffPermissionSetup({ onComplete }: { onComplete:(locationGranted?:boolean)=>void }) {
