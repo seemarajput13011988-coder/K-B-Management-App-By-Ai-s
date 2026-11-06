@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { CalendarDays, ChevronLeft, ChevronRight, ClipboardList, Clock3 } from 'lucide-react';
+import { CalendarDays, ChevronLeft, ChevronRight, ClipboardList, Clock3, Wifi } from 'lucide-react';
 
 type CalendarTask = {
   id: string;
