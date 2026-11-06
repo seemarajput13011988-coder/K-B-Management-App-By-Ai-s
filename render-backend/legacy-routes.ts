@@ -767,7 +767,7 @@ export const handler = router({
     if (!title || !assignedTo || !/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) return error('Enter a task title, active staff member and valid due date.', 400);
     const [staffMember] = await db.get<UserRecord>('users', [assignedTo], { consistent: true });
     if (!staffMember || staffMember.role !== 'staff' || !staffMember.active) return error('Choose an active staff account.', 400);
-    const record: TaskRecord = { title, details, assignedTo, assignedToName: staffMember.displayName, priority, dueDate, status: 'Pending', createdAt: new Date().toISOString().slice(0, 10), createdBy: user.id, createdByName: user.displayName };
+    const record: TaskRecord = { title, details, assignedTo, assignedToName: staffMember.displayName, priority, dueDate, status: 'Pending', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), createdBy: user.id, createdByName: user.displayName };
     const [id] = await db.add('tasks', [record as unknown as Record<string, unknown>]);
     return id ? json({ id, ...record }, 201) : error('Could not assign task.', 500);
   }),
@@ -808,7 +808,7 @@ export const handler = router({
       if (!evidence.docs.some(doc => doc.data().uploadedBy === user.id)) return error('Upload at least one of your own task photos or videos before marking it completed.', 400);
       if (evidence.empty) return error('Upload at least one task photo or video before marking it completed.', 400);
     }
-    const [updated] = await db.tx.update('tasks', [{ id: params.id, record: { status, ...(status === 'Completed' ? { completedAt: new Date().toISOString(), completedBy: user.id, completedByName: user.displayName } : {}) } }], { patch: true });
+    const [updated] = await db.tx.update('tasks', [{ id: params.id, record: { status, updatedAt: new Date().toISOString(), updatedBy: user.id, updatedByName: user.displayName, ...(status === 'Completed' ? { completedAt: new Date().toISOString(), completedBy: user.id, completedByName: user.displayName } : {}) } }], { patch: true });
     return updated ? json({ updated: true }) : error('Could not update task.', 500);
   }),
 
@@ -833,11 +833,11 @@ export const handler = router({
   }),
 
   'POST /api/attendance/check-in': protectedRoute(['staff'], async ({ body }, user) => {
-    const input = (body || {}) as Record<string, unknown>;
     const workDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
     const result = await db.list<Record<string, unknown>>('attendance', { limit: 500 });
     if (result.items.some(item => item.userId === user.id && item.workDate === workDate)) return error('Attendance has already been recorded for today.', 409);
-    const record: Record<string, unknown> = { userId: user.id, displayName: user.displayName, workDate, checkInAt: cleanText(input.capturedAt, 40) || new Date().toISOString(), status: 'Checked in' };
+    const startedAt = new Date().toISOString();
+    const record: Record<string, unknown> = { userId: user.id, displayName: user.displayName, workDate, checkInAt: startedAt, createdAt: startedAt, status: 'Checked in', attendanceSource: 'Staff' };
     const [id] = await db.add('attendance', [record]);
     if (!id) return error('Could not save your check-in.', 500);
     // Attendance check-in no longer collects or stores GPS coordinates.
@@ -884,6 +884,9 @@ export const handler = router({
       id: String(existing.id),
       record: {
         checkOutAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        endedBy: user.id,
+        endedByName: user.displayName,
         status: 'Completed',
         gpsStatus: existing.gpsIssueStartedAt ? 'disabled-at-checkout' : (existing.gpsStatus || 'enabled'),
         gpsIssueStartedAt: FieldValue.delete(),
@@ -909,7 +912,7 @@ export const handler = router({
     if (latest && !latest.checkOutAt && latest.dayType !== 'Absent') return error('End this staff member’s active shift before marking absent.', 409);
     const absence = {
       userId: member.id, displayName: member.displayName, workDate,
-      checkInAt: '', checkOutAt: new Date().toISOString(), status: 'Absent', dayType: 'Absent',
+      checkInAt: '', checkOutAt: new Date().toISOString(), createdAt: latest?.createdAt || new Date().toISOString(), updatedAt: new Date().toISOString(), status: 'Absent', dayType: 'Absent',
       absenceReason: reason, markedAbsentBy: admin.displayName, attendanceSource: 'Admin',
     };
     if (latest) {
@@ -950,6 +953,7 @@ export const handler = router({
       displayName: member.displayName,
       workDate,
       checkInAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
       status: 'Checked in',
       startedByAdmin: admin.displayName,
       attendanceSource: 'Admin',
@@ -976,7 +980,10 @@ export const handler = router({
       id: String(existing.id),
       record: {
         checkOutAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
         status: 'Completed',
+        endedByAdminId: admin.id,
+        endedByAdminName: admin.displayName,
         endedByAdmin: admin.displayName,
         gpsIssueStartedAt: FieldValue.delete(),
         gpsIssueId: FieldValue.delete(),
