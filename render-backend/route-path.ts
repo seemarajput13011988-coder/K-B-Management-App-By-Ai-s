@@ -52,8 +52,8 @@ export function isValidPayrollInput(input: PayrollValidationInput): boolean {
   const paidAt = typeof input.paidAt === 'string' ? input.paidAt.trim() : '';
   const method = typeof input.method === 'string' ? input.method.trim() : '';
   const amount = typeof input.amount === 'number' ? input.amount : Number.NaN;
-  const monthMatch = /^(\\d{4})-(\\d{2})$/.exec(period);
-  const dateMatch = /^(\\d{4})-(\\d{2})-(\\d{2})$/.exec(paidAt);
+  const monthMatch = /^(\d{4})-(\d{2})$/.exec(period);
+  const dateMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(paidAt);
   if (!staffUserId || !method || method.length > 50 || !Number.isFinite(amount) || amount <= 0 || amount > 1000000 || !monthMatch || !dateMatch) return false;
   const month = Number(monthMatch[2]);
   if (month < 1 || month > 12) return false;
