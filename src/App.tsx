@@ -223,6 +223,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const notificationAnchorRef = useRef<HTMLDivElement | null>(null);
+  const pushToken = useRef<string | null>(null);
   const seenNotifications = useRef<Set<string> | null>(null);
 
   useEffect(() => {
@@ -1876,7 +1877,7 @@ function StaffLocationResponder({ activeShift, userId }: { activeShift: boolean;
       try {
         const result = await api.get('/api/attendance');
         const workDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
-        const active = (result.data.items || []).some((item: AttendanceRecord) => item.userId === sessionStorageUserId() && item.workDate === workDate && !item.checkOutAt && item.dayType !== 'Absent');
+        const active = (result.data.items || []).some((item: AttendanceRecord) => item.userId === userId && item.workDate === workDate && !item.checkOutAt && item.dayType !== 'Absent');
         if (!stopped) setShiftActive(active);
       } catch { /* Keep the last confirmed shift state if the API is temporarily unavailable. */ }
     };
