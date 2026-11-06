@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import type { FormEvent } from 'react';
+import { Component, useEffect, useMemo, useRef, useState } from 'react';
+import type { ErrorInfo, FormEvent, ReactNode } from 'react';
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import type { BackgroundGeolocationPlugin } from '@capacitor-community/background-geolocation';
 import { Filesystem } from '@capacitor/filesystem';
@@ -2468,6 +2468,17 @@ function FestivalCelebration(){
   </section>;
 }
 function WelcomeIntro(){return <div className="kb-welcome-intro" role="status" aria-label="Welcome to K&B Management Nexus"><div className="kb-welcome-orbit"><span/><span/><span/><div className="kb-welcome-mark"><Signal size={34}/></div></div><div className="kb-welcome-brand">K&amp;B <b>NET SERVICE</b></div><div className="kb-welcome-caption">MANAGEMENT NEXUS</div><div className="kb-welcome-loading"><i/></div></div>;}
+type WorkspaceErrorBoundaryProps={children:ReactNode;onReset:()=>void};
+type WorkspaceErrorBoundaryState={hasError:boolean};
+class WorkspaceErrorBoundary extends Component<WorkspaceErrorBoundaryProps,WorkspaceErrorBoundaryState>{
+ state:WorkspaceErrorBoundaryState={hasError:false};
+ static getDerivedStateFromError():WorkspaceErrorBoundaryState{return {hasError:true};}
+ componentDidCatch(error:Error,info:ErrorInfo){console.error('K&B workspace render failure after sign-in',error,info.componentStack);}
+ render(){
+  if(this.state.hasError)return <div className="auth-shell"><main className="auth-main"><section className="auth-card" role="alert"><div className="auth-icon"><ShieldCheck/></div><span className="eyebrow">WORKSPACE RECOVERY</span><h2>We couldn't open your workspace</h2><p>Your sign-in screen is still available. Please return to sign in; no business records have been changed by this screen.</p><button type="button" className="btn primary auth-submit" onClick={this.props.onReset}>Return to sign in</button></section></main></div>;
+  return this.props.children;
+ }
+}
 function App(){
  const [session,setSession]=useState<Session|null>(null);const [checking,setChecking]=useState(true);const [showWelcome,setShowWelcome]=useState(true);
  useEffect(()=>{const timer=window.setTimeout(()=>setShowWelcome(false),1500);return()=>window.clearTimeout(timer);},[]);
@@ -2476,7 +2487,7 @@ function App(){
  async function login(userId:string,password:string,expectedRole:'admin'|'staff'){const next=await signInAppUser(userId,password,expectedRole) as Session;if(next.user.role!==expectedRole){await signOutAppUser();throw new Error(expectedRole==='admin'?'This account is not an admin account. Choose Staff Sign In instead.':'This account is not a staff account. Choose Admin Sign In instead.');}sessionStorage.setItem('kb-customer-session',JSON.stringify(next));setSession(next);}
  if(showWelcome)return <><FestivalTheme/><WelcomeIntro/></>;
  if(checking)return <><FestivalTheme/><div className="loading-cover"><div className="loader"/><span>Preparing secure sign-in…</span></div></>;
- return <><FestivalTheme/>{session?<Workspace session={session} onLogout={()=>{signOutAppUser().catch(()=>undefined);sessionStorage.removeItem('kb-customer-session');localStorage.removeItem('kb-customer-session');setSession(null);}}/>:<LoginScreen onLogin={login}/>}</>;
+ return <><FestivalTheme/>{session?<WorkspaceErrorBoundary key={session.user.id} onReset={()=>{void signOutAppUser();sessionStorage.removeItem('kb-customer-session');localStorage.removeItem('kb-customer-session');setSession(null);}}><Workspace session={session} onLogout={()=>{void signOutAppUser();sessionStorage.removeItem('kb-customer-session');localStorage.removeItem('kb-customer-session');setSession(null);}}/></WorkspaceErrorBoundary>:<LoginScreen onLogin={login}/>}</>;
 }
 function LoginScreen({onLogin}:{onLogin:(id:string,pw:string,role:'admin'|'staff')=>Promise<void>}){
  const [role,setRole]=useState<'admin'|'staff'|null>(null);
