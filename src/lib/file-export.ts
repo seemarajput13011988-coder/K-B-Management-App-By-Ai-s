@@ -1,8 +1,14 @@
-import { Capacitor } from '@capacitor/core';
-import { Directory, Filesystem } from '@capacitor/filesystem';
-import { Share } from '@capacitor/share';
+import { Capacitor, registerPlugin } from '@capacitor/core';
 
-const APP_FOLDER = 'K&B Management Nexus';
+interface DocumentSaverPlugin {
+  saveFile(options: {
+    fileName: string;
+    mimeType: string;
+    dataBase64: string;
+  }): Promise<{ uri: string }>;
+}
+
+const DocumentSaver = registerPlugin<DocumentSaverPlugin>('DocumentSaver');
 
 function toBase64(value: string): string {
   const bytes = new TextEncoder().encode(value);
@@ -14,23 +20,12 @@ function toBase64(value: string): string {
   return btoa(binary);
 }
 
-async function saveNativeFile(fileName: string, base64Data: string): Promise<void> {
-  const saved = await Filesystem.writeFile({
-    path: APP_FOLDER + '/' + fileName,
-    data: base64Data,
-    directory: Directory.Documents,
-    recursive: true,
-  });
-  try {
-    await Share.share({
-      title: fileName,
-      text: 'Saved by K&B Management Nexus',
-      url: saved.uri,
-      dialogTitle: 'Save or share ' + fileName,
-    });
-  } catch (error) {
-    console.warn('The file is saved in Documents, but the share sheet could not be opened.', error);
-  }
+async function saveNativeFile(fileName: string, mimeType: string, base64Data: string): Promise<void> {
+  // Android's Storage Access Framework opens the system "Save as" picker.
+  // It grants access only to the file selected by the user; broad storage
+  // permissions are not required on modern Android versions.
+  const result = await DocumentSaver.saveFile({ fileName, mimeType, dataBase64: base64Data });
+  if (!result?.uri) throw new Error('Android did not confirm that the file was saved.');
 }
 
 export async function exportCsvFile(fileName: string, rows: unknown[][]): Promise<void> {
@@ -38,7 +33,7 @@ export async function exportCsvFile(fileName: string, rows: unknown[][]): Promis
     '"' + String(value ?? '').replace(/"/g, '""') + '"'
   ).join(',')).join('\r\n');
   if (Capacitor.isNativePlatform()) {
-    await saveNativeFile(fileName, toBase64(content));
+    await saveNativeFile(fileName, 'text/csv', toBase64(content));
     return;
   }
   const url = URL.createObjectURL(new Blob([content], { type: 'text/csv;charset=utf-8;' }));
@@ -54,7 +49,7 @@ export async function exportPdfFile(fileName: string, pdfDataUri: string): Promi
   const base64 = pdfDataUri.slice(pdfDataUri.indexOf(',') + 1);
   if (!base64) throw new Error('The PDF could not be generated.');
   if (Capacitor.isNativePlatform()) {
-    await saveNativeFile(fileName, base64);
+    await saveNativeFile(fileName, 'application/pdf', base64);
     return;
   }
   const link = document.createElement('a');
