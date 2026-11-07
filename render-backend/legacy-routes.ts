@@ -845,7 +845,7 @@ export const handler = router({
     const result = await db.list<Record<string, unknown>>('attendance', { limit: 1000 });
     if (result.items.some(item => item.userId === user.id && item.workDate === workDate)) return error('Attendance has already been recorded for today.', 409);
     const startedAt = new Date().toISOString();
-    const record: Record<string, unknown> = { userId: user.id, displayName: user.displayName, workDate, checkInAt: startedAt, createdAt: startedAt, status: 'Checked in', attendanceSource: 'Staff' };
+    const record: Record<string, unknown> = { userId: user.id, displayName: user.displayName, workDate, checkInAt: startedAt, createdAt: startedAt, status: 'Checked in', dayType: body?.dayType === 'Half day' ? 'Half day' : 'Full day', attendanceSource: 'Staff' };
     const [id] = await db.add('attendance', [record]);
     if (!id) return error('Could not save your check-in.', 500);
     // Attendance check-in no longer collects or stores GPS coordinates.
@@ -1021,7 +1021,15 @@ export const handler = router({
       record.restartedAfterGpsCancellation = true;
     }
     const [id] = await db.add('attendance', [record]);
-    return id ? json({ id, ...record }, 201) : error('Could not start this staff shift.', 500);
+    if (!id) return error('Could not start this staff shift.', 500);
+    await writeAudit(admin, 'ADMIN_START_SHIFT', 'attendance', id, 'Started a shift for ' + member.displayName + ' at ' + record.checkInAt + '.');
+    await db.add('staff_notifications', [{
+      recipientId: member.id, recipientRole: 'staff', type: 'admin-shift-started',
+      title: 'Your shift was started by an administrator',
+      message: admin.displayName + ' started your work shift. Location sharing is active only while this shift is active.',
+      createdAt: String(record.checkInAt), read: false, attendanceId: id,
+    }]);
+    return json({ id, ...record }, 201);
   }),
 
   'POST /api/attendance/admin-end': protectedRoute(['admin'], async ({ body }, admin) => {
@@ -1048,7 +1056,15 @@ export const handler = router({
         gpsReminderStage: FieldValue.delete(),
       },
     }], { patch: true });
-    return updated ? json({ updated: true }) : error('Could not end this staff shift.', 500);
+    if (!updated) return error('Could not end this staff shift.', 500);
+    await writeAudit(admin, 'ADMIN_END_SHIFT', 'attendance', String(existing.id), 'Ended ' + String(existing.displayName || staffId) + '’s shift at ' + new Date().toISOString() + '.');
+    await db.add('staff_notifications', [{
+      recipientId: staffId, recipientRole: 'staff', type: 'admin-shift-ended',
+      title: 'Your shift was ended by an administrator',
+      message: admin.displayName + ' ended your work shift. Location sharing has stopped.',
+      createdAt: new Date().toISOString(), read: false, attendanceId: String(existing.id),
+    }]);
+    return json({ updated: true });
   }),
 
   'GET /api/holidays': protectedRoute(['admin', 'staff'], async (_ctx, user) => {
