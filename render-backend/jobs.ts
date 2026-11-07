@@ -5,11 +5,6 @@ import { subscriptionExpiryKind, taskReminderKind } from './route-path.js';
 
 type Item = Record<string, any>;
 const now = () => new Date().toISOString();
-async function readCollection(name: string, limit = 1000): Promise<Item[]> {
-  const snapshot = await firestore.collection(name).limit(limit).get();
-  return snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
-}
-
 async function readAllQuery(query: any, pageSize = 400): Promise<Item[]> {
   const items: Item[] = [];
   let page = await query.limit(pageSize).get();
@@ -29,8 +24,8 @@ function sha(value: string) { return createHash('sha256').update(value).digest('
 
 export async function runGpsGracePeriod() {
   const records = await readAllQuery(firestore.collection('attendance').where('status', '==', 'Checked in'));
-  const requests = await readCollection('holiday_requests', 1000);
-  const users = await readCollection('users', 500);
+  const requests = await readAllQuery(firestore.collection('holiday_requests'));
+  const users = await readAllQuery(firestore.collection('users'));
   const currentTime = Date.now();
 
   for (const item of records) {
@@ -127,7 +122,7 @@ export async function runGpsGracePeriod() {
 export async function sendTaskDueReminders() {
   const { date: today, year, month, day } = indiaDateParts();
   const tomorrow = new Date(Date.UTC(year, month - 1, day + 1)).toISOString().slice(0, 10);
-  for (const task of await readCollection('tasks', 1000)) {
+  for (const task of await readAllQuery(firestore.collection('tasks'))) {
     const dueDate = String(task.dueDate || ''), assignedTo = String(task.assignedTo || '');
     if (!task.id || !assignedTo || !/^\d{4}-\d{2}-\d{2}$/.test(dueDate) || task.status === 'Completed') continue;
     const kind = taskReminderKind(dueDate, today, tomorrow);
@@ -151,7 +146,7 @@ export async function sendSubscriptionExpiryReminders() {
   const { date: today, year, month, day } = indiaDateParts();
   const inThreeDays = new Date(Date.UTC(year, month - 1, day + 3)).toISOString().slice(0, 10);
   const [subscriptions, customers, users] = await Promise.all([
-    readCollection('subscriptions', 1000), readCollection('customers', 1000), readCollection('users', 500),
+    readAllQuery(firestore.collection('subscriptions')), readAllQuery(firestore.collection('customers')), readCollection('users', 500),
   ]);
   const admins = users.filter(item => item.role === 'admin' && item.active === true);
   for (const subscription of subscriptions) {
