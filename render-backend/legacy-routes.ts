@@ -1523,6 +1523,18 @@ export const handler = router({
       const historyPoint: Record<string, unknown> = { ...point };
       delete historyPoint.id;
       batch.set(historyRef, historyPoint);
+      if (active.gpsIssueStartedAt) {
+        batch.update(firestore.collection('attendance').doc(String(active.id)), {
+          gpsIssueStartedAt: FieldValue.delete(), gpsIssueId: FieldValue.delete(),
+          gpsIssueReason: FieldValue.delete(), gpsReminderStage: FieldValue.delete(),
+          gpsStatus: 'active', gpsRestoredAt: capturedAt,
+        });
+        batch.set(firestore.collection('staff_notifications').doc(String(active.id) + '-gps-restored-' + String(active.gpsIssueId || capturedAt)), {
+          recipientId: user.id, recipientRole: 'staff', type: 'gps-restored',
+          title: 'GPS restored', message: 'Your current location was shared and GPS is available again. Your shift continues normally.',
+          createdAt: capturedAt, read: false, attendanceId: active.id,
+        });
+      }
     }
     const adminNotificationRef = firestore.collection('staff_notifications').doc();
     batch.set(adminNotificationRef, {
