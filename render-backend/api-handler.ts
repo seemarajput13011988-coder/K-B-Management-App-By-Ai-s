@@ -581,7 +581,8 @@ export async function apiHandler(req: any, res: any) {
         if (typeof body.displayName === 'string') { const name = clean(body.displayName, 80); if (!name) { send(res, 400, { error: 'Enter a staff name.' }); return; } patch.displayName = name; }
         if (typeof body.userId === 'string') { const nextId = clean(body.userId, 32); if (!/^[a-zA-Z0-9_-]{3,32}$/.test(nextId)) { send(res, 400, { error: 'Use a 3–32 character staff ID.' }); return; } if ((await list('users')).some(item => item.id !== staffId && String(item.userId || '').toLowerCase() === nextId.toLowerCase())) { send(res, 409, { error: 'That user ID is already in use.' }); return; } patch.userId = nextId; patch.userIdLower = nextId.toLowerCase(); }
         if (typeof body.active === 'boolean') patch.active = body.active;
-        if ((patch.active === false || patch.userId) && await staffHasActiveShift(staffId)) {
+        const changingUserId = typeof patch.userId === 'string' && patch.userId.toLowerCase() !== String(staff.userId || '').toLowerCase();
+        if ((patch.active === false || changingUserId) && await staffHasActiveShift(staffId)) {
           send(res,409,{error:'End the staff member’s active shift before disabling the account or changing its user ID.'}); return;
         }
         if (body.monthlySalary !== undefined) {
