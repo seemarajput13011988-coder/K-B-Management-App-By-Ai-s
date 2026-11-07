@@ -17,6 +17,10 @@ The active frontend API URL defaults to `https://kandb-management-nexus-api-zv7f
 
 Overview and analytics; customers and plans; payments and complaints; tasks; staff accounts and registration approvals; attendance, corrections and shift scheduling; consent-based shift-scoped GPS; team messages, groups and announcements; visits; calendar and festival themes; subscriptions; installations; inventory; GST invoice PDF maker; finance, customer ledgers, expenses and payroll; notifications; audit and retention review.
 
+## Photo/video storage
+
+Task-completion evidence and complaint attachments are currently stored as chunked documents in Firestore collections `task_media` and `complaint_media`. The app does **not** currently upload these files to Firebase Cloud Storage. This keeps the existing storage design unchanged, but large video files create Firestore document reads/writes and storage usage. A move to Cloud Storage should be planned separately with the account owner after checking billing/plan requirements and backup/migration needs.
+
 ## Important release notes
 
 - `functions/` contains legacy Firebase Functions code from an earlier migration attempt. It is not the active API and must not be deployed as a second backend.
