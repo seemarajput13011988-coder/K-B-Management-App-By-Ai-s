@@ -1,4 +1,4 @@
-import { Component, useEffect, useMemo, useRef, useState } from 'react';
+import { Component, lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import type { ErrorInfo, FormEvent, ReactNode } from 'react';
 import { Capacitor, registerPlugin } from '@capacitor/core';
 
@@ -6,14 +6,14 @@ import { Filesystem } from '@capacitor/filesystem';
 import { Camera } from '@capacitor/camera';
 import { Geolocation } from '@capacitor/geolocation';
 import { LocalNotifications } from '@capacitor/local-notifications';
-import StaffOperations from './StaffOperations';
-import FinanceWorkspace from './FinanceWorkspace';
-import SubscriptionWorkspace from './SubscriptionWorkspace';
-import InvoiceWorkspace from './InvoiceWorkspace';
-import InventoryWorkspace from './InventoryWorkspace';
-import GpsTrackingWorkspace from './GpsTrackingWorkspace';
-import InstallationsWorkspace from './InstallationsWorkspace';
-import CalendarWorkspace from './CalendarWorkspace';
+const StaffOperations = lazy(() => import('./StaffOperations'));
+const FinanceWorkspace = lazy(() => import('./FinanceWorkspace'));
+const SubscriptionWorkspace = lazy(() => import('./SubscriptionWorkspace'));
+const InvoiceWorkspace = lazy(() => import('./InvoiceWorkspace'));
+const InventoryWorkspace = lazy(() => import('./InventoryWorkspace'));
+const GpsTrackingWorkspace = lazy(() => import('./GpsTrackingWorkspace'));
+const InstallationsWorkspace = lazy(() => import('./InstallationsWorkspace'));
+const CalendarWorkspace = lazy(() => import('./CalendarWorkspace'));
 import { useAppPreferences } from './appPreferences';
 import { api as client, changeAppPassword, changeAppUserId, signInAppUser, signOutAppUser, submitStaffRegistrationRequest, getStaffRegistrationStatus, nativeApiPost } from './lib/api';
 import {
@@ -1017,6 +1017,8 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
             </div>
           </div>
 
+          <FestivalCelebration />
+          <Suspense fallback={<div className="workspace-loading" role="status"><div className="loader"/><span>Loading workspace…</span></div>}>
           {page === 'Calendar' && <CalendarWorkspace tasks={tasks} attendance={attendanceRecords} isAdmin={isAdmin} festivals={Object.entries(FESTIVAL_DATES).map(([date, festival]) => ({ date, ...festival }))} />}
           {page === 'Salary' && isAdmin && <FinanceWorkspace salaryOnly session={session} customers={customers} payments={payments} flash={flash} />}
           {page === 'My Day' && !isAdmin && <StaffOperations session={session} customers={customers} flash={flash} onDataChanged={() => { void load(true); }} />}
@@ -1028,6 +1030,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
           {page === 'GPS Tracking' && isAdmin && <GpsTrackingWorkspace flash={flash} />}
           {page === 'Installations' && <InstallationsWorkspace customers={customers} staff={staff} isAdmin={isAdmin} flash={flash} />}
           {page === 'Overview' && !isAdmin && <StaffOperations session={session} customers={customers} flash={flash} compact onDataChanged={() => { void load(true); }} />}
+          </Suspense>
 
           {page === 'Overview' && (
             <>
