@@ -211,7 +211,8 @@ export async function deliverPendingPushNotifications() {
 
 export async function autoCheckoutAtSevenPm() {
   const currentTime = Date.now();
-  const records = await readCollection('attendance', 1000);
+  const activeSnapshot = await firestore.collection('attendance').where('status', '==', 'Checked in').limit(1000).get();
+  const records: Item[] = activeSnapshot.docs.map(doc => ({ ...(doc.data() as Item), id: doc.id }));
   let checkedOut = 0;
   for (const item of records) {
     if (!item.id || !/^\d{4}-\d{2}-\d{2}$/.test(String(item.workDate || '')) ||
