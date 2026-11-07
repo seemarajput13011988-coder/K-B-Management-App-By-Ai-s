@@ -43,3 +43,17 @@ jobs:
         run: |
           npx tsc --noEmit
           npm run build
+          npx --yes @capgo/cli@latest bundle zip kandbnet.service2010 --path ./dist --bundle 1.0.1 --name kb-nexus-ci --json > /tmp/kb-ota-ci.json
+          node <<'NODE'
+          const fs = require('node:fs');
+          const { execFileSync } = require('node:child_process');
+          const raw = fs.readFileSync('/tmp/kb-ota-ci.json', 'utf8');
+          const start = raw.indexOf('{');
+          const end = raw.lastIndexOf('}');
+          if (start < 0 || end <= start) throw new Error('Capgo CLI did not return JSON metadata.');
+          const info = JSON.parse(raw.slice(start, end + 1));
+          if (!/^[a-f0-9]{64}$/i.test(String(info.checksum || ''))) throw new Error('Capgo OTA checksum is missing or invalid.');
+          const zips = execFileSync('find', ['.', '-maxdepth', '2', '-type', 'f', '-name', '*.zip', '-not', '-path', './node_modules/*'], { encoding: 'utf8' }).trim().split('\\n').filter(Boolean);
+          if (zips.length !== 1) throw new Error('Expected one Capgo-compatible OTA zip, found ' + zips.length);
+          console.log('Capgo OTA bundle validated:', info.version, 'bytes:', info.size, 'zip:', zips[0]);
+          NODE
