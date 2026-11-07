@@ -1358,7 +1358,10 @@ export const handler = router({
     const active = findActiveShift(attendance, params.id);
     if (!active || (active.checkOutAt && !active.gpsRestartRequired && !active.gpsCancelled)) return json({ status: 'shift-not-active', item: null, isFresh: false, ageSeconds: null });
     
-    const [location] = await db.get<Record<string, unknown>>('staff_live_locations', [params.id], { consistent: true });
+    const [storedLocation] = await db.get<Record<string, unknown>>('staff_live_locations', [params.id], { consistent: true });
+    // Never present a previous shift's last point as if it belonged to the current shift.
+    const location = storedLocation && String(storedLocation.attendanceId || '') === String(active.id)
+      ? storedLocation : null;
     const gpsOff = Boolean(active.gpsIssueStartedAt || active.gpsRestartRequired || active.gpsStatus === 'disabled');
     const deadlineAt = active.gpsIssueStartedAt
       ? new Date(Date.parse(String(active.gpsIssueStartedAt)) + 15 * 60 * 1000).toISOString()
