@@ -47,3 +47,34 @@ test('rejects non-finite, negative and over-limit amounts', () => {
 test('rejects a missing or excessively long payment method', () => {
   assert.equal(isValidPayrollInput({ ...valid, method: 'x'.repeat(51) }), false);
 });
+
+
+import { computeShiftDeadline, isFreshLocationTimestamp } from '../render-backend/route-path.js';
+
+test('custom shift deadline follows the configured India-time end time', () => {
+  assert.equal(
+    computeShiftDeadline('2026-11-07', '2026-11-07T03:30:00.000Z', '20:30'),
+    '2026-11-07T15:00:00.000Z',
+  );
+});
+
+test('admin-started after-hours shift ends at the next configured end time', () => {
+  assert.equal(
+    computeShiftDeadline('2026-11-07', '2026-11-07T17:00:00.000Z', '20:30'),
+    '2026-11-08T15:00:00.000Z',
+  );
+});
+
+test('rejects invalid shift dates, times and start timestamps', () => {
+  assert.equal(computeShiftDeadline('2026-02-30', '2026-11-07T03:30:00.000Z', '20:30'), null);
+  assert.equal(computeShiftDeadline('2026-11-07', '2026-11-07T03:30:00.000Z', '25:00'), null);
+  assert.equal(computeShiftDeadline('2026-11-07', 'not-a-date', '20:30'), null);
+});
+
+test('GPS timestamp validation rejects stale, invalid and future readings', () => {
+  const now = Date.parse('2026-11-07T12:00:00.000Z');
+  assert.equal(isFreshLocationTimestamp('2026-11-07T11:59:00.000Z', now), true);
+  assert.equal(isFreshLocationTimestamp('2026-11-07T11:50:00.000Z', now), false);
+  assert.equal(isFreshLocationTimestamp('2026-11-07T12:05:00.000Z', now), false);
+  assert.equal(isFreshLocationTimestamp('invalid', now), false);
+});
