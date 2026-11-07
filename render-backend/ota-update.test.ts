@@ -23,15 +23,15 @@ test('returns no update when no release exists', () => {
 });
 
 test('returns no update when the installed bundle is current', () => {
-  assert.deepEqual(buildOtaDecision('1.0.42', manifest, 'https://github.com/org/repo/releases/download/x/nexus-update.zip'), {
+  assert.deepEqual(buildOtaDecision('1.0.42', manifest, 'https://github.com/seemarajput13011988-coder/K-B-Management-App-By-Ai-s/releases/download/x/nexus-update.zip'), {
     message: 'No update is available.',
   });
 });
 
 test('returns a checksum-verified release URL for an older bundle', () => {
-  assert.deepEqual(buildOtaDecision('builtin', manifest, 'https://github.com/org/repo/releases/download/x/nexus-update.zip'), {
+  assert.deepEqual(buildOtaDecision('builtin', manifest, 'https://github.com/seemarajput13011988-coder/K-B-Management-App-By-Ai-s/releases/download/x/nexus-update.zip'), {
     version: '1.0.42',
-    url: 'https://github.com/org/repo/releases/download/x/nexus-update.zip',
+    url: 'https://github.com/seemarajput13011988-coder/K-B-Management-App-By-Ai-s/releases/download/x/nexus-update.zip',
     checksum: 'a'.repeat(64),
   });
 });
@@ -46,10 +46,10 @@ test('rejects insecure and untrusted bundle hosts', () => {
 });
 
 test('does not downgrade a device with a newer semantic version', () => {
-  assert.deepEqual(buildOtaDecision('1.0.43', manifest, 'https://github.com/org/repo/releases/download/x/nexus-update.zip'), {
+  assert.deepEqual(buildOtaDecision('1.0.43', manifest, 'https://github.com/seemarajput13011988-coder/K-B-Management-App-By-Ai-s/releases/download/x/nexus-update.zip'), {
     message: 'No update is available.',
   });
-  assert.deepEqual(buildOtaDecision('2.0.0', manifest, 'https://github.com/org/repo/releases/download/x/nexus-update.zip'), {
+  assert.deepEqual(buildOtaDecision('2.0.0', manifest, 'https://github.com/seemarajput13011988-coder/K-B-Management-App-By-Ai-s/releases/download/x/nexus-update.zip'), {
     message: 'No update is available.',
   });
 });
