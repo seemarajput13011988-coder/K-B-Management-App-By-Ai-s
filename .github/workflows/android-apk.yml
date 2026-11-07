@@ -122,8 +122,6 @@ jobs:
           import com.getcapacitor.PluginMethod;
           import com.getcapacitor.annotation.ActivityCallback;
           import com.getcapacitor.annotation.CapacitorPlugin;
-          import java.io.ByteArrayOutputStream;
-          import java.io.InputStream;
           import java.io.OutputStream;
 
           @CapacitorPlugin(name = "DocumentSaver")
@@ -276,6 +274,8 @@ jobs:
           import com.google.android.gms.location.Priority;
           import org.json.JSONArray;
           import org.json.JSONObject;
+          import java.io.ByteArrayOutputStream;
+          import java.io.InputStream;
           import java.io.OutputStream;
           import java.net.HttpURLConnection;
           import java.net.URL;
@@ -473,9 +473,9 @@ jobs:
                   }
                   JSONObject response = new JSONObject(responseText);
                   JSONArray items = response.optJSONArray("items");
-                  String today = new SimpleDateFormat("yyyy-MM-dd", Locale.US) {{
-                    setTimeZone(TimeZone.getTimeZone("Asia/Kolkata"));
-                  }}.format(new Date());
+                  SimpleDateFormat indiaDate = new SimpleDateFormat("yyyy-MM-dd", Locale.US);
+                  indiaDate.setTimeZone(TimeZone.getTimeZone("Asia/Kolkata"));
+                  String today = indiaDate.format(new Date());
                   boolean activeShift = false;
                   if (items != null) {
                     for (int index = 0; index < items.length(); index++) {
