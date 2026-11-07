@@ -44,3 +44,18 @@ test('rejects insecure and untrusted bundle hosts', () => {
   assert.match(insecure.message, /not trusted/);
   assert.match(untrusted.message, /not trusted/);
 });
+
+test('does not downgrade a device with a newer semantic version', () => {
+  assert.deepEqual(buildOtaDecision('1.0.43', manifest, 'https://github.com/org/repo/releases/download/x/nexus-update.zip'), {
+    message: 'No update is available.',
+  });
+  assert.deepEqual(buildOtaDecision('2.0.0', manifest, 'https://github.com/org/repo/releases/download/x/nexus-update.zip'), {
+    message: 'No update is available.',
+  });
+});
+
+test('rejects a valid GitHub URL outside the trusted repository release path', () => {
+  const decision = buildOtaDecision('builtin', manifest, 'https://github.com/another-owner/another-repo/releases/download/x/nexus-update.zip');
+  assert.ok('message' in decision);
+  assert.match(decision.message, /not trusted/);
+});
