@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { isValidPayrollInput } from '../render-backend/route-path.js';
+import { computeShiftDeadline, isFreshLocationTimestamp, isValidPayrollInput } from '../render-backend/route-path.js';
 
 const valid = {
   staffUserId: 'staff-record-123',
@@ -47,9 +47,6 @@ test('rejects non-finite, negative and over-limit amounts', () => {
 test('rejects a missing or excessively long payment method', () => {
   assert.equal(isValidPayrollInput({ ...valid, method: 'x'.repeat(51) }), false);
 });
-
-
-import { computeShiftDeadline, isFreshLocationTimestamp } from '../render-backend/route-path.js';
 
 test('custom shift deadline follows the configured India-time end time', () => {
   assert.equal(
