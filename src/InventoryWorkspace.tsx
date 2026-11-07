@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
-import { api } from './lib/api';
+import { api, subscribeToApiChanges } from './lib/api';
 import { Download, FileText } from 'lucide-react';
 import { exportCsvFile, exportPdfReport } from './lib/file-export';
 
@@ -53,6 +53,7 @@ export default function InventoryWorkspace({isAdmin,flash}:{isAdmin:boolean;flas
     finally { setLoading(false); }
   }
   useEffect(()=>{void load();},[]);
+  useEffect(()=>subscribeToApiChanges(()=>{void load();}),[]);
   function openCreate() {
     setEditing(null);setForm({name:'',sku:'',category:'',unit:'pcs',quantity:'0',minimumQuantity:'2',unitCost:'0',supplier:'',location:'',notes:'',assignedTo:'',active:true});setShowForm(true);
   }
