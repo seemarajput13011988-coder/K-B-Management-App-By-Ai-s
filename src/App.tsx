@@ -32,7 +32,6 @@ import {
   Users,
   Wifi,
   X,
-  Zap,
   CalendarDays,
   Phone,
   MapPin,
