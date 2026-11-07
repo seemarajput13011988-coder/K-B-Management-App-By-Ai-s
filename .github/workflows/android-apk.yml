@@ -210,8 +210,10 @@ jobs:
             public void startTracking(PluginCall call) {
               String token = call.getString("token");
               String apiBaseUrl = call.getString("apiBaseUrl");
-              String attendanceId = call.getString("attendanceId", "");
-              String scheduledEndAt = call.getString("scheduledEndAt", "");
+              String attendanceId = call.getString("attendanceId");
+              String scheduledEndAt = call.getString("scheduledEndAt");
+              if (attendanceId == null) attendanceId = "";
+              if (scheduledEndAt == null) scheduledEndAt = "";
               if (token == null || token.trim().isEmpty() || apiBaseUrl == null || !apiBaseUrl.startsWith("https://")) {
                 call.reject("A valid signed-in session and secure K&B API address are required.");
                 return;
