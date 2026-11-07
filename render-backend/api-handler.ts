@@ -845,7 +845,13 @@ export async function apiHandler(req: any, res: any) {
       if (method === 'GET' && path === '/api/notifications') {
         const user = await requireUser(req);
         if (!user) { send(res,401,{error:'Your session has expired. Please sign in again.'}); return; }
-        const items = (await list('staff_notifications')).filter(item => String(item.recipientId || '') === user.uid || String(item.recipientId || '') === user.userId)
+        const [byId, byUserId] = await Promise.all([
+          db.collection('staff_notifications').where('recipientId', '==', user.uid).get(),
+          db.collection('staff_notifications').where('recipientId', '==', user.userId).get(),
+        ]);
+        const notificationMap = new Map<string, Data>();
+        for (const document of [...byId.docs, ...byUserId.docs]) notificationMap.set(document.id, { id: document.id, ...document.data() });
+        const items = Array.from(notificationMap.values())
           .sort((a,b) => String(b.createdAt || '').localeCompare(String(a.createdAt || ''))).slice(0,150);
         send(res,200,{items}); return;
       }
