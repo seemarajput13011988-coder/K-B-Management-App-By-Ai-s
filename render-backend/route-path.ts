@@ -187,3 +187,23 @@ export function isSixMonthReviewDue(createdAt: unknown, currentTime = Date.now()
   );
   return created <= cutoff;
 }
+
+
+/** Calculates a shift deadline in India time. If the configured end time has
+ * already passed when a shift starts, the next day's end time is used. */
+export function computeShiftDeadline(workDate: string, startedAt: string, endTime: string): string | null {
+  if (!isValidDateKey(workDate) || !/^([01]\\d|2[0-3]):[0-5]\\d$/.test(endTime)) return null;
+  const started = Date.parse(startedAt);
+  const firstDeadline = Date.parse(workDate + 'T' + endTime + ':00+05:30');
+  if (!Number.isFinite(started) || !Number.isFinite(firstDeadline)) return null;
+  return new Date(firstDeadline <= started ? firstDeadline + 86400000 : firstDeadline).toISOString();
+}
+
+/** Rejects implausibly old or future client timestamps before treating GPS as live. */
+export function isFreshLocationTimestamp(value: unknown, currentTime = Date.now(), maxAgeMs = 5 * 60 * 1000, maxFutureSkewMs = 60 * 1000): boolean {
+  if (typeof value !== 'string' || !value.trim() || !Number.isFinite(currentTime)) return false;
+  const capturedAt = Date.parse(value);
+  if (!Number.isFinite(capturedAt)) return false;
+  const age = currentTime - capturedAt;
+  return age >= -maxFutureSkewMs && age <= maxAgeMs;
+}
