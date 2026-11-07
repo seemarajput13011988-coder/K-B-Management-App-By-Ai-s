@@ -725,7 +725,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
     const files = [photoFile, videoFile].filter((item): item is File => item instanceof File);
     if (!(photoFile instanceof File) || !(videoFile instanceof File)) { flash('Both a task photo and a task video are required before completion.'); return; }
     try {
-      const attachments = await Promise.all(files.map(async file => ({ fileName: file.name, mimeType: file.type, dataBase64: await fileAsBase64(file) })));
+      const attachments = await Promise.all(files.map(async file => ({ fileName: file.name, mimeType: uploadMimeType(file), dataBase64: await fileAsBase64(file) })));
       await api.post('/api/tasks/' + task.id + '/media', { attachments });
       await api.put('/api/tasks/' + task.id, { status: 'Completed' });
       setCompletingTask(null);
@@ -2068,7 +2068,7 @@ function TaskCompletionModal({ task, onClose, onComplete }: any) {
     <form className="form-grid" onSubmit={async event => { event.preventDefault(); if (!photo || !video) { window.alert('Both a task photo and a task video are required.'); return; } setBusy(true); await onComplete(photo, video); setBusy(false); }}>
       <p className="form-hint">Both a photo and a video are required. The task remains open until both files upload successfully.</p>
       <Field label="Task photo (required)" wide><input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={event => { const file=event.target.files?.[0]||null; setPhoto(file&&valid(file,'photo')?file:null); }}/>{photo&&<small>{photo.name} · {(photo.size/1024).toFixed(0)} KB</small>}</Field>
-      <Field label="Task video (required)" wide><input type="file" accept="video/mp4,video/webm,video/quicktime" capture="environment" onChange={event => { const file=event.target.files?.[0]||null; setVideo(file&&valid(file,'video')?file:null); }}/>{video&&<small>{video.name} · {(video.size/1024/1024).toFixed(1)} MB</small>}</Field>
+      <Field label="Task video (required)" wide><input type="file" accept="video/mp4,video/webm,video/quicktime,video/3gpp,.3gp" capture="environment" onChange={event => { const file=event.target.files?.[0]||null; setVideo(file&&valid(file,'video')?file:null); }}/>{video&&<small>{video.name} · {(video.size/1024/1024).toFixed(1)} MB</small>}</Field>
       <div className="form-actions"><button type="button" className="btn secondary" onClick={onClose}>Cancel</button><button className="btn primary" disabled={busy||!photo||!video}>{busy?'Uploading evidence…':'Upload and complete task'}</button></div>
     </form>
   </Modal>;
@@ -2271,9 +2271,10 @@ function ComplaintModal({ customers, staff, session, onClose, onSave }: any) {
     }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 });
   }
   function validateFile(file: File, kind: 'photo' | 'video') {
-    const allowed = kind === 'photo' ? ['image/jpeg', 'image/png', 'image/webp'] : ['video/mp4', 'video/webm', 'video/quicktime'];
+    const mimeType = uploadMimeType(file);
+    const allowed = kind === 'photo' ? ['image/jpeg', 'image/png', 'image/webp'] : ['video/mp4', 'video/webm', 'video/quicktime', 'video/3gpp'];
     const maxBytes = kind === 'photo' ? 2 * 1024 * 1024 : 8 * 1024 * 1024;
-    if (!allowed.includes(file.type)) { window.alert(kind === 'photo' ? 'Choose a JPG, PNG or WEBP photo.' : 'Choose an MP4, WEBM or MOV video.'); return false; }
+    if (!allowed.includes(mimeType)) { window.alert(kind === 'photo' ? 'Choose a JPG, PNG or WEBP photo.' : 'Choose an MP4, WEBM or MOV video.'); return false; }
     if (file.size > maxBytes) { window.alert(kind === 'photo' ? 'Photo must be 2 MB or smaller.' : 'Video must be 8 MB or smaller.'); return false; }
     return true;
   }
