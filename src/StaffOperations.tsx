@@ -37,7 +37,7 @@ const shiftDueAt = (item: Attendance) => {
   }).formatToParts(new Date(checkIn));
   const minutes = Number(parts.find(part => part.type === 'hour')?.value || 0) * 60 +
     Number(parts.find(part => part.type === 'minute')?.value || 0);
-  const endTime = /^([01]\\d|2[0-3]):[0-5]\\d$/.test(item.shiftEndTime || '') ? item.shiftEndTime! : '19:00';
+  const endTime = /^([01]\d|2[0-3]):[0-5]\d$/.test(item.shiftEndTime || '') ? item.shiftEndTime! : '19:00';
   const [endHour, endMinute] = endTime.split(':').map(Number);
   const endMinutes = endHour * 60 + endMinute;
   const dueDate = minutes >= endMinutes
