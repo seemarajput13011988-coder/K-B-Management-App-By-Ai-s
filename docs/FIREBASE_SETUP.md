@@ -28,6 +28,10 @@ Add repository secret `K_B_JOB_SECRET` with exactly the same value as Render `JO
 
 For Android push notifications, add `ANDROID_GOOGLE_SERVICES_JSON_BASE64` only after registering the exact Android package `kandbnet.service2010` in Firebase and encoding its `google-services.json` locally. Never commit the JSON file or encoded value.
 
+## Photo/video attachment storage
+
+The current app stores task and complaint attachments as chunked Firestore documents in `task_media` and `complaint_media`. It does not currently use Firebase Cloud Storage for these uploads. Keep this in mind when reviewing Firestore usage and costs. Do not change the storage backend without an owner-approved plan, backup and migration.
+
 ## Data safety
 
 1. Confirm the intended Firestore project and region.
