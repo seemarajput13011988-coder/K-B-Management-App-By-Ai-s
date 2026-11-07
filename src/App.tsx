@@ -644,7 +644,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
     catch (err) { flash(err instanceof Error ? err.message : 'Could not remove admin account.'); }
   }
   async function removeStaff(staffUser: Staff) {
-    if (!window.confirm('Delete staff account "' + staffUser.displayName + '"? Their sign-in will be removed and assigned customers will become unassigned. Payment, attendance and work history will be preserved.')) return;
+    if (!window.confirm('Delete staff account "' + staffUser.displayName + '"? Their sign-in and device access will be revoked. Assigned customers, tasks, inventory, installations and complaints will be unassigned. Payment, attendance and work history will be preserved.')) return;
     try {
       await api.delete('/api/staff/' + staffUser.id);
       if (selectedStaffProfileId === staffUser.id) setSelectedStaffProfileId('');
