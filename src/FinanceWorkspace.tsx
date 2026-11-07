@@ -86,12 +86,13 @@ async function printReport(title: string, rows: unknown[][]) {
   }
 }
 
-export default function FinanceWorkspace({ session, customers, payments, flash, salaryOnly = false }: {
+export default function FinanceWorkspace({ session, customers, payments, flash, salaryOnly = false, onDataChanged }: {
   session: Session;
   customers: Customer[];
   payments: Payment[];
   flash: (message: string) => void;
   salaryOnly?: boolean;
+  onDataChanged?: () => void;
 }) {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
@@ -168,6 +169,7 @@ export default function FinanceWorkspace({ session, customers, payments, flash, 
     try {
       const result = await client.post('/api/invoices/generate', { period, sessionToken: session.token });
       await load();
+      onDataChanged?.();
       flash(result.data.created ? result.data.created + ' invoices generated.' : 'Invoices are already up to date.');
     } catch (err) {
       flash(err instanceof Error ? err.message : 'Could not generate invoices.');
@@ -181,6 +183,7 @@ export default function FinanceWorkspace({ session, customers, payments, flash, 
       await client.post('/api/payroll', { staffUserId: salaryStaffId, period, amount: Number(salaryAmount), paidAt: salaryPaidAt, method: salaryMethod, notes: salaryNotes, sessionToken: session.token });
       setSalaryAmount(''); setSalaryNotes('');
       await load();
+      onDataChanged?.();
       flash('Staff salary recorded.');
     } catch (err) {
       flash(err instanceof Error ? err.message : 'Could not record salary.');
@@ -190,7 +193,7 @@ export default function FinanceWorkspace({ session, customers, payments, flash, 
   async function deleteSalary(item: PayrollRecord) {
     if (session.user.role !== 'admin' || !window.confirm('Delete this salary record for ' + item.staffName + ' (' + monthName(item.period) + ')? This action will be recorded in the audit log.')) return;
     setBusy(true);
-    try { await client.delete('/api/payroll/' + item.id + tokenQuery); await load(); flash('Salary record deleted.'); }
+    try { await client.delete('/api/payroll/' + item.id + tokenQuery); await load(); onDataChanged?.(); flash('Salary record deleted.'); }
     catch (err) { flash(err instanceof Error ? err.message : 'Could not delete salary record.'); }
     finally { setBusy(false); }
   }
@@ -202,6 +205,7 @@ export default function FinanceWorkspace({ session, customers, payments, flash, 
       await client.post('/api/expenses', { title, category, amount: Number(amount), spentAt, method, notes, sessionToken: session.token });
       setTitle(''); setAmount(''); setNotes('');
       await load();
+      onDataChanged?.();
       flash('Expense saved.');
     } catch (err) {
       flash(err instanceof Error ? err.message : 'Could not save expense.');
@@ -213,6 +217,7 @@ export default function FinanceWorkspace({ session, customers, payments, flash, 
     try {
       await client.delete('/api/expenses/' + item.id + tokenQuery);
       await load();
+      onDataChanged?.();
       flash('Expense deleted.');
     } catch (err) {
       flash(err instanceof Error ? err.message : 'Could not delete expense.');

@@ -942,14 +942,14 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
           </div>
 
           {page === 'Calendar' && <CalendarWorkspace tasks={tasks} attendance={attendanceRecords} isAdmin={isAdmin} festivals={Object.entries(FESTIVAL_DATES).map(([date, festival]) => ({ date, ...festival }))} />}
-          {page === 'Salary' && isAdmin && <FinanceWorkspace salaryOnly session={session} customers={customers} payments={payments} flash={flash} />}
+          {page === 'Salary' && isAdmin && <FinanceWorkspace salaryOnly session={session} customers={customers} payments={payments} flash={flash} onDataChanged={() => { void load(true); }} />}
           {page === 'My Day' && !isAdmin && <StaffOperations session={session} customers={customers} flash={flash} onDataChanged={() => { void load(true); }} />}
           {page === 'Invoices' && isAdmin && <InvoiceWorkspace customers={customers} plans={plans} flash={flash} />}
-          {page === 'Finance & Billing' && isAdmin && <FinanceWorkspace session={session} customers={customers} payments={payments} flash={flash} />}
-          {page === 'Subscriptions' && <SubscriptionWorkspace customers={customers} plans={plans} isAdmin={isAdmin} flash={flash} />}
-          {page === 'Inventory' && <InventoryWorkspace isAdmin={isAdmin} flash={flash} />}
+          {page === 'Finance & Billing' && isAdmin && <FinanceWorkspace session={session} customers={customers} payments={payments} flash={flash} onDataChanged={() => { void load(true); }} />}
+          {page === 'Subscriptions' && <SubscriptionWorkspace customers={customers} plans={plans} isAdmin={isAdmin} flash={flash} onDataChanged={() => { void load(true); }} />}
+          {page === 'Inventory' && <InventoryWorkspace isAdmin={isAdmin} flash={flash} onDataChanged={() => { void load(true); }} />}
           {page === 'GPS Tracking' && isAdmin && <GpsTrackingWorkspace flash={flash} />}
-          {page === 'Installations' && <InstallationsWorkspace customers={customers} staff={staff} isAdmin={isAdmin} flash={flash} />}
+          {page === 'Installations' && <InstallationsWorkspace customers={customers} staff={staff} isAdmin={isAdmin} flash={flash} onDataChanged={() => { void load(true); }} />}
           {page === 'Overview' && !isAdmin && <StaffOperations session={session} customers={customers} flash={flash} compact onDataChanged={() => { void load(true); }} />}
 
           {page === 'Overview' && (

@@ -28,7 +28,7 @@ async function exportInventoryPdf(items:InventoryItem[],isAdmin:boolean){
   catch(error) { window.alert(error instanceof Error?error.message:'Could not create inventory PDF.'); }
 }
 
-export default function InventoryWorkspace({isAdmin,flash}:{isAdmin:boolean;flash:(message:string)=>void}) {
+export default function InventoryWorkspace({isAdmin,flash,onDataChanged}:{isAdmin:boolean;flash:(message:string)=>void;onDataChanged?:()=>void}) {
   const [items,setItems]=useState<InventoryItem[]>([]);
   const [staff,setStaff]=useState<Array<{id:string;displayName:string;active:boolean}>>([]);
   const [loading,setLoading]=useState(true);
@@ -65,7 +65,7 @@ export default function InventoryWorkspace({isAdmin,flash}:{isAdmin:boolean;flas
     try {
       if(editing) await api.put('/api/inventory/'+editing.id,payload);
       else await api.post('/api/inventory',payload);
-      setShowForm(false);await load();flash(editing?'Inventory item updated.':'Inventory item added.');
+      setShowForm(false);await load();onDataChanged?.();flash(editing?'Inventory item updated.':'Inventory item added.');
     } catch(error) { flash(error instanceof Error?error.message:'Could not save inventory item.'); }
     finally { setSaving(false); }
   }
@@ -73,7 +73,7 @@ export default function InventoryWorkspace({isAdmin,flash}:{isAdmin:boolean;flas
     event.preventDefault();if(!movementItem)return;setSaving(true);
     try {
       await api.post('/api/inventory/'+movementItem.id+'/movements',{type:movementType,quantity:Number(movementQuantity),reason:movementReason});
-      setMovementItem(null);setMovementReason('');await load();flash(movementType==='IN'?'Stock received.':'Stock issue recorded.');
+      setMovementItem(null);setMovementReason('');await load();onDataChanged?.();flash(movementType==='IN'?'Stock received.':'Stock issue recorded.');
     } catch(error) { flash(error instanceof Error?error.message:'Could not record stock movement.'); }
     finally { setSaving(false); }
   }

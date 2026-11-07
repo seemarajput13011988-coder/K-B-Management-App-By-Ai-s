@@ -23,7 +23,7 @@ async function exportInstallationsPdf(items:Installation[]){
   catch(error) { window.alert(error instanceof Error?error.message:'Could not create installation PDF.'); }
 }
 
-export default function InstallationsWorkspace({customers,staff,isAdmin,flash}:{customers:Customer[];staff:Staff[];isAdmin:boolean;flash:(message:string)=>void}) {
+export default function InstallationsWorkspace({customers,staff,isAdmin,flash,onDataChanged}:{customers:Customer[];staff:Staff[];isAdmin:boolean;flash:(message:string)=>void;onDataChanged?:()=>void}) {
   const [items,setItems]=useState<Installation[]>([]);
   const [loading,setLoading]=useState(true);
   const [saving,setSaving]=useState(false);
@@ -46,12 +46,12 @@ export default function InstallationsWorkspace({customers,staff,isAdmin,flash}:{
   useEffect(()=>{if(!assignedTo&&staff.some(item=>item.active))setAssignedTo(staff.find(item=>item.active)!.id);},[staff,assignedTo]);
 
   function openEdit(item:Installation){setEditingJob(item);setCustomerId(item.customerId);setAssignedTo(item.assignedTo);setType(item.type);setScheduledDate(item.scheduledDate);setAddress(item.address);setNotes(item.notes||'');setShowForm(true);}
-  async function createJob(event:FormEvent){event.preventDefault();if(!customerId||!assignedTo){flash('Choose a customer and staff member.');return;}setSaving(true);try{if(editingJob){await api.put('/api/installations/'+editingJob.id,{status:editingJob.status,assignedTo,scheduledDate,address,notes});}else{await api.post('/api/installations',{customerId,assignedTo,type,scheduledDate,address,notes});}setShowForm(false);setEditingJob(null);setNotes('');await load();flash(editingJob?'Installation job updated.':'Installation job assigned.');}catch(error){flash(error instanceof Error?error.message:'Could not save installation job.');}finally{setSaving(false);}}
-  async function updateJob(item:Installation,status:Installation['status']){try{await api.put('/api/installations/'+item.id,{status,notes:item.notes||''});await load();flash('Installation status updated.');}catch(error){flash(error instanceof Error?error.message:'Could not update installation.');}}
+  async function createJob(event:FormEvent){event.preventDefault();if(!customerId||!assignedTo){flash('Choose a customer and staff member.');return;}setSaving(true);try{if(editingJob){await api.put('/api/installations/'+editingJob.id,{status:editingJob.status,assignedTo,scheduledDate,address,notes});}else{await api.post('/api/installations',{customerId,assignedTo,type,scheduledDate,address,notes});}setShowForm(false);setEditingJob(null);setNotes('');await load();onDataChanged?.();flash(editingJob?'Installation job updated.':'Installation job assigned.');}catch(error){flash(error instanceof Error?error.message:'Could not save installation job.');}finally{setSaving(false);}}
+  async function updateJob(item:Installation,status:Installation['status']){try{await api.put('/api/installations/'+item.id,{status,notes:item.notes||''});await load();onDataChanged?.();flash('Installation status updated.');}catch(error){flash(error instanceof Error?error.message:'Could not update installation.');}}
   async function deleteJob(item:Installation){
     if(!window.confirm('Delete installation job for '+item.customerName+'? This cannot be undone.'))return;
     setSaving(true);
-    try{await api.delete('/api/installations/'+item.id);await load();flash('Installation job deleted.');}
+    try{await api.delete('/api/installations/'+item.id);await load();onDataChanged?.();flash('Installation job deleted.');}
     catch(error){flash(error instanceof Error?error.message:'Could not delete installation job.');}
     finally{setSaving(false);}
   }

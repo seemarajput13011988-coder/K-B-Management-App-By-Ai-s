@@ -22,8 +22,8 @@ const addDays = (value: string, count: number) => {
 const labelDate = (value: string) => value ? new Date(value+'T12:00:00').toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}) : '—';
 const money = (value: number) => '₹'+Number(value||0).toLocaleString('en-IN');
 
-export default function SubscriptionWorkspace({ customers, plans, isAdmin, flash }: {
-  customers: Customer[]; plans: Plan[]; isAdmin: boolean; flash: (message: string) => void;
+export default function SubscriptionWorkspace({ customers, plans, isAdmin, flash, onDataChanged }: {
+  customers: Customer[]; plans: Plan[]; isAdmin: boolean; flash: (message: string) => void; onDataChanged?: () => void;
 }) {
   const [items,setItems] = useState<Subscription[]>([]);
   const [loading,setLoading] = useState(true);
@@ -72,12 +72,13 @@ export default function SubscriptionWorkspace({ customers, plans, isAdmin, flash
       await api.post('/api/subscriptions',{customerId,plan,startDate,endDate,amount:Number(amount),paymentStatus,paidAt,paymentMethod});
       setShowForm(false);
       await load();
+      onDataChanged?.();
       flash('Customer renewal saved.');
     } catch(error) { flash(error instanceof Error?error.message:'Could not save renewal.'); }
     finally { setSaving(false); }
   }
   async function changeStatus(item: Subscription,status: Subscription['status']) {
-    try { await api.put('/api/subscriptions/'+item.id,{status,notes:item.notes||''}); await load(); flash('Renewal status updated.'); }
+    try { await api.put('/api/subscriptions/'+item.id,{status,notes:item.notes||''}); await load(); onDataChanged?.(); flash('Renewal status updated.'); }
     catch(error) { flash(error instanceof Error?error.message:'Could not update renewal.'); }
   }
 
