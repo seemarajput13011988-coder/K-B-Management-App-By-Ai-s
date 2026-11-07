@@ -492,6 +492,14 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
     void api.post('/api/auth/logout').catch(() => undefined);
     onLogout();
   }
+  async function ensureNoActiveShiftBeforeCredentialChange() {
+    if (isAdmin) return;
+    const attendance = await api.get('/api/attendance');
+    const activeShift = (attendance.data.items || []).some((item: AttendanceRecord) =>
+      item.userId === session.user.id && isAttendanceShiftActive(item)
+    );
+    if (activeShift) throw new Error('Staff credentials cannot be changed during an active shift. Ask an administrator to end the shift first.');
+  }
   async function savePlan(form: Omit<Plan, 'id'>) {
     try {
       if (editingPlan) await api.put('/api/plans/' + editingPlan.id, form as unknown as Record<string, unknown>);
@@ -1477,7 +1485,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
       {complaintPreview && <Modal title={complaintPreview.name} subtitle="Complaint attachment" onClose={() => setComplaintPreview(null)}><div className="complaint-preview">{complaintPreview.mimeType.startsWith('video/') ? <video src={complaintPreview.dataUrl} controls playsInline /> : <img src={complaintPreview.dataUrl} alt={complaintPreview.name}/>}</div><div className="form-actions"><a className="btn secondary" href={complaintPreview.dataUrl} download={complaintPreview.name}>Download attachment</a><button type="button" className="btn primary" onClick={() => setComplaintPreview(null)}>Close</button></div></Modal>}
       {showStaff && <StaffModal onClose={() => setShowStaff(false)} onSave={createStaff} />}
       {showAdminModal && canManageAdmins && <AdminModal onClose={() => setShowAdminModal(false)} onSave={createAdmin} />}
-      {showAccountSettings && <AccountSettingsModal session={session} onClose={() => setShowAccountSettings(false)} onChangeUserId={async (currentPassword: string, userId: string) => { await changeAppUserId(currentPassword, userId); onLogout(); }} onChangePassword={async (currentPassword: string, newPassword: string) => { await changeAppPassword(currentPassword, newPassword); onLogout(); }} />}
+      {showAccountSettings && <AccountSettingsModal session={session} onClose={() => setShowAccountSettings(false)} onChangeUserId={async (currentPassword: string, userId: string) => { await ensureNoActiveShiftBeforeCredentialChange(); await changeAppUserId(currentPassword, userId); onLogout(); }} onChangePassword={async (currentPassword: string, newPassword: string) => { await ensureNoActiveShiftBeforeCredentialChange(); await changeAppPassword(currentPassword, newPassword); onLogout(); }} />}
       {showTask && <TaskModal staff={staff.filter(member => member.active)} onClose={() => setShowTask(false)} onSave={saveTask} />}
       {editStaffUserId && <StaffUsernameModal staff={editStaffUserId} onClose={() => setEditStaffUserId(null)} onSave={(userId: string) => saveStaffUserId(editStaffUserId, userId)} />}
       {resetStaff && <StaffPasswordModal staff={resetStaff} onClose={() => setResetStaff(null)} onSave={(password: string) => saveStaffPassword(resetStaff, password)} />}
