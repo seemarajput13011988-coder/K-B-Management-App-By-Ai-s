@@ -137,7 +137,7 @@ const attendanceDeadlineAt = (item: AttendanceRecord): number => {
   return Date.parse(dueDate + 'T' + endTime + ':00+05:30');
 };
 const isAttendanceShiftActive = (item: AttendanceRecord, now = Date.now()) => {
-  if (item.checkOutAt || item.dayType === 'Absent' || item.status?.toLowerCase().includes('cancelled') || item.gpsRestartRequired) return false;
+  if (item.checkOutAt || item.dayType === 'Absent' || item.status?.toLowerCase().includes('cancelled') || item.status?.toLowerCase().includes('completed') || item.gpsRestartRequired) return false;
   return now < attendanceDeadlineAt(item);
 };
 const dateLabel = (s: string) =>
