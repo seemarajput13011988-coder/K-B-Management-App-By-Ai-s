@@ -919,19 +919,22 @@ export const handler = router({
     if (!dayType || reason.length < 3) return error('Choose a day type and provide a correction reason.', 400);
     const [attendance] = await db.get<Record<string, unknown>>('attendance', [params.id], { consistent: true });
     if (!attendance) return error('Attendance record not found.', 404);
-    const [updated] = await db.tx.update('attendance', [{
-      id: params.id,
-      record: {
-        dayType,
-        status: dayType === 'Absent' ? 'Absent' : attendance.checkOutAt ? 'Completed' : 'Checked in',
-        correctionReason: reason,
-        correctedAt: new Date().toISOString(),
-        correctedBy: admin.id,
-        correctedByName: admin.displayName,
-      },
-    }], { patch: true });
-    if (!updated) return error('Could not save the attendance correction.', 500);
-    await writeAudit(admin, 'CORRECT_ATTENDANCE', 'attendance', params.id, 'Changed day type to ' + dayType + ': ' + reason);
+    const correctedAt = new Date().toISOString();
+    const attendanceRef = firestore.collection('attendance').doc(params.id);
+    const auditRef = firestore.collection('audit_logs').doc();
+    const batch = firestore.batch();
+    batch.update(attendanceRef, {
+      dayType,
+      status: dayType === 'Absent' ? 'Absent' : attendance.checkOutAt ? 'Completed' : 'Checked in',
+      correctionReason: reason, correctedAt, correctedBy: admin.id, correctedByName: admin.displayName,
+    });
+    batch.set(auditRef, {
+      actorId: admin.id, actorName: admin.displayName, action: 'CORRECT_ATTENDANCE',
+      entityType: 'attendance', entityId: params.id,
+      description: cleanText('Changed day type to ' + dayType + ': ' + reason, 240),
+      createdAt: correctedAt,
+    });
+    await batch.commit();
     return json({ updated: true });
   }),
 
@@ -954,28 +957,33 @@ export const handler = router({
     const startedAt = String(active.gpsIssueStartedAt || new Date().toISOString());
     const issueId = String(active.gpsIssueId || createHash('sha256').update(String(active.id) + '|' + startedAt).digest('hex').slice(0, 16));
     if (!active.gpsIssueStartedAt || !active.gpsIssueId) {
-      await db.tx.update('attendance', [{
-        id: String(active.id),
-        record: { gpsIssueStartedAt: startedAt, gpsIssueId: issueId, gpsStatus: 'grace-period', gpsIssueReason: reason, gpsReminderStage: 0 },
-      }], { patch: true });
-
-      await db.add('staff_notifications', [{
-        id: String(active.id) + '-gps-' + issueId + '-0',
+      const attendanceRef = firestore.collection('attendance').doc(String(active.id));
+      const staffNotificationRef = firestore.collection('staff_notifications').doc(String(active.id) + '-gps-' + issueId + '-0');
+      const batch = firestore.batch();
+      batch.update(attendanceRef, {
+        gpsIssueStartedAt: startedAt, gpsIssueId: issueId, gpsStatus: 'grace-period',
+        gpsIssueReason: reason, gpsReminderStage: 0,
+      });
+      batch.set(staffNotificationRef, {
         recipientId: user.id, recipientRole: 'staff', type: 'gps-reminder',
         title: 'GPS is unavailable',
         message: 'Your shift remains active during a 15-minute GPS restoration period. Restore location to keep the shift active.',
         createdAt: startedAt, read: false, attendanceId: active.id,
-      }]);
+      });
+      await batch.commit();
 
       const users = await db.list<UserRecord>('users', { limit: 500 });
       const admins = users.items.filter(item => item.role === 'admin' && item.active === true);
-      await Promise.all(admins.map(admin => db.add('staff_notifications', [{
+      const adminNotifications = await Promise.allSettled(admins.map(admin => db.add('staff_notifications', [{
         id: String(active.id) + '-gps-' + issueId + '-admin-' + admin.id,
         recipientId: admin.id, recipientRole: 'admin', type: 'gps-issue',
         title: 'Staff GPS is OFF',
         message: user.displayName + ' has lost GPS/location during an active shift. The 15-minute restoration period has started.',
         createdAt: startedAt, read: false, attendanceId: active.id,
       }])));
+      for (const result of adminNotifications) {
+        if (result.status === 'rejected') console.error('Could not notify an administrator about GPS loss:', result.reason);
+      }
     }
 
     const deadlineAt = new Date(Date.parse(startedAt) + 15 * 60 * 1000).toISOString();
@@ -1022,21 +1030,28 @@ export const handler = router({
       .sort((a, b) => String(b.checkInAt || '').localeCompare(String(a.checkInAt || '')));
     const latest = todays[0];
     if (latest && !latest.checkOutAt && latest.dayType !== 'Absent') return error('End this staff member’s active shift before marking absent.', 409);
+    const markedAt = new Date().toISOString();
     const absence = {
       userId: member.id, displayName: member.displayName, workDate,
-      checkInAt: '', checkOutAt: new Date().toISOString(), createdAt: latest?.createdAt || new Date().toISOString(), updatedAt: new Date().toISOString(), status: 'Absent', dayType: 'Absent',
+      checkInAt: '', checkOutAt: markedAt, createdAt: latest?.createdAt || markedAt, updatedAt: markedAt, status: 'Absent', dayType: 'Absent',
       absenceReason: reason, markedAbsentBy: admin.displayName, attendanceSource: 'Admin',
     };
-    if (latest) {
-      const [updated] = await db.tx.update('attendance', [{ id: String(latest.id), record: absence }], { patch: true });
-      if (!updated) return error('Could not mark this staff member absent.', 500);
-      await writeAudit(admin, 'MARK_ABSENT', 'attendance', String(latest.id), 'Marked ' + member.displayName + ' absent: ' + reason);
-      return json({ updated: true, id: String(latest.id) });
-    }
-    const [id] = await db.add('attendance', [absence]);
-    if (!id) return error('Could not mark this staff member absent.', 500);
-    await writeAudit(admin, 'MARK_ABSENT', 'attendance', id, 'Marked ' + member.displayName + ' absent: ' + reason);
-    return json({ id, ...absence }, 201);
+    const attendanceRef = latest
+      ? firestore.collection('attendance').doc(String(latest.id))
+      : firestore.collection('attendance').doc();
+    const auditRef = firestore.collection('audit_logs').doc();
+    const id = attendanceRef.id;
+    const batch = firestore.batch();
+    if (latest) batch.set(attendanceRef, absence, { merge: true });
+    else batch.set(attendanceRef, absence);
+    batch.set(auditRef, {
+      actorId: admin.id, actorName: admin.displayName, action: 'MARK_ABSENT',
+      entityType: 'attendance', entityId: id,
+      description: cleanText('Marked ' + member.displayName + ' absent: ' + reason, 240),
+      createdAt: markedAt,
+    });
+    await batch.commit();
+    return latest ? json({ updated: true, id }) : json({ id, ...absence }, 201);
   }),
 
   'POST /api/attendance/admin-start': protectedRoute(['admin'], async ({ body }, admin) => {
