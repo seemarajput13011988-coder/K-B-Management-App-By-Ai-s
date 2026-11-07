@@ -43,9 +43,9 @@ Record the Android version, phone model, permission settings, observed update in
 
 ## Release status and prerequisites
 
-- Web and Functions CI checks are separate from live Firebase integration tests.
+- Web and Render backend CI checks are separate from live Firestore integration tests.
 - The Android workflow produces a debug APK artifact; it is for internal testing, not a signed production release.
-- Before release, confirm the existing Firestore database and its region, Render service environment values, GitHub Actions secrets and API role checks. App sign-in is Firestore-backed; Firebase Authentication is not used for login.
+- Before release, confirm the existing Firestore database and its region, Render service environment values, GitHub Actions secrets and API role checks. App sign-in is handled by the Render API; Firebase Authentication is not used for login.
 - The GPS grace-period and reminder job tick uses the GitHub Actions scheduled keepalive workflow and the Render API. No Google Maps billing account or Maps API key is required. The scheduled workflow must be on the repository's default branch and `K_B_JOB_SECRET` must match the Render `JOB_SECRET`.
 - The Render API must be deployed and reachable before the Android or Hosting build is used.
 - Do not run production deployment until test accounts, backup/data review, and API/role tests are complete.
