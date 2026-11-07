@@ -28,6 +28,9 @@ function NativeReadinessSignal() {
 }
 
 function mountApp(native = false) {
+  // Load optional brand fonts only after the native OTA gate has allowed the app to mount.
+  // A slow third-party font request must never delay or interfere with update startup.
+  loadBrandFonts();
   createRoot(appRoot).render(
     <StrictMode>
       <App />
@@ -102,11 +105,9 @@ async function runRequiredUpdate(updateWasPreviouslyRequired = false): Promise<v
 
 async function bootstrap() {
   if (!Capacitor.isNativePlatform()) {
-    loadBrandFonts();
     mountApp();
     return;
   }
-  loadBrandFonts();
   await runRequiredUpdate();
 }
 
