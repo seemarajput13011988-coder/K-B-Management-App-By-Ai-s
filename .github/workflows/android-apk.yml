@@ -280,6 +280,7 @@ jobs:
           import java.net.HttpURLConnection;
           import java.net.URL;
           import java.text.SimpleDateFormat;
+          import java.util.Calendar;
           import java.util.Date;
           import java.util.Locale;
           import java.util.TimeZone;
@@ -437,12 +438,44 @@ jobs:
                 }
                 return;
               }
-              if (locationReady && locationCallback != null) return;
-              locationReady = true;
-              locationUnavailableReported = false;
-              updateVisibleNotification("K&B work location active",
-                "Your location is shared with authorised K&B administrators during this active shift. It stops at checkout.");
+              if (locationCallback != null) return;
               beginLocationUpdates();
+            }
+
+            private boolean isShiftStillActive(JSONObject item, long now) {
+              if (item == null || !item.optString("checkOutAt").isEmpty() ||
+                  "Absent".equalsIgnoreCase(item.optString("dayType")) ||
+                  item.optBoolean("gpsRestartRequired", false) || item.optBoolean("gpsCancelled", false) ||
+                  item.optString("status").toLowerCase(Locale.US).contains("cancelled")) return false;
+              try {
+                String workDate = item.optString("workDate");
+                String checkInAt = item.optString("checkInAt");
+                SimpleDateFormat utc = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US);
+                utc.setTimeZone(TimeZone.getTimeZone("UTC"));
+                Date checkIn = utc.parse(checkInAt);
+                if (checkIn == null) return false;
+                SimpleDateFormat localClock = new SimpleDateFormat("HH:mm", Locale.US);
+                localClock.setTimeZone(TimeZone.getTimeZone("Asia/Kolkata"));
+                String[] clock = localClock.format(checkIn).split(":");
+                int minutes = Integer.parseInt(clock[0]) * 60 + Integer.parseInt(clock[1]);
+                SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd", Locale.US);
+                dateFormat.setTimeZone(TimeZone.getTimeZone("Asia/Kolkata"));
+                Date date = dateFormat.parse(workDate);
+                if (date == null) return false;
+                if (minutes >= 19 * 60) {
+                  Calendar calendar = Calendar.getInstance(TimeZone.getTimeZone("Asia/Kolkata"), Locale.US);
+                  calendar.setTime(date);
+                  calendar.add(Calendar.DAY_OF_MONTH, 1);
+                  date = calendar.getTime();
+                }
+                String dueDate = dateFormat.format(date);
+                SimpleDateFormat dueFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US);
+                dueFormat.setTimeZone(TimeZone.getTimeZone("Asia/Kolkata"));
+                Date due = dueFormat.parse(dueDate + "T19:00:00");
+                return due != null && now < due.getTime();
+              } catch (Exception ignored) {
+                return false;
+              }
             }
 
             private void checkShiftStatus() {
@@ -473,17 +506,11 @@ jobs:
                   }
                   JSONObject response = new JSONObject(responseText);
                   JSONArray items = response.optJSONArray("items");
-                  SimpleDateFormat indiaDate = new SimpleDateFormat("yyyy-MM-dd", Locale.US);
-                  indiaDate.setTimeZone(TimeZone.getTimeZone("Asia/Kolkata"));
-                  String today = indiaDate.format(new Date());
                   boolean activeShift = false;
                   if (items != null) {
+                    long now = System.currentTimeMillis();
                     for (int index = 0; index < items.length(); index++) {
-                      JSONObject item = items.optJSONObject(index);
-                      if (item == null || !today.equals(item.optString("workDate"))) continue;
-                      String dayType = item.optString("dayType", "Full day");
-                      if (item.optString("checkOutAt").isEmpty() && !"Absent".equalsIgnoreCase(dayType) &&
-                          !item.optBoolean("gpsRestartRequired", false) && !item.optBoolean("gpsCancelled", false)) {
+                      if (isShiftStillActive(items.optJSONObject(index), now)) {
                         activeShift = true;
                         break;
                       }
@@ -533,31 +560,54 @@ jobs:
             }
 
             private void beginLocationUpdates() {
-              if (!hasLocationPermission()) {
+              if (stopping || !hasLocationPermission() || !isPhoneLocationEnabled()) {
                 handleLocationProviderChange();
                 return;
               }
-              if (locationCallback != null) fusedClient.removeLocationUpdates(locationCallback);
+              if (locationCallback != null) return;
               LocationRequest request = new LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 15000L)
                 .setMinUpdateIntervalMillis(10000L)
                 .setMinUpdateDistanceMeters(10f)
                 .build();
-              locationCallback = new LocationCallback() {
+              LocationCallback callback = new LocationCallback() {
                 @Override public void onLocationResult(LocationResult result) {
                   if (result == null || stopping) return;
                   Location location = result.getLastLocation();
                   if (location != null) uploadLocation(location);
                 }
               };
+              locationCallback = callback;
               try {
-                fusedClient.requestLocationUpdates(request, locationCallback, Looper.getMainLooper())
+                fusedClient.requestLocationUpdates(request, callback, Looper.getMainLooper())
+                  .addOnSuccessListener(unused -> {
+                    if (stopping || locationCallback != callback) return;
+                    locationReady = true;
+                    locationUnavailableReported = false;
+                    updateVisibleNotification("K&B work location active",
+                      "Your location is shared with authorised K&B administrators during this active shift.");
+                  })
                   .addOnFailureListener(error -> {
-                    locationCallback = null;
+                    if (locationCallback == callback) {
+                      fusedClient.removeLocationUpdates(callback);
+                      locationCallback = null;
+                    }
                     locationReady = false;
-                    handleLocationProviderChange();
+                    updateVisibleNotification("K&B location update unavailable",
+                      "Location updates are interrupted. Check phone location and permissions; tracking will retry automatically.");
+                    if (!locationUnavailableReported) {
+                      locationUnavailableReported = true;
+                      reportGpsUnavailable("GPS location unavailable");
+                    }
                   });
               } catch (SecurityException error) {
-                handleLocationProviderChange();
+                if (locationCallback == callback) locationCallback = null;
+                locationReady = false;
+                updateVisibleNotification("K&B location permission needed",
+                  "Location sharing is paused. Re-enable location permission to resume during this active shift.");
+                if (!locationUnavailableReported) {
+                  locationUnavailableReported = true;
+                  reportGpsUnavailable("Location permission denied");
+                }
               }
             }
 
