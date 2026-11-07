@@ -951,7 +951,9 @@ export async function apiHandler(req: any, res: any) {
         const assignedStaff=assignedTo?await getDoc('users',assignedTo):null;
         if (assignedTo&&(!assignedStaff||assignedStaff.role!=='staff'||assignedStaff.active!==true)) { send(res,400,{error:'Choose an active staff member for this inventory assignment.'}); return; }
         if (!clean(body.name,120)||!clean(body.sku,60)||!clean(body.category,80)||!Number.isInteger(quantity)||quantity<0||!Number.isInteger(minimumQuantity)||minimumQuantity<0||!Number.isFinite(unitCost)||unitCost<0||unitCost>1000000) { send(res,400,{error:'Enter valid inventory details and a non-negative unit cost up to ₹10,00,000.'}); return; }
-        const patch={name:clean(body.name,120),sku:clean(body.sku,60),category:clean(body.category,80),unit:clean(body.unit,30)||'pcs',quantity,minimumQuantity,unitCost,supplier:clean(body.supplier,120),location:clean(body.location,120),notes:clean(body.notes,500),assignedTo:assignedTo||'',assignedToName:assignedStaff?clean(assignedStaff.displayName,80):'',active:body.active!==false,updatedAt:now()};
+        const nextSku=clean(body.sku,60);
+        if ((await list('inventory')).some(item => item.id !== id && String(item.sku || '').toLowerCase() === nextSku.toLowerCase())) { send(res,409,{error:'Another inventory item already uses that SKU.'}); return; }
+        const patch={name:clean(body.name,120),sku:nextSku,category:clean(body.category,80),unit:clean(body.unit,30)||'pcs',quantity,minimumQuantity,unitCost,supplier:clean(body.supplier,120),location:clean(body.location,120),notes:clean(body.notes,500),assignedTo:assignedTo||'',assignedToName:assignedStaff?clean(assignedStaff.displayName,80):'',active:body.active!==false,updatedAt:now()};
         await db.collection('inventory').doc(id).update(patch);
         await audit(user,'UPDATE','inventory',id,'Updated inventory item '+patch.name);
         send(res,200,{updated:true}); return;
