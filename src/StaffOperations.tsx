@@ -77,7 +77,7 @@ export default function StaffOperations({ session, customers, flash, compact = f
   const [messageForm, setMessageForm] = useState({ recipientId: '', message: '' });
   const [visitForm, setVisitForm] = useState({ customerId: customers[0]?.id || '', purpose: 'Installation / service visit', notes: '' });
   const selectedGroupRef = useRef('');
-  const today = localDay();
+  const [today, setToday] = useState(localDay);
   const myToday = attendance.filter(item => item.userId === session.user.id && item.workDate === today).sort((a, b) => b.checkInAt.localeCompare(a.checkInAt))[0];
   const activeShift = !!myToday && myToday.dayType !== 'Absent' && !myToday.checkOutAt;
 
@@ -146,7 +146,26 @@ export default function StaffOperations({ session, customers, flash, compact = f
   }, [admin, superAdmin, request, flash]);
 
 
-  useEffect(() => { refresh(); }, [refresh]);
+  useEffect(() => { refresh(); }, [refresh, today]);
+
+  // Recalculate the India work date while the app remains open overnight.
+  // Focus/visibility handlers also cover Android returning from the background,
+  // where browser timers may have been paused or throttled.
+  useEffect(() => {
+    const syncWorkDate = () => {
+      const nextDate = localDay();
+      setToday(current => current === nextDate ? current : nextDate);
+    };
+    const timer = window.setInterval(syncWorkDate, 30000);
+    window.addEventListener('focus', syncWorkDate);
+    document.addEventListener('visibilitychange', syncWorkDate);
+    syncWorkDate();
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('focus', syncWorkDate);
+      document.removeEventListener('visibilitychange', syncWorkDate);
+    };
+  }, []);
 
 
 
