@@ -247,7 +247,7 @@ export async function autoCheckoutAtSevenPm() {
   const records = await readAllQuery(firestore.collection('attendance').where('status', '==', 'Checked in'));
   const settingsSnapshot = await firestore.collection('app_settings').doc('workforce').get();
   const configuredEndTime = String(settingsSnapshot.data()?.shiftEndTime || '19:00');
-  const fallbackEndTime = /^([01]\\d|2[0-3]):[0-5]\\d$/.test(configuredEndTime) ? configuredEndTime : '19:00';
+  const fallbackEndTime = /^([01]\d|2[0-3]):[0-5]\d$/.test(configuredEndTime) ? configuredEndTime : '19:00';
   let checkedOut = 0;
   for (const item of records) {
     if (!item.id || !/^\d{4}-\d{2}-\d{2}$/.test(String(item.workDate || '')) ||
@@ -261,7 +261,7 @@ export async function autoCheckoutAtSevenPm() {
       Number(localCheckIn.find(part => part.type === 'minute')?.value || 0);
     // Admins may start a shift after the configured end time. Such a shift
     // is due at the next occurrence of that configured end time.
-    const endTime = typeof item.shiftEndTime === 'string' && /^([01]\\d|2[0-3]):[0-5]\\d$/.test(item.shiftEndTime) ? item.shiftEndTime : fallbackEndTime;
+    const endTime = typeof item.shiftEndTime === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(item.shiftEndTime) ? item.shiftEndTime : fallbackEndTime;
     const [shiftEndHour, shiftEndMinute] = endTime.split(':').map(Number);
     const shiftEndMinutes = shiftEndHour * 60 + shiftEndMinute;
     const dueDate = checkInMinutes >= shiftEndMinutes
