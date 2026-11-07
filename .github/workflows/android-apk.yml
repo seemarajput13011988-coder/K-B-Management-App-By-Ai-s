@@ -261,6 +261,7 @@ jobs:
           import android.location.Location;
           import android.location.LocationManager;
           import android.os.Build;
+          import android.os.Handler;
           import android.os.IBinder;
           import android.os.Looper;
           import androidx.core.app.NotificationCompat;
@@ -298,7 +299,17 @@ jobs:
             private volatile boolean stopping = false;
             private volatile long lastUploadAt = 0L;
             private volatile boolean locationUnavailableReported = false;
+            private volatile boolean locationReady = false;
             private BroadcastReceiver providerStateReceiver;
+            private final Handler statusHandler = new Handler(Looper.getMainLooper());
+            private final Runnable statusWatchdog = new Runnable() {
+              @Override public void run() {
+                if (!stopping) {
+                  handleLocationProviderChange();
+                  statusHandler.postDelayed(this, 20000L);
+                }
+              }
+            };
 
             @Override public void onCreate() {
               super.onCreate();
@@ -339,6 +350,8 @@ jobs:
               stopping = false;
               startVisibleNotification();
               handleLocationProviderChange();
+              statusHandler.removeCallbacks(statusWatchdog);
+              statusHandler.postDelayed(statusWatchdog, 20000L);
               return START_STICKY;
             }
 
@@ -395,28 +408,28 @@ jobs:
 
             private void handleLocationProviderChange() {
               if (stopping) return;
-              if (!hasLocationPermission()) {
+              boolean permissionGranted = hasLocationPermission();
+              boolean phoneLocationEnabled = permissionGranted && isPhoneLocationEnabled();
+              if (!permissionGranted || !phoneLocationEnabled) {
                 if (locationCallback != null) fusedClient.removeLocationUpdates(locationCallback);
                 locationCallback = null;
-                updateVisibleNotification("K&B location permission needed",
-                  "Location sharing is paused. Re-enable location permission to resume during this active shift.");
+                locationReady = false;
                 if (!locationUnavailableReported) {
                   locationUnavailableReported = true;
-                  reportGpsUnavailable("Location permission denied");
+                  if (!permissionGranted) {
+                    updateVisibleNotification("K&B location permission needed",
+                      "Location sharing is paused. Re-enable location permission to resume during this active shift.");
+                    reportGpsUnavailable("Location permission denied");
+                  } else {
+                    updateVisibleNotification("Phone location is OFF",
+                      "K&B location sharing is paused. Turn on phone location to resume during this active shift.");
+                    reportGpsUnavailable("Phone location services are unavailable");
+                  }
                 }
                 return;
               }
-              if (!isPhoneLocationEnabled()) {
-                if (locationCallback != null) fusedClient.removeLocationUpdates(locationCallback);
-                locationCallback = null;
-                updateVisibleNotification("Phone location is OFF",
-                  "K&B location sharing is paused. Turn on phone location to resume during this active shift.");
-                if (!locationUnavailableReported) {
-                  locationUnavailableReported = true;
-                  reportGpsUnavailable("Phone location services are unavailable");
-                }
-                return;
-              }
+              if (locationReady && locationCallback != null) return;
+              locationReady = true;
               locationUnavailableReported = false;
               updateVisibleNotification("K&B work location active",
                 "Your location is shared with authorised K&B administrators during this active shift. It stops at checkout.");
@@ -476,7 +489,11 @@ jobs:
               };
               try {
                 fusedClient.requestLocationUpdates(request, locationCallback, Looper.getMainLooper())
-                  .addOnFailureListener(error -> handleLocationProviderChange());
+                  .addOnFailureListener(error -> {
+                    locationCallback = null;
+                    locationReady = false;
+                    handleLocationProviderChange();
+                  });
               } catch (SecurityException error) {
                 handleLocationProviderChange();
               }
@@ -526,6 +543,7 @@ jobs:
 
             private void stopTrackingAndService() {
               stopping = true;
+              statusHandler.removeCallbacks(statusWatchdog);
               if (fusedClient != null && locationCallback != null) fusedClient.removeLocationUpdates(locationCallback);
               locationCallback = null;
               getSharedPreferences(PREFS, MODE_PRIVATE).edit().clear().apply();
@@ -541,6 +559,7 @@ jobs:
 
             @Override public void onDestroy() {
               stopping = true;
+              statusHandler.removeCallbacks(statusWatchdog);
               if (fusedClient != null && locationCallback != null) fusedClient.removeLocationUpdates(locationCallback);
               if (providerStateReceiver != null) {
                 try { unregisterReceiver(providerStateReceiver); } catch (Exception ignored) { }
