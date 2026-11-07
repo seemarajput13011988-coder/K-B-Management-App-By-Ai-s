@@ -926,6 +926,7 @@ export const handler = router({
     const attendance = await db.list<Record<string, unknown>>('attendance', { limit: 1000 });
     const active = findActiveShift(attendance.items, user.id);
     if (!active) return json({ monitoring: false, reason: 'no-active-shift' });
+    const workDate = String(active.workDate || indiaDateKey());
 
     const holidays = await db.list<Record<string, unknown>>('holiday_requests', { limit: 1000 });
     const exempt = holidays.items.some(item =>
