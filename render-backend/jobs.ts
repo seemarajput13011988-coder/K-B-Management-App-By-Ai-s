@@ -11,7 +11,7 @@ async function readCollection(name: string, limit = 1000): Promise<Item[]> {
   const items: Item[] = [];
   let cursor: FirebaseFirestore.QueryDocumentSnapshot | undefined;
   while (true) {
-    let query = dbFirestore.collection(name).orderBy(FieldPath.documentId()).limit(pageSize);
+    let query = firestore.collection(name).orderBy(FieldPath.documentId()).limit(pageSize);
     if (cursor) query = query.startAfter(cursor);
     const snapshot = await query.get();
     items.push(...snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id })));
