@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { computeShiftDeadline, isFreshLocationTimestamp, isValidPayrollInput } from '../render-backend/route-path.js';
+import { calculateInventoryBalance, computeShiftDeadline, gpsGracePeriodExpired, hasAdminManagementAccess, hasOverlappingSubscription, isConfirmedGpsLossReason, isFreshLocationTimestamp, isValidDateRange, isValidPayrollInput, subscriptionExpiryKind, taskReminderKind } from '../render-backend/route-path.js';
 
 const valid = {
   staffUserId: 'staff-record-123',
@@ -76,4 +76,60 @@ test('GPS timestamp validation rejects stale, invalid and future readings', () =
   assert.equal(isFreshLocationTimestamp('2026-11-07T12:00:30.000Z', now), true);
   assert.equal(isFreshLocationTimestamp('2026-11-07T12:02:00.000Z', now), false);
   assert.equal(isFreshLocationTimestamp('invalid', now), false);
+});
+
+test('normalizes API paths without duplicating the API prefix', async () => {
+  const { routePath } = await import('../render-backend/route-path.js');
+  assert.equal(routePath('/api/attendance/'), '/api/attendance');
+  assert.equal(routePath('/attendance'), '/api/attendance');
+  assert.equal(routePath('/'), '/');
+});
+
+test('enforces the GPS restoration grace period at exactly 15 minutes', () => {
+  const now = Date.parse('2026-11-07T12:15:00.000Z');
+  assert.equal(gpsGracePeriodExpired('2026-11-07T12:00:00.000Z', now), true);
+  assert.equal(gpsGracePeriodExpired('2026-11-07T12:00:01.000Z', now), false);
+  assert.equal(gpsGracePeriodExpired('invalid', now), false);
+});
+
+test('admin-management access requires an admin role and server capability', () => {
+  assert.equal(hasAdminManagementAccess({ role: 'admin', canManageAdmins: true }), true);
+  assert.equal(hasAdminManagementAccess({ role: 'admin', isSuperAdmin: true }), true);
+  assert.equal(hasAdminManagementAccess({ role: 'staff', canManageAdmins: true }), false);
+  assert.equal(hasAdminManagementAccess({ role: 'admin' }), false);
+});
+
+test('validates inclusive date ranges and rejects reversed ranges', () => {
+  assert.equal(isValidDateRange('2026-11-07', '2026-11-07'), true);
+  assert.equal(isValidDateRange('2026-11-07', '2026-11-08'), true);
+  assert.equal(isValidDateRange('2026-11-08', '2026-11-07'), false);
+  assert.equal(isValidDateRange('2026-02-30', '2026-03-01'), false);
+});
+
+test('subscription overlap ignores cancelled and expired records', () => {
+  assert.equal(hasOverlappingSubscription([{ startDate: '2026-11-01', endDate: '2026-11-30', status: 'Active' }], '2026-11-15', '2026-12-15'), true);
+  assert.equal(hasOverlappingSubscription([{ startDate: '2026-11-01', endDate: '2026-11-30', status: 'Cancelled' }], '2026-11-15', '2026-12-15'), false);
+  assert.equal(hasOverlappingSubscription([{ startDate: '2026-11-01', endDate: '2026-11-30', status: 'Expired' }], '2026-11-15', '2026-12-15'), false);
+});
+
+test('inventory movements cannot make stock negative or accept invalid quantities', () => {
+  assert.equal(calculateInventoryBalance(10, 'IN', 5), 15);
+  assert.equal(calculateInventoryBalance(10, 'OUT', 5), 5);
+  assert.equal(calculateInventoryBalance(10, 'OUT', 11), null);
+  assert.equal(calculateInventoryBalance(10, 'OUT', 0), null);
+  assert.equal(calculateInventoryBalance(10, 'UNKNOWN', 1), null);
+});
+
+test('only recognized GPS-loss reasons are accepted', () => {
+  assert.equal(isConfirmedGpsLossReason('GPS location unavailable'), true);
+  assert.equal(isConfirmedGpsLossReason('Battery low'), false);
+});
+
+test('task and subscription reminders classify date boundaries correctly', () => {
+  assert.equal(taskReminderKind('2026-11-08', '2026-11-07', '2026-11-08'), 'upcoming');
+  assert.equal(taskReminderKind('2026-11-07', '2026-11-07', '2026-11-08'), 'due-today');
+  assert.equal(taskReminderKind('2026-11-06', '2026-11-07', '2026-11-08'), 'overdue');
+  assert.equal(subscriptionExpiryKind('2026-11-10', '2026-11-07', '2026-11-10'), 'due-soon');
+  assert.equal(subscriptionExpiryKind('2026-11-07', '2026-11-07', '2026-11-10'), 'due-today');
+  assert.equal(subscriptionExpiryKind('2026-11-06', '2026-11-07', '2026-11-10'), 'overdue');
 });
