@@ -121,6 +121,15 @@ type Plan = {
 
 const money = (n: number) => '₹' + Number(n || 0).toLocaleString('en-IN');
 const customerStatusLabel = (value: unknown): Customer['status'] => { const status = String(value || 'Active').trim().toLowerCase(); return status === 'suspended' ? 'Suspended' : status === 'inactive' ? 'Inactive' : 'Active'; };
+const isAttendanceShiftActive = (item: AttendanceRecord, now = Date.now()) => {
+  if (item.checkOutAt || item.dayType === 'Absent' || item.status?.toLowerCase().includes('cancelled') || item.gpsRestartRequired) return false;
+  const checkIn = Date.parse(item.checkInAt || '');
+  if (!Number.isFinite(checkIn) || !/^\\d{4}-\\d{2}-\\d{2}$/.test(item.workDate || '')) return false;
+  const parts = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date(checkIn));
+  const minutes = Number(parts.find(part => part.type === 'hour')?.value || 0) * 60 + Number(parts.find(part => part.type === 'minute')?.value || 0);
+  const dueDate = minutes >= 19 * 60 ? new Date(Date.parse(item.workDate + 'T00:00:00Z') + 86400000).toISOString().slice(0, 10) : item.workDate;
+  return now < Date.parse(dueDate + 'T19:00:00+05:30');
+};
 const dateLabel = (s: string) =>
   s
     ? new Date(s).toLocaleDateString('en-IN', {
@@ -387,7 +396,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   const paidByCustomer = new Map<string, number>();
   payments.filter(p => p.month === currentBillingMonth).forEach(p => paidByCustomer.set(p.customerId, (paidByCustomer.get(p.customerId) || 0) + Number(p.amount || 0)));
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
-  const staffShiftActive = attendanceRecords.some(item => item.userId === session.user.id && item.workDate === today && !item.checkOutAt && item.dayType !== 'Absent');
+  const staffShiftActive = attendanceRecords.some(item => item.userId === session.user.id && isAttendanceShiftActive(item));
   const overdueValue = customers.filter(c => c.status === 'Active' && c.dueDate && c.dueDate <= today).reduce((sum, c) => sum + Math.max(0, Number(c.monthlyFee || 0) - (paidByCustomer.get(c.id) || 0)), 0);
   const filtered = useMemo(
     () =>
@@ -1901,8 +1910,7 @@ function StaffLocationResponder({ activeShift, userId }: { activeShift: boolean;
     const checkShift = async () => {
       try {
         const result = await api.get('/api/attendance');
-        const workDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
-        const active = (result.data.items || []).some((item: AttendanceRecord) => item.userId === userId && item.workDate === workDate && !item.checkOutAt && item.dayType !== 'Absent');
+        const active = (result.data.items || []).some((item: AttendanceRecord) => item.userId === userId && isAttendanceShiftActive(item));
         if (!stopped) setShiftActive(active);
       } catch { /* Keep the last confirmed shift state if the API is temporarily unavailable. */ }
     };
