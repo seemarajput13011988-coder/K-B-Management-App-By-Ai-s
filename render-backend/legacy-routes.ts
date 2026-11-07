@@ -15,8 +15,9 @@ type UserRecord = {
   passwordHash: string;
   createdAt: string;
   phone?: string;
+  monthlySalary?: number;
 };
-type SafeUser = Pick<UserRecord, 'id' | 'userId' | 'displayName' | 'role' | 'active' | 'createdAt' | 'phone'>;
+type SafeUser = Pick<UserRecord, 'id' | 'userId' | 'displayName' | 'role' | 'active' | 'createdAt' | 'phone' | 'monthlySalary'>;
 type Customer = {
   id: string;
   name: string;
@@ -88,6 +89,7 @@ const safeUser = (user: UserRecord): SafeUser => ({
   active: user.active,
   createdAt: user.createdAt,
   phone: user.phone || '',
+  monthlySalary: Number.isFinite(Number(user.monthlySalary)) ? Number(user.monthlySalary) : 0,
 });
 const hashPassword = (password: string, salt: string) =>
   scryptSync(password, salt, 64).toString('hex');
@@ -178,6 +180,8 @@ function indiaDateKey(date = new Date()) {
 }
 
 function shiftDueAt(item: Record<string, unknown>): number {
+  const savedDeadline = Date.parse(String(item.autoCheckoutAt || ''));
+  if (Number.isFinite(savedDeadline)) return savedDeadline;
   const workDate = String(item.workDate || '');
   const checkInTime = Date.parse(String(item.checkInAt || ''));
   if (!/^\d{4}-\d{2}-\d{2}$/.test(workDate) || !Number.isFinite(checkInTime)) return Number.NaN;
@@ -190,6 +194,23 @@ function shiftDueAt(item: Record<string, unknown>): number {
     ? new Date(Date.parse(workDate + 'T00:00:00Z') + 86400000).toISOString().slice(0, 10)
     : workDate;
   return Date.parse(dueDate + 'T19:00:00+05:30');
+}
+
+function computeAutoCheckoutAt(workDate: string, startedAt: string, endTime: string): string {
+  const deadline = Date.parse(workDate + 'T' + endTime + ':00+05:30');
+  const started = Date.parse(startedAt);
+  if (!Number.isFinite(deadline) || !Number.isFinite(started)) throw new Error('Could not calculate the automatic shift end time.');
+  return new Date(deadline <= started ? deadline + 86400000 : deadline).toISOString();
+}
+async function getWorkforceSettings() {
+  const snapshot = await firestore.collection('app_settings').doc('workforce').get();
+  const data = snapshot.data() || {};
+  const validTime = (value: unknown, fallback: string) => typeof value === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(value) ? value : fallback;
+  return { shiftStartTime: validTime(data.shiftStartTime, '08:00'), shiftEndTime: validTime(data.shiftEndTime, '19:00') };
+}
+function timeToMinutes(value: string) {
+  const [hour, minute] = value.split(':').map(Number);
+  return hour * 60 + minute;
 }
 
 function isOpenShift(item: Record<string, unknown>): boolean {
@@ -357,6 +378,21 @@ export const handler = router({
     return json({ changed: true });
   }),
 
+  'GET /api/workforce-settings': protectedRoute(['admin', 'staff'], async (_ctx, user) => {
+    return json({ ...(await getWorkforceSettings()), timezone: 'Asia/Kolkata', adminOverrideAllowed: user.role === 'admin' });
+  }),
+  'PUT /api/workforce-settings': protectedRoute(['admin'], async ({ body }, admin) => {
+    const input = (body || {}) as Record<string, unknown>;
+    const startTime = cleanText(input.shiftStartTime, 5), endTime = cleanText(input.shiftEndTime, 5);
+    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(startTime) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(endTime) || timeToMinutes(startTime) >= timeToMinutes(endTime)) {
+      return error('Choose valid shift times. The start time must be earlier than the end time.', 400);
+    }
+    const updatedAt = new Date().toISOString();
+    await firestore.collection('app_settings').doc('workforce').set({ shiftStartTime: startTime, shiftEndTime: endTime, updatedAt, updatedBy: admin.id, updatedByName: admin.displayName }, { merge: true });
+    await writeAudit(admin, 'UPDATE', 'workforce_settings', 'workforce', 'Changed staff shift window to ' + startTime + '–' + endTime + ' India time.');
+    return json({ shiftStartTime: startTime, shiftEndTime: endTime, updatedAt });
+  }),
+
   'GET /api/staff': protectedRoute(['admin'], async () => {
     const result = await db.list<UserRecord>('users', { limit: 200 });
     return json({ items: result.items.filter(user => user.role === 'staff').map(safeUser) });
@@ -394,8 +430,10 @@ export const handler = router({
     if (!target || target.role !== 'staff') return error('Staff account not found.', 404);
     const displayName = cleanText(input.displayName, 80) || target.displayName;
     const active = typeof input.active === 'boolean' ? input.active : target.active;
-    const [updated] = await db.tx.update('users', [{ id: target.id, record: { displayName, active } }], { patch: true });
-    return updated ? json({ updated: true }) : error('Could not update staff account.', 500);
+    const monthlySalary = input.monthlySalary === undefined ? Number(target.monthlySalary || 0) : Number(input.monthlySalary);
+    if (!Number.isFinite(monthlySalary) || monthlySalary < 0 || monthlySalary > 1000000) return error('Monthly salary must be between ₹0 and ₹10,00,000.', 400);
+    const [updated] = await db.tx.update('users', [{ id: target.id, record: { displayName, active, monthlySalary } }], { patch: true });
+    return updated ? json({ updated: true, monthlySalary }) : error('Could not update staff account.', 500);
   }),
 
   'DELETE /api/staff/:id': protectedRoute(['admin'], async ({ params }) => {
@@ -892,9 +930,10 @@ export const handler = router({
   }),
 
   'POST /api/attendance/check-in': protectedRoute(['staff'], async ({ body }, user) => {
+    const settings = await getWorkforceSettings();
     const indiaClock = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date());
     const indiaMinutes = Number(indiaClock.find(part => part.type === 'hour')?.value || 0) * 60 + Number(indiaClock.find(part => part.type === 'minute')?.value || 0);
-    if (indiaMinutes < 8 * 60 || indiaMinutes >= 19 * 60) return error('Staff shift start is available only from 8:00 AM to 7:00 PM India time.', 403);
+    if (indiaMinutes < timeToMinutes(settings.shiftStartTime) || indiaMinutes >= timeToMinutes(settings.shiftEndTime)) return error('Staff shift start is available only from ' + settings.shiftStartTime + ' to ' + settings.shiftEndTime + ' India time.', 403);
     const workDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
     const result = await listAttendanceForUser(user.id);
     const previousOpenShift = findOpenShift(result, user.id);
@@ -906,7 +945,7 @@ export const handler = router({
     }
     if (result.some(item => item.workDate === workDate)) return error('Attendance has already been recorded for today.', 409);
     const startedAt = new Date().toISOString();
-    const record: Record<string, unknown> = { userId: user.id, displayName: user.displayName, workDate, checkInAt: startedAt, createdAt: startedAt, status: 'Checked in', dayType: body?.dayType === 'Half day' ? 'Half day' : 'Full day', attendanceSource: 'Staff' };
+    const record: Record<string, unknown> = { userId: user.id, displayName: user.displayName, workDate, checkInAt: startedAt, createdAt: startedAt, status: 'Checked in', dayType: body?.dayType === 'Half day' ? 'Half day' : 'Full day', attendanceSource: 'Staff', shiftStartTime: settings.shiftStartTime, shiftEndTime: settings.shiftEndTime, autoCheckoutAt: computeAutoCheckoutAt(workDate, startedAt, settings.shiftEndTime) };
     const [id] = await db.add('attendance', [record]);
     if (!id) return error('Could not save your check-in.', 500);
     // Attendance check-in no longer collects or stores GPS coordinates.
@@ -999,9 +1038,10 @@ export const handler = router({
   }),
 
   'POST /api/attendance/check-out': protectedRoute(['staff'], async (_ctx, user) => {
+    const settings = await getWorkforceSettings();
     const indiaClock = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date());
     const indiaMinutes = Number(indiaClock.find(part => part.type === 'hour')?.value || 0) * 60 + Number(indiaClock.find(part => part.type === 'minute')?.value || 0);
-    if (indiaMinutes < 8 * 60 || indiaMinutes >= 19 * 60) return error('Staff shift end is available only from 8:00 AM to 7:00 PM India time. After 7:00 PM, shifts are ended automatically.', 403);
+    if (indiaMinutes < timeToMinutes(settings.shiftStartTime) || indiaMinutes >= timeToMinutes(settings.shiftEndTime)) return error('Staff shift end is available only from ' + settings.shiftStartTime + ' to ' + settings.shiftEndTime + ' India time. After ' + settings.shiftEndTime + ', shifts are ended automatically.', 403);
     const result = await listAttendanceForUser(user.id);
     const existing = findActiveShift(result, user.id);
     if (!existing) return error('There is no active shift to check out.', 400);
@@ -1086,17 +1126,15 @@ export const handler = router({
         ? 'Attendance is already completed for this staff member today.'
         : 'This staff member already has an active shift.', 409);
     }
+    const settings = await getWorkforceSettings();
     const startedAt = new Date().toISOString();
     const record: Record<string, unknown> = {
-      userId: member.id,
-      displayName: member.displayName,
-      workDate,
-      checkInAt: startedAt,
-      createdAt: startedAt,
-      status: 'Checked in',
-      startedByAdmin: admin.displayName,
-      attendanceSource: 'Admin',
+      userId: member.id, displayName: member.displayName, workDate,
+      checkInAt: startedAt, createdAt: startedAt, status: 'Checked in',
+      startedByAdmin: admin.displayName, attendanceSource: 'Admin',
       dayType: input.dayType === 'Half day' ? 'Half day' : 'Full day',
+      shiftStartTime: settings.shiftStartTime, shiftEndTime: settings.shiftEndTime,
+      autoCheckoutAt: computeAutoCheckoutAt(workDate, startedAt, settings.shiftEndTime),
     };
     if (gpsRestartAllowed && latest) {
       record.restartOfAttendanceId = String(latest.id);
