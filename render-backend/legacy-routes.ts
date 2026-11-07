@@ -1463,11 +1463,14 @@ export const handler = router({
     const staffId = cleanText(body?.staffId, 128);
     const [member] = await db.get<UserRecord>('users', [staffId], { consistent: true });
     if (!member || member.role !== 'staff' || !member.active) return error('Choose an active staff member.', 400);
+    const [attendance, settings] = await Promise.all([listAttendanceForUser(member.id), getWorkforceSettings()]);
+    const active = findActiveShift(attendance, member.id, Date.now(), settings.shiftEndTime);
+    if (!active || active.gpsRestartRequired) return error('A one-time location request is available only during an active, authorised shift.', 409);
     const createdAt = new Date().toISOString();
-    const record = { staffId: member.id, staffName: member.displayName, requestedBy: admin.id, requestedByName: admin.displayName, status: 'pending', createdAt, expiresAt: new Date(Date.now() + 2 * 60 * 1000).toISOString() };
+    const record = { staffId: member.id, staffName: member.displayName, attendanceId: String(active.id), requestedBy: admin.id, requestedByName: admin.displayName, status: 'pending', createdAt, expiresAt: new Date(Date.now() + 2 * 60 * 1000).toISOString() };
     const [id] = await db.add('location_requests', [record]);
     if (!id) return error('Could not send the location request.', 500);
-    await db.add('staff_notifications', [{ recipientId: member.id, recipientRole: 'staff', type: 'location-request', title: 'Admin requested your location', message: admin.displayName + ' requested a one-time current GPS location. Open the app to respond.', relatedId: id, createdAt, read: false }]);
+    await db.add('staff_notifications', [{ recipientId: member.id, recipientRole: 'staff', type: 'location-request', title: 'Admin requested your location', message: admin.displayName + ' requested a one-time current GPS location during your active shift. Open the app to respond.', relatedId: id, createdAt, read: false }]);
     await writeAudit(admin, 'REQUEST_LOCATION', 'staff_location', id, 'Requested a one-time location from ' + member.displayName);
     return json({ id, ...record }, 201);
   }),
@@ -1483,24 +1486,49 @@ export const handler = router({
     const [request] = await db.get<Record<string, unknown>>('location_requests', [params.id], { consistent: true });
     if (!request || request.staffId !== user.id) return error('Location request not found.', 404);
     if (request.status !== 'pending' || new Date(String(request.expiresAt || 0)).getTime() <= Date.now()) return error('This location request has expired or was already answered.', 409);
+    const [attendance, settings] = await Promise.all([listAttendanceForUser(user.id), getWorkforceSettings()]);
+    const active = findActiveShift(attendance, user.id, Date.now(), settings.shiftEndTime);
+    if (!active || String(active.id) !== String(request.attendanceId || '') || active.gpsRestartRequired) return error('This request is no longer valid because your authorised shift is not active.', 409);
     const input = (body || {}) as Record<string, unknown>;
     const status = input.status === 'failed' ? 'unavailable' : 'captured';
-    const latitude = Number(input.latitude), longitude = Number(input.longitude);
-    if (status === 'captured' && (!Number.isFinite(latitude) || !Number.isFinite(longitude) || Math.abs(latitude) > 90 || Math.abs(longitude) > 180)) return error('A valid current GPS location is required.', 400);
-    const capturedAt = new Date().toISOString();
+    const latitude = Number(input.latitude), longitude = Number(input.longitude), accuracy = Number(input.accuracy || 0);
+    if (status === 'captured' && (!Number.isFinite(latitude) || !Number.isFinite(longitude) || Math.abs(latitude) > 90 || Math.abs(longitude) > 180 || !Number.isFinite(accuracy) || accuracy < 0 || accuracy > 100000)) return error('A valid current GPS location is required.', 400);
+    const capturedAt = status === 'captured' ? cleanText(input.capturedAt, 40) || new Date().toISOString() : new Date().toISOString();
+    if (status === 'captured' && !isFreshLocationTimestamp(capturedAt)) return error('The location reading is too old or has an invalid timestamp. Try again.', 400);
     const patch: Record<string, unknown> = {
       status,
       capturedAt,
       responseMessage: status === 'unavailable' ? cleanText(input.message, 240) || 'Staff location was unavailable.' : '',
       ...(status === 'captured' ? {
-        latitude, longitude,
-        accuracy: Math.min(Math.max(Number(input.accuracy) || 0, 0), 100000),
+        latitude, longitude, accuracy,
         address: cleanText(input.address, 500) || 'Address not available; open in Google Maps.',
       } : {}),
     };
-    const [updated] = await db.tx.update('location_requests', [{ id: params.id, record: patch }], { patch: true });
-    if (updated) await writeAudit(user, 'SHARE_LOCATION', 'staff_location', params.id, 'Shared a one-time GPS location in response to an admin request.');
-    return updated ? json({ updated: true, status }) : error('Could not submit the location response.', 500);
+    const requestRef = firestore.collection('location_requests').doc(params.id);
+    const batch = firestore.batch();
+    batch.update(requestRef, patch);
+    if (status === 'captured') {
+      const point = {
+        id: user.id, staffId: user.id, staffName: user.displayName, attendanceId: String(active.id),
+        latitude, longitude, accuracy, capturedAt, source: 'staff-one-time-location-request',
+      };
+      batch.set(firestore.collection('staff_live_locations').doc(user.id), point, { merge: true });
+      const historyRef = firestore.collection('locations').doc();
+      const historyPoint: Record<string, unknown> = { ...point };
+      delete historyPoint.id;
+      batch.set(historyRef, historyPoint);
+    }
+    const adminNotificationRef = firestore.collection('staff_notifications').doc();
+    batch.set(adminNotificationRef, {
+      recipientId: String(request.requestedBy || ''), recipientRole: 'admin',
+      type: 'location-request-response', title: 'Location request ' + (status === 'captured' ? 'completed' : 'unavailable'),
+      message: status === 'captured' ? user.displayName + ' shared a one-time GPS location.' : user.displayName + ' could not share a location: ' + String(patch.responseMessage || ''),
+      relatedId: params.id, createdAt: new Date().toISOString(), read: false,
+    });
+    await batch.commit();
+    await writeAudit(user, status === 'captured' ? 'SHARE_LOCATION' : 'LOCATION_UNAVAILABLE', 'staff_location', params.id,
+      status === 'captured' ? 'Shared a one-time GPS location during an active shift.' : 'Could not provide the requested location during an active shift.');
+    return json({ updated: true, status });
   }),
 
   'GET /api/location-requests/:id': protectedRoute(['admin'], async ({ params }) => {
