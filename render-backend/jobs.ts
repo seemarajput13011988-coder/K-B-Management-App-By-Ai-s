@@ -18,7 +18,7 @@ function sha(value: string) { return createHash('sha256').update(value).digest('
 
 export async function runGpsGracePeriod() {
   const activeSnapshot = await firestore.collection('attendance').where('status', '==', 'Checked in').limit(1000).get();
-  const records = activeSnapshot.docs.map(doc => ({ ...(doc.data() || {}), id: doc.id }));
+  const records: Item[] = activeSnapshot.docs.map(doc => ({ ...(doc.data() as Item), id: doc.id }));
   const requests = await readCollection('holiday_requests', 1000);
   const users = await readCollection('users', 500);
   const currentTime = Date.now();
