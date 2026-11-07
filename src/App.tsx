@@ -343,6 +343,27 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
     };
   }, []);
 
+  // Refresh shared business records periodically so edits made from another
+  // device or browser session appear without requiring a manual reload.
+  useEffect(() => {
+    let stopped = false;
+    let inFlight = false;
+    const refreshSharedRecords = () => {
+      if (stopped || inFlight || document.visibilityState === 'hidden') return;
+      inFlight = true;
+      void load(true).finally(() => { inFlight = false; });
+    };
+    const timer = window.setInterval(refreshSharedRecords, 30000);
+    window.addEventListener('focus', refreshSharedRecords);
+    document.addEventListener('visibilitychange', refreshSharedRecords);
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+      window.removeEventListener('focus', refreshSharedRecords);
+      document.removeEventListener('visibilitychange', refreshSharedRecords);
+    };
+  }, []);
+
   useEffect(() => {
     let stopped = false;
     const pollNotifications = async () => {
