@@ -30,6 +30,7 @@ on:
       - "functions/**"
       - "docs/ANDROID_TRACKING_AND_RELEASE.md"
       - ".github/workflows/android-apk.yml"
+      - ".github/workflows/ota-release.yml"
   pull_request:
     branches: [main]
     paths:
