@@ -13,6 +13,17 @@ const config: CapacitorConfig = {
     CapacitorHttp: {
       enabled: true,
     },
+    CapacitorUpdater: {
+      autoUpdate: 'onLaunch',
+      updateUrl: 'https://kandb-management-nexus-api-zv7f.onrender.com/api/app-updates/check',
+      statsUrl: '',
+      appReadyTimeout: 30000,
+      resetWhenUpdate: true,
+      autoSplashscreen: true,
+    },
+    SplashScreen: {
+      launchAutoHide: false,
+    },
   },
 };
 
