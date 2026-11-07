@@ -8,7 +8,7 @@ type Customer = { id: string; name: string; monthlyFee: number; status: string; 
 type Payment = { id: string; customerId: string; customerName: string; amount: number; paidAt: string; month: string; method: string; recordedByName?: string };
 type Expense = { id: string; title: string; category: string; amount: number; spentAt: string; method: string; notes?: string; createdByName: string };
 type Invoice = { id: string; customerId: string; customerName: string; period: string; dueDate: string; amount: number; status: string; paidAmount: number };
-type StaffMember = { id: string; displayName: string; userId: string; role: string; active: boolean };
+type StaffMember = { id: string; displayName: string; userId: string; role: string; active: boolean; monthlySalary?: number };
 type PayrollRecord = { id: string; staffUserId: string; staffName: string; period: string; amount: number; paidAt: string; method: string; notes?: string; recordedByName?: string; createdAt?: string };
 type LedgerEntry = { id: string; date: string; type: 'Invoice' | 'Payment'; description: string; debit: number; credit: number; balance: number; reference: string };
 type CustomerLedger = { customer: { id: string; name: string; phone?: string; plan?: string }; items: LedgerEntry[]; totalBilled: number; totalPaid: number; balance: number };
@@ -103,6 +103,8 @@ export default function FinanceWorkspace({ session, customers, payments, flash, 
   const [ledgerLoading, setLedgerLoading] = useState(false);
   const [salaryStaffId, setSalaryStaffId] = useState('');
   const [salaryAmount, setSalaryAmount] = useState('');
+  const [salaryBaseAmount, setSalaryBaseAmount] = useState('');
+  const selectedSalaryStaff = staff.find(item => item.id === salaryStaffId);
   const [salaryPaidAt, setSalaryPaidAt] = useState(today());
   const [salaryMethod, setSalaryMethod] = useState('Bank transfer');
   const [salaryNotes, setSalaryNotes] = useState('');
@@ -132,6 +134,11 @@ export default function FinanceWorkspace({ session, customers, payments, flash, 
   useEffect(() => { load().catch(() => flash('Could not load finance records.')); }, [period]);
   useEffect(() => subscribeToApiChanges(() => { void load().catch(() => flash('Could not refresh finance records.')); }), [period]);
   useEffect(() => { if (!ledgerCustomerId && customers.length) setLedgerCustomerId(customers[0].id); }, [customers, ledgerCustomerId]);
+  useEffect(() => {
+    const amount = selectedSalaryStaff?.monthlySalary;
+    setSalaryBaseAmount(amount && amount > 0 ? String(amount) : '');
+    if (amount && amount > 0 && !salaryAmount) setSalaryAmount(String(amount));
+  }, [salaryStaffId, selectedSalaryStaff?.monthlySalary]);
   useEffect(() => {
     if (!ledgerCustomerId) { setLedger(null); return; }
     let cancelled = false;
@@ -174,6 +181,23 @@ export default function FinanceWorkspace({ session, customers, payments, flash, 
       flash(err instanceof Error ? err.message : 'Could not generate invoices.');
     } finally { setBusy(false); }
   }
+  async function saveMonthlySalary() {
+    if (session.user.role !== 'admin' || !salaryStaffId || salaryBaseAmount.trim() === '') return;
+    const amount = Number(salaryBaseAmount);
+    if (!Number.isFinite(amount) || amount < 0 || amount > 1000000) {
+      flash('Enter a valid monthly salary between ₹0 and ₹10,00,000.');
+      return;
+    }
+    setBusy(true);
+    try {
+      await client.put('/api/staff/' + salaryStaffId, { monthlySalary: amount, sessionToken: session.token });
+      await load();
+      flash('Monthly salary amount saved for ' + (selectedSalaryStaff?.displayName || 'staff member') + '.');
+    } catch (err) {
+      flash(err instanceof Error ? err.message : 'Could not save monthly salary.');
+    } finally { setBusy(false); }
+  }
+
   async function recordSalary(event: React.FormEvent) {
     event.preventDefault();
     if (!salaryStaffId || !salaryAmount || !salaryPaidAt) return;
@@ -223,6 +247,15 @@ export default function FinanceWorkspace({ session, customers, payments, flash, 
   if (salaryOnly) return <div className="finance-workspace salary-workspace">
     <section className="panel finance-panel">
       <div className="finance-head"><div><span className="eyebrow">STAFF PAYROLL</span><h2>Monthly salary records</h2><p>Record each staff member's salary once per month. Salary is tracked separately and included in monthly cash outflow and reports.</p></div></div>
+      <section className="finance-panel">
+        <div className="finance-head"><div><span className="eyebrow">STAFF PAY SETTINGS</span><h3>Monthly salary amount</h3><p>Set the agreed monthly salary for each staff member. This is a staff profile setting; payment entries below remain separate records of amounts actually paid.</p></div></div>
+        <div className="finance-expense-form">
+          <label>Staff member<select required value={salaryStaffId} onChange={e => setSalaryStaffId(e.target.value)}><option value="">Select staff member</option>{staff.map(item => <option key={item.id} value={item.id}>{item.displayName} ({item.userId})</option>)}</select></label>
+          <label>Agreed monthly salary (₹)<input required type="number" min="0" max="1000000" step="0.01" value={salaryBaseAmount} onChange={e => setSalaryBaseAmount(e.target.value)} placeholder="Enter monthly salary"/></label>
+          <button type="button" className="btn primary" disabled={busy || !salaryStaffId || salaryBaseAmount.trim()===''} onClick={()=>void saveMonthlySalary()}>Save monthly salary</button>
+          <p className="form-hint">Current saved amount: {selectedSalaryStaff ? money(Number(selectedSalaryStaff.monthlySalary||0)) : 'Select a staff member'}</p>
+        </div>
+      </section>
       <form className="finance-expense-form" onSubmit={recordSalary}>
         <label>Staff member<select required value={salaryStaffId} onChange={e => setSalaryStaffId(e.target.value)}><option value="">Select staff member</option>{staff.map(item => <option key={item.id} value={item.id}>{item.displayName} ({item.userId})</option>)}</select></label>
         <label>Salary amount (₹)<input required type="number" min="0.01" max="1000000" step="0.01" value={salaryAmount} onChange={e => setSalaryAmount(e.target.value)}/></label>
