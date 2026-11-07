@@ -11,6 +11,16 @@ on:
       - "vite.config.ts"
       - "capacitor.config.ts"
       - ".github/workflows/ota-release.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "public/**"
+      - "index.html"
+      - "package.json"
+      - "vite.config.ts"
+      - "capacitor.config.ts"
+      - ".github/workflows/ota-release.yml"
 
 permissions:
   contents: write
@@ -42,6 +52,31 @@ jobs:
             exit 1
           fi
           cp "$ZIP_FILE" nexus-update.zip
+          unzip -Z1 nexus-update.zip | grep -Eq '(^|/)index.html
+          import fs from 'node:fs';
+          import crypto from 'node:crypto';
+          const version = `1.0.${process.env.GITHUB_RUN_NUMBER}`;
+          const checksum = crypto.createHash('sha256').update(fs.readFileSync('nexus-update.zip')).digest('hex');
+          const manifest = { appId: 'kandbnet.service2010', version, checksum };
+          fs.writeFileSync('ota-manifest.json', JSON.stringify(manifest, null, 2) + '\n');
+          console.log('Prepared Nexus OTA release', version, 'SHA-256', checksum);
+          NODE
+      - name: Publish immutable OTA release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: nexus-ota-1.0.${{ github.run_number }}
+          name: K&B Nexus OTA 1.0.${{ github.run_number }}
+          body: Automated web-bundle release. Native Android changes are not included.
+          files: |
+            nexus-update.zip
+            ota-manifest.json
+          make_latest: false
+          fail_on_unmatched_files: true
+ || {
+            echo "::error::The OTA archive does not contain index.html at its root or in one root folder."
+            exit 1
+          }
           node --input-type=module <<'NODE'
           import fs from 'node:fs';
           import crypto from 'node:crypto';
