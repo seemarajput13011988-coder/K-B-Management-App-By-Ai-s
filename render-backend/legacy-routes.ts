@@ -922,7 +922,6 @@ export const handler = router({
   }),
 
   'POST /api/attendance/gps-lost': protectedRoute(['staff'], async ({ body }, user) => {
-    const workDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
     const attendance = await db.list<Record<string, unknown>>('attendance', { limit: 1000 });
     const active = findActiveShift(attendance.items, user.id);
     if (!active) return json({ monitoring: false, reason: 'no-active-shift' });
