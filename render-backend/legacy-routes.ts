@@ -972,17 +972,21 @@ export const handler = router({
       });
       await batch.commit();
 
-      const users = await db.list<UserRecord>('users', { limit: 500 });
-      const admins = users.items.filter(item => item.role === 'admin' && item.active === true);
-      const adminNotifications = await Promise.allSettled(admins.map(admin => db.add('staff_notifications', [{
-        id: String(active.id) + '-gps-' + issueId + '-admin-' + admin.id,
-        recipientId: admin.id, recipientRole: 'admin', type: 'gps-issue',
-        title: 'Staff GPS is OFF',
-        message: user.displayName + ' has lost GPS/location during an active shift. The 15-minute restoration period has started.',
-        createdAt: startedAt, read: false, attendanceId: active.id,
-      }])));
-      for (const result of adminNotifications) {
-        if (result.status === 'rejected') console.error('Could not notify an administrator about GPS loss:', result.reason);
+      try {
+        const users = await db.list<UserRecord>('users', { limit: 500 });
+        const admins = users.items.filter(item => item.role === 'admin' && item.active === true);
+        const adminNotifications = await Promise.allSettled(admins.map(admin => db.add('staff_notifications', [{
+          id: String(active.id) + '-gps-' + issueId + '-admin-' + admin.id,
+          recipientId: admin.id, recipientRole: 'admin', type: 'gps-issue',
+          title: 'Staff GPS is OFF',
+          message: user.displayName + ' has lost GPS/location during an active shift. The 15-minute restoration period has started.',
+          createdAt: startedAt, read: false, attendanceId: active.id,
+        }])));
+        for (const result of adminNotifications) {
+          if (result.status === 'rejected') console.error('Could not notify an administrator about GPS loss:', result.reason);
+        }
+      } catch (notificationError) {
+        console.error('Could not load administrators for GPS-loss notifications:', notificationError);
       }
     }
 
