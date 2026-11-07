@@ -2099,3 +2099,39 @@ header.topbar .notification-popover{z-index:124;max-height:min(430px,calc(100dvh
 :root[data-festival-theme] .panel,:root[data-festival-theme] .ops-panel,:root[data-festival-theme] .task-card,:root[data-festival-theme] .finance-panel{border-top:2px solid var(--kb-line)}
 :root[data-festival-theme] .language-control,:root[data-festival-theme] .theme-toggle{border-color:var(--kb-line)}
 @media(max-width:420px){:root[data-festival-theme] .topbar{background-image:linear-gradient(100deg,var(--kb-line),#fff 72%)}}
+
+
+/* Simplified mobile dashboard header and page hierarchy. */
+.topbar{min-width:0;gap:10px}
+.top-actions{min-width:0;flex:0 0 auto;gap:8px}
+.crumb{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.content{min-width:0;overflow-x:clip}
+.page-heading{min-width:0;gap:14px;flex-wrap:wrap}
+.page-heading>div:first-child{min-width:0}
+.page-heading h1{overflow-wrap:anywhere}
+.heading-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+@media(max-width:700px){
+  .topbar{min-height:58px;height:auto;padding:8px 12px;gap:8px}
+  .top-actions{margin-left:auto;gap:6px}
+  .top-actions>.system-status{display:none}
+  .crumb{flex:1;font-size:10px}
+  .content{padding:18px 14px 30px}
+  .page-heading{display:flex;flex-direction:column;align-items:stretch;gap:10px;margin-bottom:16px}
+  .page-heading h1{font-size:22px;line-height:1.2;margin:5px 0}
+  .page-heading p{font-size:12px;line-height:1.45;margin:5px 0 0}
+  .heading-actions{width:100%}
+  .heading-actions .btn{min-height:40px}
+  .welcome-strip{padding:13px 14px;gap:10px}
+  .welcome-strip>div:nth-child(2){min-width:0}
+  .welcome-strip>div:nth-child(2) span{line-height:1.4}
+}
+@media(max-width:420px){
+  .topbar{padding:7px 9px;gap:5px}
+  .crumb{font-size:9px;max-width:none}
+  .top-actions{gap:4px}
+  .content{padding-left:11px;padding-right:11px}
+  .page-heading h1{font-size:20px}
+  .top-actions>.kb-festival-ribbon{width:24px;min-width:24px;max-width:24px;height:30px;padding:2px;margin:0;justify-content:center}
+  .top-actions>.kb-festival-ribbon strong,.top-actions>.kb-festival-ribbon .kb-festival-note{display:none}
+  .preference-controls .theme-toggle{display:none}
+}
