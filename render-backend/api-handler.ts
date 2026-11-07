@@ -660,6 +660,28 @@ export async function apiHandler(req: any, res: any) {
         await audit(user, 'DELETE', 'staff', staffId, 'Removed staff account ' + String(staff.displayName || staff.userId || staffId) + '; unassigned ' + totalUnassigned + ' operational records; historical records preserved');
         send(res, 200, { deleted: true, unassignedCounts, historyPreserved: true }); return;
       }
+      if (path.startsWith('/api/admins/') && method === 'PUT') {
+        if (!allowSuperAdmin(user, res)) return;
+        const adminId = routeId(path, '/api/admins');
+        const target = await getDoc('users', adminId);
+        if (!target || target.role !== 'admin') { send(res, 404, { error: 'Admin account not found.' }); return; }
+        const patch: Data = { updatedAt: now() };
+        if (typeof body.displayName === 'string') {
+          const displayName = clean(body.displayName, 80);
+          if (!displayName) { send(res, 400, { error: 'Enter an administrator name.' }); return; }
+          patch.displayName = displayName;
+        }
+        if (typeof body.active === 'boolean') {
+          if (body.active === false && (target.canManageAdmins === true || target.isSuperAdmin === true)) {
+            send(res, 403, { error: 'The primary super-admin account cannot be disabled.' }); return;
+          }
+          patch.active = body.active;
+        }
+        await db.collection('users').doc(adminId).update(patch);
+        if (patch.active === false) await revokeUserSessions(adminId);
+        await audit(user, 'UPDATE', 'admin', adminId, 'Updated administrator account ' + String(target.userId || adminId));
+        send(res, 200, { updated: true }); return;
+      }
       if (path.startsWith('/api/admins/') && method === 'DELETE') {
         if (!allowSuperAdmin(user, res)) return;
         const adminId = routeId(path, '/api/admins'), target = await getDoc('users', routeId(path, '/api/admins'));
