@@ -38,8 +38,11 @@ export function buildOtaDecision(
   if (parsed.protocol !== 'https:' || parsed.hostname !== 'github.com') {
     return { message: 'The published OTA bundle host is not trusted.' };
   }
-  if (currentVersion === manifest.version) {
-    return { message: 'No update is available.' };
+  if (typeof currentVersion === 'string' && SEMVER.test(currentVersion)) {
+    const current = currentVersion.split('.').map(Number);
+    const available = manifest.version.split('.').map(Number);
+    const comparison = current[0] - available[0] || current[1] - available[1] || current[2] - available[2];
+    if (comparison >= 0) return { message: 'No update is available.' };
   }
   return { version: manifest.version, url: parsed.toString(), checksum: manifest.checksum.toLowerCase() };
 }
