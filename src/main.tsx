@@ -1,4 +1,4 @@
-import { StrictMode } from 'react';
+import { StrictMode, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Capacitor } from '@capacitor/core';
 import { CapacitorUpdater } from '@capgo/capacitor-updater';
@@ -18,10 +18,20 @@ function loadBrandFonts() {
   document.head.append(link);
 }
 
-function mountApp() {
+function NativeReadinessSignal() {
+  useEffect(() => {
+    void CapacitorUpdater.notifyAppReady().catch(error => {
+      console.error('Nexus app readiness confirmation failed:', error);
+    });
+  }, []);
+  return null;
+}
+
+function mountApp(native = false) {
   createRoot(appRoot).render(
     <StrictMode>
       <App />
+      {native ? <NativeReadinessSignal /> : null}
     </StrictMode>,
   );
 }
@@ -58,13 +68,16 @@ async function runRequiredUpdate(updateWasPreviouslyRequired = false): Promise<v
   try {
     const latest = await CapacitorUpdater.getLatest();
     if (!latest?.url || !latest.version) {
-      mountApp();
+      mountApp(true);
       return;
     }
     updateWasAdvertised = true;
     showUpdateRequired('A required update is available. Please keep the app open while it downloads and installs.', () => {
       void runRequiredUpdate(true);
     });
+    // Mark the currently running bundle healthy before switching to the new one.
+    // The newly installed bundle is acknowledged only after the actual App mounts.
+    await CapacitorUpdater.notifyAppReady();
     const bundle = await CapacitorUpdater.download({
       url: latest.url,
       version: latest.version,
@@ -82,7 +95,7 @@ async function runRequiredUpdate(updateWasPreviouslyRequired = false): Promise<v
     }
     // If the update server itself is temporarily unreachable, preserve access to
     // the last known-good app rather than locking staff out without evidence of an update.
-    mountApp();
+    mountApp(true);
   }
 }
 
@@ -91,13 +104,6 @@ async function bootstrap() {
     loadBrandFonts();
     mountApp();
     return;
-  }
-  try {
-    // This must run before network requests so the updater can retain/roll back
-    // the currently loaded bundle if a later bundle fails to start.
-    await CapacitorUpdater.notifyAppReady();
-  } catch (error) {
-    console.error('Nexus updater readiness notification failed:', error);
   }
   loadBrandFonts();
   await runRequiredUpdate();
