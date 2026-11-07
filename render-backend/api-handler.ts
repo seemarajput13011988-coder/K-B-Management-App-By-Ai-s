@@ -107,7 +107,7 @@ async function getDoc(collection: string, id: string): Promise<Data | null> {
 async function staffHasActiveShift(userId: string): Promise<boolean> {
   const settingsSnapshot = await db.collection('app_settings').doc('workforce').get();
   const configuredEnd = String(settingsSnapshot.data()?.shiftEndTime || '19:00');
-  const fallbackEndTime = /^([01]\\d|2[0-3]):[0-5]\\d$/.test(configuredEnd) ? configuredEnd : '19:00';
+  const fallbackEndTime = /^([01]\d|2[0-3]):[0-5]\d$/.test(configuredEnd) ? configuredEnd : '19:00';
   const baseQuery = db.collection('attendance').where('userId', '==', userId);
   let page = await baseQuery.limit(400).get();
   while (!page.empty) {
@@ -124,7 +124,7 @@ async function staffHasActiveShift(userId: string): Promise<boolean> {
       if (!Number.isFinite(checkIn) || !datePattern.test(workDate)) return true;
       const parts = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date(checkIn));
       const minutes = Number(parts.find(part => part.type === 'hour')?.value || 0) * 60 + Number(parts.find(part => part.type === 'minute')?.value || 0);
-      const endTime = typeof item.shiftEndTime === 'string' && /^([01]\\d|2[0-3]):[0-5]\\d$/.test(item.shiftEndTime) ? item.shiftEndTime : fallbackEndTime;
+      const endTime = typeof item.shiftEndTime === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(item.shiftEndTime) ? item.shiftEndTime : fallbackEndTime;
       const [endHour, endMinute] = endTime.split(':').map(Number);
       const endMinutes = endHour * 60 + endMinute;
       const dueDate = minutes >= endMinutes ? new Date(Date.parse(workDate + 'T00:00:00Z') + 86400000).toISOString().slice(0, 10) : workDate;
