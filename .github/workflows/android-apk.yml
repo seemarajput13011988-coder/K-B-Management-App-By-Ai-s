@@ -295,6 +295,7 @@ jobs:
             private static final String PREFS = "kb_work_location_service";
             private static final String KEY_TOKEN = "token";
             private static final String KEY_API = "api_base_url";
+            private static final String KEY_SCHEDULED_END = "scheduled_end_at";
             private static final int NOTIFICATION_ID = 7316;
             private static final String CHANNEL_ID = "kb_active_shift_location";
             private FusedLocationProviderClient fusedClient;
@@ -314,6 +315,12 @@ jobs:
                 if (!stopping) {
                   handleLocationProviderChange();
                   long now = System.currentTimeMillis();
+                  String savedDeadline = getSharedPreferences(PREFS, MODE_PRIVATE).getString(KEY_SCHEDULED_END, null);
+                  long deadlineMillis = parseScheduledEndMillis(savedDeadline);
+                  if (deadlineMillis > 0L && now >= deadlineMillis) {
+                    stopTrackingAndService();
+                    return;
+                  }
                   if (now - lastShiftCheckAt >= 10000L) {
                     lastShiftCheckAt = now;
                     checkShiftStatus();
@@ -439,6 +446,18 @@ jobs:
               beginLocationUpdates();
             }
 
+            private long parseScheduledEndMillis(String scheduledEndAt) {
+              if (scheduledEndAt == null || scheduledEndAt.isEmpty()) return -1L;
+              try {
+                SimpleDateFormat scheduledFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US);
+                scheduledFormat.setTimeZone(TimeZone.getTimeZone("UTC"));
+                Date scheduledEnd = scheduledFormat.parse(scheduledEndAt);
+                return scheduledEnd == null ? -1L : scheduledEnd.getTime();
+              } catch (Exception ignored) {
+                return -1L;
+              }
+            }
+
             private boolean isShiftStillActive(JSONObject item, long now) {
               if (item == null || !item.optString("checkOutAt").isEmpty() ||
                   "Absent".equalsIgnoreCase(item.optString("dayType")) ||
@@ -448,12 +467,8 @@ jobs:
                 // The backend persists the exact configured deadline on every shift.
                 // Use it directly so Android GPS stops on the same schedule as attendance.
                 String scheduledEndAt = item.optString("scheduledEndAt");
-                if (!scheduledEndAt.isEmpty()) {
-                  SimpleDateFormat scheduledFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US);
-                  scheduledFormat.setTimeZone(TimeZone.getTimeZone("UTC"));
-                  Date scheduledEnd = scheduledFormat.parse(scheduledEndAt);
-                  if (scheduledEnd != null) return now < scheduledEnd.getTime();
-                }
+                long scheduledDeadline = parseScheduledEndMillis(scheduledEndAt);
+                if (scheduledDeadline > 0L) return now < scheduledDeadline;
                 String workDate = item.optString("workDate");
                 String checkInAt = item.optString("checkInAt");
                 SimpleDateFormat utc = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US);
@@ -531,8 +546,13 @@ jobs:
                   if (items != null) {
                     long now = System.currentTimeMillis();
                     for (int index = 0; index < items.length(); index++) {
-                      if (isShiftStillActive(items.optJSONObject(index), now)) {
+                      JSONObject attendanceItem = items.optJSONObject(index);
+                      if (isShiftStillActive(attendanceItem, now)) {
                         activeShift = true;
+                        String deadline = attendanceItem == null ? "" : attendanceItem.optString("scheduledEndAt");
+                        if (!deadline.isEmpty()) {
+                          getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString(KEY_SCHEDULED_END, deadline).apply();
+                        }
                         break;
                       }
                     }
