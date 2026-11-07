@@ -7,7 +7,7 @@ on:
     branches: [render-backend-migration, quality-audit-2026-11-06, whole-app-stability-audit-2026-11-06, on-demand-gps-proof-permissions, ui-rebuild-gps-holidays-api-fixes, fixes-session-gps-ui-2026-11-06, whole-app-gps-ui-sync-audit-2026-11-07]
     paths: ["render-backend/**", "src/**", "package.json", "package-lock.json", ".github/workflows/render-backend-check.yml"]
   pull_request:
-    branches: [main]
+    branches: [main, fixes-session-gps-ui-2026-11-06]
     paths: ["render-backend/**", "src/**", "package.json", "package-lock.json"]
 jobs:
   backend:
