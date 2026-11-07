@@ -27,6 +27,7 @@ const indiaMinutesNow = () => {
     Number(parts.find(part => part.type === 'minute')?.value || 0);
 };
 const stamp = (value?: string) => value ? new Date(value).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) : '—';
+const displayTime = (value: string) => { const [hour, minute] = value.split(':').map(Number); return new Date(2000, 0, 1, hour, minute).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true }); };
 const shiftDueAt = (item: Attendance) => {
   const savedDeadline = Date.parse(item.autoCheckoutAt || '');
   if (Number.isFinite(savedDeadline)) return savedDeadline;
@@ -427,7 +428,7 @@ export default function StaffOperations({ session, customers, flash, compact = f
 
   if (compact && !admin) return <section className="panel ops-home-shift">
     <div className="ops-home-shift-copy"><span className="eyebrow">TODAY’S ATTENDANCE</span><h2>{activeShift ? 'Your shift is active' : myToday?.dayType === 'Absent' ? 'Marked absent today' : myToday?.checkOutAt ? 'Shift completed' : 'Ready to start work?'}</h2><p>{activeShift ? 'Checked in at ' + stamp(myToday?.checkInAt) + '. Your workday is being recorded.' : myToday?.dayType === 'Absent' ? 'Your attendance was marked absent by an administrator.' : myToday?.checkOutAt ? 'You checked out at ' + stamp(myToday.checkOutAt) + '.' : 'Start your shift directly from the home screen.'}</p></div>
-    <div className="ops-home-shift-action">{!myToday ? staffShiftWindowOpen ? <button className="btn primary" disabled={busy || loading} onClick={() => shift('check-in')}>{busy ? 'Starting…' : 'Start shift'}</button> : <span className="ops-complete">Staff shifts are available 8:00 AM–7:00 PM</span> : activeShift ? staffShiftWindowOpen ? <button className="btn danger" disabled={busy} onClick={() => shift('check-out')}>{busy ? 'Ending…' : 'End shift'}</button> : <span className="ops-complete">Your shift will end automatically at 7:00 PM</span> : <span className="ops-complete">Completed for today · Start again tomorrow from 8:00 AM</span>}</div>
+    <div className="ops-home-shift-action">{!myToday ? staffShiftWindowOpen ? <button className="btn primary" disabled={busy || loading} onClick={() => shift('check-in')}>{busy ? 'Starting…' : 'Start shift'}</button> : <span className="ops-complete">Staff shifts are available {displayTime(shiftSettings.shiftStartTime)}–{displayTime(shiftSettings.shiftEndTime)}</span> : activeShift ? staffShiftWindowOpen ? <button className="btn danger" disabled={busy} onClick={() => shift('check-out')}>{busy ? 'Ending…' : 'End shift'}</button> : <span className="ops-complete">Your shift will end automatically at {displayTime(shiftSettings.shiftEndTime)}</span> : <span className="ops-complete">Completed for today · Start again tomorrow from {displayTime(shiftSettings.shiftStartTime)}</span>}</div>
     {loading && <small className="ops-home-loading">Loading attendance status…</small>}
   </section>;
 
