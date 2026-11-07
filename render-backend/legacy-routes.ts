@@ -210,6 +210,18 @@ function findActiveShift(items: Record<string, unknown>[], userId: string, now =
     .sort((a, b) => String(b.checkInAt || '').localeCompare(String(a.checkInAt || '')))[0];
 }
 
+async function listAttendanceForUser(userId: string): Promise<Record<string, unknown>[]> {
+  const snapshot = await firestore.collection('attendance').where('userId', '==', userId).get();
+  return snapshot.docs
+    .map(doc => ({ ...(doc.data() || {}), id: doc.id }))
+    .sort((a, b) => String(b.checkInAt || '').localeCompare(String(a.checkInAt || '')));
+}
+
+async function listRecentAttendance(limit = 500): Promise<Record<string, unknown>[]> {
+  const snapshot = await firestore.collection('attendance').orderBy('checkInAt', 'desc').limit(limit).get();
+  return snapshot.docs.map(doc => ({ ...(doc.data() || {}), id: doc.id }));
+}
+
 async function writeAudit(user: UserRecord, action: string, entityType: string, entityId: string, description: string) {
   await db.add('audit_logs', [{
     actorId: user.id,
@@ -872,8 +884,10 @@ export const handler = router({
   }),
 
   'GET /api/attendance': protectedRoute(['admin', 'staff'], async (_ctx, user) => {
-    const result = await db.list<Record<string, unknown>>('attendance', { limit: 500 });
-    return json({ items: user.role === 'admin' ? result.items : result.items.filter(item => item.userId === user.id) });
+    const items = user.role === 'admin'
+      ? await listRecentAttendance(500)
+      : (await listAttendanceForUser(user.id)).slice(0, 1000);
+    return json({ items });
   }),
 
   'POST /api/attendance/check-in': protectedRoute(['staff'], async ({ body }, user) => {
@@ -881,15 +895,15 @@ export const handler = router({
     const indiaMinutes = Number(indiaClock.find(part => part.type === 'hour')?.value || 0) * 60 + Number(indiaClock.find(part => part.type === 'minute')?.value || 0);
     if (indiaMinutes < 8 * 60 || indiaMinutes >= 19 * 60) return error('Staff shift start is available only from 8:00 AM to 7:00 PM India time.', 403);
     const workDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
-    const result = await db.list<Record<string, unknown>>('attendance', { limit: 1000 });
-    const previousOpenShift = findOpenShift(result.items, user.id);
+    const result = await listAttendanceForUser(user.id);
+    const previousOpenShift = findOpenShift(result, user.id);
     if (previousOpenShift) {
       const dueAt = shiftDueAt(previousOpenShift);
       return error(dueAt > Date.now()
         ? 'You already have an active shift. End it before starting another shift.'
         : 'Your previous shift is waiting for automatic checkout. Please try again shortly.', 409);
     }
-    if (result.items.some(item => item.userId === user.id && item.workDate === workDate)) return error('Attendance has already been recorded for today.', 409);
+    if (result.some(item => item.workDate === workDate)) return error('Attendance has already been recorded for today.', 409);
     const startedAt = new Date().toISOString();
     const record: Record<string, unknown> = { userId: user.id, displayName: user.displayName, workDate, checkInAt: startedAt, createdAt: startedAt, status: 'Checked in', dayType: body?.dayType === 'Half day' ? 'Half day' : 'Full day', attendanceSource: 'Staff' };
     const [id] = await db.add('attendance', [record]);
@@ -922,8 +936,8 @@ export const handler = router({
   }),
 
   'POST /api/attendance/gps-lost': protectedRoute(['staff'], async ({ body }, user) => {
-    const attendance = await db.list<Record<string, unknown>>('attendance', { limit: 1000 });
-    const active = findActiveShift(attendance.items, user.id);
+    const attendance = await listAttendanceForUser(user.id);
+    const active = findActiveShift(attendance, user.id);
     if (!active) return json({ monitoring: false, reason: 'no-active-shift' });
     const workDate = String(active.workDate || indiaDateKey());
 
@@ -975,8 +989,8 @@ export const handler = router({
     const indiaClock = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date());
     const indiaMinutes = Number(indiaClock.find(part => part.type === 'hour')?.value || 0) * 60 + Number(indiaClock.find(part => part.type === 'minute')?.value || 0);
     if (indiaMinutes < 8 * 60 || indiaMinutes >= 19 * 60) return error('Staff shift end is available only from 8:00 AM to 7:00 PM India time. After 7:00 PM, shifts are ended automatically.', 403);
-    const result = await db.list<Record<string, unknown>>('attendance', { limit: 1000 });
-    const existing = findActiveShift(result.items, user.id);
+    const result = await listAttendanceForUser(user.id);
+    const existing = findActiveShift(result, user.id);
     if (!existing) return error('There is no active shift to check out.', 400);
     const [updated] = await db.tx.update('attendance', [{
       id: String(existing.id),
@@ -1003,8 +1017,8 @@ export const handler = router({
     const [member] = await db.get<UserRecord>('users', [staffId], { consistent: true });
     if (!member || member.role !== 'staff' || !member.active) return error('Choose an active staff member.', 400);
     const workDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
-    const result = await db.list<Record<string, unknown>>('attendance', { limit: 1000 });
-    const todays = result.items.filter(item => item.userId === member.id && item.workDate === workDate)
+    const result = await listAttendanceForUser(member.id);
+    const todays = result.filter(item => item.workDate === workDate)
       .sort((a, b) => String(b.checkInAt || '').localeCompare(String(a.checkInAt || '')));
     const latest = todays[0];
     if (latest && !latest.checkOutAt && latest.dayType !== 'Absent') return error('End this staff member’s active shift before marking absent.', 409);
@@ -1031,15 +1045,15 @@ export const handler = router({
     const [member] = await db.get<UserRecord>('users', [staffId], { consistent: true });
     if (!member || member.role !== 'staff' || !member.active) return error('Choose an active staff member.', 400);
     const workDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
-    const result = await db.list<Record<string, unknown>>('attendance', { limit: 1000 });
-    const openShift = findOpenShift(result.items, member.id);
+    const result = await listAttendanceForUser(member.id);
+    const openShift = findOpenShift(result, member.id);
     if (openShift) {
       return error(shiftDueAt(openShift) > Date.now()
         ? 'This staff member already has an active shift.'
         : 'The previous shift is waiting for automatic checkout. Please retry shortly.', 409);
     }
-    const todays = result.items
-      .filter(item => item.userId === member.id && item.workDate === workDate)
+    const todays = result
+      .filter(item => item.workDate === workDate)
       .sort((a, b) => String(b.checkInAt || '').localeCompare(String(a.checkInAt || '')));
     const latest = todays[0];
     const gpsRestartAllowed = Boolean(latest && (
@@ -1082,8 +1096,8 @@ export const handler = router({
   'POST /api/attendance/admin-end': protectedRoute(['admin'], async ({ body }, admin) => {
     const input = (body || {}) as Record<string, unknown>;
     const staffId = cleanText(input.userId, 128);
-    const result = await db.list<Record<string, unknown>>('attendance', { limit: 1000 });
-    const existing = findOpenShift(result.items, staffId);
+    const result = await listAttendanceForUser(staffId);
+    const existing = findOpenShift(result, staffId);
     if (!existing) return error('There is no active shift for this staff member.', 400);
     const [updated] = await db.tx.update('attendance', [{
       id: String(existing.id),
@@ -1206,8 +1220,8 @@ export const handler = router({
       return error('A valid GPS reading is required.', 400);
     }
 
-    const attendance = await db.list<Record<string, unknown>>('attendance', { limit: 1000 });
-    const active = findActiveShift(attendance.items, user.id);
+    const attendance = await listAttendanceForUser(user.id);
+    const active = findActiveShift(attendance, user.id);
     if (!active || active.gpsRestartRequired) return error('Location can be shared only during an active, authorised shift.', 403);
 
     if (active.gpsIssueStartedAt && Date.now() - Date.parse(String(active.gpsIssueStartedAt)) >= 15 * 60 * 1000) {
@@ -1257,11 +1271,8 @@ export const handler = router({
     const [member] = await db.get<UserRecord>('users', [params.id], { consistent: true });
     if (!member || member.role !== 'staff' || !member.active) return error('Active staff member not found.', 404);
 
-    const workDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
-    const attendance = await db.list<Record<string, unknown>>('attendance', { limit: 1000 });
-    const active = attendance.items
-      .filter(item => item.userId === params.id && item.workDate === workDate)
-      .sort((a, b) => String(b.checkInAt || '').localeCompare(String(a.checkInAt || '')))[0];
+    const attendance = await listAttendanceForUser(params.id);
+    const active = findActiveShift(attendance, params.id);
     if (!active || (active.checkOutAt && !active.gpsRestartRequired && !active.gpsCancelled)) return json({ status: 'shift-not-active', item: null, isFresh: false, ageSeconds: null });
     
     const [location] = await db.get<Record<string, unknown>>('staff_live_locations', [params.id], { consistent: true });
@@ -1386,10 +1397,10 @@ export const handler = router({
     }).format(new Date());
     const [locationResult, attendanceResult] = await Promise.all([
       db.list<Record<string, unknown>>('locations', { limit: 1000 }),
-      db.list<Record<string, unknown>>('attendance', { limit: 1000 }),
+      listRecentAttendance(1000),
     ]);
     const latestShiftByStaff = new Map<string, Record<string, unknown>>();
-    const todays = attendanceResult.items
+    const todays = attendanceResult
       .filter(item => item.workDate === today)
       .sort((a, b) => String(a.checkInAt || '').localeCompare(String(b.checkInAt || '')));
     for (const shift of todays) {
