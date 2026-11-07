@@ -17,6 +17,10 @@ The active frontend API URL defaults to `https://kandb-management-nexus-api-zv7f
 
 Overview and analytics; customers and plans; payments and complaints; tasks; staff accounts and registration approvals; attendance, corrections and shift scheduling; consent-based shift-scoped GPS; team messages, groups and announcements; visits; calendar and festival themes; subscriptions; installations; inventory; GST invoice PDF maker; finance, customer ledgers, expenses and payroll; notifications; audit and retention review.
 
+## Android live updates
+
+The native app uses a self-hosted Capacitor OTA updater. Web-only changes are built into a small Capgo-compatible bundle, published as an immutable GitHub release, and discovered by the Render API. The Android app checks on launch, applies compatible updates behind the splash screen, verifies the bundle checksum and rolls back if the updated web app does not report ready. Native Android code, plugin, manifest and permission changes still require an Android package update. See `docs/OTA_UPDATES.md`.
+
 ## Photo/video storage
 
 Task-completion evidence and complaint attachments are currently stored as chunked documents in Firestore collections `task_media` and `complaint_media`. The app does **not** currently upload these files to Firebase Cloud Storage. This keeps the existing storage design unchanged, but large video files create Firestore document reads/writes and storage usage. A move to Cloud Storage should be planned separately with the account owner after checking billing/plan requirements and backup/migration needs.
