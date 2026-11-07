@@ -1,6 +1,7 @@
 import { Component, lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import type { ErrorInfo, FormEvent, ReactNode } from 'react';
 import { Capacitor, registerPlugin } from '@capacitor/core';
+import { CapacitorUpdater } from '@capgo/capacitor-updater';
 
 import { Filesystem } from '@capacitor/filesystem';
 import { Camera } from '@capacitor/camera';
@@ -2563,6 +2564,10 @@ class WorkspaceErrorBoundary extends Component<WorkspaceErrorBoundaryProps,Works
  }
 }
 function App(){
+ useEffect(()=>{
+  if(!Capacitor.isNativePlatform())return;
+  void CapacitorUpdater.notifyAppReady().catch(()=>undefined);
+ },[]);
  const [session,setSession]=useState<Session|null>(null);const [checking,setChecking]=useState(true);const [showWelcome,setShowWelcome]=useState(true);
  useEffect(()=>{const timer=window.setTimeout(()=>setShowWelcome(false),1500);return()=>window.clearTimeout(timer);},[]);
  useEffect(()=>{void client.get('/api/_healthcheck').catch(()=>undefined);},[]);
