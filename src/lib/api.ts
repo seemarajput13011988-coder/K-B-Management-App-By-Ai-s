@@ -28,7 +28,8 @@ async function request<T = any>(path: string, method: string, payload?: Record<s
     if (typeof data.error === 'string' && data.error.trim()) throw new Error(data.error);
     throw new Error(`K&B server returned HTTP ${response.status}. Check that the K&B API service is available.`);
   }
-  if (method !== 'GET' && typeof window !== 'undefined') {
+  const isLocationTelemetry = path.startsWith('/api/staff/live-location') || path.startsWith('/api/attendance/gps-lost');
+  if (method !== 'GET' && !isLocationTelemetry && typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('kb:data-changed', { detail: { method, path } }));
   }
   return { data };
