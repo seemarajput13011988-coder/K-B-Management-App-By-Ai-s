@@ -28,6 +28,22 @@ on:
       - "functions/**"
       - "docs/ANDROID_TRACKING_AND_RELEASE.md"
       - ".github/workflows/android-apk.yml"
+  pull_request:
+    branches:
+      - whole-app-gps-ui-sync-audit-2026-11-07
+    paths:
+      - "src/**"
+      - "render-backend/**"
+      - "public/**"
+      - "index.html"
+      - "package.json"
+      - "capacitor.config.ts"
+      - "vite.config.ts"
+      - "firebase.json"
+      - ".firebaserc"
+      - "functions/**"
+      - "docs/ANDROID_TRACKING_AND_RELEASE.md"
+      - ".github/workflows/android-apk.yml"
   workflow_dispatch:
 jobs:
   build-apk:
