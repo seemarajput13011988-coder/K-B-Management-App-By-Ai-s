@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { isValidDateKey, isValidPayrollInput } from '../render-backend/route-path.js';
+import { attendanceDocumentId, isValidDateKey, isValidPayrollInput } from '../render-backend/route-path.js';
 
 const valid = {
   staffUserId: 'staff-record-123',
@@ -58,4 +58,16 @@ test('rejects malformed and impossible attendance work-date keys', () => {
   for (const date of ['\\\\2026-11-07', '2026-2-07', '2026-02-29', '2026-13-01', '', null, 20261107]) {
     assert.equal(isValidDateKey(date), false);
   }
+});
+
+test('attendance check-in IDs are stable per staff member and India work date', () => {
+  const first = attendanceDocumentId('staff-123', '2026-11-07');
+  assert.equal(first, attendanceDocumentId('staff-123', '2026-11-07'));
+  assert.notEqual(first, attendanceDocumentId('staff-456', '2026-11-07'));
+  assert.notEqual(first, attendanceDocumentId('staff-123', '2026-11-08'));
+});
+
+test('attendance check-in IDs reject missing staff IDs and invalid work dates', () => {
+  assert.throws(() => attendanceDocumentId('', '2026-11-07'));
+  assert.throws(() => attendanceDocumentId('staff-123', '2026-02-29'));
 });
