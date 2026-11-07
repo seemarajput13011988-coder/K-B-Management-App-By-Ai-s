@@ -44,3 +44,18 @@ jobs:
         run: |
           npx tsc --noEmit
           npm run build
+      - name: Validate Capacitor OTA archive packaging
+        run: |
+          npx --yes @capgo/cli@latest bundle zip kandbnet.service2010 --path dist --json > /tmp/kb-ota-bundle-info.json
+          ZIP_FILE="$(find . -type f -name '*.zip' -not -path './node_modules/*' -not -path './.git/*' -print -quit)"
+          if [ -z "$ZIP_FILE" ]; then
+            echo "::error::Capacitor Updater CLI did not create a bundle archive."
+            cat /tmp/kb-ota-bundle-info.json
+            exit 1
+          fi
+          unzip -Z1 "$ZIP_FILE" | grep -Eq '(^|/)index.html
+ || {
+            echo "::error::The OTA archive is missing index.html."
+            exit 1
+          }
+          echo "Capacitor OTA bundle packaging passed."
