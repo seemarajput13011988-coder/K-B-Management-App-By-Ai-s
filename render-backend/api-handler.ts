@@ -44,11 +44,15 @@ async function createSession(user: Data) {
   return { token, expiresAt };
 }
 async function revokeUserSessions(userId: string) {
-  const sessions = await db.collection('sessions').where('userId', '==', userId).limit(500).get();
-  if (sessions.empty) return;
-  const batch = db.batch();
-  sessions.docs.forEach(doc => batch.delete(doc.ref));
-  await batch.commit();
+  const baseQuery = db.collection('sessions').where('userId', '==', userId);
+  let page = await baseQuery.limit(450).get();
+  while (!page.empty) {
+    const batch = db.batch();
+    page.docs.forEach(doc => batch.delete(doc.ref));
+    await batch.commit();
+    if (page.size < 450) break;
+    page = await baseQuery.startAfter(page.docs[page.docs.length - 1]).limit(450).get();
+  }
 }
 async function requireUser(req: any): Promise<AppUser | null> {
   const header = clean(req.headers.authorization, 4096);
@@ -105,8 +109,11 @@ async function staffHasActiveShift(userId: string): Promise<boolean> {
     if (!Number.isFinite(checkIn) || !datePattern.test(workDate)) return true;
     const parts = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date(checkIn));
     const minutes = Number(parts.find(part => part.type === 'hour')?.value || 0) * 60 + Number(parts.find(part => part.type === 'minute')?.value || 0);
-    const dueDate = minutes >= 19 * 60 ? new Date(Date.parse(workDate + 'T00:00:00Z') + 86400000).toISOString().slice(0, 10) : workDate;
-    return Date.now() < Date.parse(dueDate + 'T19:00:00+05:30');
+    const endTime = typeof item.shiftEndTime === 'string' && /^([01]\\d|2[0-3]):[0-5]\\d$/.test(item.shiftEndTime) ? item.shiftEndTime : '19:00';
+    const [endHour, endMinute] = endTime.split(':').map(Number);
+    const endMinutes = endHour * 60 + endMinute;
+    const dueDate = minutes >= endMinutes ? new Date(Date.parse(workDate + 'T00:00:00Z') + 86400000).toISOString().slice(0, 10) : workDate;
+    return Date.now() < Date.parse(dueDate + 'T' + endTime + ':00+05:30');
   });
 }
 async function audit(user: AppUser, action: string, entityType: string, entityId: string, description: string) {
@@ -836,12 +843,21 @@ export async function apiHandler(req: any, res: any) {
         }
         const staff = await getDoc('users',staffUserId);
         if (!staff || staff.role !== 'staff' || staff.active !== true) { send(res,404,{error:'Active staff account not found.'}); return; }
-        const existingPayroll = await db.collection('payroll').where('staffUserId','==',staffUserId).limit(500).get();
-        if (existingPayroll.docs.some(doc => String(doc.data().period || '') === period)) {
-          send(res,409,{error:'Salary has already been recorded for this staff member and month.'}); return;
-        }
         const record = {staffUserId,staffName:clean(staff.displayName,80),period,amount,paidAt,method:payMethod,notes:clean(req.body?.notes,500),recordedBy:user.uid,recordedByName:user.displayName,createdAt:now()};
-        const ref = await db.collection('payroll').add(record);
+        // A deterministic document ID plus a transaction prevents two admins from
+        // recording the same staff member's salary for the same month concurrently.
+        const payrollId = 'pay-' + createHash('sha256').update(staffUserId + '|' + period).digest('hex').slice(0, 48);
+        const ref = db.collection('payroll').doc(payrollId);
+        const created = await db.runTransaction(async transaction => {
+          const [byId, byStaff] = await Promise.all([
+            transaction.get(ref),
+            transaction.get(db.collection('payroll').where('staffUserId', '==', staffUserId).limit(500)),
+          ]);
+          if (byId.exists || byStaff.docs.some(doc => String(doc.data().period || '') === period)) return false;
+          transaction.create(ref, record);
+          return true;
+        });
+        if (!created) { send(res,409,{error:'Salary has already been recorded for this staff member and month.'}); return; }
         await audit(user,'CREATE','payroll',ref.id,'Recorded salary payment for '+record.staffName);
         send(res,201,{id:ref.id,...record}); return;
       }
