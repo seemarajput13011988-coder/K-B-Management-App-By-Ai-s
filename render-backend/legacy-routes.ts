@@ -183,8 +183,8 @@ const DEFAULT_ATTENDANCE_SETTINGS = { startTime: '08:00', endTime: '19:00' };
 async function getAttendanceSettings(): Promise<{ startTime: string; endTime: string }> {
   const snapshot = await firestore.collection('app_settings').doc('attendance').get();
   const data = snapshot.exists ? snapshot.data() || {} : {};
-  const startTime = typeof data.startTime === 'string' && /^([01]\\d|2[0-3]):[0-5]\\d$/.test(data.startTime) ? data.startTime : DEFAULT_ATTENDANCE_SETTINGS.startTime;
-  const endTime = typeof data.endTime === 'string' && /^([01]\\d|2[0-3]):[0-5]\\d$/.test(data.endTime) ? data.endTime : DEFAULT_ATTENDANCE_SETTINGS.endTime;
+  const startTime = typeof data.startTime === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(data.startTime) ? data.startTime : DEFAULT_ATTENDANCE_SETTINGS.startTime;
+  const endTime = typeof data.endTime === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(data.endTime) ? data.endTime : DEFAULT_ATTENDANCE_SETTINGS.endTime;
   return startTime < endTime ? { startTime, endTime } : DEFAULT_ATTENDANCE_SETTINGS;
 }
 function attendanceDueAt(workDate: string, endTime: string, startedAt = new Date()): string {
@@ -932,8 +932,8 @@ export const handler = router({
   'PUT /api/attendance/settings': protectedRoute(['admin'], async ({ body }, admin) => {
     const startTime = cleanText(body?.startTime, 5);
     const endTime = cleanText(body?.endTime, 5);
-    if (!/^([01]\\d|2[0-3]):[0-5]\\d$/.test(startTime) ||
-        !/^([01]\\d|2[0-3]):[0-5]\\d$/.test(endTime) ||
+    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(startTime) ||
+        !/^([01]\d|2[0-3]):[0-5]\d$/.test(endTime) ||
         timeToMinutes(startTime) >= timeToMinutes(endTime)) {
       return error('Choose valid shift times, with the end time later than the start time.', 400);
     }
@@ -941,9 +941,35 @@ export const handler = router({
     await firestore.collection('app_settings').doc('attendance').set({
       startTime, endTime, updatedAt, updatedBy: admin.id, updatedByName: admin.displayName,
     }, { merge: true });
+
+    // A timing change applies to every shift that is still open, not only shifts
+    // started after the setting was saved. Persist the new deadline so the API,
+    // automatic checkout job and Android location service all use one timestamp.
+    const openShifts = (await listRecentAttendance(1000)).filter(item =>
+      !item.checkOutAt && item.dayType !== 'Absent' &&
+      !item.gpsRestartRequired && !item.gpsCancelled &&
+      !String(item.status || '').toLowerCase().includes('cancelled') &&
+      /^\d{4}-\d{2}-\d{2}$/.test(String(item.workDate || '')) &&
+      Number.isFinite(Date.parse(String(item.checkInAt || '')))
+    );
+    let rescheduledShifts = 0;
+    for (let offset = 0; offset < openShifts.length; offset += 400) {
+      const batch = firestore.batch();
+      const group = openShifts.slice(offset, offset + 400);
+      for (const shift of group) {
+        const scheduledEndAt = attendanceDueAt(
+          String(shift.workDate), endTime, new Date(String(shift.checkInAt)),
+        );
+        batch.update(firestore.collection('attendance').doc(String(shift.id)), {
+          scheduledEndAt, scheduleUpdatedAt: updatedAt,
+        });
+        rescheduledShifts += 1;
+      }
+      await batch.commit();
+    }
     await writeAudit(admin, 'UPDATE_ATTENDANCE_SETTINGS', 'app_settings', 'attendance',
-      'Changed staff shift window to ' + startTime + '–' + endTime + ' India time.');
-    return json({ startTime, endTime, updatedAt });
+      'Changed staff shift window to ' + startTime + '–' + endTime + ' India time; rescheduled ' + rescheduledShifts + ' open shift(s).');
+    return json({ startTime, endTime, updatedAt, rescheduledShifts });
   }),
 
   'POST /api/attendance/check-in': protectedRoute(['staff'], async ({ body }, user) => {
