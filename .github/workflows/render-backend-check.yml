@@ -1,7 +1,5 @@
 name: K&B Render backend checks
 on:
-  schedule:
-    - cron: '*/5 * * * *'
   workflow_dispatch:
   push:
     branches: [render-backend-migration, quality-audit-2026-11-06, whole-app-stability-audit-2026-11-06, on-demand-gps-proof-permissions, ui-rebuild-gps-holidays-api-fixes, fixes-session-gps-ui-2026-11-06, whole-app-gps-ui-sync-audit-2026-11-07, nexus-workforce-payroll-media-ui-2026-11-07]
@@ -49,12 +47,6 @@ jobs:
           node-version: 22
       - name: Install and build frontend
         env:
-          VITE_FIREBASE_API_KEY: 'AIzaSyAuJuFA1I06aSJ1AyHhVA86ws8c_cX1ZC8'
-          VITE_FIREBASE_AUTH_DOMAIN: kandb-net-sevice.firebaseapp.com
-          VITE_FIREBASE_PROJECT_ID: kandb-net-sevice
-          VITE_FIREBASE_STORAGE_BUCKET: kandb-net-sevice.firebasestorage.app
-          VITE_FIREBASE_MESSAGING_SENDER_ID: '847932976304'
-          VITE_FIREBASE_APP_ID: '1:847932976304:web:87148565df2a329a5f9f75'
           VITE_API_BASE_URL: https://kandb-management-nexus-api-zv7f.onrender.com
         run: |
           npm install
@@ -163,17 +155,3 @@ jobs:
             exit 1
           fi
           echo "API health check, Firestore-backed login lookup, GPS/attendance guards, and staff registration request/status routes passed their live HTTP checks."
-
-  keepalive:
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Wake API and request background check
-        env:
-          K_B_JOB_SECRET: ${{ secrets.K_B_JOB_SECRET }}
-        run: |
-          if [ -z "$K_B_JOB_SECRET" ]; then
-            echo "::warning::Set K_B_JOB_SECRET to enable the five-minute wake-up check."
-            exit 0
-          fi
-          curl --fail --silent --show-error --max-time 55 -X POST "https://kandb-management-nexus-api-zv7f.onrender.com/internal/jobs/tick" -H "x-kb-job-secret: $K_B_JOB_SECRET"
