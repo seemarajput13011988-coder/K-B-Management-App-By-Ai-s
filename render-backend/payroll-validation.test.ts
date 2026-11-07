@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { isValidPayrollInput } from '../render-backend/route-path.js';
+import { isValidDateKey, isValidPayrollInput } from '../render-backend/route-path.js';
 
 const valid = {
   staffUserId: 'staff-record-123',
@@ -46,4 +46,16 @@ test('rejects non-finite, negative and over-limit amounts', () => {
 
 test('rejects a missing or excessively long payment method', () => {
   assert.equal(isValidPayrollInput({ ...valid, method: 'x'.repeat(51) }), false);
+});
+
+test('accepts valid attendance work-date keys', () => {
+  for (const date of ['2026-11-07', '2024-02-29', '2000-01-01']) {
+    assert.equal(isValidDateKey(date), true);
+  }
+});
+
+test('rejects malformed and impossible attendance work-date keys', () => {
+  for (const date of ['\\\\2026-11-07', '2026-2-07', '2026-02-29', '2026-13-01', '', null, 20261107]) {
+    assert.equal(isValidDateKey(date), false);
+  }
 });
