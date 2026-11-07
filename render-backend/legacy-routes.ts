@@ -1270,7 +1270,8 @@ export const handler = router({
     const liveLocationRef = firestore.collection('staff_live_locations').doc(user.id);
     const historyRef = firestore.collection('locations').doc();
     const batch = firestore.batch();
-    const { id: _recordId, ...historyRecord } = record;
+    const historyRecord: Record<string, unknown> = { ...record };
+    delete historyRecord.id;
     batch.set(liveLocationRef, record, { merge: true });
     batch.set(historyRef, historyRecord);
     if (gpsRestored) {
