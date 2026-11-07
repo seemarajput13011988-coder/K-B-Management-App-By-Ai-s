@@ -11,6 +11,7 @@ on:
       - ui-rebuild-gps-holidays-api-fixes
       - whole-app-gps-ui-sync-audit-2026-11-07
       - nexus-workforce-payroll-media-ui-2026-11-07
+      - nexus-release-audit-2026-11-07
     paths:
       - "src/**"
       - "package.json"
@@ -36,7 +37,7 @@ jobs:
         with:
           node-version: 22
       - run: npm install
-      - name: Type-check and build with the confirmed Firebase Web App configuration
+      - name: Type-check and build against the active Render API
         env:
           VITE_API_BASE_URL: https://kandb-management-nexus-api-zv7f.onrender.com
         run: |
