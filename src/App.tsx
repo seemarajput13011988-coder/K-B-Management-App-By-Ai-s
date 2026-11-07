@@ -1954,6 +1954,7 @@ function StaffLocationResponder({ activeShift, userId }: { activeShift: boolean;
   const [shiftActive, setShiftActive] = useState(activeShift);
   const [activeShiftId, setActiveShiftId] = useState('');
   const [scheduledEndAt, setScheduledEndAt] = useState('');
+  const [scheduleReady, setScheduleReady] = useState(false);
   useEffect(() => {
     let stopped = false;
     const checkShift = async () => {
@@ -1966,6 +1967,7 @@ function StaffLocationResponder({ activeShift, userId }: { activeShift: boolean;
           setShiftActive(Boolean(activeRecord));
           setActiveShiftId(activeRecord?.id || '');
           setScheduledEndAt(activeRecord?.autoCheckoutAt || '');
+          setScheduleReady(true);
         }
       } catch { /* Keep the last confirmed shift state if the API is temporarily unavailable. */ }
     };
@@ -1982,10 +1984,14 @@ function StaffLocationResponder({ activeShift, userId }: { activeShift: boolean;
       if (Capacitor.isNativePlatform()) void WorkLocationTracking.stopTracking().catch(() => undefined);
     };
 
+    if (!scheduleReady) return;
     if (!shiftActive) {
       stopNativeTracking();
       return;
     }
+    // Do not start the native service with an empty/old deadline. Wait for
+    // the server-confirmed attendance ID and its scheduled checkout time.
+    if (!activeShiftId || !scheduledEndAt) return;
 
     const reportGpsUnavailable = (reason: string) => {
       if (stopped) return;
@@ -2053,7 +2059,7 @@ function StaffLocationResponder({ activeShift, userId }: { activeShift: boolean;
     // unmount/Activity destroy: Android may destroy the WebView when the user
     // swipes the app away. The service stops on checkout or server rejection.
     return () => { stopped = true; };
-  }, [shiftActive, activeShiftId, scheduledEndAt]);
+  }, [shiftActive, activeShiftId, scheduledEndAt, scheduleReady]);
   return null;
 }
 function StaffPermissionSetup({ onComplete }: { onComplete:(locationGranted?:boolean)=>void }) {
