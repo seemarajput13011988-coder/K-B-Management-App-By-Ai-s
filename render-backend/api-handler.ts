@@ -623,7 +623,7 @@ export async function apiHandler(req: any, res: any) {
             await batch.commit();
           }
         }
-        const groupSnapshot = await db.collection('groups').where('memberIds', 'array-contains', staffId).get();
+        const groupSnapshot = await db.collection('chat_groups').where('memberIds', 'array-contains', staffId).get();
         for (let offset = 0; offset < groupSnapshot.docs.length; offset += 400) {
           const batch = db.batch();
           for (const document of groupSnapshot.docs.slice(offset, offset + 400)) {
