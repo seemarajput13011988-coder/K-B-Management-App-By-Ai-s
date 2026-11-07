@@ -1,7 +1,7 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { getMessaging } from 'firebase-admin/messaging';
 import { FieldValue, firestore } from './firestore-adapter.js';
-import { subscriptionExpiryKind, taskReminderKind } from './route-path.js';
+import { isValidDateKey, subscriptionExpiryKind, taskReminderKind } from './route-path.js';
 
 type Item = Record<string, any>;
 const now = () => new Date().toISOString();
@@ -213,7 +213,7 @@ export async function autoCheckoutAtSevenPm() {
   const records = await readCollection('attendance', 1000);
   let checkedOut = 0;
   for (const item of records) {
-    if (!item.id || !/^\\d{4}-\\d{2}-\\d{2}$/.test(String(item.workDate || '')) ||
+    if (!item.id || !isValidDateKey(item.workDate) ||
         item.checkOutAt || item.dayType === 'Absent') continue;
     const checkInTime = Date.parse(String(item.checkInAt || ''));
     if (!Number.isFinite(checkInTime)) continue;
