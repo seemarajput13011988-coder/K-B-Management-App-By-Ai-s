@@ -44,8 +44,8 @@ function showUpdateRequired(message: string, retry: () => void) {
   appRoot.append(screen);
 }
 
-async function runRequiredUpdate(): Promise<void> {
-  let updateWasAdvertised = false;
+async function runRequiredUpdate(updateWasPreviouslyRequired = false): Promise<void> {
+  let updateWasAdvertised = updateWasPreviouslyRequired;
   try {
     const latest = await CapacitorUpdater.getLatest();
     if (!latest?.url || !latest.version) {
@@ -54,7 +54,7 @@ async function runRequiredUpdate(): Promise<void> {
     }
     updateWasAdvertised = true;
     showUpdateRequired('A required update is available. Please keep the app open while it downloads and installs.', () => {
-      void runRequiredUpdate();
+      void runRequiredUpdate(true);
     });
     const bundle = await CapacitorUpdater.download({
       url: latest.url,
@@ -67,7 +67,7 @@ async function runRequiredUpdate(): Promise<void> {
     console.error('Nexus OTA update check/install failed:', error);
     if (updateWasAdvertised) {
       showUpdateRequired('The update could not be installed. Check your internet connection and retry. The previous app version is kept safely.', () => {
-        void runRequiredUpdate();
+        void runRequiredUpdate(true);
       });
       return;
     }
