@@ -945,19 +945,30 @@ export const handler = router({
     const indiaMinutes = Number(indiaClock.find(part => part.type === 'hour')?.value || 0) * 60 + Number(indiaClock.find(part => part.type === 'minute')?.value || 0);
     if (indiaMinutes < timeToMinutes(settings.shiftStartTime) || indiaMinutes >= timeToMinutes(settings.shiftEndTime)) return error('Staff shift start is available only from ' + settings.shiftStartTime + ' to ' + settings.shiftEndTime + ' India time.', 403);
     const workDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
-    const result = await listAttendanceForUser(user.id);
-    const previousOpenShift = findOpenShift(result, user.id);
-    if (previousOpenShift) {
-      const dueAt = shiftDueAt(previousOpenShift, settings.shiftEndTime);
-      return error(dueAt > Date.now()
-        ? 'You already have an active shift. End it before starting another shift.'
-        : 'Your previous shift is waiting for automatic checkout. Please try again shortly.', 409);
-    }
-    if (result.some(item => item.workDate === workDate)) return error('Attendance has already been recorded for today.', 409);
     const startedAt = new Date().toISOString();
     const record: Record<string, unknown> = { userId: user.id, displayName: user.displayName, workDate, checkInAt: startedAt, createdAt: startedAt, status: 'Checked in', dayType: body?.dayType === 'Half day' ? 'Half day' : 'Full day', attendanceSource: 'Staff', shiftStartTime: settings.shiftStartTime, shiftEndTime: settings.shiftEndTime, autoCheckoutAt: computeAutoCheckoutAt(workDate, startedAt, settings.shiftEndTime) };
-    const [id] = await db.add('attendance', [record]);
-    if (!id) return error('Could not save your check-in.', 500);
+    // Deterministic daily ID and a transaction prevent double taps or two devices
+    // from creating duplicate attendance rows for the same staff member and day.
+    const attendanceId = 'staff-' + createHash('sha256').update(user.id + '|' + workDate).digest('hex').slice(0, 40);
+    const attendanceRef = firestore.collection('attendance').doc(attendanceId);
+    const outcome = await firestore.runTransaction(async transaction => {
+      const snapshot = await transaction.get(firestore.collection('attendance').where('userId', '==', user.id));
+      const existing = snapshot.docs.map(document => ({ ...document.data(), id: document.id }));
+      const previousOpenShift = findOpenShift(existing, user.id);
+      if (previousOpenShift) {
+        return { kind: 'open-shift', active: shiftDueAt(previousOpenShift, settings.shiftEndTime) > Date.now() };
+      }
+      if (existing.some(item => item.workDate === workDate)) return { kind: 'day-recorded' };
+      const existingDailyId = await transaction.get(attendanceRef);
+      if (existingDailyId.exists) return { kind: 'day-recorded' };
+      transaction.create(attendanceRef, record);
+      return { kind: 'created' };
+    });
+    if (outcome.kind === 'open-shift') return error(outcome.active
+      ? 'You already have an active shift. End it before starting another shift.'
+      : 'Your previous shift is waiting for automatic checkout. Please try again shortly.', 409);
+    if (outcome.kind === 'day-recorded') return error('Attendance has already been recorded for today.', 409);
+    const id = attendanceId;
     // Attendance check-in no longer collects or stores GPS coordinates.
     return json({ id, ...record }, 201);
   }),
