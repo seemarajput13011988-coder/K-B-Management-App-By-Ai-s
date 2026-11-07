@@ -73,5 +73,7 @@ test('GPS timestamp validation rejects stale, invalid and future readings', () =
   assert.equal(isFreshLocationTimestamp('2026-11-07T11:59:00.000Z', now), true);
   assert.equal(isFreshLocationTimestamp('2026-11-07T11:50:00.000Z', now), false);
   assert.equal(isFreshLocationTimestamp('2026-11-07T12:05:00.000Z', now), false);
+  assert.equal(isFreshLocationTimestamp('2026-11-07T12:00:30.000Z', now), true);
+  assert.equal(isFreshLocationTimestamp('2026-11-07T12:02:00.000Z', now), false);
   assert.equal(isFreshLocationTimestamp('invalid', now), false);
 });
