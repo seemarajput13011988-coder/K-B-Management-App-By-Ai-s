@@ -569,6 +569,7 @@ jobs:
                     android.content.SharedPreferences.Editor cache = getSharedPreferences(PREFS, MODE_PRIVATE).edit();
                     String activeId = activeItem.optString("id", "");
                     String deadline = activeItem.optString("autoCheckoutAt", "");
+                    if (deadline.isEmpty()) deadline = activeItem.optString("scheduledEndAt", "");
                     if (!activeId.isEmpty()) cache.putString(KEY_ATTENDANCE_ID, activeId);
                     if (!deadline.isEmpty()) cache.putString(KEY_SCHEDULED_END_AT, deadline);
                     cache.apply();
