@@ -1,6 +1,6 @@
 import { router, json, error, db, secrets, firestore, FieldValue } from './firestore-adapter.js';
 import type { RouterMiddleware } from './firestore-adapter.js';
-import { isConfirmedGpsLossReason, isValidDateRange } from './route-path.js';
+import { computeShiftDeadline, isConfirmedGpsLossReason, isFreshLocationTimestamp, isValidDateRange } from './route-path.js';
 import { createHash, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 const notifySubscribers = async (..._args: unknown[]) => undefined; // Live updates are refreshed through the authenticated API.
 
@@ -179,28 +179,21 @@ function indiaDateKey(date = new Date()) {
   }).format(date);
 }
 
-function shiftDueAt(item: Record<string, unknown>): number {
+function shiftDueAt(item: Record<string, unknown>, fallbackEndTime = '19:00'): number {
   const savedDeadline = Date.parse(String(item.autoCheckoutAt || ''));
   if (Number.isFinite(savedDeadline)) return savedDeadline;
-  const workDate = String(item.workDate || '');
-  const checkInTime = Date.parse(String(item.checkInAt || ''));
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(workDate) || !Number.isFinite(checkInTime)) return Number.NaN;
-  const parts = new Intl.DateTimeFormat('en-GB', {
-    timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
-  }).formatToParts(new Date(checkInTime));
-  const minutes = Number(parts.find(part => part.type === 'hour')?.value || 0) * 60 +
-    Number(parts.find(part => part.type === 'minute')?.value || 0);
-  const dueDate = minutes >= 19 * 60
-    ? new Date(Date.parse(workDate + 'T00:00:00Z') + 86400000).toISOString().slice(0, 10)
-    : workDate;
-  return Date.parse(dueDate + 'T19:00:00+05:30');
+  const deadline = computeShiftDeadline(
+    String(item.workDate || ''),
+    String(item.checkInAt || ''),
+    typeof item.shiftEndTime === 'string' ? item.shiftEndTime : fallbackEndTime,
+  );
+  return deadline ? Date.parse(deadline) : Number.NaN;
 }
 
 function computeAutoCheckoutAt(workDate: string, startedAt: string, endTime: string): string {
-  const deadline = Date.parse(workDate + 'T' + endTime + ':00+05:30');
-  const started = Date.parse(startedAt);
-  if (!Number.isFinite(deadline) || !Number.isFinite(started)) throw new Error('Could not calculate the automatic shift end time.');
-  return new Date(deadline <= started ? deadline + 86400000 : deadline).toISOString();
+  const deadline = computeShiftDeadline(workDate, startedAt, endTime);
+  if (!deadline) throw new Error('Could not calculate the automatic shift end time.');
+  return deadline;
 }
 async function getWorkforceSettings() {
   const snapshot = await firestore.collection('app_settings').doc('workforce').get();
@@ -225,9 +218,9 @@ function findOpenShift(items: Record<string, unknown>[], userId: string) {
     .sort((a, b) => String(b.checkInAt || '').localeCompare(String(a.checkInAt || '')))[0];
 }
 
-function findActiveShift(items: Record<string, unknown>[], userId: string, now = Date.now()) {
+function findActiveShift(items: Record<string, unknown>[], userId: string, now = Date.now(), fallbackEndTime = '19:00') {
   return items
-    .filter(item => item.userId === userId && isOpenShift(item) && shiftDueAt(item) > now)
+    .filter(item => item.userId === userId && isOpenShift(item) && shiftDueAt(item, fallbackEndTime) > now)
     .sort((a, b) => String(b.checkInAt || '').localeCompare(String(a.checkInAt || '')))[0];
 }
 
@@ -389,8 +382,25 @@ export const handler = router({
     }
     const updatedAt = new Date().toISOString();
     await firestore.collection('app_settings').doc('workforce').set({ shiftStartTime: startTime, shiftEndTime: endTime, updatedAt, updatedBy: admin.id, updatedByName: admin.displayName }, { merge: true });
-    await writeAudit(admin, 'UPDATE', 'workforce_settings', 'workforce', 'Changed staff shift window to ' + startTime + '–' + endTime + ' India time.');
-    return json({ shiftStartTime: startTime, shiftEndTime: endTime, updatedAt });
+    // Apply the new end time to every currently open shift, not only shifts created later.
+    const activeShifts = await firestore.collection('attendance').where('status', '==', 'Checked in').get();
+    let rescheduledShifts = 0;
+    for (let offset = 0; offset < activeShifts.docs.length; offset += 400) {
+      const batch = firestore.batch();
+      let batchWrites = 0;
+      for (const document of activeShifts.docs.slice(offset, offset + 400)) {
+        const shift = document.data();
+        if (shift.checkOutAt || shift.dayType === 'Absent' || shift.gpsRestartRequired || shift.gpsCancelled) continue;
+        const deadline = computeShiftDeadline(String(shift.workDate || ''), String(shift.checkInAt || ''), endTime);
+        if (!deadline) continue;
+        batch.update(document.ref, { shiftStartTime: startTime, shiftEndTime: endTime, autoCheckoutAt: deadline, scheduleUpdatedAt: updatedAt });
+        batchWrites += 1;
+        rescheduledShifts += 1;
+      }
+      if (batchWrites) await batch.commit();
+    }
+    await writeAudit(admin, 'UPDATE', 'workforce_settings', 'workforce', 'Changed staff shift window to ' + startTime + '–' + endTime + ' India time and rescheduled ' + rescheduledShifts + ' active shifts.');
+    return json({ shiftStartTime: startTime, shiftEndTime: endTime, updatedAt, rescheduledShifts });
   }),
 
   'GET /api/staff': protectedRoute(['admin'], async () => {
@@ -924,8 +934,8 @@ export const handler = router({
 
   'GET /api/attendance': protectedRoute(['admin', 'staff'], async (_ctx, user) => {
     const items = user.role === 'admin'
-      ? await listRecentAttendance(500)
-      : (await listAttendanceForUser(user.id)).slice(0, 1000);
+      ? await listRecentAttendance(5000)
+      : (await listAttendanceForUser(user.id)).slice(0, 5000);
     return json({ items });
   }),
 
@@ -938,7 +948,7 @@ export const handler = router({
     const result = await listAttendanceForUser(user.id);
     const previousOpenShift = findOpenShift(result, user.id);
     if (previousOpenShift) {
-      const dueAt = shiftDueAt(previousOpenShift);
+      const dueAt = shiftDueAt(previousOpenShift, settings.shiftEndTime);
       return error(dueAt > Date.now()
         ? 'You already have an active shift. End it before starting another shift.'
         : 'Your previous shift is waiting for automatic checkout. Please try again shortly.', 409);
@@ -980,7 +990,8 @@ export const handler = router({
 
   'POST /api/attendance/gps-lost': protectedRoute(['staff'], async ({ body }, user) => {
     const attendance = await listAttendanceForUser(user.id);
-    const active = findActiveShift(attendance, user.id);
+    const settings = await getWorkforceSettings();
+    const active = findActiveShift(attendance, user.id, Date.now(), settings.shiftEndTime);
     if (!active) return json({ monitoring: false, reason: 'no-active-shift' });
     const workDate = String(active.workDate || indiaDateKey());
 
@@ -1039,11 +1050,10 @@ export const handler = router({
 
   'POST /api/attendance/check-out': protectedRoute(['staff'], async (_ctx, user) => {
     const settings = await getWorkforceSettings();
-    const indiaClock = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date());
-    const indiaMinutes = Number(indiaClock.find(part => part.type === 'hour')?.value || 0) * 60 + Number(indiaClock.find(part => part.type === 'minute')?.value || 0);
-    if (indiaMinutes < timeToMinutes(settings.shiftStartTime) || indiaMinutes >= timeToMinutes(settings.shiftEndTime)) return error('Staff shift end is available only from ' + settings.shiftStartTime + ' to ' + settings.shiftEndTime + ' India time. After ' + settings.shiftEndTime + ', shifts are ended automatically.', 403);
+    // An active shift may have been started by an administrator outside the normal window.
+    // Let the assigned staff member end that shift at any time before its saved deadline.
     const result = await listAttendanceForUser(user.id);
-    const existing = findActiveShift(result, user.id);
+    const existing = findActiveShift(result, user.id, Date.now(), settings.shiftEndTime);
     if (!existing) return error('There is no active shift to check out.', 400);
     const [updated] = await db.tx.update('attendance', [{
       id: String(existing.id),
@@ -1105,10 +1115,11 @@ export const handler = router({
     const [member] = await db.get<UserRecord>('users', [staffId], { consistent: true });
     if (!member || member.role !== 'staff' || !member.active) return error('Choose an active staff member.', 400);
     const workDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+    const settings = await getWorkforceSettings();
     const result = await listAttendanceForUser(member.id);
     const openShift = findOpenShift(result, member.id);
     if (openShift) {
-      return error(shiftDueAt(openShift) > Date.now()
+      return error(shiftDueAt(openShift, settings.shiftEndTime) > Date.now()
         ? 'This staff member already has an active shift.'
         : 'The previous shift is waiting for automatic checkout. Please retry shortly.', 409);
     }
@@ -1126,7 +1137,6 @@ export const handler = router({
         ? 'Attendance is already completed for this staff member today.'
         : 'This staff member already has an active shift.', 409);
     }
-    const settings = await getWorkforceSettings();
     const startedAt = new Date().toISOString();
     const record: Record<string, unknown> = {
       userId: member.id, displayName: member.displayName, workDate,
@@ -1291,7 +1301,8 @@ export const handler = router({
     }
 
     const attendance = await listAttendanceForUser(user.id);
-    const active = findActiveShift(attendance, user.id);
+    const settings = await getWorkforceSettings();
+    const active = findActiveShift(attendance, user.id, Date.now(), settings.shiftEndTime);
     if (!active || active.gpsRestartRequired) return error('Location can be shared only during an active, authorised shift.', 403);
 
     if (active.gpsIssueStartedAt && Date.now() - Date.parse(String(active.gpsIssueStartedAt)) >= 15 * 60 * 1000) {
@@ -1299,6 +1310,7 @@ export const handler = router({
     }
 
     const capturedAt = cleanText(body?.capturedAt, 40) || new Date().toISOString();
+    if (!isFreshLocationTimestamp(capturedAt)) return error('The GPS reading is too old or has an invalid device timestamp. Wait for a fresh location update and try again.', 400);
     const record = {
       id: user.id, staffId: user.id, staffName: user.displayName, attendanceId: String(active.id),
       latitude, longitude, accuracy, capturedAt,
@@ -1355,8 +1367,13 @@ export const handler = router({
     if (!member || member.role !== 'staff' || !member.active) return error('Active staff member not found.', 404);
 
     const attendance = await listAttendanceForUser(params.id);
-    const active = findActiveShift(attendance, params.id);
-    if (!active || (active.checkOutAt && !active.gpsRestartRequired && !active.gpsCancelled)) return json({ status: 'shift-not-active', item: null, isFresh: false, ageSeconds: null });
+    const settings = await getWorkforceSettings();
+    const active = findActiveShift(attendance, params.id, Date.now(), settings.shiftEndTime);
+    if (!active) {
+      const cancelled = attendance.find(item => item.gpsRestartRequired === true || item.gpsCancelled === true || String(item.status || '').toLowerCase().includes('cancelled - gps'));
+      if (cancelled) return json({ status: 'gps-off', item: null, isFresh: false, ageSeconds: null, cancelled: true, cancelledAt: cancelled.gpsCancelledAt || cancelled.checkOutAt || null });
+      return json({ status: 'shift-not-active', item: null, isFresh: false, ageSeconds: null });
+    }
     
     const [storedLocation] = await db.get<Record<string, unknown>>('staff_live_locations', [params.id], { consistent: true });
     // Never present a previous shift's last point as if it belonged to the current shift.
@@ -1369,9 +1386,9 @@ export const handler = router({
     if (!location) return json({ status: gpsOff ? 'gps-off' : 'location-unavailable', item: null, isFresh: false, ageSeconds: null, deadlineAt });
 
     const capturedAt = String(location.capturedAt || '');
-    const ageMs = capturedAt ? Math.max(0, Date.now() - Date.parse(capturedAt)) : Number.POSITIVE_INFINITY;
-    const ageSeconds = Number.isFinite(ageMs) ? Math.floor(ageMs / 1000) : null;
-    const isFresh = Number.isFinite(ageMs) && ageMs <= 90000;
+    const ageMs = capturedAt ? Date.now() - Date.parse(capturedAt) : Number.POSITIVE_INFINITY;
+    const ageSeconds = Number.isFinite(ageMs) && ageMs >= 0 ? Math.floor(ageMs / 1000) : null;
+    const isFresh = Number.isFinite(ageMs) && ageMs >= 0 && ageMs <= 90000;
     return json({
       item: location, status: gpsOff ? 'gps-off' : isFresh ? 'live' : 'stale',
       isFresh: isFresh && !gpsOff, ageSeconds, deadlineAt,
