@@ -528,6 +528,13 @@ export async function apiHandler(req: any, res: any) {
         if (typeof body.displayName === 'string') { const name = clean(body.displayName, 80); if (!name) { send(res, 400, { error: 'Enter a staff name.' }); return; } patch.displayName = name; }
         if (typeof body.userId === 'string') { const nextId = clean(body.userId, 32); if (!/^[a-zA-Z0-9_-]{3,32}$/.test(nextId)) { send(res, 400, { error: 'Use a 3–32 character staff ID.' }); return; } if ((await list('users')).some(item => item.id !== staffId && String(item.userId || '').toLowerCase() === nextId.toLowerCase())) { send(res, 409, { error: 'That user ID is already in use.' }); return; } patch.userId = nextId; patch.userIdLower = nextId.toLowerCase(); }
         if (typeof body.active === 'boolean') patch.active = body.active;
+        if (Object.prototype.hasOwnProperty.call(body, 'monthlySalary')) {
+          const monthlySalary = Number(body.monthlySalary);
+          if (!Number.isFinite(monthlySalary) || monthlySalary < 0 || monthlySalary > 1000000) {
+            send(res, 400, { error: 'Enter a valid monthly salary amount between ₹0 and ₹10,00,000.' }); return;
+          }
+          patch.monthlySalary = monthlySalary;
+        }
         await db.collection('users').doc(staffId).update(patch);
         if (patch.active === false || patch.userId) await revokeUserSessions(staffId);
         await audit(user, 'UPDATE', 'staff', staffId, 'Updated staff account ' + String(staff.userId || staffId));
