@@ -27,6 +27,22 @@ const indiaMinutesNow = () => {
     Number(parts.find(part => part.type === 'minute')?.value || 0);
 };
 const stamp = (value?: string) => value ? new Date(value).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) : '—';
+const shiftDueAt = (item: Attendance) => {
+  const checkIn = Date.parse(item.checkInAt || '');
+  if (!Number.isFinite(checkIn) || !/^\\d{4}-\\d{2}-\\d{2}$/.test(item.workDate || '')) return Number.NaN;
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+  }).formatToParts(new Date(checkIn));
+  const minutes = Number(parts.find(part => part.type === 'hour')?.value || 0) * 60 +
+    Number(parts.find(part => part.type === 'minute')?.value || 0);
+  const dueDate = minutes >= 19 * 60
+    ? new Date(Date.parse(item.workDate + 'T00:00:00Z') + 86400000).toISOString().slice(0, 10)
+    : item.workDate;
+  return Date.parse(dueDate + 'T19:00:00+05:30');
+};
+const isOpenShift = (item: Attendance) =>
+  !item.checkOutAt && item.dayType !== 'Absent' && !item.gpsRestartRequired && !item.gpsCancelled &&
+  !String(item.status || '').toLowerCase().includes('cancelled') && shiftDueAt(item) > Date.now();
 function AttendanceCalendar({ staffId, staffName, records, holidays }: { staffId: string; staffName: string; records: Attendance[]; holidays: HolidayRequest[] }) {
   const [month, setMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
   const year = month.getFullYear(), monthIndex = month.getMonth();
@@ -87,8 +103,10 @@ export default function StaffOperations({ session, customers, flash, compact = f
   const [today, setToday] = useState(localDay);
   const [indiaMinutes, setIndiaMinutes] = useState(indiaMinutesNow);
   const staffShiftWindowOpen = indiaMinutes >= 8 * 60 && indiaMinutes < 19 * 60;
-  const myToday = attendance.filter(item => item.userId === session.user.id && item.workDate === today).sort((a, b) => b.checkInAt.localeCompare(a.checkInAt))[0];
-  const activeShift = !!myToday && myToday.dayType !== 'Absent' && !myToday.checkOutAt;
+  const myTodayRecord = attendance.filter(item => item.userId === session.user.id && item.workDate === today).sort((a, b) => b.checkInAt.localeCompare(a.checkInAt))[0];
+  const myActiveShift = attendance.filter(item => item.userId === session.user.id && isOpenShift(item)).sort((a, b) => b.checkInAt.localeCompare(a.checkInAt))[0];
+  const myToday = myActiveShift || myTodayRecord;
+  const activeShift = !!myActiveShift;
 
   const request = useCallback((method: 'get' | 'post' | 'put' | 'delete', path: string, data?: Record<string, unknown>) => {
     if (method === 'get') return client.get(path + (path.includes('?') ? '&' : '?') + 'sessionToken=' + encodeURIComponent(session.token));
@@ -397,7 +415,8 @@ export default function StaffOperations({ session, customers, flash, compact = f
         const memberTotal = memberPayments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
         const memberMonth = memberPayments.filter(payment => String(payment.paidAt || '').slice(0, 7) === monthKey).reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
         const memberDays = attendance.filter(item => item.userId === member.id && item.dayType !== 'Absent' && String(item.status || '').toLowerCase() !== 'absent').reduce((sum,item) => sum + (item.dayType === 'Half day' ? 0.5 : 1), 0);
-        const memberShift = attendance.find(item => item.userId === member.id && item.workDate === today);
+        const memberShift = attendance.find(item => item.userId === member.id && isOpenShift(item)) ||
+          attendance.find(item => item.userId === member.id && item.workDate === today);
         return <tr key={member.id}><td><b>{member.displayName}</b></td><td>{memberPayments.length}</td><td className="amount">₹{memberTotal.toLocaleString('en-IN')}</td><td className="amount">₹{memberMonth.toLocaleString('en-IN')}</td><td>{memberDays}</td><td>{memberShift?.dayType === 'Absent' ? 'Absent' : memberShift?.checkOutAt ? 'Completed' : memberShift ? 'On shift' : 'Not started'}</td></tr>;
       })}{!staff.length && <tr><td colSpan={6}>No staff records available yet.</td></tr>}</tbody></table></div>
     </section>}
@@ -441,7 +460,8 @@ export default function StaffOperations({ session, customers, flash, compact = f
     {admin && <section className="panel ops-panel">
       <div className="ops-panel-head"><div><span className="eyebrow">STAFF ATTENDANCE</span><h2>Staff shift controls</h2><p>Start, end or correct a staff member’s attendance. GPS is not required for shifts.</p></div></div>
       <div className="ops-location-list">{staff.map(member => {
-        const shiftRecord = sortedAttendance.find(item => item.userId === member.id && item.workDate === today);
+        const shiftRecord = sortedAttendance.find(item => item.userId === member.id && isOpenShift(item)) ||
+          sortedAttendance.find(item => item.userId === member.id && item.workDate === today);
         const selectedType = staffDayTypes[member.id] || 'Full day';
         return <article className="ops-location-card" key={member.id}>
           <div className="ops-person"><span className="avatar">{member.displayName.slice(0,2).toUpperCase()}</span><div><b>{member.displayName}</b><small>{shiftRecord?.dayType === 'Absent' ? 'Marked absent today' : shiftRecord?.checkOutAt ? 'Checked out ' + stamp(shiftRecord.checkOutAt) : shiftRecord ? 'Checked in ' + stamp(shiftRecord.checkInAt) : 'No attendance today'}</small></div></div>
