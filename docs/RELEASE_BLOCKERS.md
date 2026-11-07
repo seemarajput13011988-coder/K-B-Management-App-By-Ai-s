@@ -47,3 +47,7 @@ The current APK workflow produces a debug build for internal testing. Create and
 ## 7. Full application backup and restore
 
 The app currently exports selected finance reports as CSV/PDF; it does not yet provide a full Firestore backup-and-restore workflow. Configure managed Firestore backups with the project owner, or approve a protected encrypted application export design. Do not treat CSV/PDF reports as a complete backup.
+
+## 8. OTA bootstrap and release verification
+
+The first APK built with `@capgo/capacitor-updater` and the splash-screen integration must be installed once. After that, web-only changes can be distributed as OTA bundles. Verify the Render `POST /api/app-updates/check` endpoint, the GitHub OTA release workflow, checksum validation, update-before-work startup behavior and automatic rollback on a real Android device. Native Android/plugin/permission changes still require a package update.
