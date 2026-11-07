@@ -786,7 +786,7 @@ export const handler = router({
     return updated ? json({ updated: true }) : error('Could not update complaint.', 500);
   }),
 
-  'POST /api/complaints/:id/media': protectedRoute(['admin'], async ({ params, body }, user) => {
+  'POST /api/complaints/:id/media': protectedRoute(['admin', 'staff'], async ({ params, body }, user) => {
     const [ticket] = await db.get<Complaint>('complaints', [params.id], { consistent: true });
     if (!ticket) return error('Complaint not found.', 404);
     if (user.role === 'staff' && ticket.createdBy !== user.id && ticket.assignedTo !== user.id && ticket.staffId !== user.id) {
