@@ -124,7 +124,7 @@ const customerStatusLabel = (value: unknown): Customer['status'] => { const stat
 const isAttendanceShiftActive = (item: AttendanceRecord, now = Date.now()) => {
   if (item.checkOutAt || item.dayType === 'Absent' || item.status?.toLowerCase().includes('cancelled') || item.gpsRestartRequired) return false;
   const checkIn = Date.parse(item.checkInAt || '');
-  if (!Number.isFinite(checkIn) || !/^\\d{4}-\\d{2}-\\d{2}$/.test(item.workDate || '')) return false;
+  if (!Number.isFinite(checkIn) || !/^\d{4}-\d{2}-\d{2}$/.test(item.workDate || '')) return false;
   const parts = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date(checkIn));
   const minutes = Number(parts.find(part => part.type === 'hour')?.value || 0) * 60 + Number(parts.find(part => part.type === 'minute')?.value || 0);
   const dueDate = minutes >= 19 * 60 ? new Date(Date.parse(item.workDate + 'T00:00:00Z') + 86400000).toISOString().slice(0, 10) : item.workDate;
