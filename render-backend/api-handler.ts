@@ -876,10 +876,10 @@ export async function apiHandler(req: any, res: any) {
         const assignedTo=clean(body.assignedTo,128);
         const assignedStaff=assignedTo?await getDoc('users',assignedTo):null;
         if (assignedTo&&(!assignedStaff||assignedStaff.role!=='staff'||assignedStaff.active!==true)) { send(res,400,{error:'Choose an active staff member for this inventory assignment.'}); return; }
-        const quantity=Number(body.quantity), minimumQuantity=Number(body.minimumQuantity);
-        if (!name || !sku || !category || !Number.isInteger(quantity) || quantity<0 || !Number.isInteger(minimumQuantity) || minimumQuantity<0) { send(res,400,{error:'Enter a valid item name, SKU, category and stock quantities.'}); return; }
+        const quantity=Number(body.quantity), minimumQuantity=Number(body.minimumQuantity), unitCost=Number(body.unitCost ?? 0);
+        if (!name || !sku || !category || !Number.isInteger(quantity) || quantity<0 || !Number.isInteger(minimumQuantity) || minimumQuantity<0 || !Number.isFinite(unitCost) || unitCost<0 || unitCost>1000000) { send(res,400,{error:'Enter valid item details, stock quantities and a non-negative unit cost up to ₹10,00,000.'}); return; }
         if ((await list('inventory')).some(item => String(item.sku||'').toLowerCase()===sku.toLowerCase())) { send(res,409,{error:'That SKU is already in the inventory.'}); return; }
-        const record={name,sku,category,unit:clean(body.unit,30)||'pcs',quantity,minimumQuantity,unitCost:Number(body.unitCost||0),supplier:clean(body.supplier,120),location:clean(body.location,120),notes:clean(body.notes,500),assignedTo:assignedTo||'',assignedToName:assignedStaff?clean(assignedStaff.displayName,80):'',active:body.active!==false,createdAt:now(),createdBy:user.uid};
+        const record={name,sku,category,unit:clean(body.unit,30)||'pcs',quantity,minimumQuantity,unitCost,supplier:clean(body.supplier,120),location:clean(body.location,120),notes:clean(body.notes,500),assignedTo:assignedTo||'',assignedToName:assignedStaff?clean(assignedStaff.displayName,80):'',active:body.active!==false,createdAt:now(),createdBy:user.uid};
         const ref=await db.collection('inventory').add(record);
         await audit(user,'CREATE','inventory',ref.id,'Added inventory item '+name);
         send(res,201,{id:ref.id,...record}); return;
@@ -920,11 +920,11 @@ export async function apiHandler(req: any, res: any) {
         if (!allow(user,['admin'],res)) return;
         const id=routeId(path,'/api/inventory'), existing=await getDoc('inventory',id);
         if (!existing) { send(res,404,{error:'Inventory item not found.'}); return; }
-        const body=req.body||{}, quantity=Number(body.quantity), minimumQuantity=Number(body.minimumQuantity), assignedTo=clean(body.assignedTo,128);
+        const body=req.body||{}, quantity=Number(body.quantity), minimumQuantity=Number(body.minimumQuantity), unitCost=Number(body.unitCost ?? 0), assignedTo=clean(body.assignedTo,128);
         const assignedStaff=assignedTo?await getDoc('users',assignedTo):null;
         if (assignedTo&&(!assignedStaff||assignedStaff.role!=='staff'||assignedStaff.active!==true)) { send(res,400,{error:'Choose an active staff member for this inventory assignment.'}); return; }
-        if (!clean(body.name,120)||!clean(body.sku,60)||!clean(body.category,80)||!Number.isInteger(quantity)||quantity<0||!Number.isInteger(minimumQuantity)||minimumQuantity<0) { send(res,400,{error:'Enter valid inventory details.'}); return; }
-        const patch={name:clean(body.name,120),sku:clean(body.sku,60),category:clean(body.category,80),unit:clean(body.unit,30)||'pcs',quantity,minimumQuantity,unitCost:Number(body.unitCost||0),supplier:clean(body.supplier,120),location:clean(body.location,120),notes:clean(body.notes,500),assignedTo:assignedTo||'',assignedToName:assignedStaff?clean(assignedStaff.displayName,80):'',active:body.active!==false,updatedAt:now()};
+        if (!clean(body.name,120)||!clean(body.sku,60)||!clean(body.category,80)||!Number.isInteger(quantity)||quantity<0||!Number.isInteger(minimumQuantity)||minimumQuantity<0||!Number.isFinite(unitCost)||unitCost<0||unitCost>1000000) { send(res,400,{error:'Enter valid inventory details and a non-negative unit cost up to ₹10,00,000.'}); return; }
+        const patch={name:clean(body.name,120),sku:clean(body.sku,60),category:clean(body.category,80),unit:clean(body.unit,30)||'pcs',quantity,minimumQuantity,unitCost,supplier:clean(body.supplier,120),location:clean(body.location,120),notes:clean(body.notes,500),assignedTo:assignedTo||'',assignedToName:assignedStaff?clean(assignedStaff.displayName,80):'',active:body.active!==false,updatedAt:now()};
         await db.collection('inventory').doc(id).update(patch);
         await audit(user,'UPDATE','inventory',id,'Updated inventory item '+patch.name);
         send(res,200,{updated:true}); return;
@@ -942,7 +942,7 @@ export async function apiHandler(req: any, res: any) {
         const body=req.body||{}, customerId=clean(body.customerId,128), assignedTo=clean(body.assignedTo,128);
         const customer=await getDoc('customers',customerId), staff=await getDoc('users',assignedTo);
         const scheduledDate=clean(body.scheduledDate,10), type=clean(body.type,80);
-        if (!customer||!staff||staff.role!=='staff'||staff.active!==true||!datePattern.test(scheduledDate)||!type) { send(res,400,{error:'Choose an existing customer, active staff member, job type and valid scheduled date.'}); return; }
+        if (!customer||!staff||staff.role!=='staff'||staff.active!==true||!isValidDateKey(scheduledDate)||!type) { send(res,400,{error:'Choose an existing customer, active staff member, job type and valid scheduled date.'}); return; }
         const record={customerId,customerName:clean(customer.name,120),phone:clean(customer.phone,40),address:clean(body.address,300)||clean(customer.address,300),type,scheduledDate,assignedTo,assignedToName:clean(staff.displayName,80),status:'Scheduled',notes:clean(body.notes,600),createdAt:now(),createdBy:user.uid};
         const ref=await db.collection('installations').add(record);
         await audit(user,'CREATE','installation',ref.id,'Assigned an installation job for '+record.customerName);
@@ -960,7 +960,11 @@ export async function apiHandler(req: any, res: any) {
         if (user.role==='admin') {
           const assignedTo=clean(body.assignedTo,128);
           if (assignedTo) { const staff=await getDoc('users',assignedTo); if (!staff||staff.role!=='staff'||staff.active!==true) { send(res,400,{error:'Choose an active staff member.'}); return; } patch.assignedTo=assignedTo; patch.assignedToName=clean(staff.displayName,80); }
-          if (body.scheduledDate) patch.scheduledDate=clean(body.scheduledDate,10);
+          if (body.scheduledDate) {
+            const scheduledDate=clean(body.scheduledDate,10);
+            if (!isValidDateKey(scheduledDate)) { send(res,400,{error:'Choose a real calendar date for the installation.'}); return; }
+            patch.scheduledDate=scheduledDate;
+          }
           if (body.address) patch.address=clean(body.address,300);
         }
         await db.collection('installations').doc(id).update(patch);
