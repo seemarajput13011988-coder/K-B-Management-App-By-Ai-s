@@ -880,7 +880,6 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
           </div>
         </header>
         <div className="content">
-          {page === 'Overview' && <FestivalCelebration/>}
           <div className="page-heading">
             <div>
               <div className="eyebrow">
@@ -972,22 +971,6 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
 
           {page === 'Overview' && (
             <>
-              <div className="welcome-strip">
-                <div className="welcome-symbol">
-                  <Zap size={21} />
-                </div>
-                <div>
-                  <strong>Your network, one clear view.</strong>
-                  <span>
-                    Customer records and service activity in one place.
-                  </span>
-                </div>
-                <div className="strip-right">
-                  <span>LIVE OVERVIEW</span>
-                  <i />
-                </div>
-              </div>
-
               <section className="quick-actions" aria-label="Quick actions">
                 <button type="button" onClick={() => setPage('Customers')}><Users size={18}/><span>Customers</span><small>Find and manage</small></button>
                 <button type="button" onClick={() => setPage('Complaints')}><MessageSquare size={18}/><span>Complaints</span><small>Track issues</small></button>
