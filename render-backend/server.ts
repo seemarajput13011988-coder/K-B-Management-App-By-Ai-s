@@ -4,10 +4,22 @@ import cors from 'cors';
 import { apiHandler } from './api-handler.js';
 import { handler as legacyHandler } from './legacy-routes.js';
 import { runScheduledTick, startBackgroundJobs } from './jobs.js';
+import { getOtaUpdateResponse } from './ota-updates.js';
 const app=express();
 app.disable('x-powered-by');
 app.use(cors({origin:true,methods:['GET','POST','PUT','PATCH','DELETE','OPTIONS'],allowedHeaders:['Content-Type','Authorization']}));
 app.use(express.json({limit:'16mb'}));
+app.post('/api/app-updates/check', async (req,res) => {
+  try {
+    const update = await getOtaUpdateResponse(req.body || {});
+    res.setHeader('Cache-Control', 'no-store');
+    res.status(200).json(update);
+  } catch (error) {
+    console.error('K&B OTA release check failed:', error instanceof Error ? error.message : String(error));
+    res.setHeader('Cache-Control', 'no-store');
+    res.status(503).json({ error: 'update_check_unavailable', message: 'The K&B update service is temporarily unavailable.' });
+  }
+});
 const useFirestoreSessionApi=(path:string)=>
   !/^\/api\/staff\/(?:live-location|[^/]+\/live-location)$/.test(path) &&
   (/^\/api\/(auth|admins|staff|staff-registration-requests|retention|customer-ledger|invoices|audit|visits|subscriptions|notifications|push-tokens|payroll|inventory|installations)(\/|$)/.test(path)||path==='/api/_healthcheck');
