@@ -459,10 +459,10 @@ export async function apiHandler(req: any, res: any) {
       if (method === 'POST' && path === '/api/auth/logout') {
         if (user.role === 'staff') {
           const activeSnapshot = await db.collection('attendance')
-            .where('userId', '==', user.uid).where('status', '==', 'Checked in').limit(50).get();
+            .where('userId', '==', user.uid).limit(1000).get();
           const activeShift = activeSnapshot.docs.some(doc => {
             const item = doc.data();
-            if (item.checkOutAt || item.dayType === 'Absent' || item.gpsRestartRequired || item.gpsCancelled) return false;
+            if (item.status !== 'Checked in' || item.checkOutAt || item.dayType === 'Absent' || item.gpsRestartRequired || item.gpsCancelled) return false;
             const savedDeadline = Date.parse(String(item.autoCheckoutAt || ''));
             if (Number.isFinite(savedDeadline)) return savedDeadline > Date.now();
             const checkIn = Date.parse(String(item.checkInAt || ''));
