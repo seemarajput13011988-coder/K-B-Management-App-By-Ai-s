@@ -15,8 +15,9 @@ type UserRecord = {
   passwordHash: string;
   createdAt: string;
   phone?: string;
+  monthlySalary?: number;
 };
-type SafeUser = Pick<UserRecord, 'id' | 'userId' | 'displayName' | 'role' | 'active' | 'createdAt' | 'phone'>;
+type SafeUser = Pick<UserRecord, 'id' | 'userId' | 'displayName' | 'role' | 'active' | 'createdAt' | 'phone' | 'monthlySalary'>;
 type Customer = {
   id: string;
   name: string;
@@ -88,6 +89,7 @@ const safeUser = (user: UserRecord): SafeUser => ({
   active: user.active,
   createdAt: user.createdAt,
   phone: user.phone || '',
+  monthlySalary: Number.isFinite(user.monthlySalary) ? Number(user.monthlySalary) : 0,
 });
 const hashPassword = (password: string, salt: string) =>
   scryptSync(password, salt, 64).toString('hex');
@@ -412,7 +414,12 @@ export const handler = router({
     if (!target || target.role !== 'staff') return error('Staff account not found.', 404);
     const displayName = cleanText(input.displayName, 80) || target.displayName;
     const active = typeof input.active === 'boolean' ? input.active : target.active;
-    const [updated] = await db.tx.update('users', [{ id: target.id, record: { displayName, active } }], { patch: true });
+    const patch: Record<string, unknown> = { displayName, active };
+    if (Object.prototype.hasOwnProperty.call(input, 'monthlySalary')) {
+      if (!validMoney(input.monthlySalary)) return error('Enter a valid monthly salary amount between ₹0 and ₹10,00,000.', 400);
+      patch.monthlySalary = input.monthlySalary;
+    }
+    const [updated] = await db.tx.update('users', [{ id: target.id, record: patch }], { patch: true });
     return updated ? json({ updated: true }) : error('Could not update staff account.', 500);
   }),
 
