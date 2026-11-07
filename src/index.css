@@ -2103,7 +2103,7 @@ header.topbar .notification-popover{z-index:124;max-height:min(430px,calc(100dvh
 
 /* Simplified mobile dashboard header and page hierarchy. */
 .topbar{min-width:0;gap:10px}
-.top-actions{min-width:0;flex:0 0 auto;gap:8px}
+.top-actions{min-width:0;max-width:100%;flex:0 1 auto;gap:clamp(4px,1vw,8px)}
 .crumb{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .content{min-width:0;overflow-x:clip}
 .page-heading{min-width:0;gap:14px;flex-wrap:wrap}
