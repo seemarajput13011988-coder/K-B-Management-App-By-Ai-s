@@ -461,7 +461,8 @@ jobs:
               if (item == null || !item.optString("checkOutAt").isEmpty() ||
                   "Absent".equalsIgnoreCase(item.optString("dayType")) ||
                   item.optBoolean("gpsRestartRequired", false) || item.optBoolean("gpsCancelled", false) ||
-                  item.optString("status").toLowerCase(Locale.US).contains("cancelled")) return false;
+                  item.optString("status").toLowerCase(Locale.US).contains("cancelled") ||
+                  item.optString("status").toLowerCase(Locale.US).contains("completed")) return false;
               try {
                 String savedDeadline = item.optString("autoCheckoutAt");
                 if (!savedDeadline.isEmpty()) {
