@@ -15,6 +15,7 @@ on:
       - fix-android-document-picker-2026-11-06
       - fixes-session-gps-ui-2026-11-06
       - whole-app-gps-ui-sync-audit-2026-11-07
+      - nexus-workforce-payroll-media-ui-2026-11-07
     paths:
       - "src/**"
       - "render-backend/**"
@@ -445,6 +446,13 @@ jobs:
                   item.optBoolean("gpsRestartRequired", false) || item.optBoolean("gpsCancelled", false) ||
                   item.optString("status").toLowerCase(Locale.US).contains("cancelled")) return false;
               try {
+                String savedDeadline = item.optString("autoCheckoutAt");
+                if (!savedDeadline.isEmpty()) {
+                  SimpleDateFormat savedDeadlineFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US);
+                  savedDeadlineFormat.setTimeZone(TimeZone.getTimeZone("UTC"));
+                  Date savedDeadlineDate = savedDeadlineFormat.parse(savedDeadline);
+                  if (savedDeadlineDate != null) return now < savedDeadlineDate.getTime();
+                }
                 String workDate = item.optString("workDate");
                 String checkInAt = item.optString("checkInAt");
                 SimpleDateFormat utc = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US);

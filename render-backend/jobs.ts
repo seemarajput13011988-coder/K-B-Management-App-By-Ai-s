@@ -211,7 +211,8 @@ export async function deliverPendingPushNotifications() {
 
 export async function autoCheckoutAtSevenPm() {
   const currentTime = Date.now();
-  const records = await readCollection('attendance', 1000);
+  const activeSnapshot = await firestore.collection('attendance').where('status', '==', 'Checked in').limit(1000).get();
+  const records: Item[] = activeSnapshot.docs.map(doc => ({ ...(doc.data() as Item), id: doc.id }));
   let checkedOut = 0;
   for (const item of records) {
     if (!item.id || !/^\d{4}-\d{2}-\d{2}$/.test(String(item.workDate || '')) ||
@@ -228,7 +229,9 @@ export async function autoCheckoutAtSevenPm() {
     const dueDate = checkInMinutes >= 19 * 60
       ? new Date(Date.parse(String(item.workDate) + 'T00:00:00Z') + 86400000).toISOString().slice(0, 10)
       : String(item.workDate);
-    const checkoutAt = new Date(dueDate + 'T19:00:00+05:30');
+    const legacyCheckoutAt = new Date(dueDate + 'T19:00:00+05:30');
+    const savedCheckoutAt = Date.parse(String(item.autoCheckoutAt || ''));
+    const checkoutAt = new Date(Number.isFinite(savedCheckoutAt) ? savedCheckoutAt : legacyCheckoutAt.getTime());
     if (currentTime < checkoutAt.getTime()) continue;
     const checkoutIso = checkoutAt.toISOString();
     const ref = firestore.collection('attendance').doc(String(item.id));
@@ -246,7 +249,7 @@ export async function autoCheckoutAtSevenPm() {
         updatedAt: now(),
         status: 'Completed',
         endedBy: 'system',
-        endedByName: 'Automatic 7 PM checkout',
+        endedByName: 'Automatic scheduled checkout',
         autoCheckedOut: true,
         autoCheckedOutAt: checkoutIso,
         gpsStatus: current.gpsIssueStartedAt ? 'disabled-at-checkout' : (current.gpsStatus || 'enabled'),
@@ -258,13 +261,13 @@ export async function autoCheckoutAtSevenPm() {
       transaction.set(notificationRef, {
         recipientId: String(item.userId), recipientRole: 'staff', type: 'attendance-auto-checkout',
         title: 'Shift automatically ended',
-        message: 'Your shift was automatically checked out at 7:00 PM India time. You can start a new shift tomorrow from 8:00 AM.',
+        message: 'Your shift was automatically checked out at the scheduled end time. You can start a new shift during the configured staff shift window.',
         createdAt: checkoutIso, read: false, attendanceId: String(item.id),
       }, { merge: true });
       transaction.set(auditRef, {
         actorId: 'system', actorName: 'K&B automatic attendance',
         action: 'AUTO_CHECKOUT', entityType: 'attendance', entityId: String(item.id),
-        description: 'Automatically checked out ' + String(item.displayName || 'staff member') + ' at 7:00 PM India time.',
+        description: 'Automatically checked out ' + String(item.displayName || 'staff member') + ' at the scheduled shift end time.',
         createdAt: checkoutIso, serverCreatedAt: FieldValue.serverTimestamp(),
       }, { merge: true });
       return true;

@@ -10,6 +10,7 @@ on:
       - on-demand-gps-proof-permissions
       - ui-rebuild-gps-holidays-api-fixes
       - whole-app-gps-ui-sync-audit-2026-11-07
+      - nexus-workforce-payroll-media-ui-2026-11-07
     paths:
       - "src/**"
       - "package.json"

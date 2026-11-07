@@ -3,7 +3,7 @@ import type { FormEvent } from 'react';
 import { api as client, subscribeToApiChanges } from './lib/api';
 
 type Session = { token: string; user: { id: string; displayName: string; role: 'admin' | 'staff'; isSuperAdmin?: boolean } };
-type Attendance = { id: string; userId: string; displayName: string; workDate: string; checkInAt: string; checkOutAt?: string; dayType?: 'Full day' | 'Half day' | 'Absent'; correctionReason?: string; gpsRestartRequired?: boolean; gpsCancelled?: boolean; status?: string };
+type Attendance = { id: string; userId: string; displayName: string; workDate: string; checkInAt: string; checkOutAt?: string; autoCheckoutAt?: string; dayType?: 'Full day' | 'Half day' | 'Absent'; correctionReason?: string; gpsRestartRequired?: boolean; gpsCancelled?: boolean; status?: string };
 type HolidayRequest = { id: string; userId: string; displayName: string; startDate: string; endDate: string; reason: string; status: 'pending'|'approved'|'rejected'; createdAt: string };
 type StaffRegistrationRequest = { id: string; userId: string; displayName: string; phone?: string; reason?: string; status: 'pending'|'approved'|'rejected'; createdAt: string };
 type Visit = { id: string; customerName: string; purpose: string; notes: string; visitedAt: string; staffName: string };
@@ -28,6 +28,8 @@ const indiaMinutesNow = () => {
 };
 const stamp = (value?: string) => value ? new Date(value).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) : '—';
 const shiftDueAt = (item: Attendance) => {
+  const savedDeadline = Date.parse(item.autoCheckoutAt || '');
+  if (Number.isFinite(savedDeadline)) return savedDeadline;
   const checkIn = Date.parse(item.checkInAt || '');
   if (!Number.isFinite(checkIn) || !/^\d{4}-\d{2}-\d{2}$/.test(item.workDate || '')) return Number.NaN;
   const parts = new Intl.DateTimeFormat('en-GB', {
@@ -103,7 +105,11 @@ export default function StaffOperations({ session, customers, flash, compact = f
   const selectedGroupRef = useRef('');
   const [today, setToday] = useState(localDay);
   const [indiaMinutes, setIndiaMinutes] = useState(indiaMinutesNow);
-  const staffShiftWindowOpen = indiaMinutes >= 8 * 60 && indiaMinutes < 19 * 60;
+  const [shiftSettings, setShiftSettings] = useState({ shiftStartTime: '08:00', shiftEndTime: '19:00' });
+  const [shiftSettingsBusy, setShiftSettingsBusy] = useState(false);
+  const [shiftSettingsAvailable, setShiftSettingsAvailable] = useState(true);
+  const toMinutes = (value: string) => { const [hour, minute] = value.split(':').map(Number); return hour * 60 + minute; };
+  const staffShiftWindowOpen = indiaMinutes >= toMinutes(shiftSettings.shiftStartTime) && indiaMinutes < toMinutes(shiftSettings.shiftEndTime);
   const myTodayRecord = attendance.filter(item => item.userId === session.user.id && item.workDate === today).sort((a, b) => b.checkInAt.localeCompare(a.checkInAt))[0];
   const myActiveShift = attendance.filter(item => item.userId === session.user.id && isOpenShift(item)).sort((a, b) => b.checkInAt.localeCompare(a.checkInAt))[0];
   const myToday = myActiveShift || myTodayRecord;
@@ -143,11 +149,17 @@ export default function StaffOperations({ session, customers, flash, compact = f
 
   const refresh = useCallback(async () => {
     try {
-      const [a, v, n, m, g, p, hr] = await Promise.all([
+      const [a, v, n, m, g, p, hr, settings] = await Promise.all([
         request('get', '/api/attendance'), request('get', '/api/visits'),
         request('get', '/api/announcements'), request('get', '/api/messages'),
-        request('get', '/api/groups'), request('get', '/api/payments'), request('get', '/api/holidays')
+        request('get', '/api/groups'), request('get', '/api/payments'),
+        request('get', '/api/holidays'), request('get', '/api/workforce-settings').catch(() => ({ data: null }))
       ]);
+      setShiftSettingsAvailable(Boolean(settings.data?.shiftStartTime && settings.data?.shiftEndTime));
+      setShiftSettings({
+        shiftStartTime: settings.data?.shiftStartTime || '08:00',
+        shiftEndTime: settings.data?.shiftEndTime || '19:00',
+      });
       setAttendance(a.data.items || []);
       setHolidays(hr.data.items || []);
       setVisits(v.data.items || []);
@@ -158,7 +170,9 @@ export default function StaffOperations({ session, customers, flash, compact = f
       setGroups(availableGroups);
       setSelectedGroupId(current => current && availableGroups.some(group => group.id === current) ? current : availableGroups[0]?.id || '');
       if (admin) {
-        const [s, rr] = await Promise.all([request('get', '/api/staff'), request('get', '/api/staff-registration-requests')]);
+        const [s, rr] = await Promise.all([
+          request('get', '/api/staff'), request('get', '/api/staff-registration-requests'),
+        ]);
         setStaff(s.data.items || []);
         setRegistrationRequests(rr.data.items || []);
       }
@@ -267,6 +281,19 @@ export default function StaffOperations({ session, customers, flash, compact = f
     } catch (err) {
       flash(err instanceof Error ? err.message : 'Could not save. Please try again.');
     } finally { setBusy(false); }
+  }
+
+  async function saveShiftSettings(event: FormEvent) {
+    event.preventDefault();
+    if (!shiftSettingsAvailable) { flash('The shift schedule controls need the latest backend deployment. The current staff window remains 8:00 AM–7:00 PM India time.'); return; }
+    setShiftSettingsBusy(true);
+    try {
+      const result = await request('put', '/api/workforce-settings', shiftSettings);
+      setShiftSettings({ shiftStartTime: result.data.shiftStartTime, shiftEndTime: result.data.shiftEndTime });
+      flash('Staff shift timings updated. New staff shifts will use this schedule. Admin overrides remain available at any time.');
+    } catch (err) {
+      flash(err instanceof Error ? err.message : 'Could not save staff shift timings.');
+    } finally { setShiftSettingsBusy(false); }
   }
 
   async function adminShift(userId: string, action: 'admin-start' | 'admin-end', requestedDayType: 'Full day'|'Half day' = 'Full day') {
@@ -455,8 +482,19 @@ export default function StaffOperations({ session, customers, flash, compact = f
     {!admin && <section className="panel ops-panel">
       <div className="ops-panel-head"><div><span className="eyebrow">ATTENDANCE</span><h2>My workday</h2><p>Record your shift start and finish. Work location is shared with authorised Admins during an active shift. On Android, background tracking continues with a persistent notification and stops at checkout.</p></div><span className={'ops-pill ' + (activeShift ? 'is-live' : 'is-idle')}>{activeShift ? 'ON SHIFT' : myToday?.dayType === 'Absent' ? 'ABSENT' : myToday?.checkOutAt ? 'SHIFT COMPLETE' : 'OFF SHIFT'}</span></div>
       <div className="ops-clock-row"><div><small>CHECK IN</small><strong>{myToday?.dayType === 'Absent' ? 'Absent' : myToday ? stamp(myToday.checkInAt) : 'Not checked in'}</strong></div><div><small>CHECK OUT</small><strong>{myToday?.dayType === 'Absent' ? '—' : myToday?.checkOutAt ? stamp(myToday.checkOutAt) : '—'}</strong></div></div>
-      <div className="ops-actions"><label className="ops-day-type">Attendance type <select value={dayType} disabled={!!myToday} onChange={e=>setDayType(e.target.value as 'Full day'|'Half day')}><option>Full day</option><option>Half day</option></select></label>{!myToday ? staffShiftWindowOpen ? <button className="btn primary" disabled={busy} onClick={() => shift('check-in')}>Check in and start shift</button> : <span className="ops-complete">Staff shifts are available 8:00 AM–7:00 PM India time.</span> : activeShift ? staffShiftWindowOpen ? <button className="btn danger" disabled={busy} onClick={() => shift('check-out')}>Check out and end shift</button> : <span className="ops-complete">Your shift will be checked out automatically at 7:00 PM.</span> : <span className="ops-complete">{myToday.dayType === 'Absent' ? 'Today’s attendance is marked absent.' : 'Today’s attendance is complete. A new shift can start tomorrow from 8:00 AM.'}</span>}</div>
+      <div className="ops-actions"><label className="ops-day-type">Attendance type <select value={dayType} disabled={!!myToday} onChange={e=>setDayType(e.target.value as 'Full day'|'Half day')}><option>Full day</option><option>Half day</option></select></label>{!myToday ? staffShiftWindowOpen ? <button className="btn primary" disabled={busy} onClick={() => shift('check-in')}>Check in and start shift</button> : <span className="ops-complete">Staff shifts are available from {shiftSettings.shiftStartTime} to {shiftSettings.shiftEndTime} India time.</span> : activeShift ? staffShiftWindowOpen ? <button className="btn danger" disabled={busy} onClick={() => shift('check-out')}>Check out and end shift</button> : <span className="ops-complete">Your shift will be checked out automatically at {shiftSettings.shiftEndTime}.</span> : <span className="ops-complete">{myToday.dayType === 'Absent' ? 'Today’s attendance is marked absent.' : 'Today’s attendance is complete. A new shift can start tomorrow from 8:00 AM.'}</span>}</div>
       <p className="ops-gps-note">During an active shift, your location is shared automatically with authorised K&B administrators. Android shows a persistent tracking notification, and tracking stops when the shift ends. If location permission or phone location services are disabled, administrators will see the tracking interruption.</p>
+    </section>}
+
+    {admin && <section className="panel ops-panel workforce-settings-panel">
+      <div className="ops-panel-head"><div><span className="eyebrow">WORKFORCE SETTINGS</span><h2>Staff shift schedule</h2><p>Set the daily staff check-in and check-out window. Administrators can still start or end any staff shift outside these hours.</p></div></div>
+      {!shiftSettingsAvailable && <p className="form-hint">The new schedule API is not deployed yet. Staff shifts continue using the existing 8:00 AM–7:00 PM India-time window. Administrator start/end overrides remain available.</p>}
+      <form className="finance-expense-form" onSubmit={saveShiftSettings}>
+        <label>Staff shift starts<input type="time" required value={shiftSettings.shiftStartTime} onChange={event=>setShiftSettings(current=>({...current,shiftStartTime:event.target.value}))}/></label>
+        <label>Staff shift ends<input type="time" required value={shiftSettings.shiftEndTime} onChange={event=>setShiftSettings(current=>({...current,shiftEndTime:event.target.value}))}/></label>
+        <button className="btn primary" disabled={!shiftSettingsAvailable || shiftSettingsBusy || toMinutes(shiftSettings.shiftStartTime)>=toMinutes(shiftSettings.shiftEndTime)}>{shiftSettingsBusy?'Saving…':'Save shift schedule'}</button>
+        <p className="form-hint wide">Timezone: India (IST). Automatic checkout uses the saved end time for each new shift. Existing shifts keep their original end deadline.</p>
+      </form>
     </section>}
 
     {admin && <section className="panel ops-panel">

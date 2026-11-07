@@ -2135,3 +2135,41 @@ header.topbar .notification-popover{z-index:124;max-height:min(430px,calc(100dvh
   .top-actions>.kb-festival-ribbon strong,.top-actions>.kb-festival-ribbon .kb-festival-note{display:none}
   .preference-controls .theme-toggle{display:none}
 }
+
+
+/* Nexus 2.0 visual system: consistent hierarchy, spacing and touch targets. */
+:root{--nexus-ink:#14243a;--nexus-muted:#64748b;--nexus-line:#e4eaf2;--nexus-surface:#fff;--nexus-canvas:#f4f7fb;--nexus-primary:#2457a6;--nexus-primary-soft:#edf4ff;--nexus-radius:16px}
+body{background:var(--nexus-canvas);color:var(--nexus-ink);font-family:'DM Sans',system-ui,sans-serif}
+.sidebar{background:#101d31;color:#e8eef8;border-right:1px solid #24344c}
+.sidebar .brand,.sidebar .brand-name,.sidebar .brand small{color:#f3f7ff}
+.nav-item{border-radius:11px;margin:3px 8px;width:calc(100% - 16px);min-height:43px;transition:background .16s ease,color .16s ease}
+.nav-item.active{background:#244d83;color:#fff;box-shadow:inset 3px 0 #8ab7ff}
+.nav-item:hover:not(.active){background:#1b2c44;color:#fff}
+.topbar{min-height:64px;height:auto;padding:10px 20px;background:rgba(255,255,255,.96);border-bottom:1px solid var(--nexus-line);box-shadow:0 3px 16px #1b35500a;flex-wrap:wrap}
+.top-actions{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;min-width:0}
+.content{background:var(--nexus-canvas);padding:24px clamp(14px,2.5vw,32px) 36px}
+.page-heading{margin-bottom:22px;align-items:center}
+.page-heading h1{font-family:Manrope,'DM Sans',sans-serif;font-size:clamp(22px,2.2vw,29px);letter-spacing:-.7px;color:var(--nexus-ink)}
+.page-heading p{color:var(--nexus-muted);line-height:1.5}
+.panel,.ops-panel,.finance-panel,.task-board,.table-panel,.staff-insight{border:1px solid var(--nexus-line);border-radius:var(--nexus-radius);box-shadow:0 8px 26px #14243a08;background:var(--nexus-surface)}
+.panel,.ops-panel,.finance-panel{padding:clamp(15px,2vw,22px)}
+.ops-panel-head,.finance-head{gap:14px}
+.ops-panel-head h2,.finance-head h2{font-family:Manrope,'DM Sans',sans-serif;letter-spacing:-.35px;color:var(--nexus-ink)}
+.btn{min-height:40px;border-radius:10px;font-weight:650;letter-spacing:0}
+.btn.primary{background:var(--nexus-primary);border-color:var(--nexus-primary);box-shadow:0 4px 10px #2457a61a}
+.btn.secondary{border-color:#dce4ef;background:#fff;color:#33465f}
+input,select,textarea{border-radius:10px;border-color:#dce4ef;min-height:40px}
+table{border-collapse:separate;border-spacing:0}
+th{background:#f5f8fc;color:#5c6e84;font-size:10px;letter-spacing:.07em}
+td,th{padding:12px 13px}
+.ops-location-card,.task-card,.finance-metrics article{border-radius:14px;border-color:var(--nexus-line)}
+.kb-festival-ribbon{max-width:180px;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-radius:9px}
+@media(max-width:700px){.topbar{display:flex;min-height:60px;padding:8px 10px;align-items:center;flex-wrap:nowrap}.top-actions{flex:1 1 auto;overflow:visible;justify-content:flex-end;gap:5px}.top-actions>*{flex:0 0 auto}.preference-controls{flex:0 1 auto;min-width:0}.language-control select{max-width:68px}.kb-festival-ribbon{max-width:28px;min-width:28px;width:28px;height:32px;padding:0;justify-content:center}.kb-festival-ribbon strong,.kb-festival-ribbon .kb-festival-note{display:none}.content{padding:16px 12px 28px}.page-heading{align-items:stretch}}
+@media(max-width:420px){.topbar{gap:5px;padding:7px 8px}.top-actions{gap:3px}.language-control{height:32px;padding:0 5px}.language-control select{max-width:56px;font-size:10px}.top-actions button{min-width:32px}.content{padding-left:10px;padding-right:10px}}
+
+.nav-group{margin:14px 0 18px}
+.nav-group-label{padding:0 17px 7px;color:#8294ad;font-size:9px;font-weight:800;letter-spacing:.13em}
+.nexus-navigation{display:block;overflow-y:auto;min-height:0}
+.salary-settings-table input{width:min(180px,100%);min-height:36px;padding:7px 10px}
+.workforce-settings-panel .finance-expense-form{align-items:end}
+.workforce-settings-panel .form-hint{margin:0}

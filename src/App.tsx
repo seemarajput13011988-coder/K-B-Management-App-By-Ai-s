@@ -80,7 +80,7 @@ type Payment = {
 };
 type Staff = { id: string; userId: string; displayName: string; role: 'staff'; active: boolean; phone?: string; createdAt?: string };
 type AdminAccount = { id: string; userId: string; displayName: string; role: 'admin'; active: boolean; canManageAdmins?: boolean; isSuperAdmin?: boolean };
-type AttendanceRecord = { id: string; userId: string; displayName: string; workDate: string; checkInAt: string; checkOutAt?: string; gpsRestartRequired?: boolean; gpsCancelled?: boolean; dayType?: 'Full day' | 'Half day' | 'Absent'; status?: string; correctionReason?: string; correctedAt?: string; correctedByName?: string; startedByAdmin?: string; endedByAdminName?: string; endedByName?: string; attendanceSource?: string; absenceReason?: string };
+type AttendanceRecord = { id: string; userId: string; displayName: string; workDate: string; checkInAt: string; checkOutAt?: string; autoCheckoutAt?: string; gpsRestartRequired?: boolean; gpsCancelled?: boolean; dayType?: 'Full day' | 'Half day' | 'Absent'; status?: string; correctionReason?: string; correctedAt?: string; correctedByName?: string; startedByAdmin?: string; endedByAdminName?: string; endedByName?: string; attendanceSource?: string; absenceReason?: string };
 type Task = { id: string; title: string; details: string; assignedTo: string; assignedToName: string; priority: 'Low' | 'Normal' | 'High'; dueDate: string; status: 'Pending' | 'In progress' | 'Completed'; createdAt: string; createdByName: string; updatedAt?: string; completedAt?: string; attachments?: Array<{mediaId:string;fileName:string;mimeType:string;size:number}> };
 type Complaint = {
   id: string;
@@ -123,6 +123,8 @@ const money = (n: number) => '₹' + Number(n || 0).toLocaleString('en-IN');
 const customerStatusLabel = (value: unknown): Customer['status'] => { const status = String(value || 'Active').trim().toLowerCase(); return status === 'suspended' ? 'Suspended' : status === 'inactive' ? 'Inactive' : 'Active'; };
 const isAttendanceShiftActive = (item: AttendanceRecord, now = Date.now()) => {
   if (item.checkOutAt || item.dayType === 'Absent' || item.status?.toLowerCase().includes('cancelled') || item.gpsRestartRequired) return false;
+  const savedDeadline = Date.parse(item.autoCheckoutAt || '');
+  if (Number.isFinite(savedDeadline)) return now < savedDeadline;
   const checkIn = Date.parse(item.checkInAt || '');
   if (!Number.isFinite(checkIn) || !/^\d{4}-\d{2}-\d{2}$/.test(item.workDate || '')) return false;
   const parts = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date(checkIn));
@@ -138,6 +140,17 @@ const dateLabel = (s: string) =>
         year: 'numeric',
       })
     : '—';
+const uploadMimeType = (file: File) => {
+  const declared = String(file.type || '').toLowerCase();
+  if (declared === 'image/jpeg' || declared === 'image/png' || declared === 'image/webp' ||
+      declared === 'video/mp4' || declared === 'video/webm' || declared === 'video/quicktime' || declared === 'video/3gpp') return declared;
+  const extension = file.name.split('.').pop()?.toLowerCase() || '';
+  const byExtension: Record<string, string> = {
+    jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp',
+    mp4: 'video/mp4', m4v: 'video/mp4', webm: 'video/webm', mov: 'video/quicktime', '3gp': 'video/3gpp',
+  };
+  return byExtension[extension] || declared;
+};
 const fileAsBase64 = (file: File) => new Promise<string>((resolve, reject) => {
   const reader = new FileReader();
   reader.onload = () => {
@@ -479,6 +492,14 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
     void api.post('/api/auth/logout').catch(() => undefined);
     onLogout();
   }
+  async function ensureNoActiveShiftBeforeCredentialChange() {
+    if (isAdmin) return;
+    const attendance = await api.get('/api/attendance');
+    const activeShift = (attendance.data.items || []).some((item: AttendanceRecord) =>
+      item.userId === session.user.id && isAttendanceShiftActive(item)
+    );
+    if (activeShift) throw new Error('Staff credentials cannot be changed during an active shift. Ask an administrator to end the shift first.');
+  }
   async function savePlan(form: Omit<Plan, 'id'>) {
     try {
       if (editingPlan) await api.put('/api/plans/' + editingPlan.id, form as unknown as Record<string, unknown>);
@@ -664,7 +685,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
       const { photoFile, videoFile, ...fields } = data;
       const attachments = await Promise.all([photoFile, videoFile].filter((item): item is File => item instanceof File).map(async file => ({
         fileName: file.name,
-        mimeType: file.type,
+        mimeType: uploadMimeType(file),
         dataBase64: await fileAsBase64(file),
       })));
       await api.post('/api/complaints', { ...fields, attachments });
@@ -712,7 +733,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
     const files = [photoFile, videoFile].filter((item): item is File => item instanceof File);
     if (!(photoFile instanceof File) || !(videoFile instanceof File)) { flash('Both a task photo and a task video are required before completion.'); return; }
     try {
-      const attachments = await Promise.all(files.map(async file => ({ fileName: file.name, mimeType: file.type, dataBase64: await fileAsBase64(file) })));
+      const attachments = await Promise.all(files.map(async file => ({ fileName: file.name, mimeType: uploadMimeType(file), dataBase64: await fileAsBase64(file) })));
       await api.post('/api/tasks/' + task.id + '/media', { attachments });
       await api.put('/api/tasks/' + task.id, { status: 'Completed' });
       setCompletingTask(null);
@@ -783,6 +804,12 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
     },
   ];
 
+  const navGroups = [
+    { label: 'HOME', items: nav.filter(item => ['Overview', 'Calendar', taskPage, 'My Day', 'Salary'].includes(item.label)) },
+    { label: 'CUSTOMERS & FIELD', items: nav.filter(item => ['Customers', 'Subscriptions', 'Inventory', 'Installations', 'Payments', 'Complaints', 'Plans & Pricing'].includes(item.label)) },
+    { label: 'MANAGEMENT', items: nav.filter(item => ['Team Operations', 'GPS Tracking', 'Staff', 'Admin Accounts', 'Invoices', 'Finance & Billing'].includes(item.label)) },
+  ].filter(group => group.items.length);
+
   return (
     <div className="shell">
       <aside className={'sidebar ' + (mobileNav ? 'mobile-open' : '')}>
@@ -805,23 +832,25 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
           <span>K&B Operations</span>
           <ChevronDown size={14} />
         </div>
-        <div className="nav-label">WORKSPACE</div>
-        <nav>
-          {nav.map(item => (
-            <button
-              key={item.label}
-              className={'nav-item ' + (page === item.label ? 'active' : '')}
-              onClick={() => {
-                setPage(item.label);
-                setNotificationsOpen(false);
-                setMobileNav(false);
-              }}
-            >
-              <item.icon size={18} />
-              <span>{item.label}</span>
-              {item.count ? <em>{item.count}</em> : null}
-            </button>
-          ))}
+        <nav className="nexus-navigation" aria-label="Main navigation">
+          {navGroups.map(group => <section className="nav-group" key={group.label}>
+            <div className="nav-group-label">{group.label}</div>
+            {group.items.map(item => (
+              <button
+                key={item.label}
+                className={'nav-item ' + (page === item.label ? 'active' : '')}
+                onClick={() => {
+                  setPage(item.label);
+                  setNotificationsOpen(false);
+                  setMobileNav(false);
+                }}
+              >
+                <item.icon size={18} />
+                <span>{item.label}</span>
+                {item.count ? <em>{item.count}</em> : null}
+              </button>
+            ))}
+          </section>)}
         </nav>
         <div className="sidebar-bottom">
           <button className="btn secondary compact" style={{width:'100%',marginBottom:12}} onClick={async()=>{if(Capacitor.isNativePlatform()){const permission=await LocalNotifications.requestPermissions();flash(permission.display==='granted'?'Notifications enabled. You will receive new messages, assigned work and reminders while the app is running.':'Notifications are blocked. Enable them in Android settings.');return;}if(typeof Notification==='undefined'){flash('This browser does not support desktop notifications.');return;}const permission=await Notification.requestPermission();flash(permission==='granted'?'Notifications enabled. You will receive new messages, assigned work and reminders while the app is open.': 'Notifications are blocked. Enable them in your browser settings.');}}>
@@ -1456,7 +1485,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
       {complaintPreview && <Modal title={complaintPreview.name} subtitle="Complaint attachment" onClose={() => setComplaintPreview(null)}><div className="complaint-preview">{complaintPreview.mimeType.startsWith('video/') ? <video src={complaintPreview.dataUrl} controls playsInline /> : <img src={complaintPreview.dataUrl} alt={complaintPreview.name}/>}</div><div className="form-actions"><a className="btn secondary" href={complaintPreview.dataUrl} download={complaintPreview.name}>Download attachment</a><button type="button" className="btn primary" onClick={() => setComplaintPreview(null)}>Close</button></div></Modal>}
       {showStaff && <StaffModal onClose={() => setShowStaff(false)} onSave={createStaff} />}
       {showAdminModal && canManageAdmins && <AdminModal onClose={() => setShowAdminModal(false)} onSave={createAdmin} />}
-      {showAccountSettings && <AccountSettingsModal session={session} onClose={() => setShowAccountSettings(false)} onChangeUserId={async (currentPassword: string, userId: string) => { await changeAppUserId(currentPassword, userId); onLogout(); }} onChangePassword={async (currentPassword: string, newPassword: string) => { await changeAppPassword(currentPassword, newPassword); onLogout(); }} />}
+      {showAccountSettings && <AccountSettingsModal session={session} onClose={() => setShowAccountSettings(false)} onChangeUserId={async (currentPassword: string, userId: string) => { await ensureNoActiveShiftBeforeCredentialChange(); await changeAppUserId(currentPassword, userId); onLogout(); }} onChangePassword={async (currentPassword: string, newPassword: string) => { await ensureNoActiveShiftBeforeCredentialChange(); await changeAppPassword(currentPassword, newPassword); onLogout(); }} />}
       {showTask && <TaskModal staff={staff.filter(member => member.active)} onClose={() => setShowTask(false)} onSave={saveTask} />}
       {editStaffUserId && <StaffUsernameModal staff={editStaffUserId} onClose={() => setEditStaffUserId(null)} onSave={(userId: string) => saveStaffUserId(editStaffUserId, userId)} />}
       {resetStaff && <StaffPasswordModal staff={resetStaff} onClose={() => setResetStaff(null)} onSave={(password: string) => saveStaffPassword(resetStaff, password)} />}
@@ -2044,9 +2073,10 @@ function TaskCompletionModal({ task, onClose, onComplete }: any) {
   const [video, setVideo] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   function valid(file: File, kind: 'photo'|'video') {
-    const allowed = kind === 'photo' ? ['image/jpeg','image/png','image/webp'] : ['video/mp4','video/webm','video/quicktime'];
+    const mimeType = uploadMimeType(file);
+    const allowed = kind === 'photo' ? ['image/jpeg','image/png','image/webp'] : ['video/mp4','video/webm','video/quicktime','video/3gpp'];
     const limit = kind === 'photo' ? 2 * 1024 * 1024 : 8 * 1024 * 1024;
-    if (!allowed.includes(file.type)) { window.alert(kind === 'photo' ? 'Choose a JPG, PNG or WEBP photo.' : 'Choose an MP4, WEBM or MOV video.'); return false; }
+    if (!allowed.includes(mimeType)) { window.alert(kind === 'photo' ? 'Choose a JPG, PNG or WEBP photo.' : 'Choose an MP4, WEBM or MOV video.'); return false; }
     if (file.size > limit) { window.alert(kind === 'photo' ? 'Photo must be 2 MB or smaller.' : 'Video must be 8 MB or smaller.'); return false; }
     return true;
   }
@@ -2054,7 +2084,7 @@ function TaskCompletionModal({ task, onClose, onComplete }: any) {
     <form className="form-grid" onSubmit={async event => { event.preventDefault(); if (!photo || !video) { window.alert('Both a task photo and a task video are required.'); return; } setBusy(true); await onComplete(photo, video); setBusy(false); }}>
       <p className="form-hint">Both a photo and a video are required. The task remains open until both files upload successfully.</p>
       <Field label="Task photo (required)" wide><input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={event => { const file=event.target.files?.[0]||null; setPhoto(file&&valid(file,'photo')?file:null); }}/>{photo&&<small>{photo.name} · {(photo.size/1024).toFixed(0)} KB</small>}</Field>
-      <Field label="Task video (required)" wide><input type="file" accept="video/mp4,video/webm,video/quicktime" capture="environment" onChange={event => { const file=event.target.files?.[0]||null; setVideo(file&&valid(file,'video')?file:null); }}/>{video&&<small>{video.name} · {(video.size/1024/1024).toFixed(1)} MB</small>}</Field>
+      <Field label="Task video (required)" wide><input type="file" accept="video/mp4,video/webm,video/quicktime,video/3gpp,.3gp" capture="environment" onChange={event => { const file=event.target.files?.[0]||null; setVideo(file&&valid(file,'video')?file:null); }}/>{video&&<small>{video.name} · {(video.size/1024/1024).toFixed(1)} MB</small>}</Field>
       <div className="form-actions"><button type="button" className="btn secondary" onClick={onClose}>Cancel</button><button className="btn primary" disabled={busy||!photo||!video}>{busy?'Uploading evidence…':'Upload and complete task'}</button></div>
     </form>
   </Modal>;
@@ -2257,9 +2287,10 @@ function ComplaintModal({ customers, staff, session, onClose, onSave }: any) {
     }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 });
   }
   function validateFile(file: File, kind: 'photo' | 'video') {
-    const allowed = kind === 'photo' ? ['image/jpeg', 'image/png', 'image/webp'] : ['video/mp4', 'video/webm', 'video/quicktime'];
+    const mimeType = uploadMimeType(file);
+    const allowed = kind === 'photo' ? ['image/jpeg', 'image/png', 'image/webp'] : ['video/mp4', 'video/webm', 'video/quicktime', 'video/3gpp'];
     const maxBytes = kind === 'photo' ? 2 * 1024 * 1024 : 8 * 1024 * 1024;
-    if (!allowed.includes(file.type)) { window.alert(kind === 'photo' ? 'Choose a JPG, PNG or WEBP photo.' : 'Choose an MP4, WEBM or MOV video.'); return false; }
+    if (!allowed.includes(mimeType)) { window.alert(kind === 'photo' ? 'Choose a JPG, PNG or WEBP photo.' : 'Choose an MP4, WEBM or MOV video.'); return false; }
     if (file.size > maxBytes) { window.alert(kind === 'photo' ? 'Photo must be 2 MB or smaller.' : 'Video must be 8 MB or smaller.'); return false; }
     return true;
   }
@@ -2493,7 +2524,7 @@ function App(){
  async function login(userId:string,password:string,expectedRole:'admin'|'staff'){const next=await signInAppUser(userId,password,expectedRole) as Session;if(next.user.role!==expectedRole){await signOutAppUser();throw new Error(expectedRole==='admin'?'This account is not an admin account. Choose Staff Sign In instead.':'This account is not a staff account. Choose Admin Sign In instead.');}sessionStorage.setItem('kb-customer-session',JSON.stringify(next));setSession(next);}
  if(showWelcome)return <><FestivalTheme/><WelcomeIntro/></>;
  if(checking)return <><FestivalTheme/><div className="loading-cover"><div className="loader"/><span>Preparing secure sign-in…</span></div></>;
- return <><FestivalTheme/>{session?<WorkspaceErrorBoundary key={session.user.id} onReset={()=>{void (async()=>{let preserveServerSession=false;if(session.user.role==='staff'){try{const attendance=await client.get('/api/attendance?sessionToken='+encodeURIComponent(session.token));preserveServerSession=(attendance.data.items||[]).some((item:AttendanceRecord)=>item.userId===session.user.id&&isAttendanceShiftActive(item));}catch{preserveServerSession=true;}}if(!preserveServerSession)await signOutAppUser();sessionStorage.removeItem('kb-customer-session');localStorage.removeItem('kb-customer-session');setSession(null);})();}}><Workspace session={session} onLogout={()=>{void signOutAppUser();sessionStorage.removeItem('kb-customer-session');localStorage.removeItem('kb-customer-session');setSession(null);}}/></WorkspaceErrorBoundary>:<LoginScreen onLogin={login}/>}</>;
+ return <><FestivalTheme/>{session?<WorkspaceErrorBoundary key={session.user.id} onReset={()=>{void (async()=>{let preserveServerSession=false;if(session.user.role==='staff'){try{const attendance=await client.get('/api/attendance?sessionToken='+encodeURIComponent(session.token));preserveServerSession=(attendance.data.items||[]).some((item:AttendanceRecord)=>item.userId===session.user.id&&isAttendanceShiftActive(item));}catch{preserveServerSession=true;}}if(!preserveServerSession)await signOutAppUser();sessionStorage.removeItem('kb-customer-session');localStorage.removeItem('kb-customer-session');setSession(null);})();}}><Workspace session={session} onLogout={()=>{void signOutAppUser().then(()=>{sessionStorage.removeItem('kb-customer-session');localStorage.removeItem('kb-customer-session');setSession(null);}).catch(error=>window.alert(error instanceof Error?error.message:'Sign out was blocked.'));}}/></WorkspaceErrorBoundary>:<LoginScreen onLogin={login}/>}</>;
 }
 function LoginScreen({onLogin}:{onLogin:(id:string,pw:string,role:'admin'|'staff')=>Promise<void>}){
  const [role,setRole]=useState<'admin'|'staff'|null>(null);

@@ -93,6 +93,22 @@ async function getDoc(collection: string, id: string): Promise<Data | null> {
   const snap = await db.collection(collection).doc(id).get();
   return snap.exists ? { id: snap.id, ...snap.data() } : null;
 }
+async function staffHasActiveShift(userId: string): Promise<boolean> {
+  const snapshot = await db.collection('attendance').where('userId', '==', userId).limit(1000).get();
+  return snapshot.docs.some(doc => {
+    const item = doc.data();
+    if (item.status !== 'Checked in' || item.checkOutAt || item.dayType === 'Absent' || item.gpsRestartRequired || item.gpsCancelled) return false;
+    const savedDeadline = Date.parse(String(item.autoCheckoutAt || ''));
+    if (Number.isFinite(savedDeadline)) return savedDeadline > Date.now();
+    const checkIn = Date.parse(String(item.checkInAt || ''));
+    const workDate = String(item.workDate || '');
+    if (!Number.isFinite(checkIn) || !datePattern.test(workDate)) return true;
+    const parts = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date(checkIn));
+    const minutes = Number(parts.find(part => part.type === 'hour')?.value || 0) * 60 + Number(parts.find(part => part.type === 'minute')?.value || 0);
+    const dueDate = minutes >= 19 * 60 ? new Date(Date.parse(workDate + 'T00:00:00Z') + 86400000).toISOString().slice(0, 10) : workDate;
+    return Date.now() < Date.parse(dueDate + 'T19:00:00+05:30');
+  });
+}
 async function audit(user: AppUser, action: string, entityType: string, entityId: string, description: string) {
   await db.collection('audit_logs').add({
     actorId: user.uid, actorName: user.displayName, action, entityType, entityId,
@@ -420,6 +436,9 @@ export async function apiHandler(req: any, res: any) {
       }
 
       if (method === 'POST' && path === '/api/auth/change-password') {
+        if (user.role === 'staff' && await staffHasActiveShift(user.uid)) {
+          send(res, 409, { error: 'Staff credentials cannot be changed during an active shift. Ask an administrator to end the shift first.' }); return;
+        }
         const currentPassword = typeof body.currentPassword === 'string' ? body.currentPassword : '';
         const newPassword = typeof body.newPassword === 'string' ? body.newPassword : '';
         if (newPassword.length < 10) { send(res, 400, { error: 'Choose a password with at least 10 characters.' }); return; }
@@ -435,6 +454,9 @@ export async function apiHandler(req: any, res: any) {
       }
 
       if (method === 'POST' && path === '/api/auth/change-user-id') {
+        if (user.role === 'staff' && await staffHasActiveShift(user.uid)) {
+          send(res, 409, { error: 'Staff credentials cannot be changed during an active shift. Ask an administrator to end the shift first.' }); return;
+        }
         if (!user.authTime || Date.now() / 1000 - user.authTime > 300) {
           send(res, 401, { error: 'Please sign in again before changing your user ID.' }); return;
         }
@@ -457,6 +479,9 @@ export async function apiHandler(req: any, res: any) {
         send(res, 200, { user: { id: user.uid, userId: user.userId, displayName: user.displayName, role: user.role, active: true, canManageAdmins: user.canManageAdmins === true } }); return;
       }
       if (method === 'POST' && path === '/api/auth/logout') {
+        if (user.role === 'staff' && await staffHasActiveShift(user.uid)) {
+          send(res, 409, { error: 'Sign out is blocked while your work shift is active. Ask an administrator to end the shift.' }); return;
+        }
         const authorization = clean(req.headers.authorization, 4096);
         const token = authorization.startsWith('Bearer ')
           ? authorization.slice(7)
@@ -528,6 +553,13 @@ export async function apiHandler(req: any, res: any) {
         if (typeof body.displayName === 'string') { const name = clean(body.displayName, 80); if (!name) { send(res, 400, { error: 'Enter a staff name.' }); return; } patch.displayName = name; }
         if (typeof body.userId === 'string') { const nextId = clean(body.userId, 32); if (!/^[a-zA-Z0-9_-]{3,32}$/.test(nextId)) { send(res, 400, { error: 'Use a 3–32 character staff ID.' }); return; } if ((await list('users')).some(item => item.id !== staffId && String(item.userId || '').toLowerCase() === nextId.toLowerCase())) { send(res, 409, { error: 'That user ID is already in use.' }); return; } patch.userId = nextId; patch.userIdLower = nextId.toLowerCase(); }
         if (typeof body.active === 'boolean') patch.active = body.active;
+        if (body.monthlySalary !== undefined) {
+          const monthlySalary = Number(body.monthlySalary);
+          if (!Number.isFinite(monthlySalary) || monthlySalary < 0 || monthlySalary > 1000000) {
+            send(res, 400, { error: 'Monthly salary must be between ₹0 and ₹10,00,000.' }); return;
+          }
+          patch.monthlySalary = monthlySalary;
+        }
         await db.collection('users').doc(staffId).update(patch);
         if (patch.active === false || patch.userId) await revokeUserSessions(staffId);
         await audit(user, 'UPDATE', 'staff', staffId, 'Updated staff account ' + String(staff.userId || staffId));
