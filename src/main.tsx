@@ -36,7 +36,7 @@ function mountApp(native = false) {
   );
 }
 
-function showUpdateRequired(message: string, retry: () => void) {
+function showUpdateRequired(message: string, retry: () => void, retryEnabled = true) {
   appRoot.innerHTML = '';
   const screen = document.createElement('main');
   screen.setAttribute('role', 'status');
@@ -52,7 +52,8 @@ function showUpdateRequired(message: string, retry: () => void) {
   detail.style.cssText = 'max-width:320px;margin:0;color:#64748b;line-height:1.55;font-size:14px';
   const button = document.createElement('button');
   button.type = 'button';
-  button.textContent = 'Retry update';
+  button.textContent = retryEnabled ? 'Retry update' : 'Downloading update…';
+  button.disabled = !retryEnabled;
   button.style.cssText = 'border:0;border-radius:10px;background:#1d4ed8;color:white;padding:12px 22px;font-weight:700;font-size:14px';
   button.addEventListener('click', () => {
     button.disabled = true;
@@ -74,7 +75,7 @@ async function runRequiredUpdate(updateWasPreviouslyRequired = false): Promise<v
     updateWasAdvertised = true;
     showUpdateRequired('A required update is available. Please keep the app open while it downloads and installs.', () => {
       void runRequiredUpdate(true);
-    });
+    }, false);
     // Mark the currently running bundle healthy before switching to the new one.
     // The newly installed bundle is acknowledged only after the actual App mounts.
     await CapacitorUpdater.notifyAppReady();
