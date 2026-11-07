@@ -192,7 +192,7 @@ export function isSixMonthReviewDue(createdAt: unknown, currentTime = Date.now()
 /** Calculates a shift deadline in India time. If the configured end time has
  * already passed when a shift starts, the next day's end time is used. */
 export function computeShiftDeadline(workDate: string, startedAt: string, endTime: string): string | null {
-  if (!isValidDateKey(workDate) || !/^([01]\\d|2[0-3]):[0-5]\\d$/.test(endTime)) return null;
+  if (!isValidDateKey(workDate) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(endTime)) return null;
   const started = Date.parse(startedAt);
   const firstDeadline = Date.parse(workDate + 'T' + endTime + ':00+05:30');
   if (!Number.isFinite(started) || !Number.isFinite(firstDeadline)) return null;
