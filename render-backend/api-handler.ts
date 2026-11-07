@@ -636,6 +636,7 @@ export async function apiHandler(req: any, res: any) {
           await batch.commit();
         }
         await db.collection('staff_live_locations').doc(staffId).delete().catch(() => undefined);
+        await db.collection('active_shift_locks').doc(staffId).delete().catch(() => undefined);
         await db.collection('users').doc(staffId).delete();
         const totalUnassigned = Object.values(unassignedCounts).reduce((sum, count) => sum + count, 0);
         await audit(user, 'DELETE', 'staff', staffId, 'Removed staff account ' + String(staff.displayName || staff.userId || staffId) + '; unassigned ' + totalUnassigned + ' operational records; historical records preserved');
