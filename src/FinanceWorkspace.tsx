@@ -192,6 +192,11 @@ export default function FinanceWorkspace({ session, customers, payments, flash, 
     setBusy(true);
     try {
       await client.put('/api/staff/' + member.id, { monthlySalary: amount, sessionToken: session.token });
+      const verification = await client.get('/api/staff?sessionToken=' + encodeURIComponent(session.token));
+      const savedMember = (verification.data.items || []).find((item: StaffMember) => item.id === member.id);
+      if (Number(savedMember?.monthlySalary || 0) !== amount) {
+        throw new Error('Monthly salary settings need the latest backend deployment. The amount was not confirmed as saved.');
+      }
       await load();
       flash('Monthly salary for ' + member.displayName + ' saved.');
     } catch (err) {
