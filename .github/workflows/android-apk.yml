@@ -210,6 +210,8 @@ jobs:
             public void startTracking(PluginCall call) {
               String token = call.getString("token");
               String apiBaseUrl = call.getString("apiBaseUrl");
+              String attendanceId = call.getString("attendanceId", "");
+              String scheduledEndAt = call.getString("scheduledEndAt", "");
               if (token == null || token.trim().isEmpty() || apiBaseUrl == null || !apiBaseUrl.startsWith("https://")) {
                 call.reject("A valid signed-in session and secure K&B API address are required.");
                 return;
@@ -218,6 +220,8 @@ jobs:
               intent.setAction(WorkLocationTrackingService.ACTION_START);
               intent.putExtra(WorkLocationTrackingService.EXTRA_TOKEN, token);
               intent.putExtra(WorkLocationTrackingService.EXTRA_API_BASE_URL, apiBaseUrl);
+              intent.putExtra(WorkLocationTrackingService.EXTRA_ATTENDANCE_ID, attendanceId);
+              intent.putExtra(WorkLocationTrackingService.EXTRA_SCHEDULED_END_AT, scheduledEndAt);
               try {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) getContext().startForegroundService(intent);
                 else getContext().startService(intent);
@@ -293,9 +297,13 @@ jobs:
             public static final String ACTION_STOP = "kandbnet.service2010.WORK_LOCATION_STOP";
             public static final String EXTRA_TOKEN = "session_token";
             public static final String EXTRA_API_BASE_URL = "api_base_url";
+            public static final String EXTRA_ATTENDANCE_ID = "attendance_id";
+            public static final String EXTRA_SCHEDULED_END_AT = "scheduled_end_at";
             private static final String PREFS = "kb_work_location_service";
             private static final String KEY_TOKEN = "token";
             private static final String KEY_API = "api_base_url";
+            private static final String KEY_ATTENDANCE_ID = "attendance_id";
+            private static final String KEY_SCHEDULED_END_AT = "scheduled_end_at";
             private static final int NOTIFICATION_ID = 7316;
             private static final String CHANNEL_ID = "kb_active_shift_location";
             private FusedLocationProviderClient fusedClient;
@@ -352,7 +360,14 @@ jobs:
                   stopTrackingAndService();
                   return START_NOT_STICKY;
                 }
-                getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString(KEY_TOKEN, token).putString(KEY_API, api).apply();
+                String attendanceId = intent.getStringExtra(EXTRA_ATTENDANCE_ID);
+                String scheduledEndAt = intent.getStringExtra(EXTRA_SCHEDULED_END_AT);
+                android.content.SharedPreferences.Editor preferences = getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                  .putString(KEY_TOKEN, token).putString(KEY_API, api);
+                if (attendanceId != null && !attendanceId.isEmpty()) preferences.putString(KEY_ATTENDANCE_ID, attendanceId);
+                if (scheduledEndAt != null && !scheduledEndAt.isEmpty()) preferences.putString(KEY_SCHEDULED_END_AT, scheduledEndAt);
+                else preferences.remove(KEY_SCHEDULED_END_AT);
+                preferences.apply();
               }
               String token = getSharedPreferences(PREFS, MODE_PRIVATE).getString(KEY_TOKEN, null);
               String api = getSharedPreferences(PREFS, MODE_PRIVATE).getString(KEY_API, null);
@@ -467,7 +482,11 @@ jobs:
                 dateFormat.setTimeZone(TimeZone.getTimeZone("Asia/Kolkata"));
                 Date date = dateFormat.parse(workDate);
                 if (date == null) return false;
-                if (minutes >= 19 * 60) {
+                String endTime = item.optString("shiftEndTime", "19:00");
+                if (!endTime.matches("([01]\\d|2[0-3]):[0-5]\\d")) endTime = "19:00";
+                String[] endParts = endTime.split(":");
+                int endMinutes = Integer.parseInt(endParts[0]) * 60 + Integer.parseInt(endParts[1]);
+                if (minutes >= endMinutes) {
                   Calendar calendar = Calendar.getInstance(TimeZone.getTimeZone("Asia/Kolkata"), Locale.US);
                   calendar.setTime(date);
                   calendar.add(Calendar.DAY_OF_MONTH, 1);
@@ -476,7 +495,7 @@ jobs:
                 String dueDate = dateFormat.format(date);
                 SimpleDateFormat dueFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US);
                 dueFormat.setTimeZone(TimeZone.getTimeZone("Asia/Kolkata"));
-                Date due = dueFormat.parse(dueDate + "T19:00:00");
+                Date due = dueFormat.parse(dueDate + "T" + endTime + ":00");
                 return due != null && now < due.getTime();
               } catch (Exception ignored) {
                 return false;
@@ -516,7 +535,10 @@ jobs:
                     stopFromServer();
                     return;
                   }
-                  if (status < 200 || status >= 300) return;
+                  if (status < 200 || status >= 300) {
+                    stopIfCachedDeadlineExpired();
+                    return;
+                  }
                   String responseText;
                   try (InputStream input = connection.getInputStream(); ByteArrayOutputStream output = new ByteArrayOutputStream()) {
                     byte[] buffer = new byte[4096];
@@ -526,23 +548,48 @@ jobs:
                   }
                   JSONObject response = new JSONObject(responseText);
                   JSONArray items = response.optJSONArray("items");
-                  boolean activeShift = false;
+                  JSONObject activeItem = null;
                   if (items != null) {
                     long now = System.currentTimeMillis();
                     for (int index = 0; index < items.length(); index++) {
-                      if (isShiftStillActive(items.optJSONObject(index), now)) {
-                        activeShift = true;
+                      JSONObject candidate = items.optJSONObject(index);
+                      if (isShiftStillActive(candidate, now)) {
+                        activeItem = candidate;
                         break;
                       }
                     }
                   }
-                  if (!activeShift) stopTrackingAndService();
+                  if (activeItem == null) {
+                    stopTrackingAndService();
+                  } else {
+                    android.content.SharedPreferences.Editor cache = getSharedPreferences(PREFS, MODE_PRIVATE).edit();
+                    String activeId = activeItem.optString("id", "");
+                    String deadline = activeItem.optString("autoCheckoutAt", "");
+                    if (!activeId.isEmpty()) cache.putString(KEY_ATTENDANCE_ID, activeId);
+                    if (!deadline.isEmpty()) cache.putString(KEY_SCHEDULED_END_AT, deadline);
+                    cache.apply();
+                  }
                 } catch (Exception ignored) {
-                  // Keep the visible service running during temporary network loss; retry on the next watchdog pass.
+                  // Keep tracking only until the last server-confirmed deadline when offline.
+                  stopIfCachedDeadlineExpired();
                 } finally {
                   if (connection != null) connection.disconnect();
                 }
               });
+            }
+
+            private void stopIfCachedDeadlineExpired() {
+              String deadline = getSharedPreferences(PREFS, MODE_PRIVATE).getString(KEY_SCHEDULED_END_AT, "");
+              if (deadline == null || deadline.isEmpty()) return;
+              try {
+                SimpleDateFormat format = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US);
+                format.setTimeZone(TimeZone.getTimeZone("UTC"));
+                Date parsed = format.parse(deadline);
+                if (parsed != null && System.currentTimeMillis() >= parsed.getTime()) stopTrackingAndService();
+              } catch (Exception ignored) {
+                // An unreadable cache is not treated as a valid future deadline.
+                stopTrackingAndService();
+              }
             }
 
             private void reportGpsUnavailable(String reason) {
