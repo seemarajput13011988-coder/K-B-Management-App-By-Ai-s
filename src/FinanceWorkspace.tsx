@@ -140,6 +140,23 @@ export default function FinanceWorkspace({ session, customers, payments, flash, 
   };
   useEffect(() => { load().catch(() => flash('Could not load finance records.')); }, [period]);
   useEffect(() => subscribeToApiChanges(() => { void load().catch(() => flash('Could not refresh finance records.')); }), [period]);
+  useEffect(() => {
+    let stopped = false, inFlight = false;
+    const poll = () => {
+      if (stopped || inFlight || document.visibilityState === 'hidden') return;
+      inFlight = true;
+      void load().catch(() => flash('Could not refresh finance records.')).finally(() => { inFlight = false; });
+    };
+    const timer = window.setInterval(poll, 30000);
+    window.addEventListener('focus', poll);
+    document.addEventListener('visibilitychange', poll);
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+      window.removeEventListener('focus', poll);
+      document.removeEventListener('visibilitychange', poll);
+    };
+  }, [period, session.token]);
   useEffect(() => { if (!ledgerCustomerId && customers.length) setLedgerCustomerId(customers[0].id); }, [customers, ledgerCustomerId]);
   useEffect(() => {
     if (!ledgerCustomerId) { setLedger(null); return; }
