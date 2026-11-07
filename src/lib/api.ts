@@ -28,6 +28,9 @@ async function request<T = any>(path: string, method: string, payload?: Record<s
     if (typeof data.error === 'string' && data.error.trim()) throw new Error(data.error);
     throw new Error(`K&B server returned HTTP ${response.status}. Check that the K&B API service is available.`);
   }
+  if (method !== 'GET' && typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('kb:data-changed', { detail: { method, path } }));
+  }
   return { data };
 }
 export async function nativeApiPost<T = any>(path: string, payload: Record<string, unknown>): Promise<ApiResult<T>> {
