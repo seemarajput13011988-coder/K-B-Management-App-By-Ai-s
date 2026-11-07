@@ -1,13 +1,24 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { getMessaging } from 'firebase-admin/messaging';
-import { FieldValue, firestore } from './firestore-adapter.js';
+import { FieldPath, FieldValue, firestore } from 'firebase-admin/firestore';
+import { firestore as dbFirestore } from './firestore-adapter.js';
 import { isValidDateKey, subscriptionExpiryKind, taskReminderKind } from './route-path.js';
 
 type Item = Record<string, any>;
 const now = () => new Date().toISOString();
 async function readCollection(name: string, limit = 1000): Promise<Item[]> {
-  const snapshot = await firestore.collection(name).limit(limit).get();
-  return snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+  const pageSize = Math.max(1, Math.min(limit, 1000));
+  const items: Item[] = [];
+  let cursor: FirebaseFirestore.QueryDocumentSnapshot | undefined;
+  while (true) {
+    let query = dbFirestore.collection(name).orderBy(FieldPath.documentId()).limit(pageSize);
+    if (cursor) query = query.startAfter(cursor);
+    const snapshot = await query.get();
+    items.push(...snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id })));
+    if (snapshot.size < pageSize) break;
+    cursor = snapshot.docs[snapshot.docs.length - 1];
+  }
+  return items;
 }
 function indiaDateParts() {
   const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
