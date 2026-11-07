@@ -19,6 +19,13 @@ const localDay = () => new Intl.DateTimeFormat('en-CA', {
   month: '2-digit',
   day: '2-digit',
 }).format(new Date());
+const indiaMinutesNow = () => {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+  }).formatToParts(new Date());
+  return Number(parts.find(part => part.type === 'hour')?.value || 0) * 60 +
+    Number(parts.find(part => part.type === 'minute')?.value || 0);
+};
 const stamp = (value?: string) => value ? new Date(value).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) : '—';
 function AttendanceCalendar({ staffId, staffName, records, holidays }: { staffId: string; staffName: string; records: Attendance[]; holidays: HolidayRequest[] }) {
   const [month, setMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
@@ -78,6 +85,8 @@ export default function StaffOperations({ session, customers, flash, compact = f
   const [visitForm, setVisitForm] = useState({ customerId: customers[0]?.id || '', purpose: 'Installation / service visit', notes: '' });
   const selectedGroupRef = useRef('');
   const [today, setToday] = useState(localDay);
+  const [indiaMinutes, setIndiaMinutes] = useState(indiaMinutesNow);
+  const staffShiftWindowOpen = indiaMinutes >= 8 * 60 && indiaMinutes < 19 * 60;
   const myToday = attendance.filter(item => item.userId === session.user.id && item.workDate === today).sort((a, b) => b.checkInAt.localeCompare(a.checkInAt))[0];
   const activeShift = !!myToday && myToday.dayType !== 'Absent' && !myToday.checkOutAt;
 
@@ -153,6 +162,7 @@ export default function StaffOperations({ session, customers, flash, compact = f
   // where browser timers may have been paused or throttled.
   useEffect(() => {
     const syncWorkDate = () => {
+      setIndiaMinutes(indiaMinutesNow());
       const nextDate = localDay();
       setToday(current => current === nextDate ? current : nextDate);
     };
@@ -348,7 +358,7 @@ export default function StaffOperations({ session, customers, flash, compact = f
 
   if (compact && !admin) return <section className="panel ops-home-shift">
     <div className="ops-home-shift-copy"><span className="eyebrow">TODAY’S ATTENDANCE</span><h2>{activeShift ? 'Your shift is active' : myToday?.dayType === 'Absent' ? 'Marked absent today' : myToday?.checkOutAt ? 'Shift completed' : 'Ready to start work?'}</h2><p>{activeShift ? 'Checked in at ' + stamp(myToday?.checkInAt) + '. Your workday is being recorded.' : myToday?.dayType === 'Absent' ? 'Your attendance was marked absent by an administrator.' : myToday?.checkOutAt ? 'You checked out at ' + stamp(myToday.checkOutAt) + '.' : 'Start your shift directly from the home screen.'}</p></div>
-    <div className="ops-home-shift-action">{!myToday ? <button className="btn primary" disabled={busy || loading} onClick={() => shift('check-in')}>{busy ? 'Starting…' : 'Start shift'}</button> : activeShift ? <button className="btn danger" disabled={busy} onClick={() => shift('check-out')}>{busy ? 'Ending…' : 'End shift'}</button> : <span className="ops-complete">Completed for today</span>}</div>
+    <div className="ops-home-shift-action">{!myToday ? staffShiftWindowOpen ? <button className="btn primary" disabled={busy || loading} onClick={() => shift('check-in')}>{busy ? 'Starting…' : 'Start shift'}</button> : <span className="ops-complete">Staff shifts are available 8:00 AM–7:00 PM</span> : activeShift ? staffShiftWindowOpen ? <button className="btn danger" disabled={busy} onClick={() => shift('check-out')}>{busy ? 'Ending…' : 'End shift'}</button> : <span className="ops-complete">Your shift will end automatically at 7:00 PM</span> : <span className="ops-complete">Completed for today · Start again tomorrow from 8:00 AM</span>}</div>
     {loading && <small className="ops-home-loading">Loading attendance status…</small>}
   </section>;
 
@@ -424,7 +434,7 @@ export default function StaffOperations({ session, customers, flash, compact = f
     {!admin && <section className="panel ops-panel">
       <div className="ops-panel-head"><div><span className="eyebrow">ATTENDANCE</span><h2>My workday</h2><p>Record your shift start and finish. Work location is shared with authorised Admins during an active shift. On Android, background tracking continues with a persistent notification and stops at checkout.</p></div><span className={'ops-pill ' + (activeShift ? 'is-live' : 'is-idle')}>{activeShift ? 'ON SHIFT' : myToday?.dayType === 'Absent' ? 'ABSENT' : myToday?.checkOutAt ? 'SHIFT COMPLETE' : 'OFF SHIFT'}</span></div>
       <div className="ops-clock-row"><div><small>CHECK IN</small><strong>{myToday?.dayType === 'Absent' ? 'Absent' : myToday ? stamp(myToday.checkInAt) : 'Not checked in'}</strong></div><div><small>CHECK OUT</small><strong>{myToday?.dayType === 'Absent' ? '—' : myToday?.checkOutAt ? stamp(myToday.checkOutAt) : '—'}</strong></div></div>
-      <div className="ops-actions"><label className="ops-day-type">Attendance type <select value={dayType} disabled={!!myToday} onChange={e=>setDayType(e.target.value as 'Full day'|'Half day')}><option>Full day</option><option>Half day</option></select></label>{!myToday ? <button className="btn primary" disabled={busy} onClick={() => shift('check-in')}>Check in and start shift</button> : activeShift ? <button className="btn danger" disabled={busy} onClick={() => shift('check-out')}>Check out and end shift</button> : <span className="ops-complete">{myToday.dayType === 'Absent' ? 'Today’s attendance is marked absent.' : 'Today’s attendance is complete.'}</span>}</div>
+      <div className="ops-actions"><label className="ops-day-type">Attendance type <select value={dayType} disabled={!!myToday} onChange={e=>setDayType(e.target.value as 'Full day'|'Half day')}><option>Full day</option><option>Half day</option></select></label>{!myToday ? staffShiftWindowOpen ? <button className="btn primary" disabled={busy} onClick={() => shift('check-in')}>Check in and start shift</button> : <span className="ops-complete">Staff shifts are available 8:00 AM–7:00 PM India time.</span> : activeShift ? staffShiftWindowOpen ? <button className="btn danger" disabled={busy} onClick={() => shift('check-out')}>Check out and end shift</button> : <span className="ops-complete">Your shift will be checked out automatically at 7:00 PM.</span> : <span className="ops-complete">{myToday.dayType === 'Absent' ? 'Today’s attendance is marked absent.' : 'Today’s attendance is complete. A new shift can start tomorrow from 8:00 AM.'}</span>}</div>
       <p className="ops-gps-note">During an active shift, your location is shared automatically with authorised K&B administrators. Android shows a persistent tracking notification, and tracking stops when the shift ends. If location permission or phone location services are disabled, administrators will see the tracking interruption.</p>
     </section>}
 
