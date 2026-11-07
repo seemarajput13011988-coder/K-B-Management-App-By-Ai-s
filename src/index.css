@@ -2173,3 +2173,9 @@ td,th{padding:12px 13px}
 .salary-settings-table input{width:min(180px,100%);min-height:36px;padding:7px 10px}
 .workforce-settings-panel .finance-expense-form{align-items:end}
 .workforce-settings-panel .form-hint{margin:0}
+
+
+/* Lazy workspace loading and smoother, accessible chart motion */
+.workspace-loading{min-height:220px;display:grid;place-content:center;justify-items:center;gap:12px;color:var(--kb-muted,#718096);font-size:12px}
+.chart-track i,.status-chart-row i,.finance-chart-bar{transition:height .55s cubic-bezier(.2,.75,.2,1),width .55s cubic-bezier(.2,.75,.2,1)}
+@media(prefers-reduced-motion:reduce){.chart-track i,.status-chart-row i,.finance-chart-bar{transition:none!important}}
