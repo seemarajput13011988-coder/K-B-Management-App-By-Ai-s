@@ -51,7 +51,7 @@ type StaffRegistrationRequest={id:string;userId:string;displayName:string;phone?
 type StaffHolidayRequest={id:string;userId:string;displayName:string;startDate:string;endDate:string;reason:string;status:'pending'|'approved'|'rejected';createdAt:string;reviewedAt?:string;reviewedByName?:string};
 const getToken=()=>{try{return (JSON.parse(sessionStorage.getItem('kb-customer-session')||'null') as Session|null)?.token||'';}catch{return '';}};
 const api={get:(url:string)=>client.get(url+(url.includes('?')?'&':'?')+'sessionToken='+encodeURIComponent(getToken())),post:(url:string,data?:Record<string,unknown>)=>client.post(url,{...(data||{}),sessionToken:getToken()}),put:(url:string,data?:Record<string,unknown>)=>client.put(url,{...(data||{}),sessionToken:getToken()}),delete:(url:string)=>client.delete(url+'?sessionToken='+encodeURIComponent(getToken()))};
-interface WorkLocationTrackingPlugin { startTracking(options: { token: string; apiBaseUrl: string }): Promise<{ started: boolean }>; stopTracking(): Promise<{ stopped: boolean }>; }
+interface WorkLocationTrackingPlugin { startTracking(options: { token: string; apiBaseUrl: string; attendanceId?: string; scheduledEndAt?: string }): Promise<{ started: boolean }>; stopTracking(): Promise<{ stopped: boolean }>; }
 const WorkLocationTracking = registerPlugin<WorkLocationTrackingPlugin>('WorkLocationTracking');
 type Customer = {
   id: string;
@@ -1952,13 +1952,21 @@ function StaffModal({ onClose, onSave }: any) {
 }
 function StaffLocationResponder({ activeShift, userId }: { activeShift: boolean; userId: string }) {
   const [shiftActive, setShiftActive] = useState(activeShift);
+  const [activeShiftId, setActiveShiftId] = useState('');
+  const [scheduledEndAt, setScheduledEndAt] = useState('');
   useEffect(() => {
     let stopped = false;
     const checkShift = async () => {
       try {
         const result = await api.get('/api/attendance');
-        const active = (result.data.items || []).some((item: AttendanceRecord) => item.userId === userId && isAttendanceShiftActive(item));
-        if (!stopped) setShiftActive(active);
+        const activeRecord = (result.data.items || [])
+          .filter((item: AttendanceRecord) => item.userId === userId && isAttendanceShiftActive(item))
+          .sort((a: AttendanceRecord, b: AttendanceRecord) => String(b.checkInAt || '').localeCompare(String(a.checkInAt || '')))[0];
+        if (!stopped) {
+          setShiftActive(Boolean(activeRecord));
+          setActiveShiftId(activeRecord?.id || '');
+          setScheduledEndAt(activeRecord?.autoCheckoutAt || '');
+        }
       } catch { /* Keep the last confirmed shift state if the API is temporarily unavailable. */ }
     };
     setShiftActive(activeShift);
@@ -1998,7 +2006,7 @@ function StaffLocationResponder({ activeShift, userId }: { activeShift: boolean;
         const token = getToken();
         if (!token) return;
         const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'https://kandb-management-nexus-api-zv7f.onrender.com';
-        await WorkLocationTracking.startTracking({ token, apiBaseUrl });
+        await WorkLocationTracking.startTracking({ token, apiBaseUrl, attendanceId: activeShiftId, scheduledEndAt });
       } catch {
         reportGpsUnavailable('Phone location services are unavailable');
       }
@@ -2045,7 +2053,7 @@ function StaffLocationResponder({ activeShift, userId }: { activeShift: boolean;
     // unmount/Activity destroy: Android may destroy the WebView when the user
     // swipes the app away. The service stops on checkout or server rejection.
     return () => { stopped = true; };
-  }, [shiftActive]);
+  }, [shiftActive, activeShiftId, scheduledEndAt]);
   return null;
 }
 function StaffPermissionSetup({ onComplete }: { onComplete:(locationGranted?:boolean)=>void }) {
