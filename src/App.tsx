@@ -2445,12 +2445,12 @@ function FestivalTheme(){
   useEffect(()=>{
     const apply=()=>{
       const festival=currentFestival();
-      if(festival){document.documentElement.dataset.festivalTheme=festival.theme;document.documentElement.dataset.festivalName=festival.name;}
-      else{delete document.documentElement.dataset.festivalTheme;delete document.documentElement.dataset.festivalName;}
+      if(festival){document.documentElement.dataset.festivalName=festival.name;}
+      else{delete document.documentElement.dataset.festivalName;}
     };
     apply();
     const timer=window.setInterval(apply,60_000);
-    return()=>{window.clearInterval(timer);delete document.documentElement.dataset.festivalTheme;delete document.documentElement.dataset.festivalName;};
+    return()=>{window.clearInterval(timer);delete document.documentElement.dataset.festivalName;};
   },[]);
   return null;
 }
