@@ -831,11 +831,98 @@ jobs:
             echo "::error::FCM config missing."
             exit 1
           fi
-      - name: Assemble debug APK
+      - name: Configure stable Android release signing when the owner key is available
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          values=("$ANDROID_KEYSTORE_BASE64" "$ANDROID_KEYSTORE_PASSWORD" "$ANDROID_KEY_ALIAS" "$ANDROID_KEY_PASSWORD")
+          present=0
+          for value in "${values[@]}"; do
+            if [ -n "$value" ]; then present=$((present + 1)); fi
+          done
+          if [ "$present" -eq 0 ]; then
+            echo "::notice::No stable Android signing key is configured. This run will produce a debug APK for CI only, not an updateable release APK."
+            exit 0
+          fi
+          if [ "$present" -ne 4 ]; then
+            echo "::error::Configure all four ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS and ANDROID_KEY_PASSWORD secrets together."
+            exit 1
+          fi
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > android/app/kb-nexus-release.jks
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          groovy = Path("android/app/build.gradle")
+          kotlin = Path("android/app/build.gradle.kts")
+          path = groovy if groovy.exists() else kotlin
+          if not path.exists():
+              raise SystemExit("Android app Gradle file is missing.")
+          source = path.read_text()
+          if path.suffix == ".kts":
+              if "create(\"release\")" not in source:
+                  block = '''
+              signingConfigs {
+                  create("release") {
+                      storeFile = file("kb-nexus-release.jks")
+                      storePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
+                      keyAlias = System.getenv("ANDROID_KEY_ALIAS")
+                      keyPassword = System.getenv("ANDROID_KEY_PASSWORD")
+                  }
+              }
+          '''
+                  marker = "    buildTypes {"
+                  if marker not in source: raise SystemExit("Could not find Android buildTypes block.")
+                  source = source.replace(marker, block + "\n" + marker, 1)
+              match = re.search(r'(?m)^(\s*)getByName\("release"\)\s*\{', source)
+              if not match: raise SystemExit("Could not find release build type in Gradle Kotlin DSL.")
+              insert = match.end()
+              source = source[:insert] + '\n' + match.group(1) + '    signingConfig = signingConfigs.getByName("release")' + source[insert:]
+          else:
+              if "signingConfigs {" not in source:
+                  block = '''
+              signingConfigs {
+                  release {
+                      storeFile file("kb-nexus-release.jks")
+                      storePassword System.getenv("ANDROID_KEYSTORE_PASSWORD")
+                      keyAlias System.getenv("ANDROID_KEY_ALIAS")
+                      keyPassword System.getenv("ANDROID_KEY_PASSWORD")
+                  }
+              }
+          '''
+                  marker = "    buildTypes {"
+                  if marker not in source: raise SystemExit("Could not find Android buildTypes block.")
+                  source = source.replace(marker, block + "\n" + marker, 1)
+              match = re.search(r'(?m)^(\s*)release\s*\{', source[source.find("buildTypes {"):])
+              if not match: raise SystemExit("Could not find release build type in Gradle.")
+              insert = source.find("buildTypes {") + match.end()
+              indent = match.group(1)
+              source = source[:insert] + '\n' + indent + '    signingConfig signingConfigs.release' + source[insert:]
+          path.write_text(source)
+          print("Stable Android release signing configured.")
+          PY
+          echo "ANDROID_RELEASE_SIGNING_CONFIGURED=true" >> "$GITHUB_ENV"
+      - name: Assemble debug APK for automated verification
         run: cd android && ./gradlew --no-daemon assembleDebug
+      - name: Assemble signed release APK for installation and future native updates
+        if: env.ANDROID_RELEASE_SIGNING_CONFIGURED == 'true'
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: cd android && ./gradlew --no-daemon assembleRelease
       - uses: actions/upload-artifact@v4
         with:
           name: kandb-management-nexus-debug-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
+      - uses: actions/upload-artifact@v4
+        if: env.ANDROID_RELEASE_SIGNING_CONFIGURED == 'true'
+        with:
+          name: kandb-management-nexus-signed-release-apk
+          path: android/app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+          retention-days: 30
