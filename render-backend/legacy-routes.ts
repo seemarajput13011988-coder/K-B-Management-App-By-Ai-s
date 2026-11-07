@@ -933,9 +933,17 @@ export const handler = router({
   }),
 
   'GET /api/attendance': protectedRoute(['admin', 'staff'], async (_ctx, user) => {
-    const items = user.role === 'admin'
-      ? await listRecentAttendance(5000)
-      : (await listAttendanceForUser(user.id)).slice(0, 5000);
+    const [records, settings] = await Promise.all([
+      user.role === 'admin' ? listRecentAttendance(5000) : listAttendanceForUser(user.id),
+      getWorkforceSettings(),
+    ]);
+    const items = records.slice(0, 5000).map(record => {
+      const shiftEndTime = validTime(record.shiftEndTime, settings.shiftEndTime);
+      const shiftStartTime = validTime(record.shiftStartTime, settings.shiftStartTime);
+      const autoCheckoutAt = String(record.autoCheckoutAt || '') ||
+        computeShiftDeadline(String(record.workDate || ''), String(record.checkInAt || ''), shiftEndTime) || '';
+      return { ...record, shiftStartTime, shiftEndTime, autoCheckoutAt };
+    });
     return json({ items });
   }),
 
@@ -1548,10 +1556,13 @@ export const handler = router({
   }),
 
   'GET /api/locations': protectedRoute(['admin'], async () => {
-    const [locationResult, attendanceResult] = await Promise.all([
+    const [locationResult, attendanceSnapshot] = await Promise.all([
       db.list<Record<string, unknown>>('locations', { limit: 1000 }),
-      listRecentAttendance(1000),
+      firestore.collection('attendance').where('status', '==', 'Checked in').get(),
     ]);
+    const attendanceResult: Record<string, unknown>[] = attendanceSnapshot.docs.map(document => ({
+      ...(document.data() as Record<string, unknown>), id: document.id,
+    }));
     const latestActiveShiftByStaff = new Map<string, Record<string, unknown>>();
     for (const shift of attendanceResult) {
       const staffId = String(shift.userId || '');
