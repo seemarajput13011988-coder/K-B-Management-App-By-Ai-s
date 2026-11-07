@@ -17,7 +17,8 @@ function indiaDateParts() {
 function sha(value: string) { return createHash('sha256').update(value).digest('hex'); }
 
 export async function runGpsGracePeriod() {
-  const records = await readCollection('attendance', 1000);
+  const activeSnapshot = await firestore.collection('attendance').where('status', '==', 'Checked in').limit(1000).get();
+  const records: Item[] = activeSnapshot.docs.map(doc => ({ ...(doc.data() as Item), id: doc.id }));
   const requests = await readCollection('holiday_requests', 1000);
   const users = await readCollection('users', 500);
   const currentTime = Date.now();
@@ -231,6 +232,10 @@ export async function autoCheckoutAtSevenPm() {
     if (currentTime < checkoutAt.getTime()) continue;
     const checkoutIso = checkoutAt.toISOString();
     const ref = firestore.collection('attendance').doc(String(item.id));
+    const notificationId = 'attendance-auto-checkout-' + String(item.id);
+    const auditId = 'attendance-auto-checkout-' + String(item.id);
+    const notificationRef = firestore.collection('staff_notifications').doc(notificationId);
+    const auditRef = firestore.collection('audit_logs').doc(auditId);
     const didCheckout = await firestore.runTransaction(async transaction => {
       const latest = await transaction.get(ref);
       const current = latest.data();
@@ -250,24 +255,22 @@ export async function autoCheckoutAtSevenPm() {
         gpsIssueReason: FieldValue.delete(),
         gpsReminderStage: FieldValue.delete(),
       });
+      transaction.set(notificationRef, {
+        recipientId: String(item.userId), recipientRole: 'staff', type: 'attendance-auto-checkout',
+        title: 'Shift automatically ended',
+        message: 'Your shift was automatically checked out at 7:00 PM India time. You can start a new shift tomorrow from 8:00 AM.',
+        createdAt: checkoutIso, read: false, attendanceId: String(item.id),
+      }, { merge: true });
+      transaction.set(auditRef, {
+        actorId: 'system', actorName: 'K&B automatic attendance',
+        action: 'AUTO_CHECKOUT', entityType: 'attendance', entityId: String(item.id),
+        description: 'Automatically checked out ' + String(item.displayName || 'staff member') + ' at 7:00 PM India time.',
+        createdAt: checkoutIso, serverCreatedAt: FieldValue.serverTimestamp(),
+      }, { merge: true });
       return true;
     });
     if (!didCheckout) continue;
     checkedOut += 1;
-    const notificationId = 'attendance-auto-checkout-' + String(item.id);
-    await firestore.collection('staff_notifications').doc(notificationId).set({
-      recipientId: String(item.userId), recipientRole: 'staff', type: 'attendance-auto-checkout',
-      title: 'Shift automatically ended',
-      message: 'Your shift was automatically checked out at 7:00 PM India time. You can start a new shift tomorrow from 8:00 AM.',
-      createdAt: checkoutIso, read: false, attendanceId: String(item.id),
-    }, { merge: true });
-    const auditId = 'attendance-auto-checkout-' + String(item.id);
-    await firestore.collection('audit_logs').doc(auditId).set({
-      actorId: 'system', actorName: 'K&B automatic attendance',
-      action: 'AUTO_CHECKOUT', entityType: 'attendance', entityId: String(item.id),
-      description: 'Automatically checked out ' + String(item.displayName || 'staff member') + ' at 7:00 PM India time.',
-      createdAt: checkoutIso, serverCreatedAt: FieldValue.serverTimestamp(),
-    }, { merge: true });
   }
   return { checkedOut };
 }

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
-import { api } from './lib/api';
+import { api, subscribeToApiChanges } from './lib/api';
 import { Download, FileText, Trash2 } from 'lucide-react';
 import { exportCsvFile, exportPdfReport } from './lib/file-export';
 
@@ -41,6 +41,7 @@ export default function InstallationsWorkspace({customers,staff,isAdmin,flash}:{
 
   async function load(){setLoading(true);try{const result=await api.get<{items:Installation[]}>('/api/installations');setItems(result.data.items||[]);}catch(error){flash(error instanceof Error?error.message:'Could not load installation jobs.');}finally{setLoading(false);}}
   useEffect(()=>{void load();},[]);
+  useEffect(()=>subscribeToApiChanges(()=>{void load();}),[]);
   useEffect(()=>{if(!customerId&&customers.length)setCustomerId(customers[0].id);},[customers,customerId]);
   useEffect(()=>{if(selectedCustomer)setAddress(selectedCustomer.address||'');},[customerId]);
   useEffect(()=>{if(!assignedTo&&staff.some(item=>item.active))setAssignedTo(staff.find(item=>item.active)!.id);},[staff,assignedTo]);

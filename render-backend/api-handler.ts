@@ -34,7 +34,10 @@ const newPasswordFields = (password: string) => {
 const sessionTokenId = (token: string) => createHash('sha256').update(token).digest('hex');
 async function createSession(user: Data) {
   const token = randomBytes(32).toString('hex');
-  const expiresAt = Date.now() + 8 * 60 * 60 * 1000;
+  // Staff shifts can be admin-started after 7 PM and remain active until 7 PM the next day.
+  // Keep the staff session valid long enough for that maximum supported shift; admin sessions remain shorter.
+  const sessionHours = user.role === 'staff' ? 26 : 8;
+  const expiresAt = Date.now() + sessionHours * 60 * 60 * 1000;
   await db.collection('sessions').doc(sessionTokenId(token)).set({
     userId: user.id, expiresAt, createdAt: now(), authTime: Math.floor(Date.now() / 1000),
   });

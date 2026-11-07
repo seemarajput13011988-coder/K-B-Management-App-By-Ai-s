@@ -32,7 +32,6 @@ import {
   Users,
   Wifi,
   X,
-  Zap,
   CalendarDays,
   Phone,
   MapPin,
@@ -81,7 +80,7 @@ type Payment = {
 };
 type Staff = { id: string; userId: string; displayName: string; role: 'staff'; active: boolean; phone?: string; createdAt?: string };
 type AdminAccount = { id: string; userId: string; displayName: string; role: 'admin'; active: boolean; canManageAdmins?: boolean; isSuperAdmin?: boolean };
-type AttendanceRecord = { id: string; userId: string; displayName: string; workDate: string; checkInAt: string; checkOutAt?: string; dayType?: 'Full day' | 'Half day' | 'Absent'; status?: string; correctionReason?: string; correctedAt?: string; correctedByName?: string; startedByAdmin?: string; endedByAdminName?: string; endedByName?: string; attendanceSource?: string; absenceReason?: string };
+type AttendanceRecord = { id: string; userId: string; displayName: string; workDate: string; checkInAt: string; checkOutAt?: string; gpsRestartRequired?: boolean; gpsCancelled?: boolean; dayType?: 'Full day' | 'Half day' | 'Absent'; status?: string; correctionReason?: string; correctedAt?: string; correctedByName?: string; startedByAdmin?: string; endedByAdminName?: string; endedByName?: string; attendanceSource?: string; absenceReason?: string };
 type Task = { id: string; title: string; details: string; assignedTo: string; assignedToName: string; priority: 'Low' | 'Normal' | 'High'; dueDate: string; status: 'Pending' | 'In progress' | 'Completed'; createdAt: string; createdByName: string; updatedAt?: string; completedAt?: string; attachments?: Array<{mediaId:string;fileName:string;mimeType:string;size:number}> };
 type Complaint = {
   id: string;
@@ -122,6 +121,15 @@ type Plan = {
 
 const money = (n: number) => '₹' + Number(n || 0).toLocaleString('en-IN');
 const customerStatusLabel = (value: unknown): Customer['status'] => { const status = String(value || 'Active').trim().toLowerCase(); return status === 'suspended' ? 'Suspended' : status === 'inactive' ? 'Inactive' : 'Active'; };
+const isAttendanceShiftActive = (item: AttendanceRecord, now = Date.now()) => {
+  if (item.checkOutAt || item.dayType === 'Absent' || item.status?.toLowerCase().includes('cancelled') || item.gpsRestartRequired) return false;
+  const checkIn = Date.parse(item.checkInAt || '');
+  if (!Number.isFinite(checkIn) || !/^\\d{4}-\\d{2}-\\d{2}$/.test(item.workDate || '')) return false;
+  const parts = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date(checkIn));
+  const minutes = Number(parts.find(part => part.type === 'hour')?.value || 0) * 60 + Number(parts.find(part => part.type === 'minute')?.value || 0);
+  const dueDate = minutes >= 19 * 60 ? new Date(Date.parse(item.workDate + 'T00:00:00Z') + 86400000).toISOString().slice(0, 10) : item.workDate;
+  return now < Date.parse(dueDate + 'T19:00:00+05:30');
+};
 const dateLabel = (s: string) =>
   s
     ? new Date(s).toLocaleDateString('en-IN', {
@@ -305,6 +313,23 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
     load();
   }, []);
 
+  // Keep dashboard summaries in sync when any workspace saves a server record.
+  useEffect(() => {
+    let refreshTimer: number | null = null;
+    const refreshAfterMutation = () => {
+      if (refreshTimer !== null) window.clearTimeout(refreshTimer);
+      refreshTimer = window.setTimeout(() => {
+        refreshTimer = null;
+        void load(true);
+      }, 250);
+    };
+    window.addEventListener('kb:data-changed', refreshAfterMutation);
+    return () => {
+      window.removeEventListener('kb:data-changed', refreshAfterMutation);
+      if (refreshTimer !== null) window.clearTimeout(refreshTimer);
+    };
+  }, []);
+
   useEffect(() => {
     let stopped = false;
     const pollNotifications = async () => {
@@ -371,7 +396,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   const paidByCustomer = new Map<string, number>();
   payments.filter(p => p.month === currentBillingMonth).forEach(p => paidByCustomer.set(p.customerId, (paidByCustomer.get(p.customerId) || 0) + Number(p.amount || 0)));
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
-  const staffShiftActive = attendanceRecords.some(item => item.userId === session.user.id && item.workDate === today && !item.checkOutAt && item.dayType !== 'Absent');
+  const staffShiftActive = attendanceRecords.some(item => item.userId === session.user.id && isAttendanceShiftActive(item));
   const overdueValue = customers.filter(c => c.status === 'Active' && c.dueDate && c.dueDate <= today).reduce((sum, c) => sum + Math.max(0, Number(c.monthlyFee || 0) - (paidByCustomer.get(c.id) || 0)), 0);
   const filtered = useMemo(
     () =>
@@ -432,14 +457,8 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
     if (!isAdmin) {
       try {
         const attendance = await api.get('/api/attendance');
-        const workDate = new Intl.DateTimeFormat('en-CA', {
-          timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit'
-        }).format(new Date());
         const activeShift = (attendance.data.items || []).some((item: AttendanceRecord) =>
-          item.userId === session.user.id &&
-          item.workDate === workDate &&
-          !item.checkOutAt &&
-          item.dayType !== 'Absent'
+          item.userId === session.user.id && isAttendanceShiftActive(item)
         );
         if (activeShift) {
           flash('Sign out is unavailable while your work shift is active. Check out first, or ask an administrator to end your shift. Location tracking remains active during the shift.');
@@ -750,6 +769,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
     { label: 'Inventory', icon: ClipboardList },
     { label: 'Installations', icon: MapPin },
     ...(isAdmin ? [{ label: 'Plans & Pricing', icon: Wifi }] : []),
+    ...(isAdmin ? [{ label: 'Team Operations', icon: Users }] : []),
     ...(isAdmin ? [{ label: 'GPS Tracking', icon: MapPin }] : []),
     ...(isAdmin ? [{ label: 'Staff', icon: UserRound, count: staff.length }] : []),
     ...(canManageAdmins ? [{ label: 'Admin Accounts', icon: ShieldCheck, count: adminAccounts.length || undefined }] : []),
@@ -843,9 +863,6 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
             Workspace <span>/</span> <strong>{page}</strong>
           </div>
           <div className="top-actions">
-            <span className="system-status">
-              <i /> All systems operational
-            </span>
             <FestivalBadge/>
             <div className="preference-controls">
               <label className="language-control" title="App language"><span>🌐</span><select aria-label="App language" value={language} onChange={event => setLanguage(event.target.value as 'en' | 'hi' | 'gu')}><option value="en">English</option><option value="hi">हिन्दी</option><option value="gu">ગુજરાતી</option></select></label>
@@ -865,7 +882,6 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
           </div>
         </header>
         <div className="content">
-          <FestivalCelebration/>
           <div className="page-heading">
             <div>
               <div className="eyebrow">
@@ -882,6 +898,8 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                         ? 'Manage customer renewals, subscription periods and expiry dates.'
                       : page === 'Installations'
                         ? 'Schedule customer installations, upgrades and repair visits.'
+                      : page === 'Team Operations'
+                        ? 'Manage staff shifts, attendance, holiday requests and team communication.'
                       : page === 'Inventory'
                         ? 'Track equipment, stock levels, supplies and stock movements.'
                       : page === 'Invoices'
@@ -948,28 +966,13 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
           {page === 'Finance & Billing' && isAdmin && <FinanceWorkspace session={session} customers={customers} payments={payments} flash={flash} />}
           {page === 'Subscriptions' && <SubscriptionWorkspace customers={customers} plans={plans} isAdmin={isAdmin} flash={flash} />}
           {page === 'Inventory' && <InventoryWorkspace isAdmin={isAdmin} flash={flash} />}
+          {page === 'Team Operations' && isAdmin && <StaffOperations session={session} customers={customers} flash={flash} onDataChanged={() => { void load(true); }} />}
           {page === 'GPS Tracking' && isAdmin && <GpsTrackingWorkspace flash={flash} />}
           {page === 'Installations' && <InstallationsWorkspace customers={customers} staff={staff} isAdmin={isAdmin} flash={flash} />}
           {page === 'Overview' && !isAdmin && <StaffOperations session={session} customers={customers} flash={flash} compact onDataChanged={() => { void load(true); }} />}
 
           {page === 'Overview' && (
             <>
-              <div className="welcome-strip">
-                <div className="welcome-symbol">
-                  <Zap size={21} />
-                </div>
-                <div>
-                  <strong>Your network, one clear view.</strong>
-                  <span>
-                    Customer records and service activity in one place.
-                  </span>
-                </div>
-                <div className="strip-right">
-                  <span>LIVE OVERVIEW</span>
-                  <i />
-                </div>
-              </div>
-
               <section className="quick-actions" aria-label="Quick actions">
                 <button type="button" onClick={() => setPage('Customers')}><Users size={18}/><span>Customers</span><small>Find and manage</small></button>
                 <button type="button" onClick={() => setPage('Complaints')}><MessageSquare size={18}/><span>Complaints</span><small>Track issues</small></button>
@@ -1901,8 +1904,7 @@ function StaffLocationResponder({ activeShift, userId }: { activeShift: boolean;
     const checkShift = async () => {
       try {
         const result = await api.get('/api/attendance');
-        const workDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
-        const active = (result.data.items || []).some((item: AttendanceRecord) => item.userId === userId && item.workDate === workDate && !item.checkOutAt && item.dayType !== 'Absent');
+        const active = (result.data.items || []).some((item: AttendanceRecord) => item.userId === userId && isAttendanceShiftActive(item));
         if (!stopped) setShiftActive(active);
       } catch { /* Keep the last confirmed shift state if the API is temporarily unavailable. */ }
     };
@@ -2491,7 +2493,7 @@ function App(){
  async function login(userId:string,password:string,expectedRole:'admin'|'staff'){const next=await signInAppUser(userId,password,expectedRole) as Session;if(next.user.role!==expectedRole){await signOutAppUser();throw new Error(expectedRole==='admin'?'This account is not an admin account. Choose Staff Sign In instead.':'This account is not a staff account. Choose Admin Sign In instead.');}sessionStorage.setItem('kb-customer-session',JSON.stringify(next));setSession(next);}
  if(showWelcome)return <><FestivalTheme/><WelcomeIntro/></>;
  if(checking)return <><FestivalTheme/><div className="loading-cover"><div className="loader"/><span>Preparing secure sign-in…</span></div></>;
- return <><FestivalTheme/>{session?<WorkspaceErrorBoundary key={session.user.id} onReset={()=>{void signOutAppUser();sessionStorage.removeItem('kb-customer-session');localStorage.removeItem('kb-customer-session');setSession(null);}}><Workspace session={session} onLogout={()=>{void signOutAppUser();sessionStorage.removeItem('kb-customer-session');localStorage.removeItem('kb-customer-session');setSession(null);}}/></WorkspaceErrorBoundary>:<LoginScreen onLogin={login}/>}</>;
+ return <><FestivalTheme/>{session?<WorkspaceErrorBoundary key={session.user.id} onReset={()=>{void (async()=>{let preserveServerSession=false;if(session.user.role==='staff'){try{const attendance=await client.get('/api/attendance?sessionToken='+encodeURIComponent(session.token));preserveServerSession=(attendance.data.items||[]).some((item:AttendanceRecord)=>item.userId===session.user.id&&isAttendanceShiftActive(item));}catch{preserveServerSession=true;}}if(!preserveServerSession)await signOutAppUser();sessionStorage.removeItem('kb-customer-session');localStorage.removeItem('kb-customer-session');setSession(null);})();}}><Workspace session={session} onLogout={()=>{void signOutAppUser();sessionStorage.removeItem('kb-customer-session');localStorage.removeItem('kb-customer-session');setSession(null);}}/></WorkspaceErrorBoundary>:<LoginScreen onLogin={login}/>}</>;
 }
 function LoginScreen({onLogin}:{onLogin:(id:string,pw:string,role:'admin'|'staff')=>Promise<void>}){
  const [role,setRole]=useState<'admin'|'staff'|null>(null);

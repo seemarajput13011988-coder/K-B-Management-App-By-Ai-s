@@ -9,6 +9,7 @@ on:
       - safe-firebase-migration-copilot-review
       - on-demand-gps-proof-permissions
       - ui-rebuild-gps-holidays-api-fixes
+      - whole-app-gps-ui-sync-audit-2026-11-07
     paths:
       - "src/**"
       - "package.json"
@@ -24,6 +25,7 @@ on:
   pull_request:
     branches:
       - main
+      - fixes-session-gps-ui-2026-11-06
 jobs:
   build:
     runs-on: ubuntu-latest

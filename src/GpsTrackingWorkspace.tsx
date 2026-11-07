@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { api } from './lib/api';
+import { api, subscribeToApiChanges } from './lib/api';
 import { MapPin, RefreshCw, Save, ExternalLink, LocateFixed } from 'lucide-react';
 
 type StaffMember = { id: string; displayName: string; active: boolean };
@@ -42,6 +42,7 @@ export default function GpsTrackingWorkspace({flash}:{flash:(message:string)=>vo
     } finally { setLoading(false); }
   }
   useEffect(()=>{void load();},[]);
+  useEffect(()=>subscribeToApiChanges(()=>{void load();}),[]);
 
   async function getLiveLocation(member:StaffMember) {
     setBusyStaffId(member.id);

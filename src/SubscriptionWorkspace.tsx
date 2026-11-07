@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
-import { api } from './lib/api';
+import { api, subscribeToApiChanges } from './lib/api';
 
 type Customer = { id: string; name: string; phone?: string; plan: string; monthlyFee: number; dueDate: string };
 type Plan = { id: string; name: string; price: number; active: boolean };
@@ -47,6 +47,7 @@ export default function SubscriptionWorkspace({ customers, plans, isAdmin, flash
     finally { setLoading(false); }
   }
   useEffect(()=>{ void load(); },[]);
+  useEffect(()=>subscribeToApiChanges(()=>{void load();}),[]);
   useEffect(()=>{ if (!customerId && customers.length) setCustomerId(customers[0].id); },[customers,customerId]);
   useEffect(()=>{
     if (!selectedCustomer) return;
