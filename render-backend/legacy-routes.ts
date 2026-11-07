@@ -171,6 +171,45 @@ async function readEvidenceFile(collectionName: string, parentField: string, par
   return { fileName: metadata.fileName, mimeType: metadata.mimeType, dataBase64: docs.filter(doc => Number(doc.chunkIndex) >= 0).map(doc => String(doc.data || '')).join('') };
 }
 
+function indiaDateKey(date = new Date()) {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(date);
+}
+
+function shiftDueAt(item: Record<string, unknown>): number {
+  const workDate = String(item.workDate || '');
+  const checkInTime = Date.parse(String(item.checkInAt || ''));
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(workDate) || !Number.isFinite(checkInTime)) return Number.NaN;
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+  }).formatToParts(new Date(checkInTime));
+  const minutes = Number(parts.find(part => part.type === 'hour')?.value || 0) * 60 +
+    Number(parts.find(part => part.type === 'minute')?.value || 0);
+  const dueDate = minutes >= 19 * 60
+    ? new Date(Date.parse(workDate + 'T00:00:00Z') + 86400000).toISOString().slice(0, 10)
+    : workDate;
+  return Date.parse(dueDate + 'T19:00:00+05:30');
+}
+
+function isOpenShift(item: Record<string, unknown>): boolean {
+  return !item.checkOutAt && item.dayType !== 'Absent' &&
+    !item.gpsRestartRequired && !item.gpsCancelled &&
+    !String(item.status || '').toLowerCase().includes('cancelled');
+}
+
+function findOpenShift(items: Record<string, unknown>[], userId: string) {
+  return items
+    .filter(item => item.userId === userId && isOpenShift(item))
+    .sort((a, b) => String(b.checkInAt || '').localeCompare(String(a.checkInAt || '')))[0];
+}
+
+function findActiveShift(items: Record<string, unknown>[], userId: string, now = Date.now()) {
+  return items
+    .filter(item => item.userId === userId && isOpenShift(item) && shiftDueAt(item) > now)
+    .sort((a, b) => String(b.checkInAt || '').localeCompare(String(a.checkInAt || '')))[0];
+}
+
 async function writeAudit(user: UserRecord, action: string, entityType: string, entityId: string, description: string) {
   await db.add('audit_logs', [{
     actorId: user.id,
