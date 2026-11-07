@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 export function routePath(path: string): string {
   const normalized = path.replace(/\/+$/, '') || '/';
   // Direct Cloud Functions URLs remove the exported function name from req.path,
@@ -186,4 +188,12 @@ export function isSixMonthReviewDue(createdAt: unknown, currentTime = Date.now()
     current.getUTCMilliseconds(),
   );
   return created <= cutoff;
+}
+
+/** Stable per-staff, per-India-workday key used to make check-in retries idempotent. */
+export function attendanceDocumentId(userId: unknown, workDate: unknown): string {
+  if (typeof userId !== 'string' || !userId.trim() || !isValidDateKey(workDate)) {
+    throw new Error('A staff ID and valid work date are required.');
+  }
+  return 'staff-day-' + createHash('sha256').update(userId.trim() + '|' + workDate).digest('hex');
 }
