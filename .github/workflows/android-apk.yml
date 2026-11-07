@@ -314,11 +314,11 @@ jobs:
                 if (!stopping) {
                   handleLocationProviderChange();
                   long now = System.currentTimeMillis();
-                  if (now - lastShiftCheckAt >= 30000L) {
+                  if (now - lastShiftCheckAt >= 10000L) {
                     lastShiftCheckAt = now;
                     checkShiftStatus();
                   }
-                  statusHandler.postDelayed(this, 20000L);
+                  statusHandler.postDelayed(this, 5000L);
                 }
               }
             };
@@ -445,6 +445,15 @@ jobs:
                   item.optBoolean("gpsRestartRequired", false) || item.optBoolean("gpsCancelled", false) ||
                   item.optString("status").toLowerCase(Locale.US).contains("cancelled")) return false;
               try {
+                // The backend persists the exact configured deadline on every shift.
+                // Use it directly so Android GPS stops on the same schedule as attendance.
+                String scheduledEndAt = item.optString("scheduledEndAt");
+                if (!scheduledEndAt.isEmpty()) {
+                  SimpleDateFormat scheduledFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US);
+                  scheduledFormat.setTimeZone(TimeZone.getTimeZone("UTC"));
+                  Date scheduledEnd = scheduledFormat.parse(scheduledEndAt);
+                  if (scheduledEnd != null) return now < scheduledEnd.getTime();
+                }
                 String workDate = item.optString("workDate");
                 String checkInAt = item.optString("checkInAt");
                 SimpleDateFormat utc = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US);
