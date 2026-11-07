@@ -253,7 +253,7 @@ export default function FinanceWorkspace({ session, customers, payments, flash, 
         {!staff.length&&<tr><td colSpan={3}>No active staff members.</td></tr>}
       </tbody></table></div>
       <form className="finance-expense-form" onSubmit={recordSalary}>
-        <label>Staff member<select required value={salaryStaffId} onChange={e => setSalaryStaffId(e.target.value)}><option value="">Select staff member</option>{staff.map(item => <option key={item.id} value={item.id}>{item.displayName} ({item.userId})</option>)}</select></label>
+        <label>Staff member<select required value={salaryStaffId} onChange={e => { const member = staff.find(item => item.id === e.target.value); setSalaryStaffId(e.target.value); if (member) setSalaryAmount(String(member.monthlySalary || '')); }}><option value="">Select staff member</option>{staff.map(item => <option key={item.id} value={item.id}>{item.displayName} ({item.userId})</option>)}</select></label>
         <label>Salary amount (₹)<input required type="number" min="0.01" max="1000000" step="0.01" value={salaryAmount} onChange={e => setSalaryAmount(e.target.value)}/></label>
         <label>Payment date<input required type="date" value={salaryPaidAt} onChange={e => setSalaryPaidAt(e.target.value)}/></label>
         <label>Payment method<select value={salaryMethod} onChange={e => setSalaryMethod(e.target.value)}><option>Bank transfer</option><option>UPI</option><option>Cash</option><option>Card</option><option>Other</option></select></label>
@@ -278,7 +278,7 @@ export default function FinanceWorkspace({ session, customers, payments, flash, 
     <section className="panel finance-panel">
       <div className="finance-head"><div><span className="eyebrow">STAFF PAYROLL</span><h2>Monthly salary records</h2><p>Record each staff member's salary once per month. Salary is also added to the expense ledger automatically.</p></div></div>
       <form className="finance-expense-form" onSubmit={recordSalary}>
-        <label>Staff member<select required value={salaryStaffId} onChange={e => setSalaryStaffId(e.target.value)}><option value="">Select staff member</option>{staff.map(item => <option key={item.id} value={item.id}>{item.displayName} ({item.userId})</option>)}</select></label>
+        <label>Staff member<select required value={salaryStaffId} onChange={e => { const member = staff.find(item => item.id === e.target.value); setSalaryStaffId(e.target.value); if (member) setSalaryAmount(String(member.monthlySalary || '')); }}><option value="">Select staff member</option>{staff.map(item => <option key={item.id} value={item.id}>{item.displayName} ({item.userId})</option>)}</select></label>
         <label>Salary amount (₹)<input required type="number" min="0.01" max="1000000" step="0.01" value={salaryAmount} onChange={e => setSalaryAmount(e.target.value)}/></label>
         <label>Payment date<input required type="date" value={salaryPaidAt} onChange={e => setSalaryPaidAt(e.target.value)}/></label>
         <label>Payment method<select value={salaryMethod} onChange={e => setSalaryMethod(e.target.value)}><option>Bank transfer</option><option>UPI</option><option>Cash</option><option>Card</option><option>Other</option></select></label>
