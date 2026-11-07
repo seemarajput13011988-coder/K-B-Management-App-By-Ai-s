@@ -72,6 +72,23 @@ export async function getStaffRegistrationStatus(requestId: string, trackingCode
   if (!response.ok) throw new Error(typeof data.error === 'string' ? data.error : 'Could not check registration status.');
   return data as { status: 'pending'|'approved'|'rejected'; createdAt: string; reviewedAt?: string | null; reviewedByName?: string | null };
 }
+export function subscribeToApiChanges(callback: () => void) {
+  if (typeof window === 'undefined') return () => undefined;
+  let timer: number | null = null;
+  const listener = () => {
+    if (timer !== null) window.clearTimeout(timer);
+    timer = window.setTimeout(() => {
+      timer = null;
+      callback();
+    }, 180);
+  };
+  window.addEventListener('kb:data-changed', listener);
+  return () => {
+    window.removeEventListener('kb:data-changed', listener);
+    if (timer !== null) window.clearTimeout(timer);
+  };
+}
+
 export const api = {
   get: <T = any>(path: string) => request<T>(path, 'GET'),
   post: <T = any>(path: string, payload?: Record<string, unknown>) => request<T>(path, 'POST', payload),
