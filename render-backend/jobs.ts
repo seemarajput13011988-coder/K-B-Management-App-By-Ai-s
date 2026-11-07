@@ -193,28 +193,57 @@ export async function sendSubscriptionExpiryReminders() {
 }
 
 export async function deliverPendingPushNotifications() {
-  const notifications = await readCollection('staff_notifications', 500);
+  // Scan all pages so a block of old, already-delivered notifications cannot
+  // permanently hide newer pending notifications behind an arbitrary first-page limit.
+  const notifications = (await readAllQuery(firestore.collection('staff_notifications')))
+    .filter(item => item.id && !item.pushDeliveredAt && !item.pushSkippedAt && item.recipientId)
+    .slice(0, 100);
   for (const notification of notifications) {
-    if (!notification.id || notification.pushDeliveredAt || !notification.recipientId) continue;
+    const notificationRef = firestore.collection('staff_notifications').doc(String(notification.id));
     const tokenSnap = await firestore.collection('push_tokens').where('userId', '==', String(notification.recipientId)).limit(100).get();
-    if (tokenSnap.empty) continue;
+    if (tokenSnap.empty) {
+      await notificationRef.update({ pushSkippedAt: now(), pushSkipReason: 'no-device-token' });
+      continue;
+    }
     const tokenDocs = tokenSnap.docs;
-    const tokens = tokenDocs.map(doc => String(doc.data().token || '')).filter(Boolean);
-    if (!tokens.length) continue;
+    const previouslyDelivered = new Set(Array.isArray(notification.pushDeliveredTokenIds) ? notification.pushDeliveredTokenIds.map(String) : []);
+    const eligibleDocs = tokenDocs.filter(doc => !previouslyDelivered.has(doc.id) && String(doc.data().token || '').trim());
+    if (!eligibleDocs.length) {
+      await notificationRef.update({ pushDeliveredAt: now(), pushSuccessCount: previouslyDelivered.size, pushFailureCount: 0 });
+      continue;
+    }
+    const tokens = eligibleDocs.map(doc => String(doc.data().token));
     const type = String(notification.type || ''), title = String(notification.title || 'K&B Management Nexus').slice(0, 120);
     const body = ['direct-message', 'group-message'].includes(type)
       ? 'You have a new message. Open K&B Management Nexus to view it.'
       : String(notification.message || 'You have a new update.').slice(0, 180);
     const result = await getMessaging().sendEachForMulticast({ tokens, notification: { title, body }, data: { notificationId: String(notification.id), type, relatedId: String(notification.relatedId || '') }, android: { priority: 'high' } });
+    const completedTokenIds = [...previouslyDelivered];
     const invalid: Promise<unknown>[] = [];
     result.responses.forEach((response, index) => {
-      if (!response.success && ['messaging/registration-token-not-registered', 'messaging/invalid-registration-token'].includes(String(response.error?.code || ''))) {
-        const doc = tokenDocs.find(candidate => candidate.data().token === tokens[index]);
-        if (doc) invalid.push(doc.ref.delete());
+      const tokenDoc = eligibleDocs[index];
+      if (response.success) completedTokenIds.push(tokenDoc.id);
+      else if (['messaging/registration-token-not-registered', 'messaging/invalid-registration-token'].includes(String(response.error?.code || ''))) {
+        completedTokenIds.push(tokenDoc.id);
+        invalid.push(tokenDoc.ref.delete());
       }
     });
     if (invalid.length) await Promise.all(invalid);
-    await firestore.collection('staff_notifications').doc(String(notification.id)).update({ pushDeliveredAt: now(), pushSuccessCount: result.successCount, pushFailureCount: result.failureCount });
+    const remaining = eligibleDocs.filter(doc => !completedTokenIds.includes(doc.id));
+    const attempts = Number(notification.pushAttemptCount || 0) + 1;
+    const patch: Record<string, unknown> = {
+      pushDeliveredTokenIds: Array.from(new Set(completedTokenIds)),
+      pushAttemptCount: attempts,
+      pushSuccessCount: completedTokenIds.length,
+      pushFailureCount: result.failureCount,
+      pushLastAttemptAt: now(),
+    };
+    if (!remaining.length) patch.pushDeliveredAt = now();
+    else if (attempts >= 5) {
+      patch.pushSkippedAt = now();
+      patch.pushSkipReason = 'retry-limit';
+    }
+    await notificationRef.update(patch);
   }
 }
 
