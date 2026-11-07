@@ -324,13 +324,26 @@ export async function autoCheckoutAtSevenPm() {
 }
 
 let running = false;
+let attendanceRunning = false;
 let lastDailyRun = '';
+
+async function runAttendanceJobs() {
+  if (attendanceRunning) return { skipped: true };
+  attendanceRunning = true;
+  try {
+    const attendance = await autoCheckoutAtSevenPm();
+    await runGpsGracePeriod();
+    return { skipped: false, ...attendance };
+  } finally {
+    attendanceRunning = false;
+  }
+}
+
 export async function runScheduledTick() {
   if (running) return { skipped: true };
   running = true;
   try {
-    const attendance = await autoCheckoutAtSevenPm();
-    await runGpsGracePeriod();
+    const attendance = await runAttendanceJobs();
     await deliverPendingPushNotifications();
     const parts = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' }).formatToParts(new Date());
     const hour = Number(parts.find(part => part.type === 'hour')?.value || 0);
@@ -343,8 +356,18 @@ export async function runScheduledTick() {
     return { skipped: false, ...attendance };
   } finally { running = false; }
 }
+
 export function startBackgroundJobs() {
-  const timer = setInterval(() => { void runScheduledTick().catch(error => console.error('K&B scheduled task failed:', error instanceof Error ? error.message : String(error))); }, 60_000);
+  // Attendance and GPS deadlines are checked more frequently than non-urgent reminders.
+  const attendanceTimer = setInterval(() => {
+    void runAttendanceJobs().catch(error => console.error('K&B attendance job failed:', error instanceof Error ? error.message : String(error)));
+  }, 15_000);
+  (attendanceTimer as any).unref?.();
+  const timer = setInterval(() => {
+    void runScheduledTick().catch(error => console.error('K&B scheduled task failed:', error instanceof Error ? error.message : String(error)));
+  }, 60_000);
   (timer as any).unref?.();
-  setTimeout(() => { void runScheduledTick().catch(error => console.error('K&B startup job failed:', error instanceof Error ? error.message : String(error))); }, 5_000).unref?.();
+  setTimeout(() => {
+    void runScheduledTick().catch(error => console.error('K&B startup job failed:', error instanceof Error ? error.message : String(error)));
+  }, 5_000).unref?.();
 }
