@@ -130,7 +130,7 @@ async function staffAttendanceForDate(userId: string, workDate: string): Promise
     .where('workDate', '==', workDate)
     .get();
   return snapshot.docs
-    .map(doc => ({ ...(doc.data() || {}), id: doc.id }))
+    .map(doc => ({ ...(doc.data() || {}), id: doc.id } as Record<string, any>))
     .sort((a, b) => String(b.checkInAt || '').localeCompare(String(a.checkInAt || '')));
 }
 
