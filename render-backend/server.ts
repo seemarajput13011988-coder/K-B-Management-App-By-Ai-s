@@ -24,7 +24,7 @@ async function getLatestOtaRelease() {
     && item.tag_name.startsWith('nexus-ota-')
   );
   if (!release) {
-    otaReleaseCache = { expiresAt: Date.now() + 30000, manifest: null, bundleUrl: null };
+    otaReleaseCache = { expiresAt: Date.now() + 300000, manifest: null, bundleUrl: null };
     return otaReleaseCache;
   }
   const assets = Array.isArray(release.assets) ? release.assets : [];
@@ -40,7 +40,7 @@ async function getLatestOtaRelease() {
   if (!manifestResponse.ok) throw new Error('The OTA release manifest could not be read.');
   const manifest = await manifestResponse.json();
   if (!isValidOtaManifest(manifest)) throw new Error('The OTA release manifest failed validation.');
-  otaReleaseCache = { expiresAt: Date.now() + 30000, manifest, bundleUrl: bundleAsset.browser_download_url };
+  otaReleaseCache = { expiresAt: Date.now() + 300000, manifest, bundleUrl: bundleAsset.browser_download_url };
   return otaReleaseCache;
 }
 
