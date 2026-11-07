@@ -53,8 +53,7 @@ jobs:
             cat /tmp/kb-ota-bundle-info.json
             exit 1
           fi
-          unzip -Z1 "$ZIP_FILE" | grep -Eq '(^|/)index.html
- || {
+          unzip -Z1 "$ZIP_FILE" | grep -Eq '(^|/)index.html$' || {
             echo "::error::The OTA archive is missing index.html."
             exit 1
           }
