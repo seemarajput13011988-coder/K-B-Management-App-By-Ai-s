@@ -1176,6 +1176,7 @@ export const handler = router({
       dayType: input.dayType === 'Half day' ? 'Half day' : 'Full day',
       shiftStartTime: settings.shiftStartTime, shiftEndTime: settings.shiftEndTime,
       autoCheckoutAt: computeAutoCheckoutAt(workDate, startedAt, settings.shiftEndTime),
+      scheduledEndAt: computeAutoCheckoutAt(workDate, startedAt, settings.shiftEndTime),
     };
     if (gpsRestartAllowed && latest) {
       record.restartOfAttendanceId = String(latest.id);
