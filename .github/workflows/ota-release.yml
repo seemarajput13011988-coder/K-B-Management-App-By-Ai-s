@@ -1,0 +1,64 @@
+name: Publish Nexus OTA bundle
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "public/**"
+      - "index.html"
+      - "package.json"
+      - "vite.config.ts"
+      - "capacitor.config.ts"
+      - ".github/workflows/ota-release.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: nexus-ota-main
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Build production web bundle
+        run: |
+          npm install
+          npx tsc --noEmit
+          npm run build
+      - name: Package OTA bundle using the official Capacitor updater CLI
+        run: |
+          npx --yes @capgo/cli@latest bundle zip kandbnet.service2010 --path dist --json > ota-bundle-info.json
+          ZIP_FILE="$(find . -type f -name '*.zip' -not -path './node_modules/*' -not -path './.git/*' -print -quit)"
+          if [ -z "$ZIP_FILE" ]; then
+            echo "::error::Capacitor Updater CLI did not create a bundle archive."
+            cat ota-bundle-info.json
+            exit 1
+          fi
+          cp "$ZIP_FILE" nexus-update.zip
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import crypto from 'node:crypto';
+          const version = `1.0.${process.env.GITHUB_RUN_NUMBER}`;
+          const checksum = crypto.createHash('sha256').update(fs.readFileSync('nexus-update.zip')).digest('hex');
+          const manifest = { appId: 'kandbnet.service2010', version, checksum };
+          fs.writeFileSync('ota-manifest.json', JSON.stringify(manifest, null, 2) + '\n');
+          console.log('Prepared Nexus OTA release', version, 'SHA-256', checksum);
+          NODE
+      - name: Publish immutable OTA release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: nexus-ota-1.0.${{ github.run_number }}
+          name: K&B Nexus OTA 1.0.${{ github.run_number }}
+          body: Automated web-bundle release. Native Android changes are not included.
+          files: |
+            nexus-update.zip
+            ota-manifest.json
+          make_latest: false
+          fail_on_unmatched_files: true
