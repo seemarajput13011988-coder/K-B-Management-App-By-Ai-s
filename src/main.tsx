@@ -9,6 +9,15 @@ const rootElement = document.getElementById('root');
 if (!rootElement) throw new Error('Nexus root element is missing.');
 const appRoot: HTMLElement = rootElement;
 
+function loadBrandFonts() {
+  if (document.querySelector('link[data-nexus-brand-fonts]')) return;
+  const link = document.createElement('link');
+  link.rel = 'stylesheet';
+  link.href = 'https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap';
+  link.dataset.nexusBrandFonts = 'true';
+  document.head.append(link);
+}
+
 function mountApp() {
   createRoot(appRoot).render(
     <StrictMode>
@@ -79,6 +88,7 @@ async function runRequiredUpdate(updateWasPreviouslyRequired = false): Promise<v
 
 async function bootstrap() {
   if (!Capacitor.isNativePlatform()) {
+    loadBrandFonts();
     mountApp();
     return;
   }
@@ -89,6 +99,7 @@ async function bootstrap() {
   } catch (error) {
     console.error('Nexus updater readiness notification failed:', error);
   }
+  loadBrandFonts();
   await runRequiredUpdate();
 }
 
