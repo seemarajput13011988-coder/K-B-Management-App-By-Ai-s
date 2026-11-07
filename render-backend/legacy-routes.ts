@@ -849,7 +849,8 @@ export const handler = router({
     if (indiaMinutes < 8 * 60 || indiaMinutes >= 19 * 60) return error('Staff shift start is available only from 8:00 AM to 7:00 PM India time.', 403);
     const workDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
     const startedAt = new Date().toISOString();
-    const record: Record<string, unknown> = { userId: user.id, displayName: user.displayName, workDate, checkInAt: startedAt, createdAt: startedAt, status: 'Checked in', attendanceSource: 'Staff' };
+    const requestedDayType = body?.dayType === 'Half day' ? 'Half day' : 'Full day';
+    const record: Record<string, unknown> = { userId: user.id, displayName: user.displayName, workDate, checkInAt: startedAt, createdAt: startedAt, status: 'Checked in', dayType: requestedDayType, attendanceSource: 'Staff' };
     const attendanceRef = firestore.collection('attendance').doc(attendanceDocumentId(user.id, workDate));
     const legacyRecords = firestore.collection('attendance').where('userId', '==', user.id);
     const created = await firestore.runTransaction(async transaction => {
