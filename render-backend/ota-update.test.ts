@@ -37,6 +37,10 @@ test('returns a checksum-verified release URL for an older bundle', () => {
 });
 
 test('rejects insecure and untrusted bundle hosts', () => {
-  assert.match(buildOtaDecision('builtin', manifest, 'http://github.com/update.zip').message, /not trusted/);
-  assert.match(buildOtaDecision('builtin', manifest, 'https://evil.example/update.zip').message, /not trusted/);
+  const insecure = buildOtaDecision('builtin', manifest, 'http://github.com/update.zip');
+  const untrusted = buildOtaDecision('builtin', manifest, 'https://evil.example/update.zip');
+  assert.ok('message' in insecure);
+  assert.ok('message' in untrusted);
+  assert.match(insecure.message, /not trusted/);
+  assert.match(untrusted.message, /not trusted/);
 });
