@@ -13,6 +13,15 @@ const config: CapacitorConfig = {
     CapacitorHttp: {
       enabled: true,
     },
+    CapacitorUpdater: {
+      appId: 'kandbnet.service2010',
+      version: '1.0.0',
+      autoUpdate: 'off',
+      updateUrl: 'https://kandb-management-nexus-api-zv7f.onrender.com/api/app-updates/check',
+      statsUrl: '',
+      httpsOnly: true,
+      appReadyTimeout: 30000,
+    },
   },
 };
 
