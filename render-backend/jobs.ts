@@ -209,7 +209,7 @@ export async function deliverPendingPushNotifications() {
     const previouslyDelivered = new Set(Array.isArray(notification.pushDeliveredTokenIds) ? notification.pushDeliveredTokenIds.map(String) : []);
     const eligibleDocs = tokenDocs.filter(doc => !previouslyDelivered.has(doc.id) && String(doc.data().token || '').trim());
     if (!eligibleDocs.length) {
-      await notificationRef.update({ pushDeliveredAt: now(), pushSuccessCount: previouslyDelivered.size, pushFailureCount: 0 });
+      await notificationRef.update({ pushDeliveredAt: now(), pushSuccessCount: Number(notification.pushSuccessCount || 0), pushFailureCount: 0 });
       continue;
     }
     const tokens = eligibleDocs.map(doc => String(doc.data().token));
@@ -224,7 +224,6 @@ export async function deliverPendingPushNotifications() {
       const tokenDoc = eligibleDocs[index];
       if (response.success) completedTokenIds.push(tokenDoc.id);
       else if (['messaging/registration-token-not-registered', 'messaging/invalid-registration-token'].includes(String(response.error?.code || ''))) {
-        completedTokenIds.push(tokenDoc.id);
         invalid.push(tokenDoc.ref.delete());
       }
     });
@@ -234,7 +233,7 @@ export async function deliverPendingPushNotifications() {
     const patch: Record<string, unknown> = {
       pushDeliveredTokenIds: Array.from(new Set(completedTokenIds)),
       pushAttemptCount: attempts,
-      pushSuccessCount: completedTokenIds.length,
+      pushSuccessCount: Number(notification.pushSuccessCount || 0) + result.successCount,
       pushFailureCount: result.failureCount,
       pushLastAttemptAt: now(),
     };
