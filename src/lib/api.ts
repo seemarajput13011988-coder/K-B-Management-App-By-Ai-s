@@ -144,7 +144,12 @@ export async function signOutAppUser() {
   const token = storedToken();
   if (!token) return;
   const url = new URL('/api/auth/logout', API_BASE);
-  await fetch(url.toString(), { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token }, body: JSON.stringify({ sessionToken: token }), cache: 'no-store' }).catch(() => undefined);
+  const response = await fetch(url.toString(), { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token }, body: JSON.stringify({ sessionToken: token }), cache: 'no-store' });
+  if (!response.ok) {
+    let message = 'Could not sign out. Your current work shift may still be active.';
+    try { const data = await response.json(); if (typeof data.error === 'string' && data.error.trim()) message = data.error; } catch { /* Keep the safe fallback. */ }
+    throw new Error(message);
+  }
 }
 export const ws = {
   connect() {
