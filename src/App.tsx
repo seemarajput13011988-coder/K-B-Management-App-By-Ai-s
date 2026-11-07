@@ -305,6 +305,23 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
     load();
   }, []);
 
+  // Keep dashboard summaries in sync when any workspace saves a server record.
+  useEffect(() => {
+    let refreshTimer: number | null = null;
+    const refreshAfterMutation = () => {
+      if (refreshTimer !== null) window.clearTimeout(refreshTimer);
+      refreshTimer = window.setTimeout(() => {
+        refreshTimer = null;
+        void load(true);
+      }, 250);
+    };
+    window.addEventListener('kb:data-changed', refreshAfterMutation);
+    return () => {
+      window.removeEventListener('kb:data-changed', refreshAfterMutation);
+      if (refreshTimer !== null) window.clearTimeout(refreshTimer);
+    };
+  }, []);
+
   useEffect(() => {
     let stopped = false;
     const pollNotifications = async () => {
@@ -750,6 +767,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
     { label: 'Inventory', icon: ClipboardList },
     { label: 'Installations', icon: MapPin },
     ...(isAdmin ? [{ label: 'Plans & Pricing', icon: Wifi }] : []),
+    ...(isAdmin ? [{ label: 'Team Operations', icon: Users }] : []),
     ...(isAdmin ? [{ label: 'GPS Tracking', icon: MapPin }] : []),
     ...(isAdmin ? [{ label: 'Staff', icon: UserRound, count: staff.length }] : []),
     ...(canManageAdmins ? [{ label: 'Admin Accounts', icon: ShieldCheck, count: adminAccounts.length || undefined }] : []),
@@ -843,9 +861,6 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
             Workspace <span>/</span> <strong>{page}</strong>
           </div>
           <div className="top-actions">
-            <span className="system-status">
-              <i /> All systems operational
-            </span>
             <FestivalBadge/>
             <div className="preference-controls">
               <label className="language-control" title="App language"><span>🌐</span><select aria-label="App language" value={language} onChange={event => setLanguage(event.target.value as 'en' | 'hi' | 'gu')}><option value="en">English</option><option value="hi">हिन्दी</option><option value="gu">ગુજરાતી</option></select></label>
@@ -865,7 +880,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
           </div>
         </header>
         <div className="content">
-          <FestivalCelebration/>
+          {page === 'Overview' && <FestivalCelebration/>}
           <div className="page-heading">
             <div>
               <div className="eyebrow">
@@ -882,6 +897,8 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                         ? 'Manage customer renewals, subscription periods and expiry dates.'
                       : page === 'Installations'
                         ? 'Schedule customer installations, upgrades and repair visits.'
+                      : page === 'Team Operations'
+                        ? 'Manage staff shifts, attendance, holiday requests and team communication.'
                       : page === 'Inventory'
                         ? 'Track equipment, stock levels, supplies and stock movements.'
                       : page === 'Invoices'
@@ -948,6 +965,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
           {page === 'Finance & Billing' && isAdmin && <FinanceWorkspace session={session} customers={customers} payments={payments} flash={flash} />}
           {page === 'Subscriptions' && <SubscriptionWorkspace customers={customers} plans={plans} isAdmin={isAdmin} flash={flash} />}
           {page === 'Inventory' && <InventoryWorkspace isAdmin={isAdmin} flash={flash} />}
+          {page === 'Team Operations' && isAdmin && <StaffOperations session={session} customers={customers} flash={flash} onDataChanged={() => { void load(true); }} />}
           {page === 'GPS Tracking' && isAdmin && <GpsTrackingWorkspace flash={flash} />}
           {page === 'Installations' && <InstallationsWorkspace customers={customers} staff={staff} isAdmin={isAdmin} flash={flash} />}
           {page === 'Overview' && !isAdmin && <StaffOperations session={session} customers={customers} flash={flash} compact onDataChanged={() => { void load(true); }} />}
