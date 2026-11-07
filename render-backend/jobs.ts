@@ -268,7 +268,7 @@ export async function autoCheckoutAtSevenPm() {
       ? new Date(Date.parse(String(item.workDate) + 'T00:00:00Z') + 86400000).toISOString().slice(0, 10)
       : String(item.workDate);
     const legacyCheckoutAt = new Date(dueDate + 'T' + endTime + ':00+05:30');
-    const savedCheckoutAt = Date.parse(String(item.autoCheckoutAt || ''));
+    const savedCheckoutAt = Date.parse(String(item.autoCheckoutAt || item.scheduledEndAt || ''));
     const checkoutAt = new Date(Number.isFinite(savedCheckoutAt) ? savedCheckoutAt : legacyCheckoutAt.getTime());
     if (currentTime < checkoutAt.getTime()) continue;
     let checkoutIso = checkoutAt.toISOString();
