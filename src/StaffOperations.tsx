@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
-import { api as client } from './lib/api';
+import { api as client, subscribeToApiChanges } from './lib/api';
 
 type Session = { token: string; user: { id: string; displayName: string; role: 'admin' | 'staff'; isSuperAdmin?: boolean } };
 type Attendance = { id: string; userId: string; displayName: string; workDate: string; checkInAt: string; checkOutAt?: string; dayType?: 'Full day' | 'Half day' | 'Absent'; correctionReason?: string; gpsRestartRequired?: boolean; gpsCancelled?: boolean; status?: string };
@@ -175,6 +175,7 @@ export default function StaffOperations({ session, customers, flash, compact = f
 
 
   useEffect(() => { refresh(); }, [refresh, today]);
+  useEffect(() => subscribeToApiChanges(() => { void refresh(); }), [refresh]);
 
   // Recalculate the India work date while the app remains open overnight.
   // Focus/visibility handlers also cover Android returning from the background,
