@@ -209,32 +209,41 @@ export async function deliverPendingPushNotifications() {
 
 
 export async function autoCheckoutAtSevenPm() {
-  const { date } = indiaDateParts();
-  const parts = new Intl.DateTimeFormat('en-GB', {
-    timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
-  }).formatToParts(new Date());
-  const hour = Number(parts.find(part => part.type === 'hour')?.value || 0);
-  const minute = Number(parts.find(part => part.type === 'minute')?.value || 0);
-  if (hour < 19) return { checkedOut: 0 };
-  const checkoutAt = new Date(date + 'T19:00:00+05:30').toISOString();
+  const currentTime = Date.now();
   const records = await readCollection('attendance', 1000);
   let checkedOut = 0;
   for (const item of records) {
-    if (!item.id || item.workDate !== date || item.checkOutAt || item.dayType === 'Absent') continue;
+    if (!item.id || !/^\\d{4}-\\d{2}-\\d{2}$/.test(String(item.workDate || '')) ||
+        item.checkOutAt || item.dayType === 'Absent') continue;
+    const checkInTime = Date.parse(String(item.checkInAt || ''));
+    if (!Number.isFinite(checkInTime)) continue;
+    const localCheckIn = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+    }).formatToParts(new Date(checkInTime));
+    const checkInMinutes = Number(localCheckIn.find(part => part.type === 'hour')?.value || 0) * 60 +
+      Number(localCheckIn.find(part => part.type === 'minute')?.value || 0);
+    // Admins may start a shift after 7 PM. Such a shift is due for
+    // automatic checkout at 7 PM on the following India calendar day.
+    const dueDate = checkInMinutes >= 19 * 60
+      ? new Date(Date.parse(String(item.workDate) + 'T00:00:00Z') + 86400000).toISOString().slice(0, 10)
+      : String(item.workDate);
+    const checkoutAt = new Date(dueDate + 'T19:00:00+05:30');
+    if (currentTime < checkoutAt.getTime()) continue;
+    const checkoutIso = checkoutAt.toISOString();
     const ref = firestore.collection('attendance').doc(String(item.id));
     const didCheckout = await firestore.runTransaction(async transaction => {
       const latest = await transaction.get(ref);
       const current = latest.data();
-      if (!latest.exists || !current || current.workDate !== date || current.checkOutAt ||
-          current.dayType === 'Absent') return false;
+      if (!latest.exists || !current || current.checkOutAt ||
+          current.workDate !== item.workDate) return false;
       transaction.update(ref, {
-        checkOutAt: checkoutAt,
+        checkOutAt: checkoutIso,
         updatedAt: now(),
         status: 'Completed',
         endedBy: 'system',
         endedByName: 'Automatic 7 PM checkout',
         autoCheckedOut: true,
-        autoCheckedOutAt: checkoutAt,
+        autoCheckedOutAt: checkoutIso,
         gpsStatus: current.gpsIssueStartedAt ? 'disabled-at-checkout' : (current.gpsStatus || 'enabled'),
         gpsIssueStartedAt: FieldValue.delete(),
         gpsIssueId: FieldValue.delete(),
@@ -249,15 +258,15 @@ export async function autoCheckoutAtSevenPm() {
     await firestore.collection('staff_notifications').doc(notificationId).set({
       recipientId: String(item.userId), recipientRole: 'staff', type: 'attendance-auto-checkout',
       title: 'Shift automatically ended',
-      message: 'Your shift was automatically checked out at 7:00 PM. You can start a new shift tomorrow from 8:00 AM.',
-      createdAt: checkoutAt, read: false, attendanceId: String(item.id),
+      message: 'Your shift was automatically checked out at 7:00 PM India time. You can start a new shift tomorrow from 8:00 AM.',
+      createdAt: checkoutIso, read: false, attendanceId: String(item.id),
     }, { merge: true });
     const auditId = 'attendance-auto-checkout-' + String(item.id);
     await firestore.collection('audit_logs').doc(auditId).set({
       actorId: 'system', actorName: 'K&B automatic attendance',
       action: 'AUTO_CHECKOUT', entityType: 'attendance', entityId: String(item.id),
       description: 'Automatically checked out ' + String(item.displayName || 'staff member') + ' at 7:00 PM India time.',
-      createdAt: checkoutAt, serverCreatedAt: FieldValue.serverTimestamp(),
+      createdAt: checkoutIso, serverCreatedAt: FieldValue.serverTimestamp(),
     }, { merge: true });
   }
   return { checkedOut };
