@@ -80,7 +80,7 @@ type Payment = {
 };
 type Staff = { id: string; userId: string; displayName: string; role: 'staff'; active: boolean; phone?: string; createdAt?: string };
 type AdminAccount = { id: string; userId: string; displayName: string; role: 'admin'; active: boolean; canManageAdmins?: boolean; isSuperAdmin?: boolean };
-type AttendanceRecord = { id: string; userId: string; displayName: string; workDate: string; checkInAt: string; checkOutAt?: string; gpsRestartRequired?: boolean; gpsCancelled?: boolean; dayType?: 'Full day' | 'Half day' | 'Absent'; status?: string; correctionReason?: string; correctedAt?: string; correctedByName?: string; startedByAdmin?: string; endedByAdminName?: string; endedByName?: string; attendanceSource?: string; absenceReason?: string };
+type AttendanceRecord = { id: string; userId: string; displayName: string; workDate: string; checkInAt: string; checkOutAt?: string; scheduledEndAt?: string; gpsRestartRequired?: boolean; gpsCancelled?: boolean; dayType?: 'Full day' | 'Half day' | 'Absent'; status?: string; correctionReason?: string; correctedAt?: string; correctedByName?: string; startedByAdmin?: string; endedByAdminName?: string; endedByName?: string; attendanceSource?: string; absenceReason?: string };
 type Task = { id: string; title: string; details: string; assignedTo: string; assignedToName: string; priority: 'Low' | 'Normal' | 'High'; dueDate: string; status: 'Pending' | 'In progress' | 'Completed'; createdAt: string; createdByName: string; updatedAt?: string; completedAt?: string; attachments?: Array<{mediaId:string;fileName:string;mimeType:string;size:number}> };
 type Complaint = {
   id: string;
@@ -123,6 +123,8 @@ const money = (n: number) => '₹' + Number(n || 0).toLocaleString('en-IN');
 const customerStatusLabel = (value: unknown): Customer['status'] => { const status = String(value || 'Active').trim().toLowerCase(); return status === 'suspended' ? 'Suspended' : status === 'inactive' ? 'Inactive' : 'Active'; };
 const isAttendanceShiftActive = (item: AttendanceRecord, now = Date.now()) => {
   if (item.checkOutAt || item.dayType === 'Absent' || item.status?.toLowerCase().includes('cancelled') || item.gpsRestartRequired) return false;
+  const scheduledEnd = Date.parse(item.scheduledEndAt || '');
+  if (Number.isFinite(scheduledEnd)) return now < scheduledEnd;
   const checkIn = Date.parse(item.checkInAt || '');
   if (!Number.isFinite(checkIn) || !/^\d{4}-\d{2}-\d{2}$/.test(item.workDate || '')) return false;
   const parts = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date(checkIn));
