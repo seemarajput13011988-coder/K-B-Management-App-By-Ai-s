@@ -47,7 +47,7 @@ const shiftDueAt = (item: Attendance) => {
 };
 const isUnclosedShift = (item: Attendance) =>
   !item.checkOutAt && item.dayType !== 'Absent' && !item.gpsRestartRequired && !item.gpsCancelled &&
-  !String(item.status || '').toLowerCase().includes('cancelled');
+  !String(item.status || '').toLowerCase().includes('cancelled') && !String(item.status || '').toLowerCase().includes('completed');
 const isOpenShift = (item: Attendance) => isUnclosedShift(item) && shiftDueAt(item) > Date.now();
 function AttendanceCalendar({ staffId, staffName, records, holidays }: { staffId: string; staffName: string; records: Attendance[]; holidays: HolidayRequest[] }) {
   const [month, setMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
