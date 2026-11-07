@@ -1420,7 +1420,10 @@ export const handler = router({
     const settings = await getWorkforceSettings();
     const active = findActiveShift(attendance, params.id, Date.now(), settings.shiftEndTime);
     if (!active) {
-      const cancelled = attendance.find(item => item.gpsRestartRequired === true || item.gpsCancelled === true || String(item.status || '').toLowerCase().includes('cancelled - gps'));
+      const latestRecord = attendance.slice().sort((a, b) => Date.parse(String(b.checkInAt || '')) - Date.parse(String(a.checkInAt || '')))[0];
+      const cancelled = latestRecord && (latestRecord.gpsRestartRequired === true || latestRecord.gpsCancelled === true || String(latestRecord.status || '').toLowerCase().includes('cancelled - gps'))
+        ? latestRecord
+        : null;
       if (cancelled) return json({ status: 'gps-off', item: null, isFresh: false, ageSeconds: null, cancelled: true, cancelledAt: cancelled.gpsCancelledAt || cancelled.checkOutAt || null });
       return json({ status: 'shift-not-active', item: null, isFresh: false, ageSeconds: null });
     }
