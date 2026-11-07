@@ -3,7 +3,7 @@ import type { FormEvent } from 'react';
 import { api as client, subscribeToApiChanges } from './lib/api';
 
 type Session = { token: string; user: { id: string; displayName: string; role: 'admin' | 'staff'; isSuperAdmin?: boolean } };
-type Attendance = { id: string; userId: string; displayName: string; workDate: string; checkInAt: string; checkOutAt?: string; dayType?: 'Full day' | 'Half day' | 'Absent'; correctionReason?: string; gpsRestartRequired?: boolean; gpsCancelled?: boolean; status?: string };
+type Attendance = { id: string; userId: string; displayName: string; workDate: string; checkInAt: string; checkOutAt?: string; autoCheckoutAt?: string; dayType?: 'Full day' | 'Half day' | 'Absent'; correctionReason?: string; gpsRestartRequired?: boolean; gpsCancelled?: boolean; status?: string };
 type HolidayRequest = { id: string; userId: string; displayName: string; startDate: string; endDate: string; reason: string; status: 'pending'|'approved'|'rejected'; createdAt: string };
 type StaffRegistrationRequest = { id: string; userId: string; displayName: string; phone?: string; reason?: string; status: 'pending'|'approved'|'rejected'; createdAt: string };
 type Visit = { id: string; customerName: string; purpose: string; notes: string; visitedAt: string; staffName: string };
@@ -28,6 +28,8 @@ const indiaMinutesNow = () => {
 };
 const stamp = (value?: string) => value ? new Date(value).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) : '—';
 const shiftDueAt = (item: Attendance) => {
+  const savedDeadline = Date.parse(item.autoCheckoutAt || '');
+  if (Number.isFinite(savedDeadline)) return savedDeadline;
   const checkIn = Date.parse(item.checkInAt || '');
   if (!Number.isFinite(checkIn) || !/^\\d{4}-\\d{2}-\\d{2}$/.test(item.workDate || '')) return Number.NaN;
   const parts = new Intl.DateTimeFormat('en-GB', {
