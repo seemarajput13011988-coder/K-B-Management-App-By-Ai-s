@@ -137,7 +137,7 @@ export default function FinanceWorkspace({ session, customers, payments, flash, 
   useEffect(() => {
     const amount = selectedSalaryStaff?.monthlySalary;
     setSalaryBaseAmount(amount && amount > 0 ? String(amount) : '');
-    if (amount && amount > 0 && !salaryAmount) setSalaryAmount(String(amount));
+    setSalaryAmount(amount && amount > 0 ? String(amount) : '');
   }, [salaryStaffId, selectedSalaryStaff?.monthlySalary]);
   useEffect(() => {
     if (!ledgerCustomerId) { setLedger(null); return; }
