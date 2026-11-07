@@ -35,7 +35,7 @@ export async function runGpsGracePeriod() {
     const elapsed = currentTime - issueTime;
     const exempt = requests.some(request =>
       request.userId === item.userId &&
-      ['pending', 'approved'].includes(String(request.status)) &&
+      String(request.status) === 'approved' &&
       String(request.startDate || '') <= String(item.workDate || '') &&
       String(request.endDate || '') >= String(item.workDate || '')
     );
