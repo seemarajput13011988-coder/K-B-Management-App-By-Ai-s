@@ -114,7 +114,7 @@ async function staffHasActiveShift(userId: string): Promise<boolean> {
     for (const doc of page.docs) {
       const item = doc.data();
       if (item.status !== 'Checked in' || item.checkOutAt || item.dayType === 'Absent' || item.gpsRestartRequired || item.gpsCancelled) continue;
-      const savedDeadline = Date.parse(String(item.autoCheckoutAt || ''));
+      const savedDeadline = Date.parse(String(item.autoCheckoutAt || item.scheduledEndAt || ''));
       if (Number.isFinite(savedDeadline)) {
         if (savedDeadline > Date.now()) return true;
         continue;
