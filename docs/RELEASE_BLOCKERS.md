@@ -47,3 +47,7 @@ The current APK workflow produces a debug build for internal testing. Create and
 ## 7. Full application backup and restore
 
 The app currently exports selected finance reports as CSV/PDF; it does not yet provide a full Firestore backup-and-restore workflow. Configure managed Firestore backups with the project owner, or approve a protected encrypted application export design. Do not treat CSV/PDF reports as a complete backup.
+
+## 8. Stable Android release signing
+
+The CI debug APK is not the updateable distribution build. Configure the four GitHub Actions secrets `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` and `ANDROID_KEY_PASSWORD` so the workflow can produce a stable signed release APK. Keep the keystore backed up and private. All future native APK updates must use the same key.
