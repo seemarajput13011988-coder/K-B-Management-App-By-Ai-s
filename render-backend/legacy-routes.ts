@@ -209,7 +209,8 @@ function timeToMinutes(value: string) {
 function isOpenShift(item: Record<string, unknown>): boolean {
   return !item.checkOutAt && item.dayType !== 'Absent' &&
     !item.gpsRestartRequired && !item.gpsCancelled &&
-    !String(item.status || '').toLowerCase().includes('cancelled');
+    !String(item.status || '').toLowerCase().includes('cancelled') &&
+    !String(item.status || '').toLowerCase().includes('completed');
 }
 
 function findOpenShift(items: Record<string, unknown>[], userId: string) {
