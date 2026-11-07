@@ -5,6 +5,10 @@ Audit target: `fixes-session-gps-ui-2026-11-06` at commit `dc7b8b57ae967782c29b8
 
 Reviewed the repository tree, README and migration/release/location documentation, React app shell and API client, attendance/GPS workspaces, finance, invoice, inventory, subscription, installation and calendar workspaces, Render API dispatch, legacy attendance routes, scheduled jobs, Firestore adapter/rules, Firebase Functions API, and current GitHub Actions results.
 
+## Confirmed defects corrected on this audit branch
+
+1. **Automatic 7 PM checkout skipped valid attendance records.** The work-date check in `render-backend/jobs.ts` used an over-escaped regular expression, so valid `YYYY-MM-DD` values failed validation. Replaced it with the shared `isValidDateKey` validator and added regression tests for valid leap dates, malformed values and impossible dates. Backend typecheck, test suite, frontend build and live API smoke test passed on commit `7cf4b8d4708743ca6f0d5c7db681a24f0d39c876`. Android APK workflow is still running; no device test has been performed.
+
 ## Confirmed architectural risks
 
 1. **Two backend implementations are active in the same Render server.** `render-backend/server.ts` sends selected route families to `apiHandler`, sends other requests to `legacyHandler`, and falls back to `apiHandler`. This means the route dispatcher determines which of two implementations owns a feature. Attendance and staff live-location are currently handled through the legacy route path, while auth, admin/staff account and several other feature families use the Firestore-session API handler. This split is a major source of inconsistent behavior and makes a single route inventory insufficient.
