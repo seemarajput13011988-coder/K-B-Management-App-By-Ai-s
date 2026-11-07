@@ -213,9 +213,9 @@ function isOpenShift(item: Record<string, unknown>): boolean {
     !String(item.status || '').toLowerCase().includes('completed');
 }
 
-function findOpenShift(items: Record<string, unknown>[], userId: string, fallbackEndTime = '19:00') {
+function findOpenShift(items: Record<string, unknown>[], userId: string) {
   return items
-    .filter(item => item.userId === userId && isOpenShift(item) && shiftDueAt(item, fallbackEndTime) > 0)
+    .filter(item => item.userId === userId && isOpenShift(item))
     .sort((a, b) => String(b.checkInAt || '').localeCompare(String(a.checkInAt || '')))[0];
 }
 
@@ -973,7 +973,7 @@ export const handler = router({
       }
       const snapshot = await transaction.get(firestore.collection('attendance').where('userId', '==', user.id));
       const existing: Record<string, unknown>[] = snapshot.docs.map(document => ({ ...(document.data() as Record<string, unknown>), id: document.id }));
-      const previousOpenShift = findOpenShift(existing, user.id, settings.shiftEndTime);
+      const previousOpenShift = findOpenShift(existing, user.id);
       if (previousOpenShift) {
         return { kind: 'open-shift', active: shiftDueAt(previousOpenShift, settings.shiftEndTime) > Date.now() };
       }
@@ -1148,7 +1148,7 @@ export const handler = router({
     const workDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
     const settings = await getWorkforceSettings();
     const result = await listAttendanceForUser(member.id);
-    const openShift = findOpenShift(result, member.id, settings.shiftEndTime);
+    const openShift = findOpenShift(result, member.id);
     if (openShift) {
       return error(shiftDueAt(openShift, settings.shiftEndTime) > Date.now()
         ? 'This staff member already has an active shift.'
@@ -1198,7 +1198,7 @@ export const handler = router({
       }
       const snapshot = await transaction.get(firestore.collection('attendance').where('userId', '==', member.id));
       const existing: Record<string, unknown>[] = snapshot.docs.map(document => ({ ...(document.data() as Record<string, unknown>), id: document.id }));
-      const open = findOpenShift(existing, member.id, settings.shiftEndTime);
+      const open = findOpenShift(existing, member.id);
       if (open) return { kind: 'active', active: shiftDueAt(open, settings.shiftEndTime) > Date.now() };
       const latestToday = existing.filter(item => item.workDate === workDate)
         .sort((a, b) => String(b.checkInAt || '').localeCompare(String(a.checkInAt || '')))[0];
@@ -1234,8 +1234,8 @@ export const handler = router({
   'POST /api/attendance/admin-end': protectedRoute(['admin'], async ({ body }, admin) => {
     const input = (body || {}) as Record<string, unknown>;
     const staffId = cleanText(input.userId, 128);
-    const [result, settings] = await Promise.all([listAttendanceForUser(staffId), getWorkforceSettings()]);
-    const existing = findOpenShift(result, staffId, settings.shiftEndTime);
+    const result = await listAttendanceForUser(staffId);
+    const existing = findOpenShift(result, staffId);
     if (!existing) return error('There is no active shift for this staff member.', 400);
     const endedAt = new Date().toISOString();
     const attendanceRef = firestore.collection('attendance').doc(String(existing.id));
