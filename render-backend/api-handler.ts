@@ -457,6 +457,24 @@ export async function apiHandler(req: any, res: any) {
         send(res, 200, { user: { id: user.uid, userId: user.userId, displayName: user.displayName, role: user.role, active: true, canManageAdmins: user.canManageAdmins === true } }); return;
       }
       if (method === 'POST' && path === '/api/auth/logout') {
+        if (user.role === 'staff') {
+          const activeSnapshot = await db.collection('attendance')
+            .where('userId', '==', user.uid).where('status', '==', 'Checked in').limit(50).get();
+          const activeShift = activeSnapshot.docs.some(doc => {
+            const item = doc.data();
+            if (item.checkOutAt || item.dayType === 'Absent' || item.gpsRestartRequired || item.gpsCancelled) return false;
+            const savedDeadline = Date.parse(String(item.autoCheckoutAt || ''));
+            if (Number.isFinite(savedDeadline)) return savedDeadline > Date.now();
+            const checkIn = Date.parse(String(item.checkInAt || ''));
+            const workDate = String(item.workDate || '');
+            if (!Number.isFinite(checkIn) || !/^\\d{4}-\\d{2}-\\d{2}$/.test(workDate)) return true;
+            const parts = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date(checkIn));
+            const minutes = Number(parts.find(part => part.type === 'hour')?.value || 0) * 60 + Number(parts.find(part => part.type === 'minute')?.value || 0);
+            const dueDate = minutes >= 19 * 60 ? new Date(Date.parse(workDate + 'T00:00:00Z') + 86400000).toISOString().slice(0, 10) : workDate;
+            return Date.now() < Date.parse(dueDate + 'T19:00:00+05:30');
+          });
+          if (activeShift) { send(res, 409, { error: 'Sign out is blocked while your work shift is active. Ask an administrator to end the shift.' }); return; }
+        }
         const authorization = clean(req.headers.authorization, 4096);
         const token = authorization.startsWith('Bearer ')
           ? authorization.slice(7)
