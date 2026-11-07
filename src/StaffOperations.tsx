@@ -146,11 +146,16 @@ export default function StaffOperations({ session, customers, flash, compact = f
 
   const refresh = useCallback(async () => {
     try {
-      const [a, v, n, m, g, p, hr] = await Promise.all([
+      const [a, v, n, m, g, p, hr, settings] = await Promise.all([
         request('get', '/api/attendance'), request('get', '/api/visits'),
         request('get', '/api/announcements'), request('get', '/api/messages'),
-        request('get', '/api/groups'), request('get', '/api/payments'), request('get', '/api/holidays')
+        request('get', '/api/groups'), request('get', '/api/payments'),
+        request('get', '/api/holidays'), request('get', '/api/workforce-settings')
       ]);
+      setShiftSettings({
+        shiftStartTime: settings.data.shiftStartTime || '08:00',
+        shiftEndTime: settings.data.shiftEndTime || '19:00',
+      });
       setAttendance(a.data.items || []);
       setHolidays(hr.data.items || []);
       setVisits(v.data.items || []);
@@ -161,16 +166,11 @@ export default function StaffOperations({ session, customers, flash, compact = f
       setGroups(availableGroups);
       setSelectedGroupId(current => current && availableGroups.some(group => group.id === current) ? current : availableGroups[0]?.id || '');
       if (admin) {
-        const [s, rr, settings] = await Promise.all([
+        const [s, rr] = await Promise.all([
           request('get', '/api/staff'), request('get', '/api/staff-registration-requests'),
-          request('get', '/api/workforce-settings'),
         ]);
         setStaff(s.data.items || []);
         setRegistrationRequests(rr.data.items || []);
-        setShiftSettings({
-          shiftStartTime: settings.data.shiftStartTime || '08:00',
-          shiftEndTime: settings.data.shiftEndTime || '19:00',
-        });
       }
       if (superAdmin) {
         const ad = await request('get', '/api/admins');
