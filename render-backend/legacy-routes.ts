@@ -1266,34 +1266,46 @@ export const handler = router({
       latitude, longitude, accuracy, capturedAt,
       source: cleanText(body?.source, 80) || 'staff-app-background',
     };
-    await firestore.collection('staff_live_locations').doc(user.id).set(record, { merge: true });
-    await db.add('locations', [{ ...record, id: undefined }]);
-
     const gpsRestored = Boolean(active.gpsIssueStartedAt);
+    const liveLocationRef = firestore.collection('staff_live_locations').doc(user.id);
+    const historyRef = firestore.collection('locations').doc();
+    const batch = firestore.batch();
+    const { id: _recordId, ...historyRecord } = record;
+    batch.set(liveLocationRef, record, { merge: true });
+    batch.set(historyRef, historyRecord);
     if (gpsRestored) {
-      await db.tx.update('attendance', [{
-        id: String(active.id),
-        record: {
-          gpsIssueStartedAt: FieldValue.delete(), gpsIssueId: FieldValue.delete(),
-          gpsIssueReason: FieldValue.delete(), gpsReminderStage: FieldValue.delete(),
-          gpsStatus: 'active', gpsRestoredAt: capturedAt,
-        },
-      }], { patch: true });
-
-      const notifications = await db.list<Record<string, unknown>>('staff_notifications', { limit: 1000 });
-      const oldGpsNotifications = notifications.items.filter(item =>
-        item.attendanceId === active.id && String(item.type || '').startsWith('gps-')
+      const attendanceRef = firestore.collection('attendance').doc(String(active.id));
+      const restoredNotificationRef = firestore.collection('staff_notifications').doc(
+        String(active.id) + '-gps-restored-' + String(active.gpsIssueId || capturedAt),
       );
-      if (oldGpsNotifications.length) {
-        await db.tx.update('staff_notifications', oldGpsNotifications.map(item => ({
-          id: String(item.id), record: { read: true, resolvedAt: capturedAt },
-        })), { patch: true });
-      }
-      await db.add('staff_notifications', [{
+      batch.update(attendanceRef, {
+        gpsIssueStartedAt: FieldValue.delete(), gpsIssueId: FieldValue.delete(),
+        gpsIssueReason: FieldValue.delete(), gpsReminderStage: FieldValue.delete(),
+        gpsStatus: 'active', gpsRestoredAt: capturedAt,
+      });
+      batch.set(restoredNotificationRef, {
         recipientId: user.id, recipientRole: 'staff', type: 'gps-restored',
         title: 'GPS restored', message: 'Your location is available again. Your shift continues normally.',
         createdAt: capturedAt, read: false, attendanceId: active.id,
-      }]);
+      });
+    }
+    await batch.commit();
+
+    if (gpsRestored) {
+      try {
+        const notifications = await db.list<Record<string, unknown>>('staff_notifications', { limit: 1000 });
+        const oldGpsNotifications = notifications.items.filter(item =>
+          item.attendanceId === active.id && String(item.type || '').startsWith('gps-') &&
+          item.type !== 'gps-restored'
+        );
+        if (oldGpsNotifications.length) {
+          await db.tx.update('staff_notifications', oldGpsNotifications.map(item => ({
+            id: String(item.id), record: { read: true, resolvedAt: capturedAt },
+          })), { patch: true });
+        }
+      } catch (notificationError) {
+        console.error('GPS was restored, but old reminder notifications could not be marked read:', notificationError);
+      }
     }
 
     return json({ updated: true, capturedAt, gpsRestored });
