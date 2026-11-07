@@ -26,8 +26,6 @@ jobs:
 
       - name: Type-check and build production web app
         env:
-          # Firebase Web App configuration is public client config, matching the
-          # confirmed Android build configuration. Do not store it as a secret.
           VITE_API_BASE_URL: https://kandb-management-nexus-api-zv7f.onrender.com
         run: |
           npx tsc --noEmit
