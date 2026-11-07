@@ -29,7 +29,7 @@ const indiaMinutesNow = () => {
 const stamp = (value?: string) => value ? new Date(value).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) : '—';
 const shiftDueAt = (item: Attendance) => {
   const checkIn = Date.parse(item.checkInAt || '');
-  if (!Number.isFinite(checkIn) || !/^\\d{4}-\\d{2}-\\d{2}$/.test(item.workDate || '')) return Number.NaN;
+  if (!Number.isFinite(checkIn) || !/^\d{4}-\d{2}-\d{2}$/.test(item.workDate || '')) return Number.NaN;
   const parts = new Intl.DateTimeFormat('en-GB', {
     timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
   }).formatToParts(new Date(checkIn));
