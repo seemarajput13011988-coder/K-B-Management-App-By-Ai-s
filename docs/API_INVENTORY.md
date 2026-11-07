@@ -1,82 +1,22 @@
-# Existing Backend API Inventory
+# K&B Management Nexus API inventory
 
-Extracted from the preserved AppDeploy backend snapshot `1793770810412`. These routes form the migration checklist. The Firebase migration branch now contains implementations for the listed business modules; every route still requires build, emulator and role-based verification before production use.
+This document now describes the active Render API, not the preserved AppDeploy/Firebase migration snapshot.
 
-## Health and authentication
-- `GET /api/_healthcheck`
-- `POST /api/auth/login`
-- `POST /api/auth/recover-admin`
-- `GET /api/auth/me`
-- `POST /api/auth/logout`
-- `POST /api/auth/change-password`
+- Active API source: `render-backend/server.ts`, `render-backend/api-handler.ts`, and `render-backend/legacy-routes.ts`.
+- Active data store: Firestore through the Firebase Admin SDK in `render-backend/firestore-adapter.ts`.
+- Active staff/admin authentication: K&B ID/password with salted scrypt hashes and opaque server-side sessions.
+- Legacy sources: `backend/` (AppDeploy snapshot) and `functions/` (old Firebase Functions migration). They are not active deployment targets.
+- `firestore.rules` denies direct browser reads/writes; application data access must go through the active API.
+- `POST /api/app-updates/check` is a public, read-only Capacitor updater endpoint. It only serves signed-off public release metadata and does not access business records.
 
-## Staff and plans
-- `GET /api/staff`
-- `POST /api/staff`
-- `PUT /api/staff/:id`
-- `DELETE /api/staff/:id`
-- `POST /api/staff/:id/reset-password`
-- `GET /api/plans`
-- `POST /api/plans`
-- `PUT /api/plans/:id`
-- `DELETE /api/plans/:id`
+## Inventory maintenance
 
-## Customers, payments, complaints, and tasks
-- `GET /api/customers`
-- `POST /api/customers`
-- `PUT /api/customers/:id`
-- `DELETE /api/customers/:id`
-- `GET /api/payments`
-- `POST /api/payments`
-- `DELETE /api/payments/:id`
-- `GET /api/complaints`
-- `POST /api/complaints`
-- `PUT /api/complaints/:id`
-- `DELETE /api/complaints/:id`
-- `GET /api/tasks`
-- `POST /api/tasks`
-- `PUT /api/tasks/:id`
-- `DELETE /api/tasks/:id`
+The active route declarations are distributed across `render-backend/api-handler.ts` and `render-backend/legacy-routes.ts`. Keep this document synchronized when routes are added or removed. CI checks should exercise route contracts and role requirements; a route's existence alone is not proof of correct authorization.
 
-## Attendance and location
-- `GET /api/attendance`
-- `POST /api/attendance/check-in`
-- `POST /api/attendance/check-out`
-- `POST /api/attendance/admin-start`
-- `POST /api/attendance/admin-end`
-- `GET /api/locations`
-- `POST /api/locations`
+## Required release checks
 
-## Team communication and field visits
-- `GET /api/announcements`
-- `POST /api/announcements`
-- `DELETE /api/announcements/:id`
-- `GET /api/messages`
-- `POST /api/messages`
-- `DELETE /api/messages/:id`
-- `GET /api/groups`
-- `POST /api/groups`
-- `DELETE /api/groups/:id`
-- `GET /api/groups/:id/messages`
-- `POST /api/groups/:id/messages`
-- `DELETE /api/groups/:id/messages/:messageId`
-- `GET /api/visits`
-- `POST /api/visits`
-- `DELETE /api/visits/:id`
-
-## Finance and audit
-- `GET /api/expenses`
-- `POST /api/expenses`
-- `DELETE /api/expenses/:id`
-- `GET /api/invoices`
-- `POST /api/invoices/generate`
-- `PUT /api/invoices/:id/void`
-- `GET /api/audit`
-
-**Total: 59 route declarations.** The migrated backend must preserve route behavior, data validation, role boundaries, staff record scoping, and audit logging—not just endpoint names.
-
-## Current implementation notes
-- Sign-in is handled by Firebase Authentication in the browser; the Functions API verifies Firebase ID tokens.
-- Admin bootstrap and admin recovery are protected by separate Firebase Functions secrets.
-- The password-change route is being moved to Firebase client-side reauthentication and remains pending.
-- The business API handlers are implemented in `functions/src/index.ts`; implementation does not mean they have passed compilation or emulator tests.
+- Verify each sensitive endpoint with no session, staff session, ordinary admin session, and super-admin session as applicable.
+- Verify staff scoping and record ownership for customers, tasks, complaints, attendance, GPS, media, messages and groups.
+- Verify that multi-document financial operations use Firestore transactions or batched writes where partial completion would corrupt totals.
+- Verify server-side validation for all money, dates, state transitions, IDs, uploads and permissions.
+- Do not use the legacy API inventory or old migration notes as evidence of active behavior.
