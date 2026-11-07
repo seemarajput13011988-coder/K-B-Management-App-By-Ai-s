@@ -14,6 +14,19 @@ The workflow `.github/workflows/ota-release.yml` runs only for relevant changes 
 
 The Render endpoint `POST /api/app-updates/check` reads the newest non-draft `nexus-ota-*` release from this repository and returns the version, bundle URL and checksum. It validates the app ID, platform, semantic version, checksum and HTTPS GitHub download host. The release list is cached briefly to avoid unnecessary GitHub API requests.
 
+## Stable Android signing key
+
+The Android debug APK is for automated CI verification only. It is not the distribution build for users who need in-place native upgrades. Configure one persistent release keystore through GitHub Actions secrets:
+
+- `ANDROID_KEYSTORE_BASE64`
+- `ANDROID_KEYSTORE_PASSWORD`
+- `ANDROID_KEY_ALIAS`
+- `ANDROID_KEY_PASSWORD`
+
+The Android workflow builds a signed release APK only when all four are present. Back up the keystore securely; never commit it or paste its passwords into chat, source files, issues or logs. Every future native APK must use this same signing key or Android will refuse an in-place upgrade.
+
+If a previously installed APK was signed with a different temporary debug key, Android cannot update it in place with the new release key. That old installation may require one final uninstall/reinstall before the stable signed build is installed. Business records are stored on the server, but local session state will be cleared.
+
 ## First installation and activation
 
 The OTA runtime and its native plugin must be present in the installed APK before OTA updates can work. Therefore, the first APK containing this updater is a one-time installation. After that, web-only changes can be published through the OTA release workflow.
