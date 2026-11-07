@@ -40,9 +40,10 @@ const shiftDueAt = (item: Attendance) => {
     : item.workDate;
   return Date.parse(dueDate + 'T19:00:00+05:30');
 };
-const isOpenShift = (item: Attendance) =>
+const isUnclosedShift = (item: Attendance) =>
   !item.checkOutAt && item.dayType !== 'Absent' && !item.gpsRestartRequired && !item.gpsCancelled &&
-  !String(item.status || '').toLowerCase().includes('cancelled') && shiftDueAt(item) > Date.now();
+  !String(item.status || '').toLowerCase().includes('cancelled');
+const isOpenShift = (item: Attendance) => isUnclosedShift(item) && shiftDueAt(item) > Date.now();
 function AttendanceCalendar({ staffId, staffName, records, holidays }: { staffId: string; staffName: string; records: Attendance[]; holidays: HolidayRequest[] }) {
   const [month, setMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
   const year = month.getFullYear(), monthIndex = month.getMonth();
@@ -415,7 +416,7 @@ export default function StaffOperations({ session, customers, flash, compact = f
         const memberTotal = memberPayments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
         const memberMonth = memberPayments.filter(payment => String(payment.paidAt || '').slice(0, 7) === monthKey).reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
         const memberDays = attendance.filter(item => item.userId === member.id && item.dayType !== 'Absent' && String(item.status || '').toLowerCase() !== 'absent').reduce((sum,item) => sum + (item.dayType === 'Half day' ? 0.5 : 1), 0);
-        const memberShift = attendance.find(item => item.userId === member.id && isOpenShift(item)) ||
+        const memberShift = attendance.find(item => item.userId === member.id && isUnclosedShift(item)) ||
           attendance.find(item => item.userId === member.id && item.workDate === today);
         return <tr key={member.id}><td><b>{member.displayName}</b></td><td>{memberPayments.length}</td><td className="amount">₹{memberTotal.toLocaleString('en-IN')}</td><td className="amount">₹{memberMonth.toLocaleString('en-IN')}</td><td>{memberDays}</td><td>{memberShift?.dayType === 'Absent' ? 'Absent' : memberShift?.checkOutAt ? 'Completed' : memberShift ? 'On shift' : 'Not started'}</td></tr>;
       })}{!staff.length && <tr><td colSpan={6}>No staff records available yet.</td></tr>}</tbody></table></div>
@@ -460,7 +461,7 @@ export default function StaffOperations({ session, customers, flash, compact = f
     {admin && <section className="panel ops-panel">
       <div className="ops-panel-head"><div><span className="eyebrow">STAFF ATTENDANCE</span><h2>Staff shift controls</h2><p>Start, end or correct a staff member’s attendance. GPS is not required for shifts.</p></div></div>
       <div className="ops-location-list">{staff.map(member => {
-        const shiftRecord = sortedAttendance.find(item => item.userId === member.id && isOpenShift(item)) ||
+        const shiftRecord = sortedAttendance.find(item => item.userId === member.id && isUnclosedShift(item)) ||
           sortedAttendance.find(item => item.userId === member.id && item.workDate === today);
         const selectedType = staffDayTypes[member.id] || 'Full day';
         return <article className="ops-location-card" key={member.id}>
