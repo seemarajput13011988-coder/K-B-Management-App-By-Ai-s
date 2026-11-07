@@ -529,14 +529,19 @@ export async function apiHandler(req: any, res: any) {
         const userId = clean(body.userId, 32);
         const displayName = clean(body.displayName, 80);
         const password = typeof body.password === 'string' ? body.password : '';
-        if (!/^[a-zA-Z0-9_-]{3,32}$/.test(userId) || userId.toLowerCase() === 'brajraj' || !displayName || password.length < 8) {
-          send(res, 400, { error: 'Enter a unique admin ID, name and password with at least 8 characters.' }); return;
+        if (!/^[a-zA-Z0-9_-]{3,32}$/.test(userId) || userId.toLowerCase() === 'brajraj' || !displayName || password.length < 10) {
+          send(res, 400, { error: 'Enter a unique admin ID, name and password with at least 10 characters.' }); return;
         }
         const existing = (await list('users')).some(item => String(item.userId).toLowerCase() === userId.toLowerCase());
         if (existing) { send(res, 409, { error: 'That account ID is already in use.' }); return; }
-        const accountId = 'admin-' + randomBytes(10).toString('hex');
+        const accountId = 'admin-' + createHash('sha256').update(userId.toLowerCase()).digest('hex').slice(0, 40);
         const record = { userId, userIdLower: userId.toLowerCase(), displayName, role: 'admin', canManageAdmins: false, active: true, ...newPasswordFields(password), createdAt: now(), createdBy: user.uid };
-        await db.collection('users').doc(accountId).set(record);
+        try {
+          await db.collection('users').doc(accountId).create(record);
+        } catch (error: any) {
+          if (error?.code === 6 || error?.code === 'already-exists') { send(res, 409, { error: 'That account ID is already in use.' }); return; }
+          throw error;
+        }
         await audit(user, 'CREATE', 'admin', accountId, 'Created administrator account ' + userId);
         const { passwordHash, salt, ...safe } = record;
         send(res, 201, { user: { id: accountId, ...safe } }); return;
@@ -553,9 +558,14 @@ export async function apiHandler(req: any, res: any) {
         const password = typeof body.password === 'string' ? body.password : '';
         if (!/^[a-zA-Z0-9_-]{3,32}$/.test(userId) || !displayName || password.length < 10) { send(res, 400, { error: 'Use a 3–32 character staff ID, a name and a password of at least 10 characters.' }); return; }
         if ((await list('users')).some(item => String(item.userId || '').toLowerCase() === userId.toLowerCase())) { send(res, 409, { error: 'That user ID is already in use.' }); return; }
-        const accountId = 'staff-' + randomBytes(10).toString('hex');
+        const accountId = 'staff-' + createHash('sha256').update(userId.toLowerCase()).digest('hex').slice(0, 40);
         const record: Data = { userId, userIdLower: userId.toLowerCase(), displayName, role: 'staff', active: true, canManageAdmins: false, ...newPasswordFields(password), createdAt: now(), createdBy: user.uid };
-        await db.collection('users').doc(accountId).create(record);
+        try {
+          await db.collection('users').doc(accountId).create(record);
+        } catch (error: any) {
+          if (error?.code === 6 || error?.code === 'already-exists') { send(res, 409, { error: 'That user ID is already in use.' }); return; }
+          throw error;
+        }
         await audit(user, 'CREATE', 'staff', accountId, 'Created staff account ' + userId);
         const { passwordHash, salt, ...safe } = record;
         send(res, 201, { user: { id: accountId, ...safe } }); return;
