@@ -180,7 +180,7 @@ function indiaDateKey(date = new Date()) {
 }
 
 function shiftDueAt(item: Record<string, unknown>, fallbackEndTime = '19:00'): number {
-  const savedDeadline = Date.parse(String(item.autoCheckoutAt || ''));
+  const savedDeadline = Date.parse(String(item.autoCheckoutAt || item.scheduledEndAt || ''));
   if (Number.isFinite(savedDeadline)) return savedDeadline;
   const deadline = computeShiftDeadline(
     String(item.workDate || ''),
@@ -394,7 +394,7 @@ export const handler = router({
         if (shift.checkOutAt || shift.dayType === 'Absent' || shift.gpsRestartRequired || shift.gpsCancelled) continue;
         const deadline = computeShiftDeadline(String(shift.workDate || ''), String(shift.checkInAt || ''), endTime);
         if (!deadline) continue;
-        batch.update(document.ref, { shiftStartTime: startTime, shiftEndTime: endTime, autoCheckoutAt: deadline, scheduleUpdatedAt: updatedAt });
+        batch.update(document.ref, { shiftStartTime: startTime, shiftEndTime: endTime, autoCheckoutAt: deadline, scheduledEndAt: deadline, scheduleUpdatedAt: updatedAt });
         batchWrites += 1;
         rescheduledShifts += 1;
       }
@@ -955,7 +955,7 @@ export const handler = router({
     if (indiaMinutes < timeToMinutes(settings.shiftStartTime) || indiaMinutes >= timeToMinutes(settings.shiftEndTime)) return error('Staff shift start is available only from ' + settings.shiftStartTime + ' to ' + settings.shiftEndTime + ' India time.', 403);
     const workDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
     const startedAt = new Date().toISOString();
-    const record: Record<string, unknown> = { userId: user.id, displayName: user.displayName, workDate, checkInAt: startedAt, createdAt: startedAt, status: 'Checked in', dayType: body?.dayType === 'Half day' ? 'Half day' : 'Full day', attendanceSource: 'Staff', shiftStartTime: settings.shiftStartTime, shiftEndTime: settings.shiftEndTime, autoCheckoutAt: computeAutoCheckoutAt(workDate, startedAt, settings.shiftEndTime) };
+    const record: Record<string, unknown> = { userId: user.id, displayName: user.displayName, workDate, checkInAt: startedAt, createdAt: startedAt, status: 'Checked in', dayType: body?.dayType === 'Half day' ? 'Half day' : 'Full day', attendanceSource: 'Staff', shiftStartTime: settings.shiftStartTime, shiftEndTime: settings.shiftEndTime, autoCheckoutAt: computeAutoCheckoutAt(workDate, startedAt, settings.shiftEndTime), scheduledEndAt: computeAutoCheckoutAt(workDate, startedAt, settings.shiftEndTime) };
     // Deterministic daily ID and a transaction prevent double taps or two devices
     // from creating duplicate attendance rows for the same staff member and day.
     const attendanceId = 'staff-' + createHash('sha256').update(user.id + '|' + workDate).digest('hex').slice(0, 40);
