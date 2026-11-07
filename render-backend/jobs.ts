@@ -207,12 +207,69 @@ export async function deliverPendingPushNotifications() {
   }
 }
 
+
+export async function autoCheckoutAtSevenPm() {
+  const { date } = indiaDateParts();
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+  }).formatToParts(new Date());
+  const hour = Number(parts.find(part => part.type === 'hour')?.value || 0);
+  const minute = Number(parts.find(part => part.type === 'minute')?.value || 0);
+  if (hour < 19) return { checkedOut: 0 };
+  const checkoutAt = new Date(date + 'T19:00:00+05:30').toISOString();
+  const records = await readCollection('attendance', 1000);
+  let checkedOut = 0;
+  for (const item of records) {
+    if (!item.id || item.workDate !== date || item.checkOutAt || item.dayType === 'Absent') continue;
+    const ref = firestore.collection('attendance').doc(String(item.id));
+    const didCheckout = await firestore.runTransaction(async transaction => {
+      const latest = await transaction.get(ref);
+      const current = latest.data();
+      if (!latest.exists || !current || current.workDate !== date || current.checkOutAt ||
+          current.dayType === 'Absent') return false;
+      transaction.update(ref, {
+        checkOutAt: checkoutAt,
+        updatedAt: now(),
+        status: 'Completed',
+        endedBy: 'system',
+        endedByName: 'Automatic 7 PM checkout',
+        autoCheckedOut: true,
+        autoCheckedOutAt: checkoutAt,
+        gpsStatus: current.gpsIssueStartedAt ? 'disabled-at-checkout' : (current.gpsStatus || 'enabled'),
+        gpsIssueStartedAt: FieldValue.delete(),
+        gpsIssueId: FieldValue.delete(),
+        gpsIssueReason: FieldValue.delete(),
+        gpsReminderStage: FieldValue.delete(),
+      });
+      return true;
+    });
+    if (!didCheckout) continue;
+    checkedOut += 1;
+    const notificationId = 'attendance-auto-checkout-' + String(item.id);
+    await firestore.collection('staff_notifications').doc(notificationId).set({
+      recipientId: String(item.userId), recipientRole: 'staff', type: 'attendance-auto-checkout',
+      title: 'Shift automatically ended',
+      message: 'Your shift was automatically checked out at 7:00 PM. You can start a new shift tomorrow from 8:00 AM.',
+      createdAt: checkoutAt, read: false, attendanceId: String(item.id),
+    }, { merge: true });
+    const auditId = 'attendance-auto-checkout-' + String(item.id);
+    await firestore.collection('audit_logs').doc(auditId).set({
+      actorId: 'system', actorName: 'K&B automatic attendance',
+      action: 'AUTO_CHECKOUT', entityType: 'attendance', entityId: String(item.id),
+      description: 'Automatically checked out ' + String(item.displayName || 'staff member') + ' at 7:00 PM India time.',
+      createdAt: checkoutAt, serverCreatedAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
+  }
+  return { checkedOut };
+}
+
 let running = false;
 let lastDailyRun = '';
 export async function runScheduledTick() {
   if (running) return { skipped: true };
   running = true;
   try {
+    const attendance = await autoCheckoutAtSevenPm();
     await runGpsGracePeriod();
     await deliverPendingPushNotifications();
     const parts = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' }).formatToParts(new Date());
@@ -223,7 +280,7 @@ export async function runScheduledTick() {
       await sendSubscriptionExpiryReminders();
       lastDailyRun = date;
     }
-    return { skipped: false };
+    return { skipped: false, ...attendance };
   } finally { running = false; }
 }
 export function startBackgroundJobs() {
