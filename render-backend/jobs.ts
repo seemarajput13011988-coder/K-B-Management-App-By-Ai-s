@@ -324,18 +324,16 @@ export async function autoCheckoutAtSevenPm() {
 }
 
 let running = false;
-let attendanceRunning = false;
+let autoCheckoutRunning = false;
 let lastDailyRun = '';
 
-async function runAttendanceJobs() {
-  if (attendanceRunning) return { skipped: true };
-  attendanceRunning = true;
+async function runAutoCheckoutJob() {
+  if (autoCheckoutRunning) return { skipped: true };
+  autoCheckoutRunning = true;
   try {
-    const attendance = await autoCheckoutAtSevenPm();
-    await runGpsGracePeriod();
-    return { skipped: false, ...attendance };
+    return { skipped: false, ...(await autoCheckoutAtSevenPm()) };
   } finally {
-    attendanceRunning = false;
+    autoCheckoutRunning = false;
   }
 }
 
@@ -343,7 +341,8 @@ export async function runScheduledTick() {
   if (running) return { skipped: true };
   running = true;
   try {
-    const attendance = await runAttendanceJobs();
+    const attendance = await runAutoCheckoutJob();
+    await runGpsGracePeriod();
     await deliverPendingPushNotifications();
     const parts = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' }).formatToParts(new Date());
     const hour = Number(parts.find(part => part.type === 'hour')?.value || 0);
@@ -360,7 +359,7 @@ export async function runScheduledTick() {
 export function startBackgroundJobs() {
   // Attendance and GPS deadlines are checked more frequently than non-urgent reminders.
   const attendanceTimer = setInterval(() => {
-    void runAttendanceJobs().catch(error => console.error('K&B attendance job failed:', error instanceof Error ? error.message : String(error)));
+    void runAutoCheckoutJob().catch(error => console.error('K&B automatic checkout job failed:', error instanceof Error ? error.message : String(error)));
   }, 15_000);
   (attendanceTimer as any).unref?.();
   const timer = setInterval(() => {
