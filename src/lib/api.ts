@@ -145,6 +145,7 @@ export async function signOutAppUser() {
   if (!token) return;
   const url = new URL('/api/auth/logout', API_BASE);
   const response = await fetch(url.toString(), { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token }, body: JSON.stringify({ sessionToken: token }), cache: 'no-store' });
+  if (response.status === 401) return; // The session may already have been revoked by a successful credential change.
   if (!response.ok) {
     let message = 'Could not sign out. Your current work shift may still be active.';
     try { const data = await response.json(); if (typeof data.error === 'string' && data.error.trim()) message = data.error; } catch { /* Keep the safe fallback. */ }
