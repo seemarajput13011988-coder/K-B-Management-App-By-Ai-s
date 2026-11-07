@@ -1022,7 +1022,7 @@ export const handler = router({
     }
     const [id] = await db.add('attendance', [record]);
     if (!id) return error('Could not start this staff shift.', 500);
-    await writeAudit(admin, 'ADMIN_START_SHIFT', 'attendance', id, 'Started a shift for ' + member.displayName + ' at ' + record.checkInAt + '.');
+    await writeAudit(admin, 'ADMIN_START_SHIFT', 'attendance', id, 'Started a shift for ' + member.displayName + ' at ' + String(record.checkInAt || '') + '.');
     await db.add('staff_notifications', [{
       recipientId: member.id, recipientRole: 'staff', type: 'admin-shift-started',
       title: 'Your shift was started by an administrator',
