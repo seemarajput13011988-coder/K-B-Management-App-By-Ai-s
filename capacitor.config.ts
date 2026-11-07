@@ -22,6 +22,8 @@ const config: CapacitorConfig = {
       httpsOnly: true,
       appReadyTimeout: 60000,
       responseTimeout: 20000,
+      autoDeletePrevious: false,
+      autoDeleteFailed: true,
     },
   },
 };
