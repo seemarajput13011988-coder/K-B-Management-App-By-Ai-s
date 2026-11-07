@@ -968,12 +968,12 @@ export const handler = router({
       if (previousOpenShift) {
         return { kind: 'open-shift', active: shiftDueAt(previousOpenShift, settings.shiftEndTime) > Date.now() };
       }
-      if (existing.some(item => item.workDate === workDate)) return { kind: 'day-recorded' };
+      if (existing.some(item => item.workDate === workDate)) return { kind: 'day-recorded', active: false };
       const existingDailyId = await transaction.get(attendanceRef);
-      if (existingDailyId.exists) return { kind: 'day-recorded' };
+      if (existingDailyId.exists) return { kind: 'day-recorded', active: false };
       transaction.create(attendanceRef, record);
       transaction.set(lockRef, { userId: user.id, attendanceId, updatedAt: startedAt }, { merge: true });
-      return { kind: 'created' };
+      return { kind: 'created', active: false };
     });
     if (outcome.kind === 'open-shift') return error(outcome.active
       ? 'You already have an active shift. End it before starting another shift.'
@@ -1198,7 +1198,7 @@ export const handler = router({
         latestToday.gpsCancelled === true ||
         String(latestToday.status || '').toLowerCase().includes('cancelled - gps')
       ));
-      if (latestToday && !canRestart) return { kind: 'completed' };
+      if (latestToday && !canRestart) return { kind: 'completed', active: false };
       transaction.create(attendanceRef, record);
       transaction.set(lockRef, { userId: member.id, attendanceId: id, updatedAt: startedAt }, { merge: true });
       transaction.set(auditRef, {
@@ -1213,7 +1213,7 @@ export const handler = router({
         message: admin.displayName + ' started your work shift. Location sharing is active only while this shift is active.',
         createdAt: startedAt, read: false, attendanceId: id,
       });
-      return { kind: 'created' };
+      return { kind: 'created', active: false };
     });
     if (outcome.kind === 'active') return error(outcome.active
       ? 'This staff member already has an active shift.'
