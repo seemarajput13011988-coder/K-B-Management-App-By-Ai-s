@@ -248,7 +248,7 @@ export async function autoCheckoutAtSevenPm() {
     const savedCheckoutAt = Date.parse(String(item.autoCheckoutAt || ''));
     const checkoutAt = new Date(Number.isFinite(savedCheckoutAt) ? savedCheckoutAt : legacyCheckoutAt.getTime());
     if (currentTime < checkoutAt.getTime()) continue;
-    const checkoutIso = checkoutAt.toISOString();
+    let checkoutIso = checkoutAt.toISOString();
     const ref = firestore.collection('attendance').doc(String(item.id));
     const notificationId = 'attendance-auto-checkout-' + String(item.id);
     const auditId = 'attendance-auto-checkout-' + String(item.id);
@@ -259,6 +259,13 @@ export async function autoCheckoutAtSevenPm() {
       const current = latest.data();
       if (!latest.exists || !current || current.checkOutAt ||
           current.workDate !== item.workDate) return false;
+      // Re-check the live deadline inside the transaction. A settings change may
+      // have extended this shift after the scheduler read its initial snapshot.
+      const latestDeadline = Date.parse(String(current.autoCheckoutAt || ''));
+      if (Number.isFinite(latestDeadline)) {
+        if (currentTime < latestDeadline) return false;
+        checkoutIso = new Date(latestDeadline).toISOString();
+      }
       transaction.update(ref, {
         checkOutAt: checkoutIso,
         updatedAt: now(),
