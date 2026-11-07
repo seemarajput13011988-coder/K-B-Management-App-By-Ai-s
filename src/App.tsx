@@ -457,14 +457,8 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
     if (!isAdmin) {
       try {
         const attendance = await api.get('/api/attendance');
-        const workDate = new Intl.DateTimeFormat('en-CA', {
-          timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit'
-        }).format(new Date());
         const activeShift = (attendance.data.items || []).some((item: AttendanceRecord) =>
-          item.userId === session.user.id &&
-          item.workDate === workDate &&
-          !item.checkOutAt &&
-          item.dayType !== 'Absent'
+          item.userId === session.user.id && isAttendanceShiftActive(item)
         );
         if (activeShift) {
           flash('Sign out is unavailable while your work shift is active. Check out first, or ask an administrator to end your shift. Location tracking remains active during the shift.');
@@ -2499,7 +2493,7 @@ function App(){
  async function login(userId:string,password:string,expectedRole:'admin'|'staff'){const next=await signInAppUser(userId,password,expectedRole) as Session;if(next.user.role!==expectedRole){await signOutAppUser();throw new Error(expectedRole==='admin'?'This account is not an admin account. Choose Staff Sign In instead.':'This account is not a staff account. Choose Admin Sign In instead.');}sessionStorage.setItem('kb-customer-session',JSON.stringify(next));setSession(next);}
  if(showWelcome)return <><FestivalTheme/><WelcomeIntro/></>;
  if(checking)return <><FestivalTheme/><div className="loading-cover"><div className="loader"/><span>Preparing secure sign-in…</span></div></>;
- return <><FestivalTheme/>{session?<WorkspaceErrorBoundary key={session.user.id} onReset={()=>{void signOutAppUser();sessionStorage.removeItem('kb-customer-session');localStorage.removeItem('kb-customer-session');setSession(null);}}><Workspace session={session} onLogout={()=>{void signOutAppUser();sessionStorage.removeItem('kb-customer-session');localStorage.removeItem('kb-customer-session');setSession(null);}}/></WorkspaceErrorBoundary>:<LoginScreen onLogin={login}/>}</>;
+ return <><FestivalTheme/>{session?<WorkspaceErrorBoundary key={session.user.id} onReset={()=>{void (async()=>{let preserveServerSession=false;if(session.user.role==='staff'){try{const attendance=await client.get('/api/attendance?sessionToken='+encodeURIComponent(session.token));preserveServerSession=(attendance.data.items||[]).some((item:AttendanceRecord)=>item.userId===session.user.id&&isAttendanceShiftActive(item));}catch{preserveServerSession=true;}}if(!preserveServerSession)await signOutAppUser();sessionStorage.removeItem('kb-customer-session');localStorage.removeItem('kb-customer-session');setSession(null);})();}}><Workspace session={session} onLogout={()=>{void signOutAppUser();sessionStorage.removeItem('kb-customer-session');localStorage.removeItem('kb-customer-session');setSession(null);}}/></WorkspaceErrorBoundary>:<LoginScreen onLogin={login}/>}</>;
 }
 function LoginScreen({onLogin}:{onLogin:(id:string,pw:string,role:'admin'|'staff')=>Promise<void>}){
  const [role,setRole]=useState<'admin'|'staff'|null>(null);
