@@ -882,6 +882,13 @@ export const handler = router({
     if (indiaMinutes < 8 * 60 || indiaMinutes >= 19 * 60) return error('Staff shift start is available only from 8:00 AM to 7:00 PM India time.', 403);
     const workDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
     const result = await db.list<Record<string, unknown>>('attendance', { limit: 1000 });
+    const previousOpenShift = findOpenShift(result.items, user.id);
+    if (previousOpenShift) {
+      const dueAt = shiftDueAt(previousOpenShift);
+      return error(dueAt > Date.now()
+        ? 'You already have an active shift. End it before starting another shift.'
+        : 'Your previous shift is waiting for automatic checkout. Please try again shortly.', 409);
+    }
     if (result.items.some(item => item.userId === user.id && item.workDate === workDate)) return error('Attendance has already been recorded for today.', 409);
     const startedAt = new Date().toISOString();
     const record: Record<string, unknown> = { userId: user.id, displayName: user.displayName, workDate, checkInAt: startedAt, createdAt: startedAt, status: 'Checked in', dayType: body?.dayType === 'Half day' ? 'Half day' : 'Full day', attendanceSource: 'Staff' };
@@ -917,9 +924,7 @@ export const handler = router({
   'POST /api/attendance/gps-lost': protectedRoute(['staff'], async ({ body }, user) => {
     const workDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
     const attendance = await db.list<Record<string, unknown>>('attendance', { limit: 1000 });
-    const active = attendance.items
-      .filter(item => item.userId === user.id && item.workDate === workDate && !item.checkOutAt && !item.gpsRestartRequired)
-      .sort((a, b) => String(b.checkInAt || '').localeCompare(String(a.checkInAt || '')))[0];
+    const active = findActiveShift(attendance.items, user.id);
     if (!active) return json({ monitoring: false, reason: 'no-active-shift' });
 
     const holidays = await db.list<Record<string, unknown>>('holiday_requests', { limit: 1000 });
@@ -970,11 +975,8 @@ export const handler = router({
     const indiaClock = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date());
     const indiaMinutes = Number(indiaClock.find(part => part.type === 'hour')?.value || 0) * 60 + Number(indiaClock.find(part => part.type === 'minute')?.value || 0);
     if (indiaMinutes < 8 * 60 || indiaMinutes >= 19 * 60) return error('Staff shift end is available only from 8:00 AM to 7:00 PM India time. After 7:00 PM, shifts are ended automatically.', 403);
-    const workDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
     const result = await db.list<Record<string, unknown>>('attendance', { limit: 1000 });
-    const existing = result.items
-      .filter(item => item.userId === user.id && item.workDate === workDate && !item.checkOutAt)
-      .sort((a, b) => String(b.checkInAt || '').localeCompare(String(a.checkInAt || '')))[0];
+    const existing = findActiveShift(result.items, user.id);
     if (!existing) return error('There is no active shift to check out.', 400);
     const [updated] = await db.tx.update('attendance', [{
       id: String(existing.id),
@@ -1030,6 +1032,12 @@ export const handler = router({
     if (!member || member.role !== 'staff' || !member.active) return error('Choose an active staff member.', 400);
     const workDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
     const result = await db.list<Record<string, unknown>>('attendance', { limit: 1000 });
+    const openShift = findOpenShift(result.items, member.id);
+    if (openShift) {
+      return error(shiftDueAt(openShift) > Date.now()
+        ? 'This staff member already has an active shift.'
+        : 'The previous shift is waiting for automatic checkout. Please retry shortly.', 409);
+    }
     const todays = result.items
       .filter(item => item.userId === member.id && item.workDate === workDate)
       .sort((a, b) => String(b.checkInAt || '').localeCompare(String(a.checkInAt || '')));
@@ -1074,11 +1082,8 @@ export const handler = router({
   'POST /api/attendance/admin-end': protectedRoute(['admin'], async ({ body }, admin) => {
     const input = (body || {}) as Record<string, unknown>;
     const staffId = cleanText(input.userId, 128);
-    const workDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
     const result = await db.list<Record<string, unknown>>('attendance', { limit: 1000 });
-    const existing = result.items
-      .filter(item => item.userId === staffId && item.workDate === workDate && !item.checkOutAt)
-      .sort((a, b) => String(b.checkInAt || '').localeCompare(String(a.checkInAt || '')))[0];
+    const existing = findOpenShift(result.items, staffId);
     if (!existing) return error('There is no active shift for this staff member.', 400);
     const [updated] = await db.tx.update('attendance', [{
       id: String(existing.id),
@@ -1201,11 +1206,8 @@ export const handler = router({
       return error('A valid GPS reading is required.', 400);
     }
 
-    const workDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
     const attendance = await db.list<Record<string, unknown>>('attendance', { limit: 1000 });
-    const active = attendance.items
-      .filter(item => item.userId === user.id && item.workDate === workDate && !item.checkOutAt)
-      .sort((a, b) => String(b.checkInAt || '').localeCompare(String(a.checkInAt || '')))[0];
+    const active = findActiveShift(attendance.items, user.id);
     if (!active || active.gpsRestartRequired) return error('Location can be shared only during an active, authorised shift.', 403);
 
     if (active.gpsIssueStartedAt && Date.now() - Date.parse(String(active.gpsIssueStartedAt)) >= 15 * 60 * 1000) {
