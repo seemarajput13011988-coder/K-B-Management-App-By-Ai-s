@@ -9,7 +9,7 @@ const now = () => new Date().toISOString();
 async function readCollection(name: string, limit = 1000): Promise<Item[]> {
   const pageSize = Math.max(1, Math.min(limit, 1000));
   const items: Item[] = [];
-  let cursor: FirebaseFirestore.QueryDocumentSnapshot | undefined;
+  let cursor: any;
   while (true) {
     let query = firestore.collection(name).orderBy(FieldPath.documentId()).limit(pageSize);
     if (cursor) query = query.startAfter(cursor);
