@@ -90,8 +90,15 @@ function allowSuperAdmin(user: AppUser, res: any): boolean {
   return true;
 }
 async function list(collection: string): Promise<Data[]> {
-  const snap = await db.collection(collection).limit(1000).get();
-  return snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  const baseQuery = db.collection(collection);
+  const items: Data[] = [];
+  let page = await baseQuery.limit(400).get();
+  while (!page.empty) {
+    items.push(...page.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    if (page.size < 400) break;
+    page = await baseQuery.startAfter(page.docs[page.docs.length - 1]).limit(400).get();
+  }
+  return items;
 }
 async function getDoc(collection: string, id: string): Promise<Data | null> {
   const snap = await db.collection(collection).doc(id).get();
@@ -729,7 +736,8 @@ export async function apiHandler(req: any, res: any) {
       }
       if (path === '/api/audit' && method === 'GET') {
         if (!allow(user, ['admin'], res)) return;
-        const items = (await list('audit_logs')).sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || ''))).slice(0, 300);
+        const auditSnapshot = await db.collection('audit_logs').orderBy('createdAt', 'desc').limit(300).get();
+        const items = auditSnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
         send(res, 200, { items }); return;
       }
       if (path === '/api/visits' && method === 'GET') {
