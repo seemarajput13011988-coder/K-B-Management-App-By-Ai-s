@@ -951,7 +951,17 @@ export const handler = router({
     // from creating duplicate attendance rows for the same staff member and day.
     const attendanceId = 'staff-' + createHash('sha256').update(user.id + '|' + workDate).digest('hex').slice(0, 40);
     const attendanceRef = firestore.collection('attendance').doc(attendanceId);
+    const lockRef = firestore.collection('active_shift_locks').doc(user.id);
     const outcome = await firestore.runTransaction(async transaction => {
+      const lockSnapshot = await transaction.get(lockRef);
+      const lockedAttendanceId = String(lockSnapshot.data()?.attendanceId || '');
+      if (lockedAttendanceId) {
+        const lockedSnapshot = await transaction.get(firestore.collection('attendance').doc(lockedAttendanceId));
+        const locked = lockedSnapshot.data();
+        if (locked && isOpenShift({ ...locked, id: lockedAttendanceId })) {
+          return { kind: 'open-shift', active: shiftDueAt({ ...locked, id: lockedAttendanceId }, settings.shiftEndTime) > Date.now() };
+        }
+      }
       const snapshot = await transaction.get(firestore.collection('attendance').where('userId', '==', user.id));
       const existing = snapshot.docs.map(document => ({ ...document.data(), id: document.id }));
       const previousOpenShift = findOpenShift(existing, user.id);
@@ -962,6 +972,7 @@ export const handler = router({
       const existingDailyId = await transaction.get(attendanceRef);
       if (existingDailyId.exists) return { kind: 'day-recorded' };
       transaction.create(attendanceRef, record);
+      transaction.set(lockRef, { userId: user.id, attendanceId, updatedAt: startedAt }, { merge: true });
       return { kind: 'created' };
     });
     if (outcome.kind === 'open-shift') return error(outcome.active
