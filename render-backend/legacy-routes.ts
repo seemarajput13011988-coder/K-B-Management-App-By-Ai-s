@@ -963,7 +963,7 @@ export const handler = router({
         }
       }
       const snapshot = await transaction.get(firestore.collection('attendance').where('userId', '==', user.id));
-      const existing = snapshot.docs.map(document => ({ ...document.data(), id: document.id }));
+      const existing: Record<string, unknown>[] = snapshot.docs.map(document => ({ ...(document.data() as Record<string, unknown>), id: document.id }));
       const previousOpenShift = findOpenShift(existing, user.id);
       if (previousOpenShift) {
         return { kind: 'open-shift', active: shiftDueAt(previousOpenShift, settings.shiftEndTime) > Date.now() };
@@ -1188,7 +1188,7 @@ export const handler = router({
         }
       }
       const snapshot = await transaction.get(firestore.collection('attendance').where('userId', '==', member.id));
-      const existing = snapshot.docs.map(document => ({ ...document.data(), id: document.id }));
+      const existing: Record<string, unknown>[] = snapshot.docs.map(document => ({ ...(document.data() as Record<string, unknown>), id: document.id }));
       const open = findOpenShift(existing, member.id);
       if (open) return { kind: 'active', active: shiftDueAt(open, settings.shiftEndTime) > Date.now() };
       const latestToday = existing.filter(item => item.workDate === workDate)
