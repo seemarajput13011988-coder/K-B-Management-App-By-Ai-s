@@ -25,6 +25,7 @@ on:
   pull_request:
     branches:
       - main
+      - fixes-session-gps-ui-2026-11-06
 jobs:
   build:
     runs-on: ubuntu-latest
