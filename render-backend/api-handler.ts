@@ -615,6 +615,19 @@ export async function apiHandler(req: any, res: any) {
             await batch.commit();
           }
         }
+        const groupSnapshot = await db.collection('groups').where('memberIds', 'array-contains', staffId).get();
+        for (let offset = 0; offset < groupSnapshot.docs.length; offset += 400) {
+          const batch = db.batch();
+          for (const document of groupSnapshot.docs.slice(offset, offset + 400)) {
+            const group = document.data();
+            const memberIds = Array.isArray(group.memberIds) ? group.memberIds.filter((id: unknown) => id !== staffId) : [];
+            const memberNames = Array.isArray(group.memberNames)
+              ? group.memberNames.filter((_name: unknown, index: number) => !Array.isArray(group.memberIds) || group.memberIds[index] !== staffId)
+              : [];
+            batch.update(document.ref, { memberIds, memberNames, updatedAt: now() });
+          }
+          await batch.commit();
+        }
         await revokeUserSessions(staffId);
         const tokenSnapshot = await db.collection('push_tokens').where('userId', '==', staffId).get();
         for (let offset = 0; offset < tokenSnapshot.docs.length; offset += 400) {
