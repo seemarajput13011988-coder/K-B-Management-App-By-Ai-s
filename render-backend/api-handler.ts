@@ -98,24 +98,37 @@ async function getDoc(collection: string, id: string): Promise<Data | null> {
   return snap.exists ? { id: snap.id, ...snap.data() } : null;
 }
 async function staffHasActiveShift(userId: string): Promise<boolean> {
-  const snapshot = await db.collection('attendance').where('userId', '==', userId).limit(1000).get();
-  return snapshot.docs.some(doc => {
-    const item = doc.data();
-    if (item.status !== 'Checked in' || item.checkOutAt || item.dayType === 'Absent' || item.gpsRestartRequired || item.gpsCancelled) return false;
-    const savedDeadline = Date.parse(String(item.autoCheckoutAt || ''));
-    if (Number.isFinite(savedDeadline)) return savedDeadline > Date.now();
-    const checkIn = Date.parse(String(item.checkInAt || ''));
-    const workDate = String(item.workDate || '');
-    if (!Number.isFinite(checkIn) || !datePattern.test(workDate)) return true;
-    const parts = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date(checkIn));
-    const minutes = Number(parts.find(part => part.type === 'hour')?.value || 0) * 60 + Number(parts.find(part => part.type === 'minute')?.value || 0);
-    const endTime = typeof item.shiftEndTime === 'string' && /^([01]\\d|2[0-3]):[0-5]\\d$/.test(item.shiftEndTime) ? item.shiftEndTime : '19:00';
-    const [endHour, endMinute] = endTime.split(':').map(Number);
-    const endMinutes = endHour * 60 + endMinute;
-    const dueDate = minutes >= endMinutes ? new Date(Date.parse(workDate + 'T00:00:00Z') + 86400000).toISOString().slice(0, 10) : workDate;
-    return Date.now() < Date.parse(dueDate + 'T' + endTime + ':00+05:30');
-  });
+  const settingsSnapshot = await db.collection('app_settings').doc('workforce').get();
+  const configuredEnd = String(settingsSnapshot.data()?.shiftEndTime || '19:00');
+  const fallbackEndTime = /^([01]\\d|2[0-3]):[0-5]\\d$/.test(configuredEnd) ? configuredEnd : '19:00';
+  const baseQuery = db.collection('attendance').where('userId', '==', userId);
+  let page = await baseQuery.limit(400).get();
+  while (!page.empty) {
+    for (const doc of page.docs) {
+      const item = doc.data();
+      if (item.status !== 'Checked in' || item.checkOutAt || item.dayType === 'Absent' || item.gpsRestartRequired || item.gpsCancelled) continue;
+      const savedDeadline = Date.parse(String(item.autoCheckoutAt || ''));
+      if (Number.isFinite(savedDeadline)) {
+        if (savedDeadline > Date.now()) return true;
+        continue;
+      }
+      const checkIn = Date.parse(String(item.checkInAt || ''));
+      const workDate = String(item.workDate || '');
+      if (!Number.isFinite(checkIn) || !datePattern.test(workDate)) return true;
+      const parts = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date(checkIn));
+      const minutes = Number(parts.find(part => part.type === 'hour')?.value || 0) * 60 + Number(parts.find(part => part.type === 'minute')?.value || 0);
+      const endTime = typeof item.shiftEndTime === 'string' && /^([01]\\d|2[0-3]):[0-5]\\d$/.test(item.shiftEndTime) ? item.shiftEndTime : fallbackEndTime;
+      const [endHour, endMinute] = endTime.split(':').map(Number);
+      const endMinutes = endHour * 60 + endMinute;
+      const dueDate = minutes >= endMinutes ? new Date(Date.parse(workDate + 'T00:00:00Z') + 86400000).toISOString().slice(0, 10) : workDate;
+      if (Date.now() < Date.parse(dueDate + 'T' + endTime + ':00+05:30')) return true;
+    }
+    if (page.size < 400) break;
+    page = await baseQuery.startAfter(page.docs[page.docs.length - 1]).limit(400).get();
+  }
+  return false;
 }
+
 async function audit(user: AppUser, action: string, entityType: string, entityId: string, description: string) {
   await db.collection('audit_logs').add({
     actorId: user.uid, actorName: user.displayName, action, entityType, entityId,
@@ -547,6 +560,7 @@ export async function apiHandler(req: any, res: any) {
         if (password.length < 10) { send(res, 400, { error: 'Password must contain at least 10 characters.' }); return; }
         const staff = await getDoc('users', staffId);
         if (!staff || staff.role !== 'staff') { send(res, 404, { error: 'Staff account not found.' }); return; }
+        if (await staffHasActiveShift(staffId)) { send(res,409,{error:'End the staff member’s active shift before resetting their password.'}); return; }
         await db.collection('users').doc(staffId).update(newPasswordFields(password));
         await revokeUserSessions(staffId);
         await audit(user, 'RESET_PASSWORD', 'staff', staffId, 'Reset staff password for ' + String(staff.userId || staffId));
@@ -560,6 +574,9 @@ export async function apiHandler(req: any, res: any) {
         if (typeof body.displayName === 'string') { const name = clean(body.displayName, 80); if (!name) { send(res, 400, { error: 'Enter a staff name.' }); return; } patch.displayName = name; }
         if (typeof body.userId === 'string') { const nextId = clean(body.userId, 32); if (!/^[a-zA-Z0-9_-]{3,32}$/.test(nextId)) { send(res, 400, { error: 'Use a 3–32 character staff ID.' }); return; } if ((await list('users')).some(item => item.id !== staffId && String(item.userId || '').toLowerCase() === nextId.toLowerCase())) { send(res, 409, { error: 'That user ID is already in use.' }); return; } patch.userId = nextId; patch.userIdLower = nextId.toLowerCase(); }
         if (typeof body.active === 'boolean') patch.active = body.active;
+        if ((patch.active === false || patch.userId) && await staffHasActiveShift(staffId)) {
+          send(res,409,{error:'End the staff member’s active shift before disabling the account or changing its user ID.'}); return;
+        }
         if (body.monthlySalary !== undefined) {
           const monthlySalary = Number(body.monthlySalary);
           if (!Number.isFinite(monthlySalary) || monthlySalary < 0 || monthlySalary > 1000000) {
@@ -576,6 +593,7 @@ export async function apiHandler(req: any, res: any) {
         if (!allow(user, ['admin'], res)) return;
         const staffId = routeId(path, '/api/staff'), staff = await getDoc('users', routeId(path, '/api/staff'));
         if (!staff || staff.role !== 'staff') { send(res, 404, { error: 'Staff account not found.' }); return; }
+        if (await staffHasActiveShift(staffId)) { send(res,409,{error:'End the staff member’s active shift before deleting the account.'}); return; }
         const unassignedCounts: Record<string, number> = {};
         // Remove active ownership from every operational queue before deleting the account.
         // Keep the former assignee's display name as history for administrators.
