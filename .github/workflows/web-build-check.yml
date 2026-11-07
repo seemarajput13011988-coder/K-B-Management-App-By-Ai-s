@@ -1,0 +1,50 @@
+name: Web app build check
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+on:
+  push:
+    branches:
+      - main
+      - safe-firebase-migration-copilot-review
+      - on-demand-gps-proof-permissions
+      - ui-rebuild-gps-holidays-api-fixes
+      - whole-app-gps-ui-sync-audit-2026-11-07
+      - nexus-workforce-payroll-media-ui-2026-11-07
+    paths:
+      - "src/**"
+      - "package.json"
+      - "package-lock.json"
+      - "vite.config.ts"
+      - "tsconfig.json"
+      - "capacitor.config.ts"
+      - "index.html"
+      - ".env.example"
+      - ".github/workflows/web-build-check.yml"
+      - "firebase.json"
+      - ".firebaserc"
+  pull_request:
+    branches:
+      - main
+      - fixes-session-gps-ui-2026-11-06
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install
+      - name: Type-check and build with the confirmed Firebase Web App configuration
+        env:
+          VITE_FIREBASE_API_KEY: 'AIzaSyAuJuFA1I06aSJ1AyHhVA86ws8c_cX1ZC8'
+          VITE_FIREBASE_AUTH_DOMAIN: kandb-net-sevice.firebaseapp.com
+          VITE_FIREBASE_PROJECT_ID: kandb-net-sevice
+          VITE_FIREBASE_STORAGE_BUCKET: kandb-net-sevice.firebasestorage.app
+          VITE_FIREBASE_MESSAGING_SENDER_ID: '847932976304'
+          VITE_FIREBASE_APP_ID: '1:847932976304:web:87148565df2a329a5f9f75'
+          VITE_FIREBASE_FUNCTIONS_URL: https://asia-south1-kandb-net-sevice.cloudfunctions.net/api
+        run: |
+          npx tsc --noEmit
+          npm run build
