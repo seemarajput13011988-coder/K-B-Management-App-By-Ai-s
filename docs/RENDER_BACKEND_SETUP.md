@@ -31,6 +31,10 @@ The job monitor processes automatic checkout, GPS grace reminders/cancellation, 
 
 The CI workflow `.github/workflows/render-backend-check.yml` runs type-checks, automated tests, route checks and live API smoke checks on pushes/PRs. It is not the scheduler and must not run every five minutes.
 
+## Android live updates
+
+The Render API exposes `POST /api/app-updates/check`. It reads the latest immutable OTA release from the public GitHub repository and returns a compatible Android bundle URL and SHA-256 checksum. The `.github/workflows/ota-release.yml` workflow publishes web-only bundles after changes reach `main`. The endpoint is read-only and does not require a staff session.
+
 ## Android, maps and push
 
 The APK workflow can build the debug APK. For Android push, configure GitHub Actions secret `ANDROID_GOOGLE_SERVICES_JSON_BASE64` with the base64-encoded Firebase Android `google-services.json` for package `kandbnet.service2010`.
