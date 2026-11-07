@@ -190,6 +190,23 @@ export default function StaffOperations({ session, customers, flash, compact = f
 
   useEffect(() => { refresh(); }, [refresh, today]);
   useEffect(() => subscribeToApiChanges(() => { void refresh(); }), [refresh]);
+  useEffect(() => {
+    let stopped = false, inFlight = false;
+    const poll = () => {
+      if (stopped || inFlight || document.visibilityState === 'hidden') return;
+      inFlight = true;
+      void refresh().finally(() => { inFlight = false; });
+    };
+    const timer = window.setInterval(poll, 30000);
+    window.addEventListener('focus', poll);
+    document.addEventListener('visibilitychange', poll);
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+      window.removeEventListener('focus', poll);
+      document.removeEventListener('visibilitychange', poll);
+    };
+  }, [refresh]);
 
   // Recalculate the India work date while the app remains open overnight.
   // Focus/visibility handlers also cover Android returning from the background,
