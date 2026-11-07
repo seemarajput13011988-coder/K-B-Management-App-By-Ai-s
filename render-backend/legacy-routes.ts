@@ -1466,6 +1466,8 @@ export const handler = router({
     const [attendance, settings] = await Promise.all([listAttendanceForUser(member.id), getWorkforceSettings()]);
     const active = findActiveShift(attendance, member.id, Date.now(), settings.shiftEndTime);
     if (!active || active.gpsRestartRequired) return error('A one-time location request is available only during an active, authorised shift.', 409);
+    const gpsIssueStartedAt = Date.parse(String(active.gpsIssueStartedAt || ''));
+    if (Number.isFinite(gpsIssueStartedAt) && Date.now() - gpsIssueStartedAt >= 15 * 60 * 1000) return error('The GPS restoration period has expired. Contact an administrator to restart your shift.', 409);
     const createdAt = new Date().toISOString();
     const record = { staffId: member.id, staffName: member.displayName, attendanceId: String(active.id), requestedBy: admin.id, requestedByName: admin.displayName, status: 'pending', createdAt, expiresAt: new Date(Date.now() + 2 * 60 * 1000).toISOString() };
     const [id] = await db.add('location_requests', [record]);
@@ -1491,6 +1493,8 @@ export const handler = router({
     const [attendance, settings] = await Promise.all([listAttendanceForUser(user.id), getWorkforceSettings()]);
     const active = findActiveShift(attendance, user.id, Date.now(), settings.shiftEndTime);
     if (!active || String(active.id) !== String(request.attendanceId || '') || active.gpsRestartRequired) return error('This request is no longer valid because your authorised shift is not active.', 409);
+    const gpsIssueStartedAt = Date.parse(String(active.gpsIssueStartedAt || ''));
+    if (Number.isFinite(gpsIssueStartedAt) && Date.now() - gpsIssueStartedAt >= 15 * 60 * 1000) return error('The GPS restoration period has expired. Contact an administrator to restart your shift.', 409);
     const input = (body || {}) as Record<string, unknown>;
     const status = input.status === 'failed' ? 'unavailable' : 'captured';
     const latitude = Number(input.latitude), longitude = Number(input.longitude), accuracy = Number(input.accuracy || 0);
