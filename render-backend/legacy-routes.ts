@@ -1176,21 +1176,49 @@ export const handler = router({
     const auditRef = firestore.collection('audit_logs').doc();
     const notificationRef = firestore.collection('staff_notifications').doc();
     const id = attendanceRef.id;
-    const batch = firestore.batch();
-    batch.set(attendanceRef, record);
-    batch.set(auditRef, {
-      actorId: admin.id, actorName: admin.displayName, action: 'ADMIN_START_SHIFT',
-      entityType: 'attendance', entityId: id,
-      description: cleanText('Started a shift for ' + member.displayName + ' at ' + startedAt + '.', 240),
-      createdAt: startedAt,
+    const lockRef = firestore.collection('active_shift_locks').doc(member.id);
+    const outcome = await firestore.runTransaction(async transaction => {
+      const lockSnapshot = await transaction.get(lockRef);
+      const lockedId = String(lockSnapshot.data()?.attendanceId || '');
+      if (lockedId) {
+        const lockedSnapshot = await transaction.get(firestore.collection('attendance').doc(lockedId));
+        const locked = lockedSnapshot.data();
+        if (locked && isOpenShift({ ...locked, id: lockedId })) {
+          return { kind: 'active', active: shiftDueAt({ ...locked, id: lockedId }, settings.shiftEndTime) > Date.now() };
+        }
+      }
+      const snapshot = await transaction.get(firestore.collection('attendance').where('userId', '==', member.id));
+      const existing = snapshot.docs.map(document => ({ ...document.data(), id: document.id }));
+      const open = findOpenShift(existing, member.id);
+      if (open) return { kind: 'active', active: shiftDueAt(open, settings.shiftEndTime) > Date.now() };
+      const latestToday = existing.filter(item => item.workDate === workDate)
+        .sort((a, b) => String(b.checkInAt || '').localeCompare(String(a.checkInAt || '')))[0];
+      const canRestart = Boolean(latestToday && (
+        latestToday.gpsRestartRequired === true ||
+        latestToday.gpsCancelled === true ||
+        String(latestToday.status || '').toLowerCase().includes('cancelled - gps')
+      ));
+      if (latestToday && !canRestart) return { kind: 'completed' };
+      transaction.create(attendanceRef, record);
+      transaction.set(lockRef, { userId: member.id, attendanceId: id, updatedAt: startedAt }, { merge: true });
+      transaction.set(auditRef, {
+        actorId: admin.id, actorName: admin.displayName, action: 'ADMIN_START_SHIFT',
+        entityType: 'attendance', entityId: id,
+        description: cleanText('Started a shift for ' + member.displayName + ' at ' + startedAt + '.', 240),
+        createdAt: startedAt,
+      });
+      transaction.set(notificationRef, {
+        recipientId: member.id, recipientRole: 'staff', type: 'admin-shift-started',
+        title: 'Your shift was started by an administrator',
+        message: admin.displayName + ' started your work shift. Location sharing is active only while this shift is active.',
+        createdAt: startedAt, read: false, attendanceId: id,
+      });
+      return { kind: 'created' };
     });
-    batch.set(notificationRef, {
-      recipientId: member.id, recipientRole: 'staff', type: 'admin-shift-started',
-      title: 'Your shift was started by an administrator',
-      message: admin.displayName + ' started your work shift. Location sharing is active only while this shift is active.',
-      createdAt: startedAt, read: false, attendanceId: id,
-    });
-    await batch.commit();
+    if (outcome.kind === 'active') return error(outcome.active
+      ? 'This staff member already has an active shift.'
+      : 'The previous shift is waiting for automatic checkout. Please retry shortly.', 409);
+    if (outcome.kind === 'completed') return error('Attendance is already completed for this staff member today.', 409);
     return json({ id, ...record }, 201);
   }),
 
