@@ -2,8 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { api as client, subscribeToApiChanges } from './lib/api';
 
-type Session = { token: string; user: { id: string; displayName: string; role: 'admin' | 'staff'; isSuperAdmin?: boolean } };
-type Attendance = { id: string; userId: string; displayName: string; workDate: string; checkInAt: string; checkOutAt?: string; autoCheckoutAt?: string; dayType?: 'Full day' | 'Half day' | 'Absent'; correctionReason?: string; gpsRestartRequired?: boolean; gpsCancelled?: boolean; status?: string };
+type Session = { token: string; user: { id: string; displayName: string; role: 'admin' | 'staff'; canManageAdmins?: boolean } };
+type Attendance = { id: string; userId: string; displayName: string; workDate: string; checkInAt: string; checkOutAt?: string; autoCheckoutAt?: string; shiftEndTime?: string; dayType?: 'Full day' | 'Half day' | 'Absent'; correctionReason?: string; gpsRestartRequired?: boolean; gpsCancelled?: boolean; status?: string };
 type HolidayRequest = { id: string; userId: string; displayName: string; startDate: string; endDate: string; reason: string; status: 'pending'|'approved'|'rejected'; createdAt: string };
 type StaffRegistrationRequest = { id: string; userId: string; displayName: string; phone?: string; reason?: string; status: 'pending'|'approved'|'rejected'; createdAt: string };
 type Visit = { id: string; customerName: string; purpose: string; notes: string; visitedAt: string; staffName: string };
@@ -37,10 +37,13 @@ const shiftDueAt = (item: Attendance) => {
   }).formatToParts(new Date(checkIn));
   const minutes = Number(parts.find(part => part.type === 'hour')?.value || 0) * 60 +
     Number(parts.find(part => part.type === 'minute')?.value || 0);
-  const dueDate = minutes >= 19 * 60
+  const endTime = /^([01]\\d|2[0-3]):[0-5]\\d$/.test(item.shiftEndTime || '') ? item.shiftEndTime! : '19:00';
+  const [endHour, endMinute] = endTime.split(':').map(Number);
+  const endMinutes = endHour * 60 + endMinute;
+  const dueDate = minutes >= endMinutes
     ? new Date(Date.parse(item.workDate + 'T00:00:00Z') + 86400000).toISOString().slice(0, 10)
     : item.workDate;
-  return Date.parse(dueDate + 'T19:00:00+05:30');
+  return Date.parse(dueDate + 'T' + endTime + ':00+05:30');
 };
 const isUnclosedShift = (item: Attendance) =>
   !item.checkOutAt && item.dayType !== 'Absent' && !item.gpsRestartRequired && !item.gpsCancelled &&
@@ -75,7 +78,7 @@ function AttendanceCalendar({ staffId, staffName, records, holidays }: { staffId
 
 export default function StaffOperations({ session, customers, flash, compact = false, onDataChanged }: { session: Session; customers: Array<{ id: string; name: string; assignedTo?: string }>; flash: (message: string) => void; compact?: boolean; onDataChanged?: () => void }) {
   const admin = session.user.role === 'admin';
-  const superAdmin = admin && session.user.isSuperAdmin === true;
+  const superAdmin = admin && session.user.canManageAdmins === true;
   const [attendance, setAttendance] = useState<Attendance[]>([]);
   const [holidays, setHolidays] = useState<HolidayRequest[]>([]);
   const [holidayForm, setHolidayForm] = useState({ startDate: localDay(), endDate: localDay(), reason: '' });
@@ -307,7 +310,7 @@ export default function StaffOperations({ session, customers, flash, compact = f
     try {
       const result = await request('put', '/api/workforce-settings', shiftSettings);
       setShiftSettings({ shiftStartTime: result.data.shiftStartTime, shiftEndTime: result.data.shiftEndTime });
-      flash('Staff shift timings updated. New staff shifts will use this schedule. Admin overrides remain available at any time.');
+      flash('Staff shift timings updated. Existing active shifts were rescheduled, and new shifts will use this schedule. Admin overrides remain available at any time.');
     } catch (err) {
       flash(err instanceof Error ? err.message : 'Could not save staff shift timings.');
     } finally { setShiftSettingsBusy(false); }
