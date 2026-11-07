@@ -21,6 +21,10 @@ Overview and analytics; customers and plans; payments and complaints; tasks; sta
 
 Task-completion evidence and complaint attachments are currently stored as chunked documents in Firestore collections `task_media` and `complaint_media`. The app does **not** currently upload these files to Firebase Cloud Storage. This keeps the existing storage design unchanged, but large video files create Firestore document reads/writes and storage usage. A move to Cloud Storage should be planned separately with the account owner after checking billing/plan requirements and backup/migration needs.
 
+## Backup status
+
+Finance workspaces provide CSV/PDF report exports, but there is not yet a full application backup-and-restore workflow. Those exports are not a complete Firestore backup. Configure managed Firestore backups or approve a protected encrypted export design before relying on this app as the only copy of business records.
+
 ## Important release notes
 
 - `functions/` contains legacy Firebase Functions code from an earlier migration attempt. It is not the active API and must not be deployed as a second backend.
