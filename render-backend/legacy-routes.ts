@@ -120,7 +120,7 @@ async function currentUser(ctx: Parameters<RouterMiddleware>[0]): Promise<UserRe
   const token = bearerToken || cleanText(body.sessionToken, 200) || cleanText(ctx.query.sessionToken, 200);
   if (!token) return null;
   const [session] = await db.get<SessionRecord>('sessions', [tokenId(token)], { consistent: true });
-  if (!session || session.expiresAt <= Date.now()) return null;
+  if (!session || !Number.isFinite(Number(session.expiresAt)) || Number(session.expiresAt) <= Date.now()) return null;
   const [user] = await db.get<UserRecord>('users', [session.userId], { consistent: true });
   if (!user || !user.active) return null;
   return user;
