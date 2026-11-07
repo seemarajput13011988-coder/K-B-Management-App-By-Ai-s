@@ -7,9 +7,10 @@ import './index.css';
 
 const rootElement = document.getElementById('root');
 if (!rootElement) throw new Error('Nexus root element is missing.');
+const appRoot: HTMLElement = rootElement;
 
 function mountApp() {
-  createRoot(rootElement).render(
+  createRoot(appRoot).render(
     <StrictMode>
       <App />
     </StrictMode>,
@@ -17,7 +18,7 @@ function mountApp() {
 }
 
 function showUpdateRequired(message: string, retry: () => void) {
-  rootElement.innerHTML = '';
+  appRoot.innerHTML = '';
   const screen = document.createElement('main');
   screen.setAttribute('role', 'status');
   screen.style.cssText = 'min-height:100dvh;display:grid;place-content:center;justify-items:center;gap:14px;padding:28px;background:#f4f7fb;color:#17243a;font-family:system-ui,sans-serif;text-align:center';
@@ -40,7 +41,7 @@ function showUpdateRequired(message: string, retry: () => void) {
     retry();
   });
   screen.append(mark, title, detail, button);
-  rootElement.append(screen);
+  appRoot.append(screen);
 }
 
 async function runRequiredUpdate(): Promise<void> {
