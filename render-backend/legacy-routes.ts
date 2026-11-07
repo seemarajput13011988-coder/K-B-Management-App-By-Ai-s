@@ -1066,12 +1066,13 @@ export const handler = router({
         ? 'Attendance is already completed for this staff member today.'
         : 'This staff member already has an active shift.', 409);
     }
+    const startedAt = new Date().toISOString();
     const record: Record<string, unknown> = {
       userId: member.id,
       displayName: member.displayName,
       workDate,
-      checkInAt: new Date().toISOString(),
-      createdAt: new Date().toISOString(),
+      checkInAt: startedAt,
+      createdAt: startedAt,
       status: 'Checked in',
       startedByAdmin: admin.displayName,
       attendanceSource: 'Admin',
@@ -1081,15 +1082,25 @@ export const handler = router({
       record.restartOfAttendanceId = String(latest.id);
       record.restartedAfterGpsCancellation = true;
     }
-    const [id] = await db.add('attendance', [record]);
-    if (!id) return error('Could not start this staff shift.', 500);
-    await writeAudit(admin, 'ADMIN_START_SHIFT', 'attendance', id, 'Started a shift for ' + member.displayName + ' at ' + String(record.checkInAt || '') + '.');
-    await db.add('staff_notifications', [{
+    const attendanceRef = firestore.collection('attendance').doc();
+    const auditRef = firestore.collection('audit_logs').doc();
+    const notificationRef = firestore.collection('staff_notifications').doc();
+    const id = attendanceRef.id;
+    const batch = firestore.batch();
+    batch.set(attendanceRef, record);
+    batch.set(auditRef, {
+      actorId: admin.id, actorName: admin.displayName, action: 'ADMIN_START_SHIFT',
+      entityType: 'attendance', entityId: id,
+      description: cleanText('Started a shift for ' + member.displayName + ' at ' + startedAt + '.', 240),
+      createdAt: startedAt,
+    });
+    batch.set(notificationRef, {
       recipientId: member.id, recipientRole: 'staff', type: 'admin-shift-started',
       title: 'Your shift was started by an administrator',
       message: admin.displayName + ' started your work shift. Location sharing is active only while this shift is active.',
-      createdAt: String(record.checkInAt), read: false, attendanceId: id,
-    }]);
+      createdAt: startedAt, read: false, attendanceId: id,
+    });
+    await batch.commit();
     return json({ id, ...record }, 201);
   }),
 
@@ -1099,29 +1110,30 @@ export const handler = router({
     const result = await listAttendanceForUser(staffId);
     const existing = findOpenShift(result, staffId);
     if (!existing) return error('There is no active shift for this staff member.', 400);
-    const [updated] = await db.tx.update('attendance', [{
-      id: String(existing.id),
-      record: {
-        checkOutAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        status: 'Completed',
-        endedByAdminId: admin.id,
-        endedByAdminName: admin.displayName,
-        endedByAdmin: admin.displayName,
-        gpsIssueStartedAt: FieldValue.delete(),
-        gpsIssueId: FieldValue.delete(),
-        gpsIssueReason: FieldValue.delete(),
-        gpsReminderStage: FieldValue.delete(),
-      },
-    }], { patch: true });
-    if (!updated) return error('Could not end this staff shift.', 500);
-    await writeAudit(admin, 'ADMIN_END_SHIFT', 'attendance', String(existing.id), 'Ended ' + String(existing.displayName || staffId) + '’s shift at ' + new Date().toISOString() + '.');
-    await db.add('staff_notifications', [{
+    const endedAt = new Date().toISOString();
+    const attendanceRef = firestore.collection('attendance').doc(String(existing.id));
+    const auditRef = firestore.collection('audit_logs').doc();
+    const notificationRef = firestore.collection('staff_notifications').doc();
+    const batch = firestore.batch();
+    batch.update(attendanceRef, {
+      checkOutAt: endedAt, updatedAt: endedAt, status: 'Completed',
+      endedByAdminId: admin.id, endedByAdminName: admin.displayName, endedByAdmin: admin.displayName,
+      gpsIssueStartedAt: FieldValue.delete(), gpsIssueId: FieldValue.delete(),
+      gpsIssueReason: FieldValue.delete(), gpsReminderStage: FieldValue.delete(),
+    });
+    batch.set(auditRef, {
+      actorId: admin.id, actorName: admin.displayName, action: 'ADMIN_END_SHIFT',
+      entityType: 'attendance', entityId: String(existing.id),
+      description: cleanText('Ended ' + String(existing.displayName || staffId) + '’s shift at ' + endedAt + '.', 240),
+      createdAt: endedAt,
+    });
+    batch.set(notificationRef, {
       recipientId: staffId, recipientRole: 'staff', type: 'admin-shift-ended',
       title: 'Your shift was ended by an administrator',
       message: admin.displayName + ' ended your work shift. Location sharing has stopped.',
-      createdAt: new Date().toISOString(), read: false, attendanceId: String(existing.id),
-    }]);
+      createdAt: endedAt, read: false, attendanceId: String(existing.id),
+    });
+    await batch.commit();
     return json({ updated: true });
   }),
 
@@ -1230,7 +1242,7 @@ export const handler = router({
 
     const capturedAt = cleanText(body?.capturedAt, 40) || new Date().toISOString();
     const record = {
-      id: user.id, staffId: user.id, staffName: user.displayName,
+      id: user.id, staffId: user.id, staffName: user.displayName, attendanceId: String(active.id),
       latitude, longitude, accuracy, capturedAt,
       source: cleanText(body?.source, 80) || 'staff-app-background',
     };
@@ -1392,25 +1404,20 @@ export const handler = router({
   }),
 
   'GET /api/locations': protectedRoute(['admin'], async () => {
-    const today = new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit',
-    }).format(new Date());
     const [locationResult, attendanceResult] = await Promise.all([
       db.list<Record<string, unknown>>('locations', { limit: 1000 }),
       listRecentAttendance(1000),
     ]);
-    const latestShiftByStaff = new Map<string, Record<string, unknown>>();
-    const todays = attendanceResult
-      .filter(item => item.workDate === today)
-      .sort((a, b) => String(a.checkInAt || '').localeCompare(String(b.checkInAt || '')));
-    for (const shift of todays) {
-      if (shift.userId) latestShiftByStaff.set(String(shift.userId), shift);
+    const latestActiveShiftByStaff = new Map<string, Record<string, unknown>>();
+    for (const shift of attendanceResult) {
+      const staffId = String(shift.userId || '');
+      if (!staffId || !isOpenShift(shift) || shiftDueAt(shift) <= Date.now()) continue;
+      const previous = latestActiveShiftByStaff.get(staffId);
+      if (!previous || String(shift.checkInAt || '') > String(previous.checkInAt || '')) {
+        latestActiveShiftByStaff.set(staffId, shift);
+      }
     }
-    const activeShiftIds = new Set(
-      Array.from(latestShiftByStaff.values())
-        .filter(shift => !shift.checkOutAt && shift.gpsRestartRequired !== true && shift.gpsCancelled !== true)
-        .map(shift => String(shift.id)),
-    );
+    const activeShiftIds = new Set(Array.from(latestActiveShiftByStaff.values()).map(shift => String(shift.id)));
     const latestLocationByStaff = new Map<string, Record<string, unknown>>();
     for (const point of locationResult.items) {
       const attendanceId = String(point.attendanceId || '');
