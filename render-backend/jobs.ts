@@ -9,6 +9,17 @@ async function readCollection(name: string, limit = 1000): Promise<Item[]> {
   const snapshot = await firestore.collection(name).limit(limit).get();
   return snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
 }
+
+async function readAllQuery(query: any, pageSize = 400): Promise<Item[]> {
+  const items: Item[] = [];
+  let page = await query.limit(pageSize).get();
+  while (!page.empty) {
+    items.push(...page.docs.map((doc: any) => ({ ...doc.data(), id: doc.id })));
+    if (page.size < pageSize) break;
+    page = await query.startAfter(page.docs[page.docs.length - 1]).limit(pageSize).get();
+  }
+  return items;
+}
 function indiaDateParts() {
   const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
   const [year, month, day] = parts.split('-').map(Number);
@@ -17,8 +28,7 @@ function indiaDateParts() {
 function sha(value: string) { return createHash('sha256').update(value).digest('hex'); }
 
 export async function runGpsGracePeriod() {
-  const activeSnapshot = await firestore.collection('attendance').where('status', '==', 'Checked in').limit(1000).get();
-  const records: Item[] = activeSnapshot.docs.map(doc => ({ ...(doc.data() as Item), id: doc.id }));
+  const records = await readAllQuery(firestore.collection('attendance').where('status', '==', 'Checked in'));
   const requests = await readCollection('holiday_requests', 1000);
   const users = await readCollection('users', 500);
   const currentTime = Date.now();
@@ -211,8 +221,7 @@ export async function deliverPendingPushNotifications() {
 
 export async function autoCheckoutAtSevenPm() {
   const currentTime = Date.now();
-  const activeSnapshot = await firestore.collection('attendance').where('status', '==', 'Checked in').limit(1000).get();
-  const records: Item[] = activeSnapshot.docs.map(doc => ({ ...(doc.data() as Item), id: doc.id }));
+  const records = await readAllQuery(firestore.collection('attendance').where('status', '==', 'Checked in'));
   let checkedOut = 0;
   for (const item of records) {
     if (!item.id || !/^\d{4}-\d{2}-\d{2}$/.test(String(item.workDate || '')) ||
@@ -224,12 +233,18 @@ export async function autoCheckoutAtSevenPm() {
     }).formatToParts(new Date(checkInTime));
     const checkInMinutes = Number(localCheckIn.find(part => part.type === 'hour')?.value || 0) * 60 +
       Number(localCheckIn.find(part => part.type === 'minute')?.value || 0);
-    // Admins may start a shift after 7 PM. Such a shift is due for
-    // automatic checkout at 7 PM on the following India calendar day.
-    const dueDate = checkInMinutes >= 19 * 60
+    // Admins may start a shift after the configured end time. Such a shift
+    // is due at the next occurrence of that configured end time.
+    const settingsSnapshot = await firestore.collection('app_settings').doc('workforce').get();
+    const configuredEndTime = String(settingsSnapshot.data()?.shiftEndTime || '19:00');
+    const fallbackEndTime = /^([01]\\d|2[0-3]):[0-5]\\d$/.test(configuredEndTime) ? configuredEndTime : '19:00';
+    const endTime = typeof item.shiftEndTime === 'string' && /^([01]\\d|2[0-3]):[0-5]\\d$/.test(item.shiftEndTime) ? item.shiftEndTime : fallbackEndTime;
+    const [shiftEndHour, shiftEndMinute] = endTime.split(':').map(Number);
+    const shiftEndMinutes = shiftEndHour * 60 + shiftEndMinute;
+    const dueDate = checkInMinutes >= shiftEndMinutes
       ? new Date(Date.parse(String(item.workDate) + 'T00:00:00Z') + 86400000).toISOString().slice(0, 10)
       : String(item.workDate);
-    const legacyCheckoutAt = new Date(dueDate + 'T19:00:00+05:30');
+    const legacyCheckoutAt = new Date(dueDate + 'T' + endTime + ':00+05:30');
     const savedCheckoutAt = Date.parse(String(item.autoCheckoutAt || ''));
     const checkoutAt = new Date(Number.isFinite(savedCheckoutAt) ? savedCheckoutAt : legacyCheckoutAt.getTime());
     if (currentTime < checkoutAt.getTime()) continue;
