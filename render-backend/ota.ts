@@ -1,0 +1,45 @@
+export type OtaManifest = {
+  appId: string;
+  version: string;
+  checksum: string;
+};
+
+export type OtaDecision =
+  | { version: string; url: string; checksum: string }
+  | { message: string };
+
+const SEMVER = /^\d+\.\d+\.\d+$/;
+const SHA256 = /^[a-f0-9]{64}$/i;
+
+export function isValidOtaManifest(value: unknown): value is OtaManifest {
+  if (!value || typeof value !== 'object') return false;
+  const item = value as Record<string, unknown>;
+  return item.appId === 'kandbnet.service2010'
+    && typeof item.version === 'string'
+    && SEMVER.test(item.version)
+    && typeof item.checksum === 'string'
+    && SHA256.test(item.checksum);
+}
+
+export function buildOtaDecision(
+  currentVersion: unknown,
+  manifest: OtaManifest | null,
+  bundleUrl: unknown,
+): OtaDecision {
+  if (!manifest || typeof bundleUrl !== 'string') {
+    return { message: 'No OTA update is currently published.' };
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(bundleUrl);
+  } catch {
+    return { message: 'The published OTA bundle URL is invalid.' };
+  }
+  if (parsed.protocol !== 'https:' || parsed.hostname !== 'github.com') {
+    return { message: 'The published OTA bundle host is not trusted.' };
+  }
+  if (currentVersion === manifest.version) {
+    return { message: 'No update is available.' };
+  }
+  return { version: manifest.version, url: parsed.toString(), checksum: manifest.checksum.toLowerCase() };
+}
