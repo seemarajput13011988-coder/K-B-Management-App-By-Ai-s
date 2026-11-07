@@ -15,6 +15,25 @@ function indiaDateParts() {
   return { date: parts, year, month, day };
 }
 function sha(value: string) { return createHash('sha256').update(value).digest('hex'); }
+function validClock(value: unknown): value is string {
+  return typeof value === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
+}
+function fallbackScheduledEnd(item: Item, endTime: string): number {
+  const workDate = String(item.workDate || '');
+  const checkInAt = Date.parse(String(item.checkInAt || ''));
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(workDate) || !Number.isFinite(checkInAt)) return Number.NaN;
+  const localClock = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+  }).formatToParts(new Date(checkInAt));
+  const checkInMinutes = Number(localClock.find(part => part.type === 'hour')?.value || 0) * 60 +
+    Number(localClock.find(part => part.type === 'minute')?.value || 0);
+  const [endHour, endMinute] = endTime.split(':').map(Number);
+  const endMinutes = endHour * 60 + endMinute;
+  const dueDate = checkInMinutes >= endMinutes
+    ? new Date(Date.parse(workDate + 'T00:00:00Z') + 86400000).toISOString().slice(0, 10)
+    : workDate;
+  return Date.parse(dueDate + 'T' + endTime + ':00+05:30');
+}
 
 export async function runGpsGracePeriod() {
   const activeSnapshot = await firestore.collection('attendance').where('status', '==', 'Checked in').limit(1000).get();
@@ -211,40 +230,41 @@ export async function deliverPendingPushNotifications() {
 
 export async function autoCheckoutAtSevenPm() {
   const currentTime = Date.now();
+  const settingsSnapshot = await firestore.collection('app_settings').doc('attendance').get();
+  const settings = settingsSnapshot.exists ? settingsSnapshot.data() || {} : {};
+  const configuredEndTime = validClock(settings.endTime) ? settings.endTime : '19:00';
   const records = await readCollection('attendance', 1000);
   let checkedOut = 0;
+
   for (const item of records) {
     if (!item.id || !/^\d{4}-\d{2}-\d{2}$/.test(String(item.workDate || '')) ||
         item.checkOutAt || item.dayType === 'Absent') continue;
-    const scheduledEnd = Date.parse(String(item.scheduledEndAt || ''));
-    let checkoutAt: Date;
-    if (Number.isFinite(scheduledEnd)) {
-      checkoutAt = new Date(scheduledEnd);
-    } else {
-      const checkInTime = Date.parse(String(item.checkInAt || ''));
-      if (!Number.isFinite(checkInTime)) continue;
-      const localCheckIn = new Intl.DateTimeFormat('en-GB', {
-        timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
-      }).formatToParts(new Date(checkInTime));
-      const checkInMinutes = Number(localCheckIn.find(part => part.type === 'hour')?.value || 0) * 60 +
-        Number(localCheckIn.find(part => part.type === 'minute')?.value || 0);
-      const dueDate = checkInMinutes >= 19 * 60
-        ? new Date(Date.parse(String(item.workDate) + 'T00:00:00Z') + 86400000).toISOString().slice(0, 10)
-        : String(item.workDate);
-      checkoutAt = new Date(dueDate + 'T19:00:00+05:30');
-    }
-    if (!Number.isFinite(checkoutAt.getTime()) || currentTime < checkoutAt.getTime()) continue;
-    const checkoutIso = checkoutAt.toISOString();
+
+    const storedDeadline = Date.parse(String(item.scheduledEndAt || ''));
+    const dueAt = Number.isFinite(storedDeadline)
+      ? storedDeadline
+      : fallbackScheduledEnd(item, configuredEndTime);
+    if (!Number.isFinite(dueAt) || currentTime < dueAt) continue;
+
     const ref = firestore.collection('attendance').doc(String(item.id));
-    const notificationId = 'attendance-auto-checkout-' + String(item.id);
-    const auditId = 'attendance-auto-checkout-' + String(item.id);
-    const notificationRef = firestore.collection('staff_notifications').doc(notificationId);
-    const auditRef = firestore.collection('audit_logs').doc(auditId);
+    const notificationRef = firestore.collection('staff_notifications').doc('attendance-auto-checkout-' + String(item.id));
+    const auditRef = firestore.collection('audit_logs').doc('attendance-auto-checkout-' + String(item.id));
     const didCheckout = await firestore.runTransaction(async transaction => {
       const latest = await transaction.get(ref);
       const current = latest.data();
       if (!latest.exists || !current || current.checkOutAt ||
           current.workDate !== item.workDate) return false;
+
+      // Re-read the authoritative deadline inside the transaction. If an admin
+      // changed the shift window while this job was queued, never check out at
+      // the stale deadline captured by the initial attendance scan.
+      const latestStoredDeadline = Date.parse(String(current.scheduledEndAt || ''));
+      const latestDueAt = Number.isFinite(latestStoredDeadline)
+        ? latestStoredDeadline
+        : fallbackScheduledEnd(current, configuredEndTime);
+      if (!Number.isFinite(latestDueAt) || Date.now() < latestDueAt) return false;
+
+      const checkoutIso = new Date(latestDueAt).toISOString();
       transaction.update(ref, {
         checkOutAt: checkoutIso,
         updatedAt: now(),
@@ -262,19 +282,18 @@ export async function autoCheckoutAtSevenPm() {
       transaction.set(notificationRef, {
         recipientId: String(item.userId), recipientRole: 'staff', type: 'attendance-auto-checkout',
         title: 'Shift automatically ended',
-        message: 'Your shift was automatically checked out at its scheduled end time. You can start a new shift during the configured work hours.',
+        message: 'Your shift was automatically checked out at its configured end time. You can start a new shift during the configured work hours.',
         createdAt: checkoutIso, read: false, attendanceId: String(item.id),
       }, { merge: true });
       transaction.set(auditRef, {
         actorId: 'system', actorName: 'K&B automatic attendance',
         action: 'AUTO_CHECKOUT', entityType: 'attendance', entityId: String(item.id),
-        description: 'Automatically checked out ' + String(item.displayName || 'staff member') + ' at the scheduled shift end time.',
+        description: 'Automatically checked out ' + String(item.displayName || 'staff member') + ' at the configured shift end time.',
         createdAt: checkoutIso, serverCreatedAt: FieldValue.serverTimestamp(),
       }, { merge: true });
       return true;
     });
-    if (!didCheckout) continue;
-    checkedOut += 1;
+    if (didCheckout) checkedOut += 1;
   }
   return { checkedOut };
 }
@@ -300,7 +319,7 @@ export async function runScheduledTick() {
   } finally { running = false; }
 }
 export function startBackgroundJobs() {
-  const timer = setInterval(() => { void runScheduledTick().catch(error => console.error('K&B scheduled task failed:', error instanceof Error ? error.message : String(error))); }, 60_000);
+  const timer = setInterval(() => { void runScheduledTick().catch(error => console.error('K&B scheduled task failed:', error instanceof Error ? error.message : String(error))); }, 15_000);
   (timer as any).unref?.();
   setTimeout(() => { void runScheduledTick().catch(error => console.error('K&B startup job failed:', error instanceof Error ? error.message : String(error))); }, 5_000).unref?.();
 }
