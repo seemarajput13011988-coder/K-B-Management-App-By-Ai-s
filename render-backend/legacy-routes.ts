@@ -941,9 +941,9 @@ export const handler = router({
     const items = records.slice(0, 5000).map(record => {
       const shiftEndTime = typeof record.shiftEndTime === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(record.shiftEndTime) ? record.shiftEndTime : settings.shiftEndTime;
       const shiftStartTime = typeof record.shiftStartTime === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(record.shiftStartTime) ? record.shiftStartTime : settings.shiftStartTime;
-      const autoCheckoutAt = String(record.autoCheckoutAt || '') ||
+      const autoCheckoutAt = String(record.autoCheckoutAt || record.scheduledEndAt || '') ||
         computeShiftDeadline(String(record.workDate || ''), String(record.checkInAt || ''), shiftEndTime) || '';
-      return { ...record, shiftStartTime, shiftEndTime, autoCheckoutAt };
+      return { ...record, shiftStartTime, shiftEndTime, autoCheckoutAt, scheduledEndAt: autoCheckoutAt };
     });
     return json({ items });
   }),
