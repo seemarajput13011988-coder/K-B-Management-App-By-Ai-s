@@ -464,7 +464,8 @@ jobs:
                   item.optString("status").toLowerCase(Locale.US).contains("cancelled") ||
                   item.optString("status").toLowerCase(Locale.US).contains("completed")) return false;
               try {
-                String savedDeadline = item.optString("autoCheckoutAt", item.optString("scheduledEndAt"));
+                String savedDeadline = item.optString("autoCheckoutAt");
+                if (savedDeadline.isEmpty()) savedDeadline = item.optString("scheduledEndAt");
                 if (!savedDeadline.isEmpty()) {
                   SimpleDateFormat savedDeadlineFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US);
                   savedDeadlineFormat.setTimeZone(TimeZone.getTimeZone("UTC"));
