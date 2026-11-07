@@ -214,7 +214,7 @@ export async function autoCheckoutAtSevenPm() {
   const records = await readCollection('attendance', 1000);
   let checkedOut = 0;
   for (const item of records) {
-    if (!item.id || !/^\\d{4}-\\d{2}-\\d{2}$/.test(String(item.workDate || '')) ||
+    if (!item.id || !/^\d{4}-\d{2}-\d{2}$/.test(String(item.workDate || '')) ||
         item.checkOutAt || item.dayType === 'Absent') continue;
     const checkInTime = Date.parse(String(item.checkInAt || ''));
     if (!Number.isFinite(checkInTime)) continue;
