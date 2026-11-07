@@ -146,7 +146,7 @@ export async function sendSubscriptionExpiryReminders() {
   const { date: today, year, month, day } = indiaDateParts();
   const inThreeDays = new Date(Date.UTC(year, month - 1, day + 3)).toISOString().slice(0, 10);
   const [subscriptions, customers, users] = await Promise.all([
-    readAllQuery(firestore.collection('subscriptions')), readAllQuery(firestore.collection('customers')), readCollection('users', 500),
+    readAllQuery(firestore.collection('subscriptions')), readAllQuery(firestore.collection('customers')), readAllQuery(firestore.collection('users')),
   ]);
   const admins = users.filter(item => item.role === 'admin' && item.active === true);
   for (const subscription of subscriptions) {
