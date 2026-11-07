@@ -796,6 +796,12 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
     },
   ];
 
+  const navGroups = [
+    { label: 'HOME', items: nav.filter(item => ['Overview', 'Calendar', taskPage, 'My Day', 'Salary'].includes(item.label)) },
+    { label: 'CUSTOMERS & FIELD', items: nav.filter(item => ['Customers', 'Subscriptions', 'Inventory', 'Installations', 'Payments', 'Complaints', 'Plans & Pricing'].includes(item.label)) },
+    { label: 'MANAGEMENT', items: nav.filter(item => ['Team Operations', 'GPS Tracking', 'Staff', 'Admin Accounts', 'Invoices', 'Finance & Billing'].includes(item.label)) },
+  ].filter(group => group.items.length);
+
   return (
     <div className="shell">
       <aside className={'sidebar ' + (mobileNav ? 'mobile-open' : '')}>
@@ -818,23 +824,25 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
           <span>K&B Operations</span>
           <ChevronDown size={14} />
         </div>
-        <div className="nav-label">WORKSPACE</div>
-        <nav>
-          {nav.map(item => (
-            <button
-              key={item.label}
-              className={'nav-item ' + (page === item.label ? 'active' : '')}
-              onClick={() => {
-                setPage(item.label);
-                setNotificationsOpen(false);
-                setMobileNav(false);
-              }}
-            >
-              <item.icon size={18} />
-              <span>{item.label}</span>
-              {item.count ? <em>{item.count}</em> : null}
-            </button>
-          ))}
+        <nav className="nexus-navigation" aria-label="Main navigation">
+          {navGroups.map(group => <section className="nav-group" key={group.label}>
+            <div className="nav-group-label">{group.label}</div>
+            {group.items.map(item => (
+              <button
+                key={item.label}
+                className={'nav-item ' + (page === item.label ? 'active' : '')}
+                onClick={() => {
+                  setPage(item.label);
+                  setNotificationsOpen(false);
+                  setMobileNav(false);
+                }}
+              >
+                <item.icon size={18} />
+                <span>{item.label}</span>
+                {item.count ? <em>{item.count}</em> : null}
+              </button>
+            ))}
+          </section>)}
         </nav>
         <div className="sidebar-bottom">
           <button className="btn secondary compact" style={{width:'100%',marginBottom:12}} onClick={async()=>{if(Capacitor.isNativePlatform()){const permission=await LocalNotifications.requestPermissions();flash(permission.display==='granted'?'Notifications enabled. You will receive new messages, assigned work and reminders while the app is running.':'Notifications are blocked. Enable them in Android settings.');return;}if(typeof Notification==='undefined'){flash('This browser does not support desktop notifications.');return;}const permission=await Notification.requestPermission();flash(permission==='granted'?'Notifications enabled. You will receive new messages, assigned work and reminders while the app is open.': 'Notifications are blocked. Enable them in your browser settings.');}}>
