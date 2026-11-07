@@ -260,7 +260,7 @@ export async function apiHandler(req: any, res: any) {
       authTrace('success');
       const user = { id: userDoc.id, ...record };
       const session = await createSession(user);
-      send(res, 200, { ...session, user: { id: userDoc.id, userId: clean(record.userId, 40), displayName: clean(record.displayName, 80), role: record.role, active: true, canManageAdmins: record.canManageAdmins === true } }); return;
+      send(res, 200, { ...session, user: { id: userDoc.id, userId: clean(record.userId, 40), displayName: clean(record.displayName, 80), role: record.role, active: true, canManageAdmins: hasAdminManagementAccess(record) } }); return;
     }
 
     if (method === 'POST' && path === '/api/auth/recover-admin') {
