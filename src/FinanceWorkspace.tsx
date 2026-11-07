@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { api as client } from './lib/api';
+import { api as client, subscribeToApiChanges } from './lib/api';
 import { Download, Plus, RefreshCw, ReceiptText, Trash2, TrendingDown, TrendingUp, Wallet } from 'lucide-react';
 import { exportCsvFile, exportPdfFile } from './lib/file-export';
 
@@ -130,6 +130,7 @@ export default function FinanceWorkspace({ session, customers, payments, flash, 
     setPayroll(pr.data.items || []);
   };
   useEffect(() => { load().catch(() => flash('Could not load finance records.')); }, [period]);
+  useEffect(() => subscribeToApiChanges(() => { void load().catch(() => flash('Could not refresh finance records.')); }), [period]);
   useEffect(() => { if (!ledgerCustomerId && customers.length) setLedgerCustomerId(customers[0].id); }, [customers, ledgerCustomerId]);
   useEffect(() => {
     if (!ledgerCustomerId) { setLedger(null); return; }
