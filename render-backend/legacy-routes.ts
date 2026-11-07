@@ -213,13 +213,13 @@ function findActiveShift(items: Record<string, unknown>[], userId: string, now =
 async function listAttendanceForUser(userId: string): Promise<Record<string, unknown>[]> {
   const snapshot = await firestore.collection('attendance').where('userId', '==', userId).get();
   return snapshot.docs
-    .map(doc => ({ ...(doc.data() || {}), id: doc.id }))
+    .map(doc => ({ ...(doc.data() as Record<string, unknown>), id: doc.id }))
     .sort((a, b) => String(b.checkInAt || '').localeCompare(String(a.checkInAt || '')));
 }
 
 async function listRecentAttendance(limit = 500): Promise<Record<string, unknown>[]> {
   const snapshot = await firestore.collection('attendance').orderBy('checkInAt', 'desc').limit(limit).get();
-  return snapshot.docs.map(doc => ({ ...(doc.data() || {}), id: doc.id }));
+  return snapshot.docs.map(doc => ({ ...(doc.data() as Record<string, unknown>), id: doc.id }));
 }
 
 async function writeAudit(user: UserRecord, action: string, entityType: string, entityId: string, description: string) {
