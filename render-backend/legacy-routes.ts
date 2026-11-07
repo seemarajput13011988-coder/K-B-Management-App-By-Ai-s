@@ -144,7 +144,7 @@ async function saveEvidenceFiles(collectionName: string, parentField: string, pa
     const fileName = cleanText(file.fileName, 120) || ('evidence-' + (index + 1));
     const mimeType = cleanText(file.mimeType, 100).toLowerCase();
     const dataBase64 = typeof file.dataBase64 === 'string' ? file.dataBase64 : '';
-    if (!/^image\/(jpeg|png|webp)$|^video\/(mp4|webm|quicktime)$/.test(mimeType)) throw new Error('Use JPG, PNG or WEBP photos, or MP4, WEBM or MOV videos.');
+    if (!/^image\/(jpeg|png|webp)$|^video\/(mp4|webm|quicktime|3gpp)$/.test(mimeType)) throw new Error('Use JPG, PNG or WEBP photos, or MP4, WEBM or MOV videos.');
     const maxBytes = mimeType.startsWith('image/') ? 2 * 1024 * 1024 : 8 * 1024 * 1024;
     if (!dataBase64 || dataBase64.length > Math.ceil(maxBytes * 4 / 3) + 8) throw new Error('An attachment is empty or too large.');
     const buffer = Buffer.from(dataBase64, 'base64');
@@ -786,7 +786,7 @@ export const handler = router({
     const fileName = cleanText(body?.fileName, 120) || 'complaint-attachment';
     const mimeType = cleanText(body?.mimeType, 100).toLowerCase();
     const dataBase64 = typeof body?.dataBase64 === 'string' ? body.dataBase64 : '';
-    if (!/^image\/(jpeg|png|webp)$|^video\/(mp4|webm|quicktime)$/.test(mimeType)) return error('Use a JPG, PNG, WEBP photo or MP4, WEBM, MOV video.', 400);
+    if (!/^image\/(jpeg|png|webp)$|^video\/(mp4|webm|quicktime|3gpp)$/.test(mimeType)) return error('Use a JPG, PNG, WEBP photo or MP4, WEBM, MOV video.', 400);
     const maxBytes = mimeType.startsWith('image/') ? 2 * 1024 * 1024 : 8 * 1024 * 1024;
     if (!dataBase64 || dataBase64.length > Math.ceil(maxBytes * 4 / 3) + 8) return error('Attachment is empty or too large.', 413);
     const buffer = Buffer.from(dataBase64, 'base64');
