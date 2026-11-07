@@ -177,7 +177,25 @@ function indiaDateKey(date = new Date()) {
   }).format(date);
 }
 
+const DEFAULT_ATTENDANCE_SETTINGS = { startTime: '08:00', endTime: '19:00' };
+async function getAttendanceSettings(): Promise<{ startTime: string; endTime: string }> {
+  const snapshot = await firestore.collection('app_settings').doc('attendance').get();
+  const data = snapshot.exists ? snapshot.data() || {} : {};
+  const startTime = typeof data.startTime === 'string' && /^([01]\\d|2[0-3]):[0-5]\\d$/.test(data.startTime) ? data.startTime : DEFAULT_ATTENDANCE_SETTINGS.startTime;
+  const endTime = typeof data.endTime === 'string' && /^([01]\\d|2[0-3]):[0-5]\\d$/.test(data.endTime) ? data.endTime : DEFAULT_ATTENDANCE_SETTINGS.endTime;
+  return startTime < endTime ? { startTime, endTime } : DEFAULT_ATTENDANCE_SETTINGS;
+}
+function attendanceDueAt(workDate: string, endTime: string): string {
+  return new Date(workDate + 'T' + endTime + ':00+05:30').toISOString();
+}
+function timeToMinutes(value: string): number {
+  const [hours, minutes] = value.split(':').map(Number);
+  return hours * 60 + minutes;
+}
+
 function shiftDueAt(item: Record<string, unknown>): number {
+  const scheduled = Date.parse(String(item.scheduledEndAt || ''));
+  if (Number.isFinite(scheduled)) return scheduled;
   const workDate = String(item.workDate || '');
   const checkInTime = Date.parse(String(item.checkInAt || ''));
   if (!/^\d{4}-\d{2}-\d{2}$/.test(workDate) || !Number.isFinite(checkInTime)) return Number.NaN;
@@ -891,10 +909,32 @@ export const handler = router({
     return json({ items });
   }),
 
+  'GET /api/attendance/settings': protectedRoute(['admin', 'staff'], async () => {
+    return json(await getAttendanceSettings());
+  }),
+
+  'PUT /api/attendance/settings': protectedRoute(['admin'], async ({ body }, admin) => {
+    const startTime = cleanText(body?.startTime, 5);
+    const endTime = cleanText(body?.endTime, 5);
+    if (!/^([01]\\d|2[0-3]):[0-5]\\d$/.test(startTime) ||
+        !/^([01]\\d|2[0-3]):[0-5]\\d$/.test(endTime) ||
+        timeToMinutes(startTime) >= timeToMinutes(endTime)) {
+      return error('Choose valid shift times, with the end time later than the start time.', 400);
+    }
+    const updatedAt = new Date().toISOString();
+    await firestore.collection('app_settings').doc('attendance').set({
+      startTime, endTime, updatedAt, updatedBy: admin.id, updatedByName: admin.displayName,
+    }, { merge: true });
+    await writeAudit(admin, 'UPDATE_ATTENDANCE_SETTINGS', 'app_settings', 'attendance',
+      'Changed staff shift window to ' + startTime + '–' + endTime + ' India time.');
+    return json({ startTime, endTime, updatedAt });
+  }),
+
   'POST /api/attendance/check-in': protectedRoute(['staff'], async ({ body }, user) => {
+    const settings = await getAttendanceSettings();
     const indiaClock = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date());
     const indiaMinutes = Number(indiaClock.find(part => part.type === 'hour')?.value || 0) * 60 + Number(indiaClock.find(part => part.type === 'minute')?.value || 0);
-    if (indiaMinutes < 8 * 60 || indiaMinutes >= 19 * 60) return error('Staff shift start is available only from 8:00 AM to 7:00 PM India time.', 403);
+    if (indiaMinutes < timeToMinutes(settings.startTime) || indiaMinutes >= timeToMinutes(settings.endTime)) return error('Staff shift start is available only from ' + settings.startTime + ' to ' + settings.endTime + ' India time.', 403);
     const workDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
     const result = await listAttendanceForUser(user.id);
     const previousOpenShift = findOpenShift(result, user.id);
@@ -906,7 +946,7 @@ export const handler = router({
     }
     if (result.some(item => item.workDate === workDate)) return error('Attendance has already been recorded for today.', 409);
     const startedAt = new Date().toISOString();
-    const record: Record<string, unknown> = { userId: user.id, displayName: user.displayName, workDate, checkInAt: startedAt, createdAt: startedAt, status: 'Checked in', dayType: body?.dayType === 'Half day' ? 'Half day' : 'Full day', attendanceSource: 'Staff' };
+    const record: Record<string, unknown> = { userId: user.id, displayName: user.displayName, workDate, checkInAt: startedAt, scheduledEndAt: attendanceDueAt(workDate, settings.endTime), createdAt: startedAt, status: 'Checked in', dayType: body?.dayType === 'Half day' ? 'Half day' : 'Full day', attendanceSource: 'Staff' };
     const [id] = await db.add('attendance', [record]);
     if (!id) return error('Could not save your check-in.', 500);
     // Attendance check-in no longer collects or stores GPS coordinates.
@@ -999,9 +1039,10 @@ export const handler = router({
   }),
 
   'POST /api/attendance/check-out': protectedRoute(['staff'], async (_ctx, user) => {
+    const settings = await getAttendanceSettings();
     const indiaClock = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date());
     const indiaMinutes = Number(indiaClock.find(part => part.type === 'hour')?.value || 0) * 60 + Number(indiaClock.find(part => part.type === 'minute')?.value || 0);
-    if (indiaMinutes < 8 * 60 || indiaMinutes >= 19 * 60) return error('Staff shift end is available only from 8:00 AM to 7:00 PM India time. After 7:00 PM, shifts are ended automatically.', 403);
+    if (indiaMinutes < timeToMinutes(settings.startTime) || indiaMinutes >= timeToMinutes(settings.endTime)) return error('Staff shift end is available from ' + settings.startTime + ' until ' + settings.endTime + ' India time.');
     const result = await listAttendanceForUser(user.id);
     const existing = findActiveShift(result, user.id);
     if (!existing) return error('There is no active shift to check out.', 400);
@@ -1092,6 +1133,7 @@ export const handler = router({
       displayName: member.displayName,
       workDate,
       checkInAt: startedAt,
+      scheduledEndAt: attendanceDueAt(workDate, (await getAttendanceSettings()).endTime),
       createdAt: startedAt,
       status: 'Checked in',
       startedByAdmin: admin.displayName,
