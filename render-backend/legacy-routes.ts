@@ -960,22 +960,22 @@ export const handler = router({
     const todaysAttendance = await staffAttendanceForDate(user.id, workDate);
     const existing = todaysAttendance.find(item => !item.checkOutAt);
     if (!existing) return error('There is no active shift to check out.', 400);
-    const [updated] = await db.tx.update('attendance', [{
-      id: String(existing.id),
-      record: {
-        checkOutAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        endedBy: user.id,
-        endedByName: user.displayName,
-        status: 'Completed',
-        gpsStatus: existing.gpsIssueStartedAt ? 'disabled-at-checkout' : (existing.gpsStatus || 'enabled'),
-        gpsIssueStartedAt: FieldValue.delete(),
-        gpsIssueId: FieldValue.delete(),
-        gpsIssueReason: FieldValue.delete(),
-        gpsReminderStage: FieldValue.delete(),
-      },
-    }], { patch: true });
-    return updated ? json({ updated: true }) : error('Could not save your check-out.', 500);
+    const attendanceRef = firestore.collection('attendance').doc(String(existing.id));
+    const checkedOutAt = new Date().toISOString();
+    const updated = await firestore.runTransaction(async transaction => {
+      const latest = await transaction.get(attendanceRef);
+      const current = latest.data();
+      if (!latest.exists || !current || current.userId !== user.id || current.workDate !== workDate || current.checkOutAt) return false;
+      transaction.update(attendanceRef, {
+        checkOutAt: checkedOutAt, updatedAt: checkedOutAt,
+        endedBy: user.id, endedByName: user.displayName, status: 'Completed',
+        gpsStatus: current.gpsIssueStartedAt ? 'disabled-at-checkout' : (current.gpsStatus || 'enabled'),
+        gpsIssueStartedAt: FieldValue.delete(), gpsIssueId: FieldValue.delete(),
+        gpsIssueReason: FieldValue.delete(), gpsReminderStage: FieldValue.delete(),
+      });
+      return true;
+    });
+    return updated ? json({ updated: true }) : error('This shift has already ended. Refresh your attendance status.', 409);
   }),
 
   'POST /api/attendance/admin-absent': protectedRoute(['admin'], async ({ body }, admin) => {
@@ -1049,22 +1049,22 @@ export const handler = router({
     const todaysAttendance = await staffAttendanceForDate(staffId, workDate);
     const existing = todaysAttendance.find(item => !item.checkOutAt);
     if (!existing) return error('There is no active shift for this staff member.', 400);
-    const [updated] = await db.tx.update('attendance', [{
-      id: String(existing.id),
-      record: {
-        checkOutAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        status: 'Completed',
-        endedByAdminId: admin.id,
-        endedByAdminName: admin.displayName,
-        endedByAdmin: admin.displayName,
-        gpsIssueStartedAt: FieldValue.delete(),
-        gpsIssueId: FieldValue.delete(),
-        gpsIssueReason: FieldValue.delete(),
-        gpsReminderStage: FieldValue.delete(),
-      },
-    }], { patch: true });
-    return updated ? json({ updated: true }) : error('Could not end this staff shift.', 500);
+    const attendanceRef = firestore.collection('attendance').doc(String(existing.id));
+    const checkedOutAt = new Date().toISOString();
+    const updated = await firestore.runTransaction(async transaction => {
+      const latest = await transaction.get(attendanceRef);
+      const current = latest.data();
+      if (!latest.exists || !current || current.userId !== staffId || current.workDate !== workDate || current.checkOutAt) return false;
+      transaction.update(attendanceRef, {
+        checkOutAt: checkedOutAt, updatedAt: checkedOutAt, status: 'Completed',
+        endedByAdminId: admin.id, endedByAdminName: admin.displayName, endedByAdmin: admin.displayName,
+        gpsStatus: current.gpsIssueStartedAt ? 'disabled-at-checkout' : (current.gpsStatus || 'enabled'),
+        gpsIssueStartedAt: FieldValue.delete(), gpsIssueId: FieldValue.delete(),
+        gpsIssueReason: FieldValue.delete(), gpsReminderStage: FieldValue.delete(),
+      });
+      return true;
+    });
+    return updated ? json({ updated: true }) : error('This staff shift has already ended. Refresh attendance.', 409);
   }),
 
   'GET /api/holidays': protectedRoute(['admin', 'staff'], async (_ctx, user) => {
