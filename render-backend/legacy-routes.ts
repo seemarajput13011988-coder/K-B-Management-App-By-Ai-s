@@ -1480,7 +1480,7 @@ export const handler = router({
   'GET /api/location-requests/pending': protectedRoute(['staff'], async (_ctx, user) => {
     const snapshot = await firestore.collection('location_requests').where('staffId', '==', user.id).get();
     const nowTime = Date.now();
-    const items = snapshot.docs.map(document => ({ ...document.data(), id: document.id }))
+    const items: Record<string, unknown>[] = snapshot.docs.map(document => ({ ...(document.data() as Record<string, unknown>), id: document.id }))
       .filter(item => item.status === 'pending' && new Date(String(item.expiresAt || 0)).getTime() > nowTime)
       .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
     return json({ items });
