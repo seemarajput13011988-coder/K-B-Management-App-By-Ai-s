@@ -140,6 +140,17 @@ const dateLabel = (s: string) =>
         year: 'numeric',
       })
     : '—';
+const uploadMimeType = (file: File) => {
+  const declared = String(file.type || '').toLowerCase();
+  if (declared === 'image/jpeg' || declared === 'image/png' || declared === 'image/webp' ||
+      declared === 'video/mp4' || declared === 'video/webm' || declared === 'video/quicktime' || declared === 'video/3gpp') return declared;
+  const extension = file.name.split('.').pop()?.toLowerCase() || '';
+  const byExtension: Record<string, string> = {
+    jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp',
+    mp4: 'video/mp4', m4v: 'video/mp4', webm: 'video/webm', mov: 'video/quicktime', '3gp': 'video/3gpp',
+  };
+  return byExtension[extension] || declared;
+};
 const fileAsBase64 = (file: File) => new Promise<string>((resolve, reject) => {
   const reader = new FileReader();
   reader.onload = () => {
@@ -666,7 +677,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
       const { photoFile, videoFile, ...fields } = data;
       const attachments = await Promise.all([photoFile, videoFile].filter((item): item is File => item instanceof File).map(async file => ({
         fileName: file.name,
-        mimeType: file.type,
+        mimeType: uploadMimeType(file),
         dataBase64: await fileAsBase64(file),
       })));
       await api.post('/api/complaints', { ...fields, attachments });
@@ -2046,9 +2057,10 @@ function TaskCompletionModal({ task, onClose, onComplete }: any) {
   const [video, setVideo] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   function valid(file: File, kind: 'photo'|'video') {
-    const allowed = kind === 'photo' ? ['image/jpeg','image/png','image/webp'] : ['video/mp4','video/webm','video/quicktime'];
+    const mimeType = uploadMimeType(file);
+    const allowed = kind === 'photo' ? ['image/jpeg','image/png','image/webp'] : ['video/mp4','video/webm','video/quicktime','video/3gpp'];
     const limit = kind === 'photo' ? 2 * 1024 * 1024 : 8 * 1024 * 1024;
-    if (!allowed.includes(file.type)) { window.alert(kind === 'photo' ? 'Choose a JPG, PNG or WEBP photo.' : 'Choose an MP4, WEBM or MOV video.'); return false; }
+    if (!allowed.includes(mimeType)) { window.alert(kind === 'photo' ? 'Choose a JPG, PNG or WEBP photo.' : 'Choose an MP4, WEBM or MOV video.'); return false; }
     if (file.size > limit) { window.alert(kind === 'photo' ? 'Photo must be 2 MB or smaller.' : 'Video must be 8 MB or smaller.'); return false; }
     return true;
   }
