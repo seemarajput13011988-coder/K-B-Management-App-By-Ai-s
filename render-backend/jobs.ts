@@ -1,7 +1,7 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { getMessaging } from 'firebase-admin/messaging';
-import { FieldPath, FieldValue, firestore } from 'firebase-admin/firestore';
-import { firestore as dbFirestore } from './firestore-adapter.js';
+import { FieldPath } from 'firebase-admin/firestore';
+import { FieldValue, firestore } from './firestore-adapter.js';
 import { isValidDateKey, subscriptionExpiryKind, taskReminderKind } from './route-path.js';
 
 type Item = Record<string, any>;
