@@ -7,8 +7,6 @@ on:
       - "src/**"
       - "public/**"
       - "index.html"
-      - "package.json"
-      - "capacitor.config.ts"
       - "vite.config.ts"
       - ".github/workflows/ota-release.yml"
   workflow_dispatch:
