@@ -37,6 +37,7 @@ jobs:
           grep -Fq "'GET /api/saved-locations'" render-backend/legacy-routes.ts
           grep -Fq "'POST /api/saved-locations'" render-backend/legacy-routes.ts
           grep -Fq "db.collection('chat_groups').where('memberIds', 'array-contains', staffId)" render-backend/api-handler.ts
+          grep -Fq "'POST /api/complaints/:id/media': protectedRoute(['admin', 'staff']" render-backend/legacy-routes.ts
           grep -Fq "app.use(legacyHandler)" render-backend/server.ts
           echo "Public request/status, admin-only review, and staff GPS route handlers are present."
   web:
