@@ -14,6 +14,7 @@ const config: CapacitorConfig = {
       enabled: true,
     },
     CapacitorUpdater: {
+      appId: 'kandbnet.service2010',
       autoUpdate: 'onLaunch',
       updateUrl: 'https://kandb-management-nexus-api-zv7f.onrender.com/api/app-updates/check',
       statsUrl: '',
