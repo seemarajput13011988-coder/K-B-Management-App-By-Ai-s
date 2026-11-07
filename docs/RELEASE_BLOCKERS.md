@@ -43,3 +43,7 @@ Before switching staff or customer records to this app:
 ## 6. Production Android release
 
 The current APK workflow produces a debug build for internal testing. Create and protect an Android signing key outside this repository before distributing updateable release APKs. Never commit the key or passwords.
+
+## 7. Full application backup and restore
+
+The app currently exports selected finance reports as CSV/PDF; it does not yet provide a full Firestore backup-and-restore workflow. Configure managed Firestore backups with the project owner, or approve a protected encrypted application export design. Do not treat CSV/PDF reports as a complete backup.
