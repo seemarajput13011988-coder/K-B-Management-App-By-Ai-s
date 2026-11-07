@@ -121,19 +121,24 @@ type Plan = {
 
 const money = (n: number) => '₹' + Number(n || 0).toLocaleString('en-IN');
 const customerStatusLabel = (value: unknown): Customer['status'] => { const status = String(value || 'Active').trim().toLowerCase(); return status === 'suspended' ? 'Suspended' : status === 'inactive' ? 'Inactive' : 'Active'; };
-const isAttendanceShiftActive = (item: AttendanceRecord, now = Date.now()) => {
-  if (item.checkOutAt || item.dayType === 'Absent' || item.status?.toLowerCase().includes('cancelled') || item.gpsRestartRequired) return false;
+const attendanceDeadlineAt = (item: AttendanceRecord): number => {
   const savedDeadline = Date.parse(item.autoCheckoutAt || '');
-  if (Number.isFinite(savedDeadline)) return now < savedDeadline;
+  if (Number.isFinite(savedDeadline)) return savedDeadline;
   const checkIn = Date.parse(item.checkInAt || '');
-  if (!Number.isFinite(checkIn) || !/^\d{4}-\d{2}-\d{2}$/.test(item.workDate || '')) return false;
+  const workDate = item.workDate || '';
+  const parsedWorkDate = Date.parse(workDate);
+  if (!Number.isFinite(checkIn) || !Number.isFinite(parsedWorkDate) || new Date(parsedWorkDate).toISOString().slice(0, 10) !== workDate) return Number.NaN;
   const parts = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date(checkIn));
   const minutes = Number(parts.find(part => part.type === 'hour')?.value || 0) * 60 + Number(parts.find(part => part.type === 'minute')?.value || 0);
   const endTime = /^([01]\\d|2[0-3]):[0-5]\\d$/.test(item.shiftEndTime || '') ? item.shiftEndTime! : '19:00';
   const [endHour, endMinute] = endTime.split(':').map(Number);
   const endMinutes = endHour * 60 + endMinute;
-  const dueDate = minutes >= endMinutes ? new Date(Date.parse(item.workDate + 'T00:00:00Z') + 86400000).toISOString().slice(0, 10) : item.workDate;
-  return now < Date.parse(dueDate + 'T' + endTime + ':00+05:30');
+  const dueDate = minutes >= endMinutes ? new Date(Date.parse(workDate + 'T00:00:00Z') + 86400000).toISOString().slice(0, 10) : workDate;
+  return Date.parse(dueDate + 'T' + endTime + ':00+05:30');
+};
+const isAttendanceShiftActive = (item: AttendanceRecord, now = Date.now()) => {
+  if (item.checkOutAt || item.dayType === 'Absent' || item.status?.toLowerCase().includes('cancelled') || item.gpsRestartRequired) return false;
+  return now < attendanceDeadlineAt(item);
 };
 const dateLabel = (s: string) =>
   s
@@ -1966,7 +1971,7 @@ function StaffLocationResponder({ activeShift, userId }: { activeShift: boolean;
         if (!stopped) {
           setShiftActive(Boolean(activeRecord));
           setActiveShiftId(activeRecord?.id || '');
-          setScheduledEndAt(activeRecord?.autoCheckoutAt || '');
+          setScheduledEndAt(activeRecord ? new Date(attendanceDeadlineAt(activeRecord)).toISOString() : '');
           setScheduleReady(true);
         }
       } catch { /* Keep the last confirmed shift state if the API is temporarily unavailable. */ }
