@@ -1,6 +1,6 @@
 import { router, json, error, db, secrets, firestore, FieldValue } from './firestore-adapter.js';
 import type { RouterMiddleware } from './firestore-adapter.js';
-import { isConfirmedGpsLossReason, isValidDateRange } from './route-path.js';
+import { attendanceDocumentId, isConfirmedGpsLossReason, isValidDateRange } from './route-path.js';
 import { createHash, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 const notifySubscribers = async (..._args: unknown[]) => undefined; // Live updates are refreshed through the authenticated API.
 
@@ -833,8 +833,14 @@ export const handler = router({
   }),
 
   'GET /api/attendance': protectedRoute(['admin', 'staff'], async (_ctx, user) => {
-    const result = await db.list<Record<string, unknown>>('attendance', { limit: 500 });
-    return json({ items: user.role === 'admin' ? result.items : result.items.filter(item => item.userId === user.id) });
+    if (user.role === 'staff') {
+      // Query this staff member directly; a global 500-row limit could hide
+      // their current shift after the business has accumulated enough records.
+      const snapshot = await firestore.collection('attendance').where('userId', '==', user.id).get();
+      return json({ items: snapshot.docs.map(doc => ({ ...(doc.data() || {}), id: doc.id })) });
+    }
+    const result = await db.list<Record<string, unknown>>('attendance', { limit: 1000 });
+    return json({ items: result.items });
   }),
 
   'POST /api/attendance/check-in': protectedRoute(['staff'], async ({ body }, user) => {
@@ -842,14 +848,24 @@ export const handler = router({
     const indiaMinutes = Number(indiaClock.find(part => part.type === 'hour')?.value || 0) * 60 + Number(indiaClock.find(part => part.type === 'minute')?.value || 0);
     if (indiaMinutes < 8 * 60 || indiaMinutes >= 19 * 60) return error('Staff shift start is available only from 8:00 AM to 7:00 PM India time.', 403);
     const workDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
-    const result = await db.list<Record<string, unknown>>('attendance', { limit: 1000 });
-    if (result.items.some(item => item.userId === user.id && item.workDate === workDate)) return error('Attendance has already been recorded for today.', 409);
     const startedAt = new Date().toISOString();
     const record: Record<string, unknown> = { userId: user.id, displayName: user.displayName, workDate, checkInAt: startedAt, createdAt: startedAt, status: 'Checked in', attendanceSource: 'Staff' };
-    const [id] = await db.add('attendance', [record]);
-    if (!id) return error('Could not save your check-in.', 500);
-    // Attendance check-in no longer collects or stores GPS coordinates.
-    return json({ id, ...record }, 201);
+    const attendanceRef = firestore.collection('attendance').doc(attendanceDocumentId(user.id, workDate));
+    const legacyRecords = firestore.collection('attendance').where('userId', '==', user.id);
+    const created = await firestore.runTransaction(async transaction => {
+      const [stableRecord, previousRecords] = await Promise.all([
+        transaction.get(attendanceRef),
+        transaction.get(legacyRecords),
+      ]);
+      const alreadyRecorded = stableRecord.exists || previousRecords.docs.some(doc => String(doc.data().workDate || '') === workDate);
+      if (alreadyRecorded) return false;
+      transaction.create(attendanceRef, { ...record, id: attendanceRef.id });
+      return true;
+    });
+    if (!created) return error('Attendance has already been recorded for today.', 409);
+    // The attendance write is idempotent. GPS startup is confirmed separately
+    // by the native tracking service and its first server-received location.
+    return json({ id: attendanceRef.id, ...record }, 201);
   }),
 
   'PUT /api/attendance/:id/day-type': protectedRoute(['admin'], async ({ body, params }, admin) => {
