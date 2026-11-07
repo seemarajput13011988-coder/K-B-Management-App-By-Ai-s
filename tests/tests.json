@@ -168,5 +168,41 @@
       "Switch back to Day mode"
     ],
     "expected": "Staff cannot access admin-only or other workers' private records; the mobile menu scrolls independently and language and theme preferences persist."
+  },
+  {
+    "name": "Android background GPS, staff consent and 15-minute recovery",
+    "viewport": "android-device",
+    "covers": [
+      "staff consent before location tracking",
+      "persistent Android tracking notification",
+      "location updates while screen is locked",
+      "location updates while app is backgrounded",
+      "GPS disabled and restored",
+      "15-minute GPS grace period",
+      "holiday exemption",
+      "shift checkout stops tracking",
+      "administrator live location and stale status"
+    ],
+    "description": "Manual acceptance test for native Android location tracking. This is not covered by the web build check.",
+    "setup": [
+      "Install the latest debug APK on a test Android phone",
+      "Sign in as an active staff test account",
+      "Ensure an administrator test account can view Team Operations",
+      "Use test data only, not production staff records"
+    ],
+    "steps": [
+      "Start a shift as staff and accept the location-sharing notice",
+      "Verify Android shows the K&B work location notification while tracking is active",
+      "Lock the phone screen for at least 10 minutes and move a short, safe distance; verify the admin map receives new points and timestamps",
+      "Open another app while the shift remains active; verify location continues updating",
+      "Switch phone location services off; verify the app reports GPS unavailable and the server starts the 15-minute grace period when the native plugin reports the error",
+      "Restore location before the deadline; verify the shift remains active and GPS reminders are resolved",
+      "Repeat in a test shift and leave location unavailable; verify reminders at 5, 10 and 14 minutes and server cancellation at 15 minutes",
+      "Verify a pending or approved holiday date is exempt from GPS cancellation",
+      "End the shift; verify the persistent notification disappears and no further points are saved",
+      "Force-stop the app, disable network and revoke permission in separate tests; verify the admin sees the last point as stale/unavailable rather than a false live position"
+    ],
+    "expected": "The visible tracking service works during screen lock/background use under supported Android conditions, consent is recorded, the 15-minute workflow behaves correctly, and the app accurately shows interruptions. Force-stop, power-off and network loss are documented limitations.",
+    "sanity": false
   }
 ]

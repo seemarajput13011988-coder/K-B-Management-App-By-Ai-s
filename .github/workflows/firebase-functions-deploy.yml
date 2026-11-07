@@ -1,0 +1,52 @@
+name: Deploy K&B Firebase Functions
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - safe-firebase-migration-copilot-review
+    paths:
+      - "functions/**"
+      - "firebase.json"
+      - ".firebaserc"
+      - ".github/workflows/firebase-functions-deploy.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  deploy-functions:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out current branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Functions dependencies
+        run: npm install
+        working-directory: functions
+
+      - name: Build and test Functions
+        run: npm test
+        working-directory: functions
+
+      - name: Configure Google service account
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_KANDB_NET_SEVICE || secrets.FIREBASE_SERVICE_ACCOUNT_KANDB_NET_SERVICE }}
+        run: |
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON" || (echo "Missing or unavailable GitHub Actions secret. Expected FIREBASE_SERVICE_ACCOUNT_KANDB_NET_SEVICE or FIREBASE_SERVICE_ACCOUNT_KANDB_NET_SERVICE." && exit 1)
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/firebase-service-account.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/firebase-service-account.json" >> "$GITHUB_ENV"
+
+      - name: Validate service account project
+        run: |
+          node -e "const fs=require('node:fs'); const c=JSON.parse(fs.readFileSync(process.env.GOOGLE_APPLICATION_CREDENTIALS,'utf8')); if(c.type!=='service_account'||c.project_id!=='kandb-net-sevice') throw new Error('The deployment credential is not a service account for project kandb-net-sevice.'); console.log('Firebase deployment credential project validated.');"
+
+      - name: Deploy Firebase Functions
+        run: npx --yes firebase-tools deploy --only functions --project kandb-net-sevice --non-interactive

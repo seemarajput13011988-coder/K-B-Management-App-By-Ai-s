@@ -1,11 +1,21 @@
-# K&B Customer Management
+# K&B Management Nexus
 
-Private source repository for the K&B NET SERVICE customer and business management app.
+K&B NET SERVICE workforce, customer, operations and finance management application.
 
-## Migration status
-- Original AppDeploy source snapshot: being preserved from version 1793770810412.
-- Target architecture: React + Vite + Capacitor Android app, Firebase Authentication, Cloud Firestore, Cloud Functions, and Firebase Hosting.
-- Existing AppDeploy app and data must remain untouched until the replacement is migrated, tested, and verified.
+## Platform architecture
 
-## Important
-The preserved source still contains AppDeploy SDK imports and is not yet the Firebase migration. Do not deploy it as a standalone Firebase app until the backend and client API have been migrated.
+- K&B username/password login for admin and staff (not Firebase Authentication).
+- Firebase Cloud Firestore for application records and user credential hashes.
+- Firebase Cloud Functions API with server-side session validation, role authorization and staff-record access checks.
+- Firestore direct client access is denied; app data operations go through Cloud Functions.
+- Android APK build workflow is maintained in GitHub Actions.
+
+## Security and migration
+
+- Passwords are salted and hashed with scrypt on the server.
+- Sessions use opaque random tokens; the server stores only their SHA-256 hashes and expiry.
+- Existing AppDeploy credentials require a secure user-record migration or administrator password reset; Firebase Auth account creation is not part of the migration.
+- Back up AppDeploy data before import. Do not overwrite the original app or records until staged reconciliation and owner approval.
+- No automatic record deletion. Six-month-old records are surfaced to admins for review and can only be deleted after explicit confirmation.
+
+See `docs/FIREBASE_SETUP.md` and `docs/STAFF_LOGIN_DIAGNOSIS.md` for setup and migration details.

@@ -1,15 +1,19 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
+import { Capacitor } from '@capacitor/core';
+import { LocalNotifications } from '@capacitor/local-notifications';
+import { PushNotifications } from '@capacitor/push-notifications';
 import StaffOperations from './StaffOperations';
 import FinanceWorkspace from './FinanceWorkspace';
+import SubscriptionWorkspace from './SubscriptionWorkspace';
+import InventoryWorkspace from './InventoryWorkspace';
+import InstallationsWorkspace from './InstallationsWorkspace';
+import CalendarWorkspace from './CalendarWorkspace';
 import { useAppPreferences } from './appPreferences';
-import { api as client } from '@appdeploy/client';
+import { api as client, changeAppPassword, changeAppUserId, signInAppUser, signOutAppUser, submitStaffRegistrationRequest, getStaffRegistrationStatus } from './lib/api';
 import {
   Activity,
-  ArrowDownRight,
-  ArrowUpRight,
   Bell,
-  Check,
   ChevronDown,
   CircleHelp,
   CreditCard,
@@ -17,7 +21,6 @@ import {
   LayoutDashboard,
   Menu,
   MessageSquare,
-  MoreHorizontal,
   Plus,
   Search,
   Signal,
@@ -28,18 +31,18 @@ import {
   CalendarDays,
   Phone,
   MapPin,
-  Filter,
   Clock3,
   CheckCircle2,
   ClipboardList,
-  AlertCircle,
   Pencil,
   Trash2,
   Eye,
-  Download, ShieldCheck, KeyRound, BarChart3, LogOut, UserPlus, UserRound, LockKeyhole,
+  ShieldCheck, KeyRound, BarChart3, LogOut, UserPlus, UserRound, LockKeyhole,
 } from 'lucide-react';
 
-type Session={token:string;expiresAt:number;user:{id:string;userId:string;displayName:string;role:'admin'|'staff';active:boolean}};
+type Session={token:string;expiresAt:number;user:{id:string;userId:string;displayName:string;role:'admin'|'staff';active:boolean;canManageAdmins?:boolean}};
+type AppNotification={id:string;title:string;message:string;createdAt:string;read:boolean;type:string};
+type RetentionReviewItem={id:string;collection:string;collectionLabel:string;recordLabel:string;createdAt:string};
 const getToken=()=>{try{return (JSON.parse(localStorage.getItem('kb-customer-session')||'null') as Session|null)?.token||'';}catch{return '';}};
 const api={get:(url:string)=>client.get(url+(url.includes('?')?'&':'?')+'sessionToken='+encodeURIComponent(getToken())),post:(url:string,data?:Record<string,unknown>)=>client.post(url,{...(data||{}),sessionToken:getToken()}),put:(url:string,data?:Record<string,unknown>)=>client.put(url,{...(data||{}),sessionToken:getToken()}),delete:(url:string)=>client.delete(url+'?sessionToken='+encodeURIComponent(getToken()))};
 type Customer = {
@@ -68,7 +71,8 @@ type Payment = {
   recordedByName?: string;
 };
 type Staff = { id: string; userId: string; displayName: string; role: 'staff'; active: boolean };
-type AttendanceRecord = { id: string; userId: string; displayName: string; workDate: string; checkInAt: string; checkOutAt?: string };
+type AdminAccount = { id: string; userId: string; displayName: string; role: 'admin'; active: boolean; canManageAdmins?: boolean };
+type AttendanceRecord = { id: string; userId: string; displayName: string; workDate: string; checkInAt: string; checkOutAt?: string; dayType?: 'Full day' | 'Half day' };
 type Task = { id: string; title: string; details: string; assignedTo: string; assignedToName: string; priority: 'Low' | 'Normal' | 'High'; dueDate: string; status: 'Pending' | 'In progress' | 'Completed'; createdAt: string; createdByName: string };
 type Complaint = {
   id: string;
@@ -105,6 +109,7 @@ const dateLabel = (s: string) =>
 
 function Workspace({ session, onLogout }: { session: Session; onLogout: () => void }) {
   const isAdmin = session.user.role === 'admin';
+  const canManageAdmins = session.user.canManageAdmins === true;
   const { language, setLanguage, theme, toggleTheme } = useAppPreferences();
   const [localHour, setLocalHour] = useState(() => new Date().getHours());
   useEffect(() => {
@@ -124,11 +129,15 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   const [complaints, setComplaints] = useState<Complaint[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [staff, setStaff] = useState<Staff[]>([]);
+  const [adminAccounts, setAdminAccounts] = useState<AdminAccount[]>([]);
+  const [showAdminModal, setShowAdminModal] = useState(false);
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
   const [selectedStaffProfileId, setSelectedStaffProfileId] = useState('');
   const [showTask, setShowTask] = useState(false);
   const [showStaff, setShowStaff] = useState(false);
   const [resetStaff, setResetStaff] = useState<Staff | null>(null);
+  const [editStaffUserId, setEditStaffUserId] = useState<Staff | null>(null);
+  const [showAccountSettings, setShowAccountSettings] = useState(false);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [showCustomer, setShowCustomer] = useState(false);
@@ -143,6 +152,11 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   const [showComplaint, setShowComplaint] = useState(false);
   const [notice, setNotice] = useState('');
   const [mobileNav, setMobileNav] = useState(false);
+  const [retentionItems, setRetentionItems] = useState<RetentionReviewItem[]>([]);
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const seenNotifications = useRef<Set<string> | null>(null);
+  const pushToken = useRef<string | null>(null);
 
   useEffect(() => {
     if (!mobileNav) return;
@@ -176,6 +190,16 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
       if (isAdmin) {
         const s = await api.get('/api/staff');
         setStaff(s.data.items || []);
+        try {
+          const review = await api.get('/api/retention/review');
+          setRetentionItems((review.data.items || []) as RetentionReviewItem[]);
+        } catch {
+          setRetentionItems([]);
+        }
+      }
+      if (canManageAdmins) {
+        const adminsResult = await api.get('/api/admins');
+        setAdminAccounts(adminsResult.data.items || []);
       }
     } catch (e) {
       setNotice('Could not load records. Please refresh and try again.');
@@ -186,6 +210,99 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   useEffect(() => {
     load();
   }, []);
+
+  useEffect(() => {
+    let stopped = false;
+    const pollNotifications = async () => {
+      try {
+        const result = await api.get('/api/notifications');
+        if (stopped) return;
+        const items = (result.data.items || []) as AppNotification[];
+        setNotifications(items);
+        if (seenNotifications.current === null) {
+          seenNotifications.current = new Set(items.map(item => item.id));
+          return;
+        }
+        for (const item of items.slice().reverse()) {
+          if (seenNotifications.current.has(item.id)) continue;
+          seenNotifications.current.add(item.id);
+          if (item.read) continue;
+          if (Capacitor.isNativePlatform()) {
+            try {
+              const permission = await LocalNotifications.checkPermissions();
+              if (permission.display === 'granted') {
+                const notificationId = Array.from(String(item.id)).reduce((hash, character) => (hash * 31 + character.charCodeAt(0)) & 0x7fffffff, 1);
+                await LocalNotifications.schedule({ notifications: [{ id: notificationId, title: item.title || 'K&B update', body: item.message || 'You have a new update.', schedule: { at: new Date(Date.now() + 1000) } }] });
+              } else setNotice((item.title || 'K&B update') + ': ' + (item.message || 'You have a new update.'));
+            } catch { setNotice((item.title || 'K&B update') + ': ' + (item.message || 'You have a new update.')); }
+          } else if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+            new Notification(item.title || 'K&B update', { body: item.message || 'You have a new update.' });
+          } else {
+            setNotice((item.title || 'K&B update') + ': ' + (item.message || 'You have a new update.'));
+          }
+        }
+      } catch { /* Notification polling must not interrupt normal app use. */ }
+    };
+    void pollNotifications();
+    const timer = window.setInterval(pollNotifications, 12000);
+    return () => { stopped = true; window.clearInterval(timer); };
+  }, [session.user.id, isAdmin]);
+
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    let stopped = false;
+    let registrationListener: { remove: () => Promise<void> } | undefined;
+    let receivedListener: { remove: () => Promise<void> } | undefined;
+    let actionListener: { remove: () => Promise<void> } | undefined;
+    let errorListener: { remove: () => Promise<void> } | undefined;
+
+    const registerDevice = async () => {
+      try {
+        registrationListener = await PushNotifications.addListener('registration', async token => {
+          if (stopped || !token.value) return;
+          pushToken.current = token.value;
+          try {
+            await api.post('/api/push-tokens', { token: token.value, platform: 'android' });
+          } catch (error) {
+            console.warn('Could not register this device for K&B push notifications.', error);
+          }
+        });
+        receivedListener = await PushNotifications.addListener('pushNotificationReceived', async () => {
+          try {
+            const result = await api.get('/api/notifications');
+            if (!stopped) setNotifications((result.data.items || []) as AppNotification[]);
+          } catch { /* The normal notification poll will retry. */ }
+        });
+        actionListener = await PushNotifications.addListener('pushNotificationActionPerformed', async () => {
+          try {
+            const result = await api.get('/api/notifications');
+            if (!stopped) {
+              setNotifications((result.data.items || []) as AppNotification[]);
+              setNotificationsOpen(true);
+            }
+          } catch { /* The normal notification poll will retry. */ }
+        });
+        errorListener = await PushNotifications.addListener('registrationError', error => {
+          console.warn('K&B push registration failed.', error);
+        });
+
+        let permission = await PushNotifications.checkPermissions();
+        if (permission.receive !== 'granted') permission = await PushNotifications.requestPermissions();
+        if (!stopped && permission.receive === 'granted') await PushNotifications.register();
+      } catch (error) {
+        console.warn('K&B push notifications are not configured on this device yet.', error);
+      }
+    };
+
+    void registerDevice();
+    return () => {
+      stopped = true;
+      void registrationListener?.remove();
+      void receivedListener?.remove();
+      void actionListener?.remove();
+      void errorListener?.remove();
+    };
+  }, [session.user.id]);
 
   const active = customers.filter(c => c.status === 'Active').length;
   const collected = payments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
@@ -212,6 +329,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   const selectedStaffProfile = staff.find(member => member.id === selectedStaffProfileId);
   const selectedStaffPayments = payments.filter(payment => payment.recordedBy === selectedStaffProfileId).sort((a, b) => b.paidAt.localeCompare(a.paidAt));
   const selectedStaffAttendance = attendanceRecords.filter(record => record.userId === selectedStaffProfileId).sort((a, b) => b.workDate.localeCompare(a.workDate));
+  const selectedStaffAttendanceEquivalent = selectedStaffAttendance.reduce((sum, record) => sum + (record.dayType === 'Half day' ? 0.5 : 1), 0);
   const selectedStaffTasks = tasks.filter(task => task.assignedTo === selectedStaffProfileId);
   const selectedStaffCollected = selectedStaffPayments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
   const visiblePlans = plans.filter(plan => {
@@ -224,7 +342,37 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
     setNotice(message);
     window.setTimeout(() => setNotice(''), 3200);
   }
+
+  async function deleteRetentionItem(item: RetentionReviewItem) {
+    const confirmed = window.confirm(
+      'Delete this ' + item.collectionLabel.toLowerCase() + ' record permanently?\n\n' +
+      item.recordLabel + '\nSaved/created: ' + dateLabel(item.createdAt) +
+      '\n\nThis action happens only after your confirmation and cannot be undone.'
+    );
+    if (!confirmed) return;
+    try {
+      await api.post('/api/retention/review/delete', {
+        collection: item.collection,
+        id: item.id,
+        confirmDelete: true,
+      });
+      setRetentionItems(current => current.filter(record => !(record.collection === item.collection && record.id === item.id)));
+      flash('Record deleted after admin confirmation.');
+    } catch (error) {
+      flash(error instanceof Error ? error.message : 'Could not delete this record.');
+    }
+  }
+
+  async function markNotificationsRead() {
+    const unread = notifications.filter(item => !item.read);
+    await Promise.all(unread.map(item => api.put('/api/notifications/' + item.id, { read: true }).catch(() => undefined)));
+    setNotifications(current => current.map(item => ({ ...item, read: true })));
+  }
   async function signOut() {
+    if (pushToken.current) {
+      try { await api.post('/api/push-tokens', { token: pushToken.current, action: 'unregister' }); } catch { /* Server cleanup can be retried on the next sign-in. */ }
+      pushToken.current = null;
+    }
     try { await api.post('/api/auth/logout'); } catch { /* local sign-out still proceeds */ }
     onLogout();
   }
@@ -289,6 +437,18 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
       flash('Could not delete customer');
     }
   }
+  async function createAdmin(data: { userId: string; displayName: string; password: string }) {
+    try {
+      await api.post('/api/admins', data);
+      setShowAdminModal(false);
+      await load();
+      flash('Admin account created successfully');
+    } catch (err) {
+      const message = (err as any)?.response?.data?.error || (err instanceof Error ? err.message : 'Could not create admin account');
+      flash(message);
+      throw new Error(message);
+    }
+  }
   async function createStaff(data: { userId: string; displayName: string; password: string }) {
     try {
       await api.post('/api/staff', data);
@@ -317,6 +477,16 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
       flash(patch.active === false ? 'Staff access disabled' : 'Staff account updated');
     } catch {
       flash('Could not update staff account');
+    }
+  }
+  async function saveStaffUserId(staffUser: Staff, userId: string) {
+    try {
+      await api.put('/api/staff/' + staffUser.id, { userId, displayName: staffUser.displayName });
+      setEditStaffUserId(null);
+      await load();
+      flash('Staff username updated. The staff member must sign in with the new ID.');
+    } catch (err) {
+      flash(err instanceof Error ? err.message : 'Could not change staff username');
     }
   }
   async function saveStaffPassword(staffUser: Staff, password: string) {
@@ -379,11 +549,16 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
 
   const nav = [
     { label: 'Overview', icon: LayoutDashboard },
+    { label: 'Calendar', icon: CalendarDays },
     { label: taskPage, icon: ClipboardList, count: pendingTasks || undefined },
     ...(isAdmin ? [{ label: 'Team Operations', icon: Activity }] : [{ label: 'My Day', icon: CalendarDays }]),
     { label: 'Customers', icon: Users, count: customers.length },
+    { label: 'Subscriptions', icon: CalendarDays },
+    { label: 'Inventory', icon: ClipboardList },
+    { label: 'Installations', icon: MapPin },
     ...(isAdmin ? [{ label: 'Plans & Pricing', icon: Wifi }] : []),
     ...(isAdmin ? [{ label: 'Staff', icon: UserRound, count: staff.length }] : []),
+    ...(canManageAdmins ? [{ label: 'Admin Accounts', icon: ShieldCheck, count: adminAccounts.length || undefined }] : []),
     ...(isAdmin ? [{ label: 'Finance & Billing', icon: IndianRupee }] : []),
     { label: 'Payments', icon: CreditCard },
     {
@@ -433,6 +608,9 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
           ))}
         </nav>
         <div className="sidebar-bottom">
+          <button className="btn secondary compact" style={{width:'100%',marginBottom:12}} onClick={async()=>{if(Capacitor.isNativePlatform()){const permission=await LocalNotifications.requestPermissions();flash(permission.display==='granted'?'Notifications enabled. You will receive new messages, assigned work and reminders while the app is running.':'Notifications are blocked. Enable them in Android settings.');return;}if(typeof Notification==='undefined'){flash('This browser does not support desktop notifications.');return;}const permission=await Notification.requestPermission();flash(permission==='granted'?'Notifications enabled. You will receive new messages, assigned work and reminders while the app is open.': 'Notifications are blocked. Enable them in your browser settings.');}}>
+            <Bell size={15}/> Enable notifications
+          </button>
           <div className="help-card">
             <div className="help-icon">
               <CircleHelp size={18} />
@@ -476,13 +654,17 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
               <label className="language-control" title="App language"><span>🌐</span><select aria-label="App language" value={language} onChange={event => setLanguage(event.target.value as 'en' | 'hi' | 'gu')}><option value="en">English</option><option value="hi">हिन्दी</option><option value="gu">ગુજરાતી</option></select></label>
               <button className="theme-toggle" onClick={toggleTheme} title={theme === 'dark' ? 'Switch to day mode' : 'Switch to night mode'} aria-label={theme === 'dark' ? 'Switch to day mode' : 'Switch to night mode'}>{theme === 'dark' ? '☀️' : '🌙'}<span>{theme === 'dark' ? 'Day' : 'Night'}</span></button>
             </div>
-            <button
-              className="icon-button"
-              onClick={() => flash('You are all caught up.')}
-            >
-              <Bell size={18} />
-            </button>
-            <div className="avatar small-avatar">{session.user.displayName.slice(0, 2).toUpperCase()}</div>
+            <div className="notification-anchor">
+              <button className="icon-button notification-bell" onClick={() => setNotificationsOpen(open => !open)} aria-label="Open notifications">
+                <Bell size={18}/>{notifications.filter(item=>!item.read).length>0 && <span className="notification-count">{Math.min(99,notifications.filter(item=>!item.read).length)}</span>}
+              </button>
+              {notificationsOpen && <div className="notification-popover">
+                <div className="notification-popover-head"><b>Notifications</b><button onClick={markNotificationsRead} disabled={!notifications.some(item=>!item.read)}>Mark all read</button></div>
+                {notifications.slice(0,12).map(item=><article className={'notification-item '+(!item.read?'unread':'')} key={item.id}><b>{item.title}</b><p>{item.message}</p><small>{item.createdAt ? new Date(item.createdAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'}) : ''}</small></article>)}
+                {!notifications.length && <p className="notification-empty">You’re all caught up.</p>}
+              </div>}
+            </div>
+            <button type="button" className="icon-button account-trigger" title="Account settings" aria-label="Account settings" onClick={() => setShowAccountSettings(true)}><div className="avatar small-avatar">{session.user.displayName.slice(0, 2).toUpperCase()}</div></button>
           </div>
         </header>
         <div className="content">
@@ -498,10 +680,20 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                   : page === 'Customers'
                     ? 'Manage customer details, connections and account status.'
                     : page === 'Plans & Pricing'                      ? 'Your available internet packages and monthly pricing.'
+                      : page === 'Subscriptions'
+                        ? 'Manage customer renewals, subscription periods and expiry dates.'
+                      : page === 'Installations'
+                        ? 'Schedule customer installations, upgrades and repair visits.'
+                      : page === 'Inventory'
+                        ? 'Track equipment, stock levels, supplies and stock movements.'
                       : page === 'Payments'
                         ? 'Track customer collections and payment history.'
                         : page === 'Staff'
                           ? 'Manage staff accounts, assignments and collection performance.'
+                          : page === 'Admin Accounts'
+                            ? 'Create and view administrator sign-in accounts.'
+                          : page === 'Calendar'
+                            ? 'View task deadlines and team attendance by date.'
                           : page === taskPage
                             ? (isAdmin ? 'Assign work, set priorities and monitor team progress.' : 'Your assigned work, priorities and due dates.')
                             : page === 'My Day' || page === 'Team Operations'
@@ -512,6 +704,9 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
             <div className="heading-actions">
               {page === 'Staff' && isAdmin && (
                 <button className="btn primary" onClick={() => setShowStaff(true)}><UserPlus size={17} /> Add staff member</button>
+              )}
+              {page === 'Admin Accounts' && canManageAdmins && (
+                <button className="btn primary" onClick={() => setShowAdminModal(true)}><UserPlus size={17} /> Add admin</button>
               )}
               {page === taskPage && isAdmin && (
                 <button className="btn primary" onClick={() => setShowTask(true)}><Plus size={17} /> Assign task</button>
@@ -546,8 +741,12 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
             </div>
           </div>
 
+          {page === 'Calendar' && <CalendarWorkspace tasks={tasks} attendance={attendanceRecords} isAdmin={isAdmin} />}
           {page === (isAdmin ? 'Team Operations' : 'My Day') && <StaffOperations session={session} customers={customers} flash={flash} />}
           {page === 'Finance & Billing' && isAdmin && <FinanceWorkspace session={session} customers={customers} payments={payments} flash={flash} />}
+          {page === 'Subscriptions' && <SubscriptionWorkspace customers={customers} plans={plans} isAdmin={isAdmin} flash={flash} />}
+          {page === 'Inventory' && <InventoryWorkspace isAdmin={isAdmin} flash={flash} />}
+          {page === 'Installations' && <InstallationsWorkspace customers={customers} staff={staff} isAdmin={isAdmin} flash={flash} />}
           {page === 'Overview' && !isAdmin && <StaffOperations session={session} customers={customers} flash={flash} compact />}
 
           {page === 'Overview' && (
@@ -567,6 +766,37 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                   <i />
                 </div>
               </div>
+
+              {isAdmin && (
+                <section className="panel retention-review-panel">
+                  <div className="panel-head">
+                    <div>
+                      <h2>Six-month record review</h2>
+                      <p>Records saved or created at least six months ago. Nothing is deleted automatically.</p>
+                    </div>
+                    <span className="live-tag">{retentionItems.length} DUE</span>
+                  </div>
+                  {retentionItems.length ? (
+                    <div className="retention-review-list">
+                      {retentionItems.map(item => (
+                        <div className="snapshot-row" key={item.collection + ':' + item.id}>
+                          <div className="snapshot-icon orange-bg"><Clock3 /></div>
+                          <div className="retention-review-details">
+                            <strong>{item.recordLabel}</strong>
+                            <small>{item.collectionLabel} · Saved {dateLabel(item.createdAt)}</small>
+                          </div>
+                          <button className="btn danger small" onClick={() => void deleteRetentionItem(item)}>
+                            <Trash2 size={14} /> Delete
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="retention-review-empty">No records are currently due for review.</p>
+                  )}
+                </section>
+              )}
+
               <div className="stats-grid">
                 <Stat
                   icon={<Users />}
@@ -694,6 +924,16 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
             </>
           )}
 
+          {page === 'Admin Accounts' && canManageAdmins && (
+            <section className="panel table-panel">
+              <div className="toolbar"><div><h2>Admin accounts</h2><p className="subtle">Only the original Brajraj account can create additional admins.</p></div><span className="result-count">{adminAccounts.length} admins</span></div>
+              <div className="table-wrap"><table><thead><tr><th>ADMIN</th><th>USER ID</th><th>ACCESS</th><th>ROLE</th></tr></thead><tbody>
+                {adminAccounts.map(account => <tr key={account.id}><td><strong>{account.displayName}</strong></td><td>{account.userId}</td><td><span className={'status ' + (account.active ? 'active' : 'inactive')}>{account.active ? 'Active' : 'Disabled'}</span></td><td>{'Admin'}</td></tr>)}
+              </tbody></table></div>
+              {!adminAccounts.length && <Empty icon={<ShieldCheck />} title="No admin accounts" text="Create the first additional admin account when needed." />}
+            </section>
+          )}
+
           {page === 'Staff' && isAdmin && (
             <section className="panel table-panel">
               <div className="toolbar"><div><h2>Staff accounts</h2><p className="subtle">Create accounts and manage access to assigned customers.</p></div><span className="result-count">{staff.length} members</span></div>
@@ -701,7 +941,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                 {staff.map(member => {
                   const assigned = customers.filter(c => c.assignedTo === member.id).length;
                   const total = payments.filter(p => p.recordedBy === member.id).reduce((sum, p) => sum + Number(p.amount || 0), 0);
-                  return <tr key={member.id}><td><b>{member.displayName}</b></td><td>{member.userId}</td><td>{assigned}</td><td className="amount">{money(total)}</td><td><span className={'status ' + (member.active ? 'active' : 'inactive')}>{member.active ? 'Active' : 'Disabled'}</span></td><td><div className="staff-actions"><button className="btn secondary compact" onClick={() => updateStaff(member, { active: !member.active })}>{member.active ? 'Disable' : 'Enable'}</button><button className="row-action" title="Reset password" onClick={() => setResetStaff(member)}><LockKeyhole size={15} /></button><button className="row-action danger" title="Delete staff account" onClick={() => removeStaff(member)}><Trash2 size={15} /></button></div></td></tr>;
+                  return <tr key={member.id}><td><b>{member.displayName}</b></td><td>{member.userId}</td><td>{assigned}</td><td className="amount">{money(total)}</td><td><span className={'status ' + (member.active ? 'active' : 'inactive')}>{member.active ? 'Active' : 'Disabled'}</span></td><td><div className="staff-actions"><button className="btn secondary compact" onClick={() => updateStaff(member, { active: !member.active })}>{member.active ? 'Disable' : 'Enable'}</button><button className="row-action" title="Change username" onClick={() => setEditStaffUserId(member)}><Pencil size={15} /></button><button className="row-action" title="Reset password" onClick={() => setResetStaff(member)}><LockKeyhole size={15} /></button><button className="row-action danger" title="Delete staff account" onClick={() => removeStaff(member)}><Trash2 size={15} /></button></div></td></tr>;
                 })}
               </tbody></table></div>
               {!staff.length && <Empty icon={<UserRound />} title="No staff accounts yet" text="Create a staff account, then assign customers to that person from the customer form." action="Add staff member" onClick={() => setShowStaff(true)} />}
@@ -716,7 +956,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                 <div className="staff-record-heading"><div><span className="eyebrow">INDIVIDUAL STAFF FILE</span><h2>{selectedStaffProfile.displayName}</h2><p>{selectedStaffProfile.userId} · {selectedStaffProfile.active ? 'Active account' : 'Access disabled'}</p></div><button className="btn secondary compact" onClick={() => setSelectedStaffProfileId('')}>Close record</button></div>
                 <div className="staff-record-metrics">
                   <article><small>Total collected</small><strong>{money(selectedStaffCollected)}</strong><span>{selectedStaffPayments.length} payment records</span></article>
-                  <article><small>Attendance days</small><strong>{selectedStaffAttendance.length}</strong><span>{selectedStaffAttendance.filter(record => !!record.checkOutAt).length} completed shifts</span></article>
+                  <article><small>Attendance days</small><strong>{selectedStaffAttendanceEquivalent.toLocaleString('en-IN')}</strong><span>{selectedStaffAttendance.filter(record => !!record.checkOutAt).length} completed shifts</span></article>
                   <article><small>Assigned customers</small><strong>{customers.filter(customer => customer.assignedTo === selectedStaffProfile.id).length}</strong><span>Currently assigned</span></article>
                   <article><small>Assigned tasks</small><strong>{selectedStaffTasks.length}</strong><span>{selectedStaffTasks.filter(task => task.status === 'Completed').length} completed</span></article>
                 </div>
@@ -724,8 +964,8 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                   <section className="staff-record-section"><div className="staff-record-section-head"><h3>Payment history</h3><span>{selectedStaffPayments.length} records</span></div>
                     {selectedStaffPayments.length ? <div className="table-wrap"><table><thead><tr><th>DATE</th><th>CUSTOMER</th><th>AMOUNT</th><th>METHOD</th><th>MONTH</th></tr></thead><tbody>{selectedStaffPayments.map(payment => <tr key={payment.id}><td>{dateLabel(payment.paidAt)}</td><td>{payment.customerName}</td><td className="amount">{money(payment.amount)}</td><td>{payment.method}</td><td>{payment.month}</td></tr>)}</tbody></table></div> : <p className="staff-record-empty">No payments have been recorded by this staff member yet.</p>}
                   </section>
-                  <section className="staff-record-section"><div className="staff-record-section-head"><h3>Attendance history</h3><span>{selectedStaffAttendance.length} days</span></div>
-                    {selectedStaffAttendance.length ? <div className="table-wrap"><table><thead><tr><th>WORK DATE</th><th>CHECK IN</th><th>CHECK OUT</th><th>STATUS</th></tr></thead><tbody>{selectedStaffAttendance.map(record => <tr key={record.id}><td>{dateLabel(record.workDate)}</td><td>{dateLabel(record.checkInAt)} {record.checkInAt ? new Date(record.checkInAt).toLocaleTimeString('en-IN', {hour:'2-digit',minute:'2-digit'}) : ''}</td><td>{record.checkOutAt ? new Date(record.checkOutAt).toLocaleTimeString('en-IN', {hour:'2-digit',minute:'2-digit'}) : 'Not checked out'}</td><td><span className={'status ' + (record.checkOutAt ? 'active' : 'inactive')}>{record.checkOutAt ? 'Completed' : 'Open shift'}</span></td></tr>)}</tbody></table></div> : <p className="staff-record-empty">No attendance records are available for this staff member.</p>}
+                  <section className="staff-record-section"><div className="staff-record-section-head"><h3>Attendance history</h3><span>{selectedStaffAttendanceEquivalent.toLocaleString('en-IN')} day equivalents</span></div>
+                    {selectedStaffAttendance.length ? <div className="table-wrap"><table><thead><tr><th>WORK DATE</th><th>CHECK IN</th><th>CHECK OUT</th><th>STATUS</th></tr></thead><tbody>{selectedStaffAttendance.map(record => <tr key={record.id}><td>{dateLabel(record.workDate)}</td><td>{dateLabel(record.checkInAt)} {record.checkInAt ? new Date(record.checkInAt).toLocaleTimeString('en-IN', {hour:'2-digit',minute:'2-digit'}) : ''}</td><td>{record.checkOutAt ? new Date(record.checkOutAt).toLocaleTimeString('en-IN', {hour:'2-digit',minute:'2-digit'}) : 'Not checked out'}</td><td><span className={'status ' + (record.checkOutAt ? 'active' : 'inactive')}>{record.dayType === 'Half day' ? 'Half day · ' : ''}{record.checkOutAt ? 'Completed' : 'Open shift'}</span></td></tr>)}</tbody></table></div> : <p className="staff-record-empty">No attendance records are available for this staff member.</p>}
                   </section>
                 </div>
                 <section className="staff-record-section staff-record-work"><div className="staff-record-section-head"><h3>Assigned customer list</h3><span>{customers.filter(customer => customer.assignedTo === selectedStaffProfile.id).length} customers</span></div>
@@ -780,7 +1020,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                 rows={filtered}
                 onView={setSelected}
                 onDelete={isAdmin ? removeCustomer : undefined}
-                onEdit={c => {
+                onEdit={(c: Customer) => {
                   setEditing(c);
                   setShowCustomer(true);
                 }}
@@ -947,8 +1187,11 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
         />
       )}
       {showStaff && <StaffModal onClose={() => setShowStaff(false)} onSave={createStaff} />}
+      {showAdminModal && canManageAdmins && <AdminModal onClose={() => setShowAdminModal(false)} onSave={createAdmin} />}
+      {showAccountSettings && <AccountSettingsModal session={session} onClose={() => setShowAccountSettings(false)} onChangeUserId={async (currentPassword: string, userId: string) => { await changeAppUserId(currentPassword, userId); onLogout(); }} onChangePassword={async (currentPassword: string, newPassword: string) => { await changeAppPassword(currentPassword, newPassword); onLogout(); }} />}
       {showTask && <TaskModal staff={staff.filter(member => member.active)} onClose={() => setShowTask(false)} onSave={saveTask} />}
-      {resetStaff && <StaffPasswordModal staff={resetStaff} onClose={() => setResetStaff(null)} onSave={password => saveStaffPassword(resetStaff, password)} />}
+      {editStaffUserId && <StaffUsernameModal staff={editStaffUserId} onClose={() => setEditStaffUserId(null)} onSave={(userId: string) => saveStaffUserId(editStaffUserId, userId)} />}
+      {resetStaff && <StaffPasswordModal staff={resetStaff} onClose={() => setResetStaff(null)} onSave={(password: string) => saveStaffPassword(resetStaff, password)} />}
       {selected && (
         <div
           className="modal-backdrop"
@@ -1351,6 +1594,28 @@ function CustomerModal({ initial, onClose, onSave, staff = [], role = 'admin', p
     </Modal>
   );
 }
+function AdminModal({ onClose, onSave }: any) {
+  const [form, setForm] = useState({ displayName: '', userId: '', password: '' });
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState('');
+  return <Modal title="Create admin account" subtitle="Add another administrator. Staff accounts cannot be promoted from their own login." onClose={onClose}>
+    <form className="form-grid" onSubmit={async e => {
+      e.preventDefault();
+      setBusy(true);
+      setMessage('');
+      try { await onSave(form); }
+      catch (error) { setMessage(error instanceof Error ? error.message : 'Could not create admin account.'); }
+      finally { setBusy(false); }
+    }}>
+      <Field label="Admin full name"><input required maxLength={80} value={form.displayName} onChange={e => setForm({ ...form, displayName: e.target.value })} /></Field>
+      <Field label="Admin user ID"><input required minLength={3} maxLength={32} pattern="[a-zA-Z0-9_-]{3,32}" value={form.userId} onChange={e => setForm({ ...form, userId: e.target.value })} /></Field>
+      <Field label="Temporary password" wide><input required type="password" minLength={8} autoComplete="new-password" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} /></Field>
+      <p className="form-hint">Use at least 8 characters. The new account will have Admin access, but cannot create or manage other admin accounts.</p>
+      {message && <div className="auth-message">{message}</div>}
+      <div className="form-actions"><button type="button" className="btn secondary" onClick={onClose}>Cancel</button><button className="btn primary" disabled={busy}>{busy ? 'Creating…' : 'Create admin'}</button></div>
+    </form>
+  </Modal>;
+}
 function StaffModal({ onClose, onSave }: any) {
   const [form, setForm] = useState({ displayName: '', userId: '', password: '' });
   const [busy, setBusy] = useState(false);
@@ -1368,6 +1633,45 @@ function TaskModal({ staff, onClose, onSave }: any) {
     {!staff.length && <p className="form-hint">Create an active staff account before assigning work.</p>}
     <div className="form-actions"><button type="button" className="btn secondary" onClick={onClose}>Cancel</button><button className="btn primary" disabled={busy || !staff.length}>{busy ? 'Assigning…' : 'Assign task'}</button></div>
   </form></Modal>;
+}
+function AccountSettingsModal({ session, onClose, onChangeUserId, onChangePassword }: any) {
+  const [currentPasswordForUserId, setCurrentPasswordForUserId] = useState('');
+  const [currentPasswordForPassword, setCurrentPasswordForPassword] = useState('');
+  const [newUserId, setNewUserId] = useState(session.user.userId);
+  const [newPassword, setNewPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState('');
+  async function submitUserId(e: FormEvent) {
+    e.preventDefault(); setBusy(true); setMessage('');
+    try { await onChangeUserId(currentPasswordForUserId, newUserId); }
+    catch (err) { setMessage(err instanceof Error ? err.message : 'Could not change user ID.'); setBusy(false); }
+  }
+  async function submitPassword(e: FormEvent) {
+    e.preventDefault(); setBusy(true); setMessage('');
+    try { await onChangePassword(currentPasswordForPassword, newPassword); }
+    catch (err) { setMessage(err instanceof Error ? err.message : 'Could not change password.'); setBusy(false); }
+  }
+  return <Modal title="My account" subtitle={'Signed in as ' + session.user.displayName + ' · ' + session.user.role} onClose={onClose}>
+    <div className="form-grid">
+      <form className="form-grid" onSubmit={submitUserId}>
+        <Field label="Current password"><input type="password" required value={currentPasswordForUserId} onChange={e => setCurrentPasswordForUserId(e.target.value)} autoComplete="current-password" /></Field>
+        <Field label="New user ID"><input required minLength={3} maxLength={32} pattern="[a-zA-Z0-9_-]{3,32}" value={newUserId} onChange={e => setNewUserId(e.target.value)} /></Field>
+        <div className="form-actions"><button className="btn primary" disabled={busy || newUserId.trim().toLowerCase() === session.user.userId.toLowerCase()}>{busy ? 'Saving…' : 'Change username'}</button></div>
+      </form>
+      <div className="form-hint">Changing your username signs you out. Sign in again with the new ID.</div>
+      <form className="form-grid" onSubmit={submitPassword}>
+        <Field label="Current password"><input type="password" required value={currentPasswordForPassword} onChange={e => setCurrentPasswordForPassword(e.target.value)} autoComplete="current-password" /></Field>
+        <Field label="New password"><input type="password" required minLength={10} value={newPassword} onChange={e => setNewPassword(e.target.value)} autoComplete="new-password" /></Field>
+        {message && <div className="auth-message">{message}</div>}
+        <div className="form-actions"><button className="btn primary" disabled={busy || !newPassword}>{busy ? 'Saving…' : 'Change password'}</button><button type="button" className="btn secondary" onClick={onClose}>Close</button></div>
+      </form>
+    </div>
+  </Modal>;
+}
+function StaffUsernameModal({ staff, onClose, onSave }: any) {
+  const [userId, setUserId] = useState(staff.userId);
+  const [busy, setBusy] = useState(false);
+  return <Modal title={'Change username · ' + staff.displayName} subtitle="The staff member must use the new ID at their next sign-in." onClose={onClose}><form className="form-grid" onSubmit={async e => { e.preventDefault(); setBusy(true); await onSave(userId.trim()); setBusy(false); }}><Field label="New staff user ID"><input required minLength={3} maxLength={32} pattern="[a-zA-Z0-9_-]{3,32}" value={userId} onChange={e => setUserId(e.target.value)} /></Field><div className="form-actions"><button type="button" className="btn secondary" onClick={onClose}>Cancel</button><button className="btn primary" disabled={busy || userId.trim().toLowerCase() === staff.userId.toLowerCase()}>{busy ? 'Saving…' : 'Save username'}</button></div></form></Modal>;
 }
 function StaffPasswordModal({ staff, onClose, onSave }: any) {
   const [password, setPassword] = useState('');
@@ -1591,20 +1895,34 @@ function Modal({ title, subtitle, onClose, children }: any) {
 function App(){
  const [session,setSession]=useState<Session|null>(null);const [checking,setChecking]=useState(true);
  useEffect(()=>{let live=true;async function restore(){const raw=localStorage.getItem('kb-customer-session');if(!raw){setChecking(false);return;}try{const old=JSON.parse(raw) as Session;const r=await client.get('/api/auth/me?sessionToken='+encodeURIComponent(old.token));if(live)setSession({...old,user:r.data.user});}catch{localStorage.removeItem('kb-customer-session');}finally{if(live)setChecking(false);}}restore();return()=>{live=false;};},[]);
- async function login(userId:string,password:string,expectedRole:'admin'|'staff'){const r=await client.post('/api/auth/login',{userId,password});const next=r.data as Session;if(next.user.role!==expectedRole)throw new Error(expectedRole==='admin'?'This account is not an admin account. Choose Staff Sign In instead.':'This account is not a staff account. Choose Admin Sign In instead.');localStorage.setItem('kb-customer-session',JSON.stringify(next));setSession(next);}
+ async function login(userId:string,password:string,expectedRole:'admin'|'staff'){const next=await signInAppUser(userId,password,expectedRole) as Session;if(next.user.role!==expectedRole){await signOutAppUser();throw new Error(expectedRole==='admin'?'This account is not an admin account. Choose Staff Sign In instead.':'This account is not a staff account. Choose Admin Sign In instead.');}localStorage.setItem('kb-customer-session',JSON.stringify(next));setSession(next);}
  if(checking)return <div className="loading-cover"><div className="loader"/><span>Preparing secure sign-in…</span></div>;
- return session?<Workspace session={session} onLogout={()=>{localStorage.removeItem('kb-customer-session');setSession(null);}}/>:<LoginScreen onLogin={login}/>;
+ return session?<Workspace session={session} onLogout={()=>{signOutAppUser().catch(()=>undefined);localStorage.removeItem('kb-customer-session');setSession(null);}}/>:<LoginScreen onLogin={login}/>;
 }
 function LoginScreen({onLogin}:{onLogin:(id:string,pw:string,role:'admin'|'staff')=>Promise<void>}){
  const [role,setRole]=useState<'admin'|'staff'|null>(null);
- const [id,setId]=useState(''),[pw,setPw]=useState(''),[recover,setRecover]=useState(false),[code,setCode]=useState(''),[next,setNext]=useState(''),[msg,setMsg]=useState('');
- function choose(nextRole:'admin'|'staff'){setRole(nextRole);setId(nextRole==='admin'?'Brajraj':'');setPw('');setMsg('');setRecover(false);}
- async function submit(e:FormEvent){e.preventDefault();setMsg('');try{if(recover){await client.post('/api/auth/recover-admin',{userId:'Brajraj',recoveryCode:code,newPassword:next});setRecover(false);setCode('');setNext('');setMsg('Password reset. Sign in with the new password.');}else if(role)await onLogin(id,pw,role);}catch(err){setMsg(err instanceof Error?err.message:'Sign-in failed.');}}
- return <div className="auth-shell"><div className="auth-side"><div className="auth-brand"><div className="brand-mark"><Signal/></div><strong>K&B NET SERVICE</strong></div><div className="auth-promo"><span className="auth-kicker">K&B OPERATIONS</span><h1>Every customer connection, in view.</h1><p>Customer records, staff assignments, collections and service requests in one shared workspace.</p></div></div><div className="auth-main"><form className="auth-card" onSubmit={submit}><div className="auth-icon">{role==='staff'?<UserRound/>:<ShieldCheck/>}</div><span className="eyebrow">{recover?'ACCOUNT RECOVERY':'SECURE SIGN IN'}</span><h2>{recover?'Reset admin password':role?(role==='admin'?'Admin sign in':'Staff sign in'):'Welcome to K&B'}</h2><p>{recover?'Use your private admin recovery code.':role?'Enter your '+role+' account details to continue.':'Choose how you want to sign in.'}</p>
- {!role&&!recover?<div className="login-role-options"><button type="button" className="login-role-card admin-choice" onClick={()=>choose('admin')}><span className="login-role-icon"><ShieldCheck size={22}/></span><strong>Admin Sign In</strong><small>Manage customers, staff, plans and reports</small><span className="login-role-arrow">Continue →</span></button><button type="button" className="login-role-card staff-choice" onClick={()=>choose('staff')}><span className="login-role-icon"><UserRound size={22}/></span><strong>Staff Sign In</strong><small>View assigned customers and manage daily work</small><span className="login-role-arrow">Continue →</span></button></div>:<>
- {recover?<><label className="auth-field"><span>Recovery code</span><input type="password" value={code} onChange={e=>setCode(e.target.value)} required/></label><label className="auth-field"><span>New password</span><input type="password" minLength={10} value={next} onChange={e=>setNext(e.target.value)} required/></label></>:<><label className="auth-field"><span>{role==='admin'?'Admin user ID':'Staff user ID'}</span><input value={id} onChange={e=>setId(e.target.value)} required autoComplete="username"/></label><label className="auth-field"><span>Password</span><input type="password" value={pw} onChange={e=>setPw(e.target.value)} required autoComplete="current-password"/></label></>}
- {msg&&<div className="auth-message">{msg}</div>}<button className="btn primary auth-submit">{recover?'Reset password':'Sign in securely'}</button>
- <button type="button" className="auth-link" onClick={()=>{if(recover){setRecover(false);setMsg('');}else if(role==='admin'){setRecover(true);setMsg('');}else{setRole(null);setId('');setPw('');setMsg('');}}}>{recover?'Back to admin sign in':role==='admin'?'Forgot admin password?':'← Choose another sign-in'}</button>
+ const [id,setId]=useState(''),[pw,setPw]=useState(''),[msg,setMsg]=useState('');
+ const [registrationOpen,setRegistrationOpen]=useState(false);
+ const [registration,setRegistration]=useState({userId:'',displayName:'',phone:'',reason:''});
+ const [registrationBusy,setRegistrationBusy]=useState(false);
+ const [registrationMessage,setRegistrationMessage]=useState('');
+ const [registrationError,setRegistrationError]=useState(false);
+ const [registrationStatus,setRegistrationStatus]=useState<{status:'pending'|'approved'|'rejected';createdAt:string;reviewedAt?:string|null;reviewedByName?:string|null}|null>(null);
+ useEffect(()=>{let stopped=false;let saved:{id:string;trackingCode:string}|null=null;try{const raw=localStorage.getItem('kandb-staff-registration');if(raw)saved=JSON.parse(raw) as {id:string;trackingCode:string};}catch{localStorage.removeItem('kandb-staff-registration');}if(!saved)return;const poll=()=>getStaffRegistrationStatus(saved!.id,saved!.trackingCode).then(result=>{if(!stopped)setRegistrationStatus(result);}).catch(()=>{if(!stopped){localStorage.removeItem('kandb-staff-registration');setRegistrationStatus(null);}});void poll();const timer=window.setInterval(poll,20000);return()=>{stopped=true;window.clearInterval(timer);};},[]);
+ function choose(nextRole:'admin'|'staff'){setRole(nextRole);setId('');setPw('');setMsg('');}
+ async function submit(e:FormEvent){e.preventDefault();setMsg('');try{if(role)await onLogin(id,pw,role);}catch(err){setMsg(err instanceof Error?err.message:'Sign-in failed.');}}
+ async function submitRegistration(){setRegistrationBusy(true);setRegistrationMessage('');setRegistrationError(false);try{const result=await submitStaffRegistrationRequest(registration);localStorage.setItem('kandb-staff-registration',JSON.stringify({id:result.id,trackingCode:result.trackingCode}));setRegistrationStatus({status:'pending',createdAt:new Date().toISOString()});setRegistrationMessage(result.message);setRegistrationOpen(false);setRegistration({userId:'',displayName:'',phone:'',reason:''});}catch(err){setRegistrationMessage(err instanceof Error?err.message:'Could not submit your request.');setRegistrationError(true);}finally{setRegistrationBusy(false);}}
+ return <div className="auth-shell"><div className="auth-side"><div className="auth-brand"><div className="brand-mark"><Signal/></div><strong>K&B NET SERVICE</strong></div><div className="auth-promo"><span className="auth-kicker">K&B OPERATIONS</span><h1>Every customer connection, in view.</h1><p>Customer records, staff assignments, collections and service requests in one shared workspace.</p></div></div><div className="auth-main"><form className="auth-card" onSubmit={submit}><div className="auth-icon">{role==='staff'?<UserRound/>:<ShieldCheck/>}</div><span className="eyebrow">SECURE SIGN IN</span><h2>{role?(role==='admin'?'Admin sign in':'Staff sign in'):'Welcome to K&B'}</h2><p>{role?'Enter your '+role+' account details to continue.':'Choose how you want to sign in.'}</p>
+ {!role?<><div className="login-role-options"><button type="button" className="login-role-card admin-choice" onClick={()=>choose('admin')}><span className="login-role-icon"><ShieldCheck size={22}/></span><strong>Admin Sign In</strong><small>Manage customers, staff, plans and reports</small><span className="login-role-arrow">Continue →</span></button><button type="button" className="login-role-card staff-choice" onClick={()=>choose('staff')}><span className="login-role-icon"><UserRound size={22}/></span><strong>Staff Sign In</strong><small>View assigned customers and manage daily work</small><span className="login-role-arrow">Continue →</span></button></div>
+ {registrationStatus ? <div className="registration-status">
+  <div className="registration-status-steps"><span className="done">Submitted</span><span className={registrationStatus.status==='pending'?'current':'done'}>Admin review</span><span className={registrationStatus.status==='approved'?'done':registrationStatus.status==='rejected'?'rejected':''}>{registrationStatus.status==='rejected'?'Rejected':'Approved'}</span></div>
+  <strong>{registrationStatus.status==='pending'?'Your request is awaiting admin approval.':registrationStatus.status==='approved'?'Your staff access is approved.':'Your staff access request was rejected.'}</strong>
+  <small>Request submitted {new Date(registrationStatus.createdAt).toLocaleString('en-IN')}{registrationStatus.reviewedAt?' · Reviewed '+new Date(registrationStatus.reviewedAt).toLocaleString('en-IN'):''}</small>
+  {registrationStatus.status==='rejected' && <button type="button" className="auth-link" onClick={()=>{localStorage.removeItem('kandb-staff-registration');setRegistrationStatus(null);setRegistrationOpen(true);}}>Submit a new request</button>}
+ </div> : !registrationOpen?<button type="button" className="auth-link" onClick={()=>{setRegistrationOpen(true);setRegistrationMessage('');}}>Request staff access</button>:<div className="staff-registration-form"><strong>Staff registration request</strong><Field label="Preferred staff ID"><input required minLength={3} maxLength={32} pattern="[a-zA-Z0-9_-]{3,32}" value={registration.userId} onChange={e=>setRegistration({...registration,userId:e.target.value})}/></Field><Field label="Full name"><input required maxLength={80} value={registration.displayName} onChange={e=>setRegistration({...registration,displayName:e.target.value})}/></Field><Field label="Phone (optional)"><input maxLength={30} value={registration.phone} onChange={e=>setRegistration({...registration,phone:e.target.value})}/></Field><Field label="Reason / note (optional)"><textarea rows={2} maxLength={300} value={registration.reason} onChange={e=>setRegistration({...registration,reason:e.target.value})}/></Field><div className="form-actions"><button type="button" className="btn secondary" onClick={()=>setRegistrationOpen(false)}>Cancel</button><button type="button" className="btn primary" disabled={registrationBusy} onClick={e=>{const form=e.currentTarget.closest('.staff-registration-form');const fields=form?.querySelectorAll('input');if(fields && Array.from(fields).every(field=>field.reportValidity()))void submitRegistration();}}>{registrationBusy?'Submitting…':'Submit request'}</button></div></div>}
+ {registrationMessage&&<div className={registrationError?'auth-message':'form-hint'}>{registrationMessage}</div>}</>:<>
+ <label className="auth-field"><span>{role==='admin'?'Admin email address':'Staff user ID'}</span><input value={id} onChange={e=>setId(e.target.value)} required autoComplete="username" placeholder={role==='admin'?'Enter the complete Firebase email address':'Enter your staff ID'}/></label><label className="auth-field"><span>Password</span><input type="password" value={pw} onChange={e=>setPw(e.target.value)} required autoComplete="current-password"/></label>
+ {msg&&<div className="auth-message">{msg}</div>}<button className="btn primary auth-submit">Sign in securely</button><button type="button" className="auth-link" onClick={()=>{setRole(null);setId('');setPw('');setMsg('');}}>← Choose another sign-in</button>
  </>}
  <div className="auth-security"><KeyRound size={14}/> Keep your password private. Access is based on your account role.</div></form></div></div>;
 }

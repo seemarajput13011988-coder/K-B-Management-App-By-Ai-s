@@ -1,0 +1,29 @@
+name: Firebase Functions typecheck
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+on:
+  push:
+    branches:
+      - main
+      - safe-firebase-migration-copilot-review
+    paths:
+      - "functions/**"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "functions/**"
+jobs:
+  typecheck:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: functions
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install
+      - run: npm test
