@@ -20,7 +20,8 @@ const config: CapacitorConfig = {
       updateUrl: 'https://kandb-management-nexus-api-zv7f.onrender.com/api/app-updates/check',
       statsUrl: '',
       httpsOnly: true,
-      appReadyTimeout: 30000,
+      appReadyTimeout: 60000,
+      responseTimeout: 20000,
     },
   },
 };
