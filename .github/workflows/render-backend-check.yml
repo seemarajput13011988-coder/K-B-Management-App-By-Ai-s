@@ -19,8 +19,24 @@ jobs:
         with:
           node-version: 22
       - run: npm install
+      - name: Audit backend dependency advisories
+        run: |
+          npm audit --json > /tmp/kb-render-audit.json || true
+          node <<'NODE'
+          const audit = require('/tmp/kb-render-audit.json');
+          console.log('Render backend dependency vulnerabilities:', JSON.stringify(audit.metadata?.vulnerabilities || {}));
+          for (const [name, item] of Object.entries(audit.vulnerabilities || {})) {
+            console.log(JSON.stringify({ package: name, severity: item.severity, range: item.range, via: item.via, isDirect: item.isDirect, fixAvailable: item.fixAvailable }));
+          }
+          NODE
+          npm audit --omit=dev --audit-level=high
       - run: npm run typecheck
-      - run: npm test
+      - name: Repeat backend unit tests five times
+        run: |
+          for pass in 1 2 3 4 5; do
+            echo "Backend test pass $pass of 5"
+            npm test
+          done
       - name: Verify staff registration route contracts
         working-directory: .
         run: |
