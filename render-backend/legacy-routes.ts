@@ -187,8 +187,17 @@ async function getAttendanceSettings(): Promise<{ startTime: string; endTime: st
   const endTime = typeof data.endTime === 'string' && /^([01]\\d|2[0-3]):[0-5]\\d$/.test(data.endTime) ? data.endTime : DEFAULT_ATTENDANCE_SETTINGS.endTime;
   return startTime < endTime ? { startTime, endTime } : DEFAULT_ATTENDANCE_SETTINGS;
 }
-function attendanceDueAt(workDate: string, endTime: string): string {
-  return new Date(workDate + 'T' + endTime + ':00+05:30').toISOString();
+function attendanceDueAt(workDate: string, endTime: string, startedAt = new Date()): string {
+  const localParts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+  }).formatToParts(startedAt);
+  const startMinutes = Number(localParts.find(part => part.type === 'hour')?.value || 0) * 60 +
+    Number(localParts.find(part => part.type === 'minute')?.value || 0);
+  const endMinutes = timeToMinutes(endTime);
+  const dueDate = startMinutes >= endMinutes
+    ? new Date(Date.parse(workDate + 'T00:00:00Z') + 86400000).toISOString().slice(0, 10)
+    : workDate;
+  return new Date(dueDate + 'T' + endTime + ':00+05:30').toISOString();
 }
 function timeToMinutes(value: string): number {
   const [hours, minutes] = value.split(':').map(Number);
@@ -953,7 +962,7 @@ export const handler = router({
     }
     if (result.some(item => item.workDate === workDate)) return error('Attendance has already been recorded for today.', 409);
     const startedAt = new Date().toISOString();
-    const record: Record<string, unknown> = { userId: user.id, displayName: user.displayName, workDate, checkInAt: startedAt, scheduledEndAt: attendanceDueAt(workDate, settings.endTime), createdAt: startedAt, status: 'Checked in', dayType: body?.dayType === 'Half day' ? 'Half day' : 'Full day', attendanceSource: 'Staff' };
+    const record: Record<string, unknown> = { userId: user.id, displayName: user.displayName, workDate, checkInAt: startedAt, scheduledEndAt: attendanceDueAt(workDate, settings.endTime, new Date(startedAt)), createdAt: startedAt, status: 'Checked in', dayType: body?.dayType === 'Half day' ? 'Half day' : 'Full day', attendanceSource: 'Staff' };
     const [id] = await db.add('attendance', [record]);
     if (!id) return error('Could not save your check-in.', 500);
     // Attendance check-in no longer collects or stores GPS coordinates.
@@ -1140,7 +1149,7 @@ export const handler = router({
       displayName: member.displayName,
       workDate,
       checkInAt: startedAt,
-      scheduledEndAt: attendanceDueAt(workDate, (await getAttendanceSettings()).endTime),
+      scheduledEndAt: attendanceDueAt(workDate, (await getAttendanceSettings()).endTime, new Date(startedAt)),
       createdAt: startedAt,
       status: 'Checked in',
       startedByAdmin: admin.displayName,
@@ -1370,7 +1379,8 @@ export const handler = router({
     if (!active || (active.checkOutAt && !active.gpsRestartRequired && !active.gpsCancelled)) return json({ status: 'shift-not-active', item: null, isFresh: false, ageSeconds: null });
     
     const [location] = await db.get<Record<string, unknown>>('staff_live_locations', [params.id], { consistent: true });
-    const gpsOff = Boolean(active.gpsIssueStartedAt || active.gpsRestartRequired || active.gpsStatus === 'disabled');
+    const gpsOff = Boolean(active.gpsIssueStartedAt || active.gpsRestartRequired || active.gpsCancelled ||
+      ['disabled', 'grace-period', 'disabled-at-checkout'].includes(String(active.gpsStatus || '')));
     const deadlineAt = active.gpsIssueStartedAt
       ? new Date(Date.parse(String(active.gpsIssueStartedAt)) + 15 * 60 * 1000).toISOString()
       : null;
