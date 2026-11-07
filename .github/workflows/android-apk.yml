@@ -122,6 +122,8 @@ jobs:
           import com.getcapacitor.PluginMethod;
           import com.getcapacitor.annotation.ActivityCallback;
           import com.getcapacitor.annotation.CapacitorPlugin;
+          import java.io.ByteArrayOutputStream;
+          import java.io.InputStream;
           import java.io.OutputStream;
 
           @CapacitorPlugin(name = "DocumentSaver")
@@ -272,6 +274,7 @@ jobs:
           import com.google.android.gms.location.LocationResult;
           import com.google.android.gms.location.LocationServices;
           import com.google.android.gms.location.Priority;
+          import org.json.JSONArray;
           import org.json.JSONObject;
           import java.io.OutputStream;
           import java.net.HttpURLConnection;
@@ -298,6 +301,7 @@ jobs:
             private final ExecutorService uploader = Executors.newSingleThreadExecutor();
             private volatile boolean stopping = false;
             private volatile long lastUploadAt = 0L;
+            private volatile long lastShiftCheckAt = 0L;
             private volatile boolean locationUnavailableReported = false;
             private volatile boolean locationReady = false;
             private BroadcastReceiver providerStateReceiver;
@@ -306,6 +310,11 @@ jobs:
               @Override public void run() {
                 if (!stopping) {
                   handleLocationProviderChange();
+                  long now = System.currentTimeMillis();
+                  if (now - lastShiftCheckAt >= 30000L) {
+                    lastShiftCheckAt = now;
+                    checkShiftStatus();
+                  }
                   statusHandler.postDelayed(this, 20000L);
                 }
               }
@@ -436,6 +445,59 @@ jobs:
               beginLocationUpdates();
             }
 
+            private void checkShiftStatus() {
+              uploader.execute(() -> {
+                HttpURLConnection connection = null;
+                try {
+                  String token = getSharedPreferences(PREFS, MODE_PRIVATE).getString(KEY_TOKEN, null);
+                  String api = getSharedPreferences(PREFS, MODE_PRIVATE).getString(KEY_API, null);
+                  if (token == null || api == null || stopping) return;
+                  URL url = new URL(api.replaceAll("/+$", "") + "/api/attendance");
+                  connection = (HttpURLConnection) url.openConnection();
+                  connection.setRequestMethod("GET");
+                  connection.setConnectTimeout(10000);
+                  connection.setReadTimeout(10000);
+                  connection.setRequestProperty("Authorization", "Bearer " + token);
+                  int status = connection.getResponseCode();
+                  if (status == 401 || status == 403) {
+                    stopFromServer();
+                    return;
+                  }
+                  if (status < 200 || status >= 300) return;
+                  String responseText;
+                  try (InputStream input = connection.getInputStream(); ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+                    byte[] buffer = new byte[4096];
+                    int count;
+                    while ((count = input.read(buffer)) != -1) output.write(buffer, 0, count);
+                    responseText = output.toString("UTF-8");
+                  }
+                  JSONObject response = new JSONObject(responseText);
+                  JSONArray items = response.optJSONArray("items");
+                  String today = new SimpleDateFormat("yyyy-MM-dd", Locale.US) {{
+                    setTimeZone(TimeZone.getTimeZone("Asia/Kolkata"));
+                  }}.format(new Date());
+                  boolean activeShift = false;
+                  if (items != null) {
+                    for (int index = 0; index < items.length(); index++) {
+                      JSONObject item = items.optJSONObject(index);
+                      if (item == null || !today.equals(item.optString("workDate"))) continue;
+                      String dayType = item.optString("dayType", "Full day");
+                      if (item.optString("checkOutAt").isEmpty() && !"Absent".equalsIgnoreCase(dayType) &&
+                          !item.optBoolean("gpsRestartRequired", false) && !item.optBoolean("gpsCancelled", false)) {
+                        activeShift = true;
+                        break;
+                      }
+                    }
+                  }
+                  if (!activeShift) stopTrackingAndService();
+                } catch (Exception ignored) {
+                  // Keep the visible service running during temporary network loss; retry on the next watchdog pass.
+                } finally {
+                  if (connection != null) connection.disconnect();
+                }
+              });
+            }
+
             private void reportGpsUnavailable(String reason) {
               uploader.execute(() -> {
                 HttpURLConnection connection = null;
@@ -472,7 +534,7 @@ jobs:
 
             private void beginLocationUpdates() {
               if (!hasLocationPermission()) {
-                stopTrackingAndService();
+                handleLocationProviderChange();
                 return;
               }
               if (locationCallback != null) fusedClient.removeLocationUpdates(locationCallback);
