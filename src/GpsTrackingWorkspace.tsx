@@ -18,6 +18,8 @@ const hasValidCoordinates=(lat:number,lng:number)=>Number.isFinite(lat)&&Number.
 
 export default function GpsTrackingWorkspace({flash}:{flash:(message:string)=>void}) {
   const [staff,setStaff]=useState<StaffMember[]>([]);
+  const [onShiftIds,setOnShiftIds]=useState<string[]>([]);
+  const [requestingStaffId,setRequestingStaffId]=useState('');
   const [saved,setSaved]=useState<SavedLocation[]>([]);
   const [liveLocation,setLiveLocation]=useState<LiveLocation|null>(null);
   const [selectedStaff,setSelectedStaff]=useState<StaffMember|null>(null);
@@ -33,18 +35,36 @@ export default function GpsTrackingWorkspace({flash}:{flash:(message:string)=>vo
   async function load() {
     setLoading(true);
     try {
-      const [staffResult,savedResult]=await Promise.all([
+      const [staffResult,savedResult,attendanceResult]=await Promise.all([
         api.get<{items:StaffMember[]}>('/api/staff'),
-        api.get<{items:SavedLocation[]}>('/api/saved-locations')
+        api.get<{items:SavedLocation[]}>('/api/saved-locations'),
+        api.get<{items:Array<{userId:string;checkOutAt?:string;autoCheckoutAt?:string;scheduledEndAt?:string;gpsRestartRequired?:boolean;gpsCancelled?:boolean;status?:string}>}>('/api/attendance')
       ]);
       setStaff((staffResult.data.items||[]).filter(item=>item.active));
       setSaved(savedResult.data.items||[]);
+      const activeIds=(attendanceResult.data.items||[]).filter(item=>{
+        const status=String(item.status||'').toLowerCase();
+        const deadline=Date.parse(item.autoCheckoutAt||item.scheduledEndAt||'');
+        return !item.checkOutAt&&!item.gpsRestartRequired&&!item.gpsCancelled&&!status.includes('cancelled')&&!status.includes('completed')&&Number.isFinite(deadline)&&deadline>Date.now();
+      }).map(item=>item.userId);
+      setOnShiftIds(Array.from(new Set(activeIds)));
     } catch(error) {
       flash(error instanceof Error?error.message:'Could not load GPS tracking records.');
     } finally { setLoading(false); }
   }
   useEffect(()=>{void load();},[]);
   useEffect(()=>subscribeToApiChanges(()=>{void load();}),[]);
+
+  async function requestOneTimeLocation(member:StaffMember) {
+    setRequestingStaffId(member.id);
+    try {
+      await api.post('/api/location-requests',{staffId:member.id});
+      setSelectedStaff(member);
+      flash('One-time GPS request sent to '+member.displayName+'. They must respond in the app during their active shift.');
+    } catch(error) {
+      flash(error instanceof Error?error.message:'Could not send the one-time location request.');
+    } finally { setRequestingStaffId(''); }
+  }
 
   async function getLiveLocation(member:StaffMember) {
     setBusyStaffId(member.id);
@@ -119,12 +139,12 @@ export default function GpsTrackingWorkspace({flash}:{flash:(message:string)=>vo
       <button className={section==='saved'?'active':''} onClick={()=>setSection('saved')}><Save size={15}/> Saved Locations <span>{saved.length}</span></button>
     </div>
     {section==='live' ? <>
-      <div className="gps-notice"><MapPin size={17}/><span>Staff location updates automatically only during an active shift. Tap Get Live Location to fetch the latest point. No location-request notification or staff confirmation is sent.</span></div>
+      <div className="gps-notice"><MapPin size={17}/><span>Background GPS updates are available only during an active shift. You can also request a one-time GPS point; staff must respond in the app, and requests are limited to active shifts.</span></div>
       {loading?<p className="ops-empty">Loading staff…</p>:<div className="gps-staff-list">
         {staff.map(member=><article className="gps-staff-row" key={member.id}>
           <div className="gps-avatar"><MapPin size={17}/></div>
           <div className="gps-staff-name"><strong>{member.displayName}</strong><small>Staff account</small></div>
-          <button className="btn primary compact" disabled={!!busyStaffId} onClick={()=>void getLiveLocation(member)}>{busyStaffId===member.id?'Fetching…':'Get Live Location'}</button>
+          <div className="gps-row-actions"><button className="btn secondary compact" disabled={!!busyStaffId||requestingStaffId===member.id||!onShiftIds.includes(member.id)} title={onShiftIds.includes(member.id)?'Ask staff to share one current GPS point':'Available only while this staff member is on an active shift'} onClick={()=>void requestOneTimeLocation(member)}>{requestingStaffId===member.id?'Sending…':'Request GPS'}</button><button className="btn primary compact" disabled={!!busyStaffId} onClick={()=>void getLiveLocation(member)}>{busyStaffId===member.id?'Fetching…':'View Location'}</button></div>
         </article>)}
         {!staff.length&&<p className="ops-empty">No active staff accounts found.</p>}
       </div>}
@@ -150,7 +170,7 @@ export default function GpsTrackingWorkspace({flash}:{flash:(message:string)=>vo
       .gps-notice{display:flex;gap:10px;align-items:flex-start;padding:12px;border-radius:12px;background:var(--surface-soft,#f7f9fc);color:var(--muted,#526176);font-size:13px;line-height:1.5;margin-bottom:14px}
       .gps-staff-list,.gps-saved-list{display:grid;gap:9px}.gps-staff-row,.gps-saved-card{display:flex;align-items:center;gap:12px;padding:12px;border:1px solid var(--border,#e2e8f0);border-radius:12px}
       .gps-avatar{width:36px;height:36px;border-radius:10px;background:var(--surface-soft,#eff6ff);display:grid;place-items:center;color:var(--accent,#2563eb)}
-      .gps-staff-name{display:grid;gap:3px;flex:1}.gps-staff-name small,.gps-result-head small,.gps-address small,.gps-saved-card small{display:block;color:var(--muted,#64748b);font-size:11px;margin-top:3px}
+      .gps-staff-name{display:grid;gap:3px;flex:1}.gps-row-actions{display:flex;gap:7px;flex-wrap:wrap}.gps-staff-name small,.gps-result-head small,.gps-address small,.gps-saved-card small{display:block;color:var(--muted,#64748b);font-size:11px;margin-top:3px}
       .gps-result{margin-top:16px;padding:15px;border:1px solid var(--border,#dbe2ec);border-radius:14px;background:var(--surface,#fff)}
       .gps-result-head{display:flex;align-items:center;justify-content:space-between;gap:10px}.gps-status{font-size:11px;font-weight:800;border-radius:30px;padding:6px 9px;background:#f1f5f9;color:#475569;text-transform:capitalize}.gps-status.captured{background:#dcfce7;color:#166534}.gps-status.pending{background:#fef3c7;color:#92400e}.gps-status.gps-off,.gps-status.unavailable{background:#fee2e2;color:#991b1b}
       .gps-error{font-size:13px;color:#b91c1c;display:flex;align-items:center;gap:9px}
