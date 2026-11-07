@@ -1437,8 +1437,8 @@ export const handler = router({
 
     const capturedAt = String(location.capturedAt || '');
     const ageMs = capturedAt ? Date.now() - Date.parse(capturedAt) : Number.POSITIVE_INFINITY;
-    const ageSeconds = Number.isFinite(ageMs) && ageMs >= 0 ? Math.floor(ageMs / 1000) : null;
-    const isFresh = Number.isFinite(ageMs) && ageMs >= 0 && ageMs <= 90000;
+    const ageSeconds = Number.isFinite(ageMs) && ageMs >= -60000 ? Math.floor(Math.max(0, ageMs) / 1000) : null;
+    const isFresh = Number.isFinite(ageMs) && ageMs >= -60000 && ageMs <= 90000;
     return json({
       item: location, status: gpsOff ? 'gps-off' : isFresh ? 'live' : 'stale',
       isFresh: isFresh && !gpsOff, ageSeconds, deadlineAt,
