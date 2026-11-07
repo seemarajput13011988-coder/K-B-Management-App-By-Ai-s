@@ -16,6 +16,7 @@ on:
       - fixes-session-gps-ui-2026-11-06
       - whole-app-gps-ui-sync-audit-2026-11-07
       - nexus-workforce-payroll-media-ui-2026-11-07
+      - nexus-release-audit-2026-11-07
     paths:
       - "src/**"
       - "render-backend/**"
@@ -27,6 +28,20 @@ on:
       - "firebase.json"
       - ".firebaserc"
       - "functions/**"
+      - "docs/ANDROID_TRACKING_AND_RELEASE.md"
+      - ".github/workflows/android-apk.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "render-backend/**"
+      - "public/**"
+      - "index.html"
+      - "package.json"
+      - "capacitor.config.ts"
+      - "vite.config.ts"
+      - "firebase.json"
+      - ".firebaserc"
       - "docs/ANDROID_TRACKING_AND_RELEASE.md"
       - ".github/workflows/android-apk.yml"
   workflow_dispatch:
