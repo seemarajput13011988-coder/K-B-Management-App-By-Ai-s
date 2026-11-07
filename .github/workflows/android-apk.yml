@@ -17,6 +17,7 @@ on:
       - whole-app-gps-ui-sync-audit-2026-11-07
       - nexus-workforce-payroll-media-ui-2026-11-07
       - nexus-release-audit-2026-11-07
+      - nexus-five-pass-ota-2026-11-07
     paths:
       - "src/**"
       - "render-backend/**"
