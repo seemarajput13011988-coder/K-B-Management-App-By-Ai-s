@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
+import { Geolocation } from '@capacitor/geolocation';
 import { api as client, subscribeToApiChanges } from './lib/api';
 
 type Session = { token: string; user: { id: string; displayName: string; role: 'admin' | 'staff'; canManageAdmins?: boolean } };
 type Attendance = { id: string; userId: string; displayName: string; workDate: string; checkInAt: string; checkOutAt?: string; autoCheckoutAt?: string; scheduledEndAt?: string; shiftEndTime?: string; dayType?: 'Full day' | 'Half day' | 'Absent'; correctionReason?: string; gpsRestartRequired?: boolean; gpsCancelled?: boolean; status?: string };
 type HolidayRequest = { id: string; userId: string; displayName: string; startDate: string; endDate: string; reason: string; status: 'pending'|'approved'|'rejected'; createdAt: string };
 type StaffRegistrationRequest = { id: string; userId: string; displayName: string; phone?: string; reason?: string; status: 'pending'|'approved'|'rejected'; createdAt: string };
+type LocationRequest = { id: string; staffName: string; requestedByName: string; createdAt: string; expiresAt: string };
 type Visit = { id: string; customerName: string; purpose: string; notes: string; visitedAt: string; staffName: string };
 type Announcement = { id: string; title: string; message: string; createdAt: string; createdByName: string };
 type Message = { id: string; senderName: string; recipientName: string; message: string; createdAt: string };
@@ -89,6 +91,7 @@ export default function StaffOperations({ session, customers, flash, compact = f
   const [admins, setAdmins] = useState<Array<{id:string;userId:string;displayName:string;active:boolean}>>([]);
   const [adminForm, setAdminForm] = useState({userId:'',displayName:'',password:''});
   const [registrationRequests, setRegistrationRequests] = useState<StaffRegistrationRequest[]>([]);
+  const [locationRequests, setLocationRequests] = useState<LocationRequest[]>([]);
   const [registrationPasswords, setRegistrationPasswords] = useState<Record<string,string>>({});
   const [dayType, setDayType] = useState<'Full day'|'Half day'>('Full day');
   const [staffDayTypes, setStaffDayTypes] = useState<Record<string, 'Full day'|'Half day'|'Absent'>>({});
@@ -197,6 +200,21 @@ export default function StaffOperations({ session, customers, flash, compact = f
   useEffect(() => { refresh(); }, [refresh, today]);
   useEffect(() => subscribeToApiChanges(() => { void refresh(); }), [refresh]);
   useEffect(() => {
+    if (admin) { setLocationRequests([]); return; }
+    let stopped = false;
+    const loadPending = async () => {
+      try {
+        const result = await request('get', '/api/location-requests/pending');
+        if (!stopped) setLocationRequests(result.data.items || []);
+      } catch {
+        if (!stopped) setLocationRequests([]);
+      }
+    };
+    void loadPending();
+    const timer = window.setInterval(() => { void loadPending(); }, 10000);
+    return () => { stopped = true; window.clearInterval(timer); };
+  }, [admin, request]);
+  useEffect(() => {
     let stopped = false, inFlight = false;
     const poll = () => {
       if (stopped || inFlight || document.visibilityState === 'hidden') return;
@@ -282,6 +300,28 @@ export default function StaffOperations({ session, customers, flash, compact = f
     };
   }, [selectedGroupId, request]);
 
+
+  async function respondToLocationRequest(item: LocationRequest) {
+    setBusy(true);
+    try {
+      const position = await Geolocation.getCurrentPosition({ enableHighAccuracy: true, timeout: 20000, maximumAge: 0 });
+      await request('post', '/api/location-requests/' + item.id + '/respond', {
+        status: 'captured', latitude: position.coords.latitude, longitude: position.coords.longitude,
+        accuracy: position.coords.accuracy, capturedAt: new Date(position.timestamp).toISOString(),
+      });
+      setLocationRequests(current => current.filter(requestItem => requestItem.id !== item.id));
+      flash('Your current location was shared with the administrator for this active shift.');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Location permission or GPS is unavailable.';
+      try {
+        await request('post', '/api/location-requests/' + item.id + '/respond', { status: 'failed', message });
+        setLocationRequests(current => current.filter(requestItem => requestItem.id !== item.id));
+        flash('Location could not be shared. The administrator has been informed.');
+      } catch (submitError) {
+        flash(submitError instanceof Error ? submitError.message : 'Could not respond to the location request.');
+      }
+    } finally { setBusy(false); }
+  }
 
   async function shift(action: 'check-in' | 'check-out') {
     setBusy(true);
@@ -430,6 +470,12 @@ export default function StaffOperations({ session, customers, flash, compact = f
     <div className="ops-home-shift-copy"><span className="eyebrow">TODAY’S ATTENDANCE</span><h2>{activeShift ? 'Your shift is active' : myToday?.dayType === 'Absent' ? 'Marked absent today' : myToday?.checkOutAt ? 'Shift completed' : 'Ready to start work?'}</h2><p>{activeShift ? 'Checked in at ' + stamp(myToday?.checkInAt) + '. Your workday is being recorded.' : myToday?.dayType === 'Absent' ? 'Your attendance was marked absent by an administrator.' : myToday?.checkOutAt ? 'You checked out at ' + stamp(myToday.checkOutAt) + '.' : 'Start your shift directly from the home screen.'}</p></div>
     <div className="ops-home-shift-action">{!myToday ? staffShiftWindowOpen ? <button className="btn primary" disabled={busy || loading} onClick={() => shift('check-in')}>{busy ? 'Starting…' : 'Start shift'}</button> : <span className="ops-complete">Staff shifts are available {displayTime(shiftSettings.shiftStartTime)}–{displayTime(shiftSettings.shiftEndTime)}</span> : activeShift ? staffShiftWindowOpen ? <button className="btn danger" disabled={busy} onClick={() => shift('check-out')}>{busy ? 'Ending…' : 'End shift'}</button> : <span className="ops-complete">Your shift will end automatically at {displayTime(shiftSettings.shiftEndTime)}</span> : <span className="ops-complete">Completed for today · Start again tomorrow from {displayTime(shiftSettings.shiftStartTime)}</span>}</div>
     {loading && <small className="ops-home-loading">Loading attendance status…</small>}
+    {locationRequests.length > 0 && <div className="ops-feed">{locationRequests.map(item => <article className="ops-feed-item" key={item.id}>
+      <div className="ops-message-top"><b>One-time location request</b><span className="ops-pill">ACTIVE SHIFT</span></div>
+      <p>{item.requestedByName || 'An administrator'} is asking you to share your current GPS location. Your location is shared only for this request.</p>
+      <small>Request expires {stamp(item.expiresAt)}</small>
+      <div className="ops-actions"><button className="btn primary compact" disabled={busy} onClick={() => void respondToLocationRequest(item)}>{busy ? 'Getting location…' : 'Share current location'}</button></div>
+    </article>)}</div>}
   </section>;
 
   return <div className="ops-layout">
@@ -439,6 +485,15 @@ export default function StaffOperations({ session, customers, flash, compact = f
       <article className="ops-summary"><span>{admin ? 'Staff on shift today' : 'Announcements'}</span><strong>{admin ? activeToday : announcements.length}</strong><small>{admin ? completedToday + ' shifts completed today' : 'Updates shared by K&B administration'}</small></article>
       <article className="ops-summary"><span>{admin ? 'Field visits' : 'Messages'}</span><strong>{admin ? visits.length : messages.length}</strong><small>{admin ? 'Service visits submitted by the team' : 'Your conversation with administration'}</small></article>
     </section>
+
+    {!admin && locationRequests.length > 0 && <section className="panel ops-panel">
+      <div className="ops-panel-head"><div><span className="eyebrow">LOCATION REQUEST</span><h2>Administrator requested your current location</h2><p>Share a one-time GPS point while your shift is active. Your location is not shared unless you respond.</p></div><span className="ops-pill">{locationRequests.length} PENDING</span></div>
+      <div className="ops-feed">{locationRequests.map(item => <article className="ops-feed-item" key={item.id}>
+        <div className="ops-message-top"><b>{item.requestedByName || 'K&B administrator'}</b><span className="ops-pill">Expires {stamp(item.expiresAt)}</span></div>
+        <p>Share your current location for this active shift.</p>
+        <button className="btn primary compact" disabled={busy} onClick={() => void respondToLocationRequest(item)}>{busy ? 'Getting location…' : 'Share current location'}</button>
+      </article>)}</div>
+    </section>}
 
     {superAdmin && <section className="panel ops-panel">
       <div className="ops-panel-head"><div><span className="eyebrow">SUPER ADMIN ACCESS CONTROL</span><h2>Administrator accounts</h2><p>Only you can create, deactivate or reactivate administrator accounts. Other administrators cannot grant admin access.</p></div><span className="ops-pill is-live">{admins.filter(a=>a.active).length} ACTIVE</span></div>
