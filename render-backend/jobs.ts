@@ -284,7 +284,7 @@ export async function autoCheckoutAtSevenPm() {
           current.workDate !== item.workDate) return false;
       // Re-check the live deadline inside the transaction. A settings change may
       // have extended this shift after the scheduler read its initial snapshot.
-      const latestDeadline = Date.parse(String(current.autoCheckoutAt || ''));
+      const latestDeadline = Date.parse(String(current.autoCheckoutAt || current.scheduledEndAt || ''));
       if (Number.isFinite(latestDeadline)) {
         if (currentTime < latestDeadline) return false;
         checkoutIso = new Date(latestDeadline).toISOString();
