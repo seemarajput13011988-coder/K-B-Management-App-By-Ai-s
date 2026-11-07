@@ -64,7 +64,7 @@ jobs:
           const version = `1.0.${process.env.GITHUB_RUN_NUMBER}`;
           const checksum = crypto.createHash('sha256').update(fs.readFileSync('nexus-update.zip')).digest('hex');
           const manifest = { appId: 'kandbnet.service2010', version, checksum };
-          fs.writeFileSync('ota-manifest.json', JSON.stringify(manifest, null, 2) + '\\n');
+          fs.writeFileSync('ota-manifest.json', JSON.stringify(manifest, null, 2) + '\n');
           console.log('Prepared Nexus OTA release', version, 'SHA-256', checksum);
           NODE
       - name: Publish immutable OTA release
