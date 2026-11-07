@@ -968,7 +968,7 @@ export async function apiHandler(req: any, res: any) {
         if (user.role!=='admin' && inventoryRecord.assignedTo!==user.uid) { send(res,403,{error:'You can view only inventory assigned to your account.'}); return; }
         if (method==='GET') {
           const movementSnapshot=await db.collection('inventory_movements').where('itemId','==',id).get();
-          const items=movementSnapshot.docs.map(doc=>({id:doc.id,...doc.data()})).sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||'')));
+          const items: Data[] = movementSnapshot.docs.map(doc=>({id:doc.id,...doc.data()} as Data)).sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||'')));
           send(res,200,{items}); return;
         }
         if (!allow(user,['admin'],res)) return;
