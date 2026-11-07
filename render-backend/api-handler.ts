@@ -576,12 +576,39 @@ export async function apiHandler(req: any, res: any) {
         if (!allow(user, ['admin'], res)) return;
         const staffId = routeId(path, '/api/staff'), staff = await getDoc('users', routeId(path, '/api/staff'));
         if (!staff || staff.role !== 'staff') { send(res, 404, { error: 'Staff account not found.' }); return; }
-        const assigned = (await list('customers')).filter(item => item.assignedTo === staffId);
-        await Promise.all(assigned.map(customer => db.collection('customers').doc(String(customer.id)).update({ assignedTo: '', assignedToName: '' })));
+        const unassignedCounts: Record<string, number> = {};
+        // Remove active ownership from every operational queue before deleting the account.
+        // Keep the former assignee's display name as history for administrators.
+        for (const collection of ['customers', 'tasks', 'inventory', 'installations', 'complaints']) {
+          const snapshot = await db.collection(collection).where('assignedTo', '==', staffId).get();
+          unassignedCounts[collection] = snapshot.size;
+          for (let offset = 0; offset < snapshot.docs.length; offset += 400) {
+            const batch = db.batch();
+            for (const document of snapshot.docs.slice(offset, offset + 400)) {
+              const data = document.data();
+              batch.update(document.ref, {
+                assignedTo: '',
+                assignedToName: '',
+                previouslyAssignedToName: String(data.assignedToName || staff.displayName || ''),
+                unassignedAt: now(),
+                updatedAt: now(),
+              });
+            }
+            await batch.commit();
+          }
+        }
         await revokeUserSessions(staffId);
+        const tokenSnapshot = await db.collection('push_tokens').where('userId', '==', staffId).get();
+        for (let offset = 0; offset < tokenSnapshot.docs.length; offset += 400) {
+          const batch = db.batch();
+          tokenSnapshot.docs.slice(offset, offset + 400).forEach(document => batch.delete(document.ref));
+          await batch.commit();
+        }
+        await db.collection('staff_live_locations').doc(staffId).delete().catch(() => undefined);
         await db.collection('users').doc(staffId).delete();
-        await audit(user, 'DELETE', 'staff', staffId, 'Removed staff account ' + String(staff.displayName || staff.userId || staffId) + '; historical records preserved');
-        send(res, 200, { deleted: true, unassignedCustomers: assigned.length, historyPreserved: true }); return;
+        const totalUnassigned = Object.values(unassignedCounts).reduce((sum, count) => sum + count, 0);
+        await audit(user, 'DELETE', 'staff', staffId, 'Removed staff account ' + String(staff.displayName || staff.userId || staffId) + '; unassigned ' + totalUnassigned + ' operational records; historical records preserved');
+        send(res, 200, { deleted: true, unassignedCounts, historyPreserved: true }); return;
       }
       if (path.startsWith('/api/admins/') && method === 'DELETE') {
         if (!allowSuperAdmin(user, res)) return;
