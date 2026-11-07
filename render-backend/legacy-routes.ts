@@ -212,9 +212,10 @@ function findActiveShift(items: Record<string, unknown>[], userId: string, now =
 
 async function listAttendanceForUser(userId: string): Promise<Record<string, unknown>[]> {
   const snapshot = await firestore.collection('attendance').where('userId', '==', userId).get();
-  return snapshot.docs
-    .map(doc => ({ ...(doc.data() as Record<string, unknown>), id: doc.id }))
-    .sort((a, b) => String(b.checkInAt || '').localeCompare(String(a.checkInAt || '')));
+  const items: Record<string, unknown>[] = snapshot.docs.map(doc => ({
+    ...(doc.data() as Record<string, unknown>), id: doc.id,
+  }));
+  return items.sort((a, b) => String(b.checkInAt || '').localeCompare(String(a.checkInAt || '')));
 }
 
 async function listRecentAttendance(limit = 500): Promise<Record<string, unknown>[]> {
