@@ -53,6 +53,24 @@ export default function GpsTrackingWorkspace({flash}:{flash:(message:string)=>vo
     } finally { setLoading(false); }
   }
   useEffect(()=>{void load();},[]);
+  useEffect(()=>{
+    let stopped=false;
+    const refreshShiftStatus=async()=>{
+      try{
+        const result=await api.get<{items:Array<{userId:string;checkOutAt?:string;autoCheckoutAt?:string;scheduledEndAt?:string;gpsRestartRequired?:boolean;gpsCancelled?:boolean;status?:string}>}>('/api/attendance');
+        if(stopped)return;
+        const activeIds=(result.data.items||[]).filter(item=>{
+          const status=String(item.status||'').toLowerCase();
+          const deadline=Date.parse(item.autoCheckoutAt||item.scheduledEndAt||'');
+          return !item.checkOutAt&&!item.gpsRestartRequired&&!item.gpsCancelled&&!status.includes('cancelled')&&!status.includes('completed')&&Number.isFinite(deadline)&&deadline>Date.now();
+        }).map(item=>item.userId);
+        setOnShiftIds(Array.from(new Set(activeIds)));
+      }catch{/* Keep the last server-confirmed active-shift list while offline. */}
+    };
+    void refreshShiftStatus();
+    const timer=window.setInterval(()=>void refreshShiftStatus(),15000);
+    return()=>{stopped=true;window.clearInterval(timer);};
+  },[]);
   useEffect(()=>subscribeToApiChanges(()=>{void load();}),[]);
 
   async function requestOneTimeLocation(member:StaffMember) {
