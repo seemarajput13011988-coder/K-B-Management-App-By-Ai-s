@@ -22,6 +22,7 @@ on:
       - "index.html"
       - ".env.example"
       - ".github/workflows/web-build-check.yml"
+      - ".github/workflows/ota-release.yml"
       - "firebase.json"
       - ".firebaserc"
   pull_request:
