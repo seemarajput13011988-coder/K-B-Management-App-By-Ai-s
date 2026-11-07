@@ -107,6 +107,7 @@ export default function StaffOperations({ session, customers, flash, compact = f
   const [indiaMinutes, setIndiaMinutes] = useState(indiaMinutesNow);
   const [shiftSettings, setShiftSettings] = useState({ shiftStartTime: '08:00', shiftEndTime: '19:00' });
   const [shiftSettingsBusy, setShiftSettingsBusy] = useState(false);
+  const [shiftSettingsAvailable, setShiftSettingsAvailable] = useState(true);
   const toMinutes = (value: string) => { const [hour, minute] = value.split(':').map(Number); return hour * 60 + minute; };
   const staffShiftWindowOpen = indiaMinutes >= toMinutes(shiftSettings.shiftStartTime) && indiaMinutes < toMinutes(shiftSettings.shiftEndTime);
   const myTodayRecord = attendance.filter(item => item.userId === session.user.id && item.workDate === today).sort((a, b) => b.checkInAt.localeCompare(a.checkInAt))[0];
@@ -152,11 +153,12 @@ export default function StaffOperations({ session, customers, flash, compact = f
         request('get', '/api/attendance'), request('get', '/api/visits'),
         request('get', '/api/announcements'), request('get', '/api/messages'),
         request('get', '/api/groups'), request('get', '/api/payments'),
-        request('get', '/api/holidays'), request('get', '/api/workforce-settings')
+        request('get', '/api/holidays'), request('get', '/api/workforce-settings').catch(() => ({ data: null }))
       ]);
+      setShiftSettingsAvailable(Boolean(settings.data?.shiftStartTime && settings.data?.shiftEndTime));
       setShiftSettings({
-        shiftStartTime: settings.data.shiftStartTime || '08:00',
-        shiftEndTime: settings.data.shiftEndTime || '19:00',
+        shiftStartTime: settings.data?.shiftStartTime || '08:00',
+        shiftEndTime: settings.data?.shiftEndTime || '19:00',
       });
       setAttendance(a.data.items || []);
       setHolidays(hr.data.items || []);
@@ -283,6 +285,7 @@ export default function StaffOperations({ session, customers, flash, compact = f
 
   async function saveShiftSettings(event: FormEvent) {
     event.preventDefault();
+    if (!shiftSettingsAvailable) { flash('The shift schedule controls need the latest backend deployment. The current staff window remains 8:00 AM–7:00 PM India time.'); return; }
     setShiftSettingsBusy(true);
     try {
       const result = await request('put', '/api/workforce-settings', shiftSettings);
@@ -485,10 +488,11 @@ export default function StaffOperations({ session, customers, flash, compact = f
 
     {admin && <section className="panel ops-panel workforce-settings-panel">
       <div className="ops-panel-head"><div><span className="eyebrow">WORKFORCE SETTINGS</span><h2>Staff shift schedule</h2><p>Set the daily staff check-in and check-out window. Administrators can still start or end any staff shift outside these hours.</p></div></div>
+      {!shiftSettingsAvailable && <p className="form-hint">The new schedule API is not deployed yet. Staff shifts continue using the existing 8:00 AM–7:00 PM India-time window. Administrator start/end overrides remain available.</p>}
       <form className="finance-expense-form" onSubmit={saveShiftSettings}>
         <label>Staff shift starts<input type="time" required value={shiftSettings.shiftStartTime} onChange={event=>setShiftSettings(current=>({...current,shiftStartTime:event.target.value}))}/></label>
         <label>Staff shift ends<input type="time" required value={shiftSettings.shiftEndTime} onChange={event=>setShiftSettings(current=>({...current,shiftEndTime:event.target.value}))}/></label>
-        <button className="btn primary" disabled={shiftSettingsBusy || toMinutes(shiftSettings.shiftStartTime)>=toMinutes(shiftSettings.shiftEndTime)}>{shiftSettingsBusy?'Saving…':'Save shift schedule'}</button>
+        <button className="btn primary" disabled={!shiftSettingsAvailable || shiftSettingsBusy || toMinutes(shiftSettings.shiftStartTime)>=toMinutes(shiftSettings.shiftEndTime)}>{shiftSettingsBusy?'Saving…':'Save shift schedule'}</button>
         <p className="form-hint wide">Timezone: India (IST). Automatic checkout uses the saved end time for each new shift. Existing shifts keep their original end deadline.</p>
       </form>
     </section>}
