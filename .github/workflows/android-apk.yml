@@ -305,6 +305,8 @@ jobs:
             private volatile long lastShiftCheckAt = 0L;
             private volatile boolean locationUnavailableReported = false;
             private volatile boolean locationReady = false;
+            private volatile long lastGpsLossReportAt = 0L;
+            private volatile String lastUnavailableReason = "";
             private BroadcastReceiver providerStateReceiver;
             private final Handler statusHandler = new Handler(Looper.getMainLooper());
             private final Runnable statusWatchdog = new Runnable() {
@@ -424,17 +426,12 @@ jobs:
                 if (locationCallback != null) fusedClient.removeLocationUpdates(locationCallback);
                 locationCallback = null;
                 locationReady = false;
-                if (!locationUnavailableReported) {
-                  locationUnavailableReported = true;
-                  if (!permissionGranted) {
-                    updateVisibleNotification("K&B location permission needed",
-                      "Location sharing is paused. Re-enable location permission to resume during this active shift.");
-                    reportGpsUnavailable("Location permission denied");
-                  } else {
-                    updateVisibleNotification("Phone location is OFF",
-                      "K&B location sharing is paused. Turn on phone location to resume during this active shift.");
-                    reportGpsUnavailable("Phone location services are unavailable");
-                  }
+                if (!permissionGranted) {
+                  markLocationUnavailable("Location permission denied", "K&B location permission needed",
+                    "Location sharing is paused. Re-enable location permission to resume during this active shift.");
+                } else {
+                  markLocationUnavailable("Phone location services are unavailable", "Phone location is OFF",
+                    "K&B location sharing is paused. Turn on phone location to resume during this active shift.");
                 }
                 return;
               }
@@ -475,6 +472,21 @@ jobs:
                 return due != null && now < due.getTime();
               } catch (Exception ignored) {
                 return false;
+              }
+            }
+
+            private void markLocationUnavailable(String reason, String title, String message) {
+              if (!reason.equals(lastUnavailableReason)) {
+                lastUnavailableReason = reason;
+                updateVisibleNotification(title, message);
+              }
+              locationUnavailableReported = true;
+              long now = System.currentTimeMillis();
+              // Retry status reporting after network recovery. The server treats repeated reports
+              // for the same active attendance record as idempotent and does not duplicate alerts.
+              if (now - lastGpsLossReportAt >= 60000L) {
+                lastGpsLossReportAt = now;
+                reportGpsUnavailable(reason);
               }
             }
 
@@ -583,6 +595,8 @@ jobs:
                     if (stopping || locationCallback != callback) return;
                     locationReady = true;
                     locationUnavailableReported = false;
+                    lastUnavailableReason = "";
+                    lastGpsLossReportAt = 0L;
                     updateVisibleNotification("K&B work location active",
                       "Your location is shared with authorised K&B administrators during this active shift.");
                   })
@@ -592,22 +606,14 @@ jobs:
                       locationCallback = null;
                     }
                     locationReady = false;
-                    updateVisibleNotification("K&B location update unavailable",
+                    markLocationUnavailable("GPS location unavailable", "K&B location update unavailable",
                       "Location updates are interrupted. Check phone location and permissions; tracking will retry automatically.");
-                    if (!locationUnavailableReported) {
-                      locationUnavailableReported = true;
-                      reportGpsUnavailable("GPS location unavailable");
-                    }
                   });
               } catch (SecurityException error) {
                 if (locationCallback == callback) locationCallback = null;
                 locationReady = false;
-                updateVisibleNotification("K&B location permission needed",
+                markLocationUnavailable("Location permission denied", "K&B location permission needed",
                   "Location sharing is paused. Re-enable location permission to resume during this active shift.");
-                if (!locationUnavailableReported) {
-                  locationUnavailableReported = true;
-                  reportGpsUnavailable("Location permission denied");
-                }
               }
             }
 
