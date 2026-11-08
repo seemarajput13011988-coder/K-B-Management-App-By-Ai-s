@@ -199,6 +199,22 @@ export function computeShiftDeadline(workDate: string, startedAt: string, endTim
   return new Date(firstDeadline <= started ? firstDeadline + 86400000 : firstDeadline).toISOString();
 }
 
+export type AttendanceAbsenceDecision = 'create' | 'active-shift' | 'already-absent' | 'already-recorded';
+
+/** Prevents the administrator absence action from replacing an existing attendance record. */
+export function attendanceAbsenceDecision(
+  existing: { dayType?: unknown; status?: unknown } | null,
+  hasActiveShift: boolean,
+): AttendanceAbsenceDecision {
+  if (hasActiveShift) return 'active-shift';
+  if (!existing) return 'create';
+  if (existing.dayType === 'Absent' || String(existing.status || '').toLowerCase() === 'absent') {
+    return 'already-absent';
+  }
+  return 'already-recorded';
+}
+
+
 /** Rejects implausibly old or future client timestamps before treating GPS as live. */
 export function isFreshLocationTimestamp(value: unknown, currentTime = Date.now(), maxAgeMs = 5 * 60 * 1000, maxFutureSkewMs = 60 * 1000): boolean {
   if (typeof value !== 'string' || !value.trim() || !Number.isFinite(currentTime)) return false;
