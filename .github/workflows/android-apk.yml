@@ -388,11 +388,10 @@ jobs:
                 if (scheduledEndAt != null && !scheduledEndAt.isEmpty()) preferences.putString(KEY_SCHEDULED_END_AT, scheduledEndAt);
                 else preferences.remove(KEY_SCHEDULED_END_AT);
                 preferences.apply();
-                shiftServerConfirmed = true; // The web app starts this service only after a server-confirmed active shift.
-              } else {
-                // A sticky service restart must re-confirm the shift before resuming GPS collection.
-                shiftServerConfirmed = false;
               }
+              // Do not resume GPS on either a fresh start or sticky restart until
+              // this service confirms the active shift (or validates its cached deadline offline).
+              shiftServerConfirmed = false;
               String token = getSharedPreferences(PREFS, MODE_PRIVATE).getString(KEY_TOKEN, null);
               String api = getSharedPreferences(PREFS, MODE_PRIVATE).getString(KEY_API, null);
               if (token == null || api == null) {
