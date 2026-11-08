@@ -2012,11 +2012,15 @@ function StaffLocationResponder({ activeShift, userId }: { activeShift: boolean;
 
     const publishNative = async () => {
       try {
-        const permission = await Geolocation.checkPermissions();
+        let permission = await Geolocation.checkPermissions();
+        if (permission.location !== 'granted') permission = await Geolocation.requestPermissions();
         if (permission.location !== 'granted') {
           reportGpsUnavailable('Location permission denied');
           return;
         }
+        // Verify the phone can obtain a fresh fix before asking Android to
+        // keep its foreground location service running in the background.
+        await Geolocation.getCurrentPosition({ enableHighAccuracy: true, maximumAge: 0, timeout: 15000 });
         const token = getToken();
         if (!token) return;
         const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'https://kandb-management-nexus-api-zv7f.onrender.com';
@@ -2107,7 +2111,7 @@ function StaffPermissionSetup({ onComplete }: { onComplete:(locationGranted?:boo
   }
   return <Modal title="Set up staff app permissions" subtitle="Allow the permissions needed for task evidence, active-shift GPS tracking and notifications." onClose={()=>onComplete(false)}>
     <div className="form-grid">
-      <div className="form-hint">Your location is shared with authorised K&B administrators only during an active shift. It stops automatically when you check out. Camera access is used for task and complaint evidence. Android’s file picker controls access to selected photos and videos.</div>
+      <div className="form-hint">Your location is shared with authorised K&B administrators only during an active shift. Allow location permission before starting a shift and keep phone location enabled. If GPS is not restored within 15 minutes after an interruption, the shift is automatically cancelled and an administrator must restart it. Camera access is used for task and complaint evidence. Android’s file picker controls access to selected photos and videos.</div>
       {message&&<p className="form-hint" style={{whiteSpace:'pre-line'}}>{message}</p>}
       <div className="form-actions"><button className="btn primary" disabled={busy} onClick={()=>void requestPermissions()}>{busy?'Checking…':'Allow required permissions'}</button><button type="button" className="btn secondary" onClick={()=>onComplete(false)}>Continue for now</button></div>
     </div>
