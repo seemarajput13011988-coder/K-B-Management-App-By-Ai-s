@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { calculateInventoryBalance, computeShiftDeadline, gpsGracePeriodExpired, hasAdminManagementAccess, hasOverlappingSubscription, isConfirmedGpsLossReason, isFreshLocationTimestamp, isValidDateRange, isValidPayrollInput, subscriptionExpiryKind, taskReminderKind } from '../render-backend/route-path.js';
+import { attendanceAbsenceDecision, calculateInventoryBalance, computeShiftDeadline, gpsGracePeriodExpired, hasAdminManagementAccess, hasOverlappingSubscription, isConfirmedGpsLossReason, isFreshLocationTimestamp, isValidDateRange, isValidPayrollInput, subscriptionExpiryKind, taskReminderKind } from '../render-backend/route-path.js';
 
 const valid = {
   staffUserId: 'staff-record-123',
@@ -104,6 +104,14 @@ test('validates inclusive date ranges and rejects reversed ranges', () => {
   assert.equal(isValidDateRange('2026-11-07', '2026-11-08'), true);
   assert.equal(isValidDateRange('2026-11-08', '2026-11-07'), false);
   assert.equal(isValidDateRange('2026-02-30', '2026-03-01'), false);
+});
+
+
+test('administrator absence marking preserves existing attendance records', () => {
+  assert.equal(attendanceAbsenceDecision(null, false), 'create');
+  assert.equal(attendanceAbsenceDecision({ status: 'Checked in' }, true), 'active-shift');
+  assert.equal(attendanceAbsenceDecision({ status: 'Absent', dayType: 'Absent' }, false), 'already-absent');
+  assert.equal(attendanceAbsenceDecision({ status: 'Completed', checkOutAt: '2026-11-08T13:00:00.000Z' }, false), 'already-recorded');
 });
 
 test('subscription overlap ignores cancelled and expired records', () => {
