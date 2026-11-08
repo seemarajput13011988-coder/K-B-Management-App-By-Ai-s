@@ -551,7 +551,7 @@ jobs:
                   String token = getSharedPreferences(PREFS, MODE_PRIVATE).getString(KEY_TOKEN, null);
                   String api = getSharedPreferences(PREFS, MODE_PRIVATE).getString(KEY_API, null);
                   if (token == null || api == null || stopping) return;
-                  URL url = new URL(api.replaceAll("/+$", "") + "/api/attendance");
+                  URL url = new URL(api.replaceAll("/+$", "") + "/api/attendance/active");
                   connection = (HttpURLConnection) url.openConnection();
                   connection.setRequestMethod("GET");
                   connection.setConnectTimeout(10000);
