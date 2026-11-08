@@ -6,7 +6,7 @@ The Capacitor Updater runtime downloads a compressed ZIP of the web bundle (HTML
 
 ## Startup behavior
 
-On Android startup, Nexus checks the self-hosted endpoint before mounting the usable app. If a newer web bundle is advertised, the currently running bundle is acknowledged as healthy, then Nexus displays an update-only screen, downloads the bundle, verifies its SHA-256 checksum and activates it. The new bundle is acknowledged only after the actual React app mounts successfully. If it fails to initialize, the updater's native rollback mechanism can restore the retained previous bundle. If the update service is unreachable before it advertises an update, the last known-good app opens rather than locking staff out due to a network outage. If a specific update has been advertised but its download fails, the app remains on the update screen and offers retry.
+On Android startup, Nexus checks the self-hosted endpoint before mounting the usable app. If a newer web bundle is advertised, the currently running bundle is acknowledged as healthy, then Nexus displays an update-only screen, downloads the bundle, verifies its SHA-256 checksum and activates it. The new bundle is acknowledged only after the actual React app mounts successfully. If it fails to initialize, the updater's native rollback mechanism can restore the retained previous bundle. The update check has an 8-second timeout. If the endpoint is unreachable, stalls, or fails before advertising an update, the last known-good app opens rather than locking staff out due to a network outage. If a specific update has been advertised but its download fails, the app remains on the update screen and offers retry.
 
 ## Release publishing
 
