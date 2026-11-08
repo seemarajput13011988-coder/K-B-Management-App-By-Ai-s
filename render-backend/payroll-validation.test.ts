@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { attendanceAbsenceDecision, calculateInventoryBalance, computeShiftDeadline, gpsGracePeriodExpired, hasAdminManagementAccess, hasOverlappingSubscription, isConfirmedGpsLossReason, isFreshLocationTimestamp, isValidDateRange, isValidPayrollInput, subscriptionExpiryKind, taskReminderKind } from '../render-backend/route-path.js';
+import { attendanceAbsenceDecision, calculateInventoryBalance, computeShiftDeadline, gpsGracePeriodExpired, hasAdminManagementAccess, hasOverlappingSubscription, isConfirmedGpsLossReason, isFreshLocationTimestamp, isGpsGraceExemptHolidayStatus, isValidDateRange, isValidPayrollInput, subscriptionExpiryKind, taskReminderKind } from '../render-backend/route-path.js';
 
 const valid = {
   staffUserId: 'staff-record-123',
@@ -126,6 +126,13 @@ test('inventory movements cannot make stock negative or accept invalid quantitie
   assert.equal(calculateInventoryBalance(10, 'OUT', 11), null);
   assert.equal(calculateInventoryBalance(10, 'OUT', 0), null);
   assert.equal(calculateInventoryBalance(10, 'UNKNOWN', 1), null);
+});
+
+test('pending and approved holidays both exempt GPS-loss cancellation', () => {
+  assert.equal(isGpsGraceExemptHolidayStatus('pending'), true);
+  assert.equal(isGpsGraceExemptHolidayStatus('approved'), true);
+  assert.equal(isGpsGraceExemptHolidayStatus('rejected'), false);
+  assert.equal(isGpsGraceExemptHolidayStatus(undefined), false);
 });
 
 test('only recognized GPS-loss reasons are accepted', () => {
