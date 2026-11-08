@@ -1,6 +1,6 @@
 import { router, json, error, db, secrets, firestore, FieldValue } from './firestore-adapter.js';
 import type { RouterMiddleware } from './firestore-adapter.js';
-import { isConfirmedGpsLossReason, isValidDateRange } from './route-path.js';
+import { attendanceAbsenceDecision, computeShiftDeadline, isConfirmedGpsLossReason, isFreshLocationTimestamp, isGpsGraceExemptHolidayStatus, isValidDateRange } from './route-path.js';
 import { createHash, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 const notifySubscribers = async (..._args: unknown[]) => undefined; // Live updates are refreshed through the authenticated API.
 
@@ -15,8 +15,9 @@ type UserRecord = {
   passwordHash: string;
   createdAt: string;
   phone?: string;
+  monthlySalary?: number;
 };
-type SafeUser = Pick<UserRecord, 'id' | 'userId' | 'displayName' | 'role' | 'active' | 'createdAt' | 'phone'>;
+type SafeUser = Pick<UserRecord, 'id' | 'userId' | 'displayName' | 'role' | 'active' | 'createdAt' | 'phone' | 'monthlySalary'>;
 type Customer = {
   id: string;
   name: string;
@@ -88,6 +89,7 @@ const safeUser = (user: UserRecord): SafeUser => ({
   active: user.active,
   createdAt: user.createdAt,
   phone: user.phone || '',
+  monthlySalary: Number.isFinite(Number(user.monthlySalary)) ? Number(user.monthlySalary) : 0,
 });
 const hashPassword = (password: string, salt: string) =>
   scryptSync(password, salt, 64).toString('hex');
@@ -118,7 +120,7 @@ async function currentUser(ctx: Parameters<RouterMiddleware>[0]): Promise<UserRe
   const token = bearerToken || cleanText(body.sessionToken, 200) || cleanText(ctx.query.sessionToken, 200);
   if (!token) return null;
   const [session] = await db.get<SessionRecord>('sessions', [tokenId(token)], { consistent: true });
-  if (!session || session.expiresAt <= Date.now()) return null;
+  if (!session || !Number.isFinite(Number(session.expiresAt)) || Number(session.expiresAt) <= Date.now()) return null;
   const [user] = await db.get<UserRecord>('users', [session.userId], { consistent: true });
   if (!user || !user.active) return null;
   return user;
@@ -142,7 +144,7 @@ async function saveEvidenceFiles(collectionName: string, parentField: string, pa
     const fileName = cleanText(file.fileName, 120) || ('evidence-' + (index + 1));
     const mimeType = cleanText(file.mimeType, 100).toLowerCase();
     const dataBase64 = typeof file.dataBase64 === 'string' ? file.dataBase64 : '';
-    if (!/^image\/(jpeg|png|webp)$|^video\/(mp4|webm|quicktime)$/.test(mimeType)) throw new Error('Use JPG, PNG or WEBP photos, or MP4, WEBM or MOV videos.');
+    if (!/^image\/(jpeg|png|webp)$|^video\/(mp4|webm|quicktime|3gpp)$/.test(mimeType)) throw new Error('Use JPG, PNG or WEBP photos, or MP4, WEBM or MOV videos.');
     const maxBytes = mimeType.startsWith('image/') ? 2 * 1024 * 1024 : 8 * 1024 * 1024;
     if (!dataBase64 || dataBase64.length > Math.ceil(maxBytes * 4 / 3) + 8) throw new Error('An attachment is empty or too large.');
     const buffer = Buffer.from(dataBase64, 'base64');
@@ -169,6 +171,71 @@ async function readEvidenceFile(collectionName: string, parentField: string, par
   const metadata = docs.find(doc => Number(doc.chunkIndex) === -1);
   if (!metadata) return null;
   return { fileName: metadata.fileName, mimeType: metadata.mimeType, dataBase64: docs.filter(doc => Number(doc.chunkIndex) >= 0).map(doc => String(doc.data || '')).join('') };
+}
+
+function indiaDateKey(date = new Date()) {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(date);
+}
+
+function shiftDueAt(item: Record<string, unknown>, fallbackEndTime = '19:00'): number {
+  const savedDeadline = Date.parse(String(item.autoCheckoutAt || item.scheduledEndAt || ''));
+  if (Number.isFinite(savedDeadline)) return savedDeadline;
+  const deadline = computeShiftDeadline(
+    String(item.workDate || ''),
+    String(item.checkInAt || ''),
+    typeof item.shiftEndTime === 'string' ? item.shiftEndTime : fallbackEndTime,
+  );
+  return deadline ? Date.parse(deadline) : Number.NaN;
+}
+
+function computeAutoCheckoutAt(workDate: string, startedAt: string, endTime: string): string {
+  const deadline = computeShiftDeadline(workDate, startedAt, endTime);
+  if (!deadline) throw new Error('Could not calculate the automatic shift end time.');
+  return deadline;
+}
+async function getWorkforceSettings() {
+  const snapshot = await firestore.collection('app_settings').doc('workforce').get();
+  const data = snapshot.data() || {};
+  const validTime = (value: unknown, fallback: string) => typeof value === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(value) ? value : fallback;
+  return { shiftStartTime: validTime(data.shiftStartTime, '08:00'), shiftEndTime: validTime(data.shiftEndTime, '19:00') };
+}
+function timeToMinutes(value: string) {
+  const [hour, minute] = value.split(':').map(Number);
+  return hour * 60 + minute;
+}
+
+function isOpenShift(item: Record<string, unknown>): boolean {
+  return !item.checkOutAt && item.dayType !== 'Absent' &&
+    !item.gpsRestartRequired && !item.gpsCancelled &&
+    !String(item.status || '').toLowerCase().includes('cancelled') &&
+    !String(item.status || '').toLowerCase().includes('completed');
+}
+
+function findOpenShift(items: Record<string, unknown>[], userId: string) {
+  return items
+    .filter(item => item.userId === userId && isOpenShift(item))
+    .sort((a, b) => String(b.checkInAt || '').localeCompare(String(a.checkInAt || '')))[0];
+}
+
+function findActiveShift(items: Record<string, unknown>[], userId: string, now = Date.now(), fallbackEndTime = '19:00') {
+  return items
+    .filter(item => item.userId === userId && isOpenShift(item) && shiftDueAt(item, fallbackEndTime) > now)
+    .sort((a, b) => String(b.checkInAt || '').localeCompare(String(a.checkInAt || '')))[0];
+}
+
+async function listAttendanceForUser(userId: string): Promise<Record<string, unknown>[]> {
+  const snapshot = await firestore.collection('attendance').where('userId', '==', userId).get();
+  const items: Record<string, unknown>[] = snapshot.docs.map(doc => ({
+    ...(doc.data() as Record<string, unknown>), id: doc.id,
+  }));
+  return items.sort((a, b) => String(b.checkInAt || '').localeCompare(String(a.checkInAt || '')));
+}
+
+async function listRecentAttendance(limit = 500): Promise<Record<string, unknown>[]> {
+  const snapshot = await firestore.collection('attendance').orderBy('checkInAt', 'desc').limit(limit).get();
+  return snapshot.docs.map(doc => ({ ...(doc.data() as Record<string, unknown>), id: doc.id }));
 }
 
 async function writeAudit(user: UserRecord, action: string, entityType: string, entityId: string, description: string) {
@@ -305,6 +372,38 @@ export const handler = router({
     return json({ changed: true });
   }),
 
+  'GET /api/workforce-settings': protectedRoute(['admin', 'staff'], async (_ctx, user) => {
+    return json({ ...(await getWorkforceSettings()), timezone: 'Asia/Kolkata', adminOverrideAllowed: user.role === 'admin' });
+  }),
+  'PUT /api/workforce-settings': protectedRoute(['admin'], async ({ body }, admin) => {
+    const input = (body || {}) as Record<string, unknown>;
+    const startTime = cleanText(input.shiftStartTime, 5), endTime = cleanText(input.shiftEndTime, 5);
+    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(startTime) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(endTime) || timeToMinutes(startTime) >= timeToMinutes(endTime)) {
+      return error('Choose valid shift times. The start time must be earlier than the end time.', 400);
+    }
+    const updatedAt = new Date().toISOString();
+    await firestore.collection('app_settings').doc('workforce').set({ shiftStartTime: startTime, shiftEndTime: endTime, updatedAt, updatedBy: admin.id, updatedByName: admin.displayName }, { merge: true });
+    // Apply the new end time to every currently open shift, not only shifts created later.
+    const activeShifts = await firestore.collection('attendance').where('status', '==', 'Checked in').get();
+    let rescheduledShifts = 0;
+    for (let offset = 0; offset < activeShifts.docs.length; offset += 400) {
+      const batch = firestore.batch();
+      let batchWrites = 0;
+      for (const document of activeShifts.docs.slice(offset, offset + 400)) {
+        const shift = document.data();
+        if (shift.checkOutAt || shift.dayType === 'Absent' || shift.gpsRestartRequired || shift.gpsCancelled) continue;
+        const deadline = computeShiftDeadline(String(shift.workDate || ''), String(shift.checkInAt || ''), endTime);
+        if (!deadline) continue;
+        batch.update(document.ref, { shiftStartTime: startTime, shiftEndTime: endTime, autoCheckoutAt: deadline, scheduledEndAt: deadline, scheduleUpdatedAt: updatedAt });
+        batchWrites += 1;
+        rescheduledShifts += 1;
+      }
+      if (batchWrites) await batch.commit();
+    }
+    await writeAudit(admin, 'UPDATE', 'workforce_settings', 'workforce', 'Changed staff shift window to ' + startTime + '–' + endTime + ' India time and rescheduled ' + rescheduledShifts + ' active shifts.');
+    return json({ shiftStartTime: startTime, shiftEndTime: endTime, updatedAt, rescheduledShifts });
+  }),
+
   'GET /api/staff': protectedRoute(['admin'], async () => {
     const result = await db.list<UserRecord>('users', { limit: 200 });
     return json({ items: result.items.filter(user => user.role === 'staff').map(safeUser) });
@@ -342,8 +441,10 @@ export const handler = router({
     if (!target || target.role !== 'staff') return error('Staff account not found.', 404);
     const displayName = cleanText(input.displayName, 80) || target.displayName;
     const active = typeof input.active === 'boolean' ? input.active : target.active;
-    const [updated] = await db.tx.update('users', [{ id: target.id, record: { displayName, active } }], { patch: true });
-    return updated ? json({ updated: true }) : error('Could not update staff account.', 500);
+    const monthlySalary = input.monthlySalary === undefined ? Number(target.monthlySalary || 0) : Number(input.monthlySalary);
+    if (!Number.isFinite(monthlySalary) || monthlySalary < 0 || monthlySalary > 1000000) return error('Monthly salary must be between ₹0 and ₹10,00,000.', 400);
+    const [updated] = await db.tx.update('users', [{ id: target.id, record: { displayName, active, monthlySalary } }], { patch: true });
+    return updated ? json({ updated: true, monthlySalary }) : error('Could not update staff account.', 500);
   }),
 
   'DELETE /api/staff/:id': protectedRoute(['admin'], async ({ params }) => {
@@ -696,7 +797,7 @@ export const handler = router({
     const fileName = cleanText(body?.fileName, 120) || 'complaint-attachment';
     const mimeType = cleanText(body?.mimeType, 100).toLowerCase();
     const dataBase64 = typeof body?.dataBase64 === 'string' ? body.dataBase64 : '';
-    if (!/^image\/(jpeg|png|webp)$|^video\/(mp4|webm|quicktime)$/.test(mimeType)) return error('Use a JPG, PNG, WEBP photo or MP4, WEBM, MOV video.', 400);
+    if (!/^image\/(jpeg|png|webp)$|^video\/(mp4|webm|quicktime|3gpp)$/.test(mimeType)) return error('Use a JPG, PNG, WEBP photo or MP4, WEBM, MOV video.', 400);
     const maxBytes = mimeType.startsWith('image/') ? 2 * 1024 * 1024 : 8 * 1024 * 1024;
     if (!dataBase64 || dataBase64.length > Math.ceil(maxBytes * 4 / 3) + 8) return error('Attachment is empty or too large.', 413);
     const buffer = Buffer.from(dataBase64, 'base64');
@@ -832,19 +933,91 @@ export const handler = router({
     return json({ deleted: true });
   }),
 
+  'GET /api/attendance/active': protectedRoute(['staff'], async (_ctx, user) => {
+    const settings = await getWorkforceSettings();
+    const lockRef = firestore.collection('active_shift_locks').doc(user.id);
+    const lockSnapshot = await lockRef.get();
+    const lockedId = String(lockSnapshot.data()?.attendanceId || '');
+    const formatActive = (record: Record<string, unknown>) => {
+      const shiftEndTime = typeof record.shiftEndTime === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(record.shiftEndTime) ? record.shiftEndTime : settings.shiftEndTime;
+      const shiftStartTime = typeof record.shiftStartTime === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(record.shiftStartTime) ? record.shiftStartTime : settings.shiftStartTime;
+      const autoCheckoutAt = String(record.autoCheckoutAt || record.scheduledEndAt || '') ||
+        computeShiftDeadline(String(record.workDate || ''), String(record.checkInAt || ''), shiftEndTime) || '';
+      return { ...record, shiftStartTime, shiftEndTime, autoCheckoutAt, scheduledEndAt: autoCheckoutAt };
+    };
+    if (lockedId) {
+      const snapshot = await firestore.collection('attendance').doc(lockedId).get();
+      if (snapshot.exists) {
+        const record: Record<string, unknown> = { ...(snapshot.data() as Record<string, unknown>), id: snapshot.id };
+        if (record.userId === user.id && isOpenShift(record) && shiftDueAt(record, settings.shiftEndTime) > Date.now()) {
+          return json({ items: [formatActive(record)] });
+        }
+      }
+    }
+    // Repair missing or stale lock records once, then serve the single active row on fast polls.
+    const records = await listAttendanceForUser(user.id);
+    const active = findActiveShift(records, user.id, Date.now(), settings.shiftEndTime);
+    if (!active) return json({ items: [] });
+    await lockRef.set({ userId: user.id, attendanceId: String(active.id), updatedAt: new Date().toISOString() }, { merge: true });
+    return json({ items: [formatActive(active)] });
+  }),
+
   'GET /api/attendance': protectedRoute(['admin', 'staff'], async (_ctx, user) => {
-    const result = await db.list<Record<string, unknown>>('attendance', { limit: 500 });
-    return json({ items: user.role === 'admin' ? result.items : result.items.filter(item => item.userId === user.id) });
+    const [records, settings] = await Promise.all([
+      user.role === 'admin' ? listRecentAttendance(5000) : listAttendanceForUser(user.id),
+      getWorkforceSettings(),
+    ]);
+    const items = records.slice(0, 5000).map(record => {
+      const shiftEndTime = typeof record.shiftEndTime === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(record.shiftEndTime) ? record.shiftEndTime : settings.shiftEndTime;
+      const shiftStartTime = typeof record.shiftStartTime === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(record.shiftStartTime) ? record.shiftStartTime : settings.shiftStartTime;
+      const autoCheckoutAt = String(record.autoCheckoutAt || record.scheduledEndAt || '') ||
+        computeShiftDeadline(String(record.workDate || ''), String(record.checkInAt || ''), shiftEndTime) || '';
+      return { ...record, shiftStartTime, shiftEndTime, autoCheckoutAt, scheduledEndAt: autoCheckoutAt };
+    });
+    return json({ items });
   }),
 
   'POST /api/attendance/check-in': protectedRoute(['staff'], async ({ body }, user) => {
+    const settings = await getWorkforceSettings();
+    const indiaClock = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date());
+    const indiaMinutes = Number(indiaClock.find(part => part.type === 'hour')?.value || 0) * 60 + Number(indiaClock.find(part => part.type === 'minute')?.value || 0);
+    if (indiaMinutes < timeToMinutes(settings.shiftStartTime) || indiaMinutes >= timeToMinutes(settings.shiftEndTime)) return error('Staff shift start is available only from ' + settings.shiftStartTime + ' to ' + settings.shiftEndTime + ' India time.', 403);
     const workDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
-    const result = await db.list<Record<string, unknown>>('attendance', { limit: 500 });
-    if (result.items.some(item => item.userId === user.id && item.workDate === workDate)) return error('Attendance has already been recorded for today.', 409);
     const startedAt = new Date().toISOString();
-    const record: Record<string, unknown> = { userId: user.id, displayName: user.displayName, workDate, checkInAt: startedAt, createdAt: startedAt, status: 'Checked in', attendanceSource: 'Staff' };
-    const [id] = await db.add('attendance', [record]);
-    if (!id) return error('Could not save your check-in.', 500);
+    const record: Record<string, unknown> = { userId: user.id, displayName: user.displayName, workDate, checkInAt: startedAt, createdAt: startedAt, status: 'Checked in', dayType: body?.dayType === 'Half day' ? 'Half day' : 'Full day', attendanceSource: 'Staff', shiftStartTime: settings.shiftStartTime, shiftEndTime: settings.shiftEndTime, autoCheckoutAt: computeAutoCheckoutAt(workDate, startedAt, settings.shiftEndTime), scheduledEndAt: computeAutoCheckoutAt(workDate, startedAt, settings.shiftEndTime) };
+    // Deterministic daily ID and a transaction prevent double taps or two devices
+    // from creating duplicate attendance rows for the same staff member and day.
+    const attendanceId = 'staff-' + createHash('sha256').update(user.id + '|' + workDate).digest('hex').slice(0, 40);
+    const attendanceRef = firestore.collection('attendance').doc(attendanceId);
+    const lockRef = firestore.collection('active_shift_locks').doc(user.id);
+    const outcome = await firestore.runTransaction(async transaction => {
+      const lockSnapshot = await transaction.get(lockRef);
+      const lockedAttendanceId = String(lockSnapshot.data()?.attendanceId || '');
+      if (lockedAttendanceId) {
+        const lockedSnapshot = await transaction.get(firestore.collection('attendance').doc(lockedAttendanceId));
+        const locked = lockedSnapshot.data();
+        if (locked && isOpenShift({ ...locked, id: lockedAttendanceId })) {
+          return { kind: 'open-shift', active: shiftDueAt({ ...locked, id: lockedAttendanceId }, settings.shiftEndTime) > Date.now() };
+        }
+      }
+      const snapshot = await transaction.get(firestore.collection('attendance').where('userId', '==', user.id));
+      const existing: Record<string, unknown>[] = snapshot.docs.map(document => ({ ...(document.data() as Record<string, unknown>), id: document.id }));
+      const previousOpenShift = findOpenShift(existing, user.id);
+      if (previousOpenShift) {
+        return { kind: 'open-shift', active: shiftDueAt(previousOpenShift, settings.shiftEndTime) > Date.now() };
+      }
+      if (existing.some(item => item.workDate === workDate)) return { kind: 'day-recorded', active: false };
+      const existingDailyId = await transaction.get(attendanceRef);
+      if (existingDailyId.exists) return { kind: 'day-recorded', active: false };
+      transaction.create(attendanceRef, record);
+      transaction.set(lockRef, { userId: user.id, attendanceId, updatedAt: startedAt }, { merge: true });
+      return { kind: 'created', active: false };
+    });
+    if (outcome.kind === 'open-shift') return error(outcome.active
+      ? 'You already have an active shift. End it before starting another shift.'
+      : 'Your previous shift is waiting for automatic checkout. Please try again shortly.', 409);
+    if (outcome.kind === 'day-recorded') return error('Attendance has already been recorded for today.', 409);
+    const id = attendanceId;
     // Attendance check-in no longer collects or stores GPS coordinates.
     return json({ id, ...record }, 201);
   }),
@@ -854,35 +1027,42 @@ export const handler = router({
     const dayType = input.dayType === 'Half day' ? 'Half day' : input.dayType === 'Full day' ? 'Full day' : input.dayType === 'Absent' ? 'Absent' : '';
     const reason = cleanText(input.reason, 300);
     if (!dayType || reason.length < 3) return error('Choose a day type and provide a correction reason.', 400);
-    const [attendance] = await db.get<Record<string, unknown>>('attendance', [params.id], { consistent: true });
-    if (!attendance) return error('Attendance record not found.', 404);
-    const [updated] = await db.tx.update('attendance', [{
-      id: params.id,
-      record: {
+    const correctedAt = new Date().toISOString();
+    const attendanceRef = firestore.collection('attendance').doc(params.id);
+    const auditRef = firestore.collection('audit_logs').doc();
+    const outcome = await firestore.runTransaction(async transaction => {
+      const snapshot = await transaction.get(attendanceRef);
+      if (!snapshot.exists) return 'not-found';
+      const attendance = snapshot.data() as Record<string, unknown>;
+      if (dayType === 'Absent' && isOpenShift(attendance)) return 'active-shift';
+      transaction.update(attendanceRef, {
         dayType,
         status: dayType === 'Absent' ? 'Absent' : attendance.checkOutAt ? 'Completed' : 'Checked in',
-        correctionReason: reason,
-        correctedAt: new Date().toISOString(),
-        correctedBy: admin.id,
-        correctedByName: admin.displayName,
-      },
-    }], { patch: true });
-    if (!updated) return error('Could not save the attendance correction.', 500);
-    await writeAudit(admin, 'CORRECT_ATTENDANCE', 'attendance', params.id, 'Changed day type to ' + dayType + ': ' + reason);
+        correctionReason: reason, correctedAt, correctedBy: admin.id, correctedByName: admin.displayName,
+      });
+      transaction.create(auditRef, {
+        actorId: admin.id, actorName: admin.displayName, action: 'CORRECT_ATTENDANCE',
+        entityType: 'attendance', entityId: params.id,
+        description: cleanText('Changed day type to ' + dayType + ': ' + reason, 240),
+        createdAt: correctedAt,
+      });
+      return 'updated';
+    });
+    if (outcome === 'not-found') return error('Attendance record not found.', 404);
+    if (outcome === 'active-shift') return error('End this staff member’s active shift before marking absent.', 409);
     return json({ updated: true });
   }),
 
   'POST /api/attendance/gps-lost': protectedRoute(['staff'], async ({ body }, user) => {
-    const workDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
-    const attendance = await db.list<Record<string, unknown>>('attendance', { limit: 1000 });
-    const active = attendance.items
-      .filter(item => item.userId === user.id && item.workDate === workDate && !item.checkOutAt && !item.gpsRestartRequired)
-      .sort((a, b) => String(b.checkInAt || '').localeCompare(String(a.checkInAt || '')))[0];
+    const attendance = await listAttendanceForUser(user.id);
+    const settings = await getWorkforceSettings();
+    const active = findActiveShift(attendance, user.id, Date.now(), settings.shiftEndTime);
     if (!active) return json({ monitoring: false, reason: 'no-active-shift' });
+    const workDate = String(active.workDate || indiaDateKey());
 
     const holidays = await db.list<Record<string, unknown>>('holiday_requests', { limit: 1000 });
     const exempt = holidays.items.some(item =>
-      item.userId === user.id && ['pending', 'approved'].includes(String(item.status)) &&
+      item.userId === user.id && isGpsGraceExemptHolidayStatus(item.status) &&
       String(item.startDate || '') <= workDate && String(item.endDate || '') >= workDate
     );
     if (exempt) return json({ monitoring: false, reason: 'holiday-exempt' });
@@ -893,28 +1073,37 @@ export const handler = router({
     const startedAt = String(active.gpsIssueStartedAt || new Date().toISOString());
     const issueId = String(active.gpsIssueId || createHash('sha256').update(String(active.id) + '|' + startedAt).digest('hex').slice(0, 16));
     if (!active.gpsIssueStartedAt || !active.gpsIssueId) {
-      await db.tx.update('attendance', [{
-        id: String(active.id),
-        record: { gpsIssueStartedAt: startedAt, gpsIssueId: issueId, gpsStatus: 'grace-period', gpsIssueReason: reason, gpsReminderStage: 0 },
-      }], { patch: true });
-
-      await db.add('staff_notifications', [{
-        id: String(active.id) + '-gps-' + issueId + '-0',
+      const attendanceRef = firestore.collection('attendance').doc(String(active.id));
+      const staffNotificationRef = firestore.collection('staff_notifications').doc(String(active.id) + '-gps-' + issueId + '-0');
+      const batch = firestore.batch();
+      batch.update(attendanceRef, {
+        gpsIssueStartedAt: startedAt, gpsIssueId: issueId, gpsStatus: 'grace-period',
+        gpsIssueReason: reason, gpsReminderStage: 0,
+      });
+      batch.set(staffNotificationRef, {
         recipientId: user.id, recipientRole: 'staff', type: 'gps-reminder',
         title: 'GPS is unavailable',
         message: 'Your shift remains active during a 15-minute GPS restoration period. Restore location to keep the shift active.',
         createdAt: startedAt, read: false, attendanceId: active.id,
-      }]);
+      });
+      await batch.commit();
 
-      const users = await db.list<UserRecord>('users', { limit: 500 });
-      const admins = users.items.filter(item => item.role === 'admin' && item.active === true);
-      await Promise.all(admins.map(admin => db.add('staff_notifications', [{
-        id: String(active.id) + '-gps-' + issueId + '-admin-' + admin.id,
-        recipientId: admin.id, recipientRole: 'admin', type: 'gps-issue',
-        title: 'Staff GPS is OFF',
-        message: user.displayName + ' has lost GPS/location during an active shift. The 15-minute restoration period has started.',
-        createdAt: startedAt, read: false, attendanceId: active.id,
-      }])));
+      try {
+        const users = await db.list<UserRecord>('users', { limit: 500 });
+        const admins = users.items.filter(item => item.role === 'admin' && item.active === true);
+        const adminNotifications = await Promise.allSettled(admins.map(admin => db.add('staff_notifications', [{
+          id: String(active.id) + '-gps-' + issueId + '-admin-' + admin.id,
+          recipientId: admin.id, recipientRole: 'admin', type: 'gps-issue',
+          title: 'Staff GPS is OFF',
+          message: user.displayName + ' has lost GPS/location during an active shift. The 15-minute restoration period has started.',
+          createdAt: startedAt, read: false, attendanceId: active.id,
+        }])));
+        for (const result of adminNotifications) {
+          if (result.status === 'rejected') console.error('Could not notify an administrator about GPS loss:', result.reason);
+        }
+      } catch (notificationError) {
+        console.error('Could not load administrators for GPS-loss notifications:', notificationError);
+      }
     }
 
     const deadlineAt = new Date(Date.parse(startedAt) + 15 * 60 * 1000).toISOString();
@@ -925,28 +1114,37 @@ export const handler = router({
   }),
 
   'POST /api/attendance/check-out': protectedRoute(['staff'], async (_ctx, user) => {
-    const workDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
-    const result = await db.list<Record<string, unknown>>('attendance', { limit: 1000 });
-    const existing = result.items
-      .filter(item => item.userId === user.id && item.workDate === workDate && !item.checkOutAt)
-      .sort((a, b) => String(b.checkInAt || '').localeCompare(String(a.checkInAt || '')))[0];
+    const settings = await getWorkforceSettings();
+    const result = await listAttendanceForUser(user.id);
+    const existing = findActiveShift(result, user.id, Date.now(), settings.shiftEndTime);
     if (!existing) return error('There is no active shift to check out.', 400);
-    const [updated] = await db.tx.update('attendance', [{
-      id: String(existing.id),
-      record: {
-        checkOutAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        endedBy: user.id,
-        endedByName: user.displayName,
+    const id = String(existing.id);
+    const attendanceRef = firestore.collection('attendance').doc(id);
+    const lockRef = firestore.collection('active_shift_locks').doc(user.id);
+    const endedAt = new Date().toISOString();
+    const outcome = await firestore.runTransaction(async transaction => {
+      const snapshot = await transaction.get(attendanceRef);
+      const lockSnapshot = await transaction.get(lockRef);
+      if (!snapshot.exists) return 'not-found';
+      const current = snapshot.data() as Record<string, unknown>;
+      if (current.userId !== user.id) return 'forbidden';
+      if (!isOpenShift(current)) return 'already-ended';
+      if (shiftDueAt(current, settings.shiftEndTime) <= Date.now()) return 'deadline-passed';
+      transaction.update(attendanceRef, {
+        checkOutAt: endedAt, updatedAt: endedAt, endedBy: user.id, endedByName: user.displayName,
         status: 'Completed',
-        gpsStatus: existing.gpsIssueStartedAt ? 'disabled-at-checkout' : (existing.gpsStatus || 'enabled'),
-        gpsIssueStartedAt: FieldValue.delete(),
-        gpsIssueId: FieldValue.delete(),
-        gpsIssueReason: FieldValue.delete(),
-        gpsReminderStage: FieldValue.delete(),
-      },
-    }], { patch: true });
-    return updated ? json({ updated: true }) : error('Could not save your check-out.', 500);
+        gpsStatus: current.gpsIssueStartedAt ? 'disabled-at-checkout' : (current.gpsStatus || 'enabled'),
+        gpsIssueStartedAt: FieldValue.delete(), gpsIssueId: FieldValue.delete(),
+        gpsIssueReason: FieldValue.delete(), gpsReminderStage: FieldValue.delete(),
+      });
+      if (String(lockSnapshot.data()?.attendanceId || '') === id) transaction.delete(lockRef);
+      return 'updated';
+    });
+    if (outcome === 'not-found') return error('Attendance record not found.', 404);
+    if (outcome === 'forbidden') return error('You can only check out your own shift.', 403);
+    if (outcome === 'already-ended') return error('This shift has already ended.', 409);
+    if (outcome === 'deadline-passed') return error('The scheduled shift end time has passed. Automatic checkout is being processed.', 409);
+    return json({ updated: true });
   }),
 
   'POST /api/attendance/admin-absent': protectedRoute(['admin'], async ({ body }, admin) => {
@@ -956,25 +1154,42 @@ export const handler = router({
     const [member] = await db.get<UserRecord>('users', [staffId], { consistent: true });
     if (!member || member.role !== 'staff' || !member.active) return error('Choose an active staff member.', 400);
     const workDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
-    const result = await db.list<Record<string, unknown>>('attendance', { limit: 1000 });
-    const todays = result.items.filter(item => item.userId === member.id && item.workDate === workDate)
-      .sort((a, b) => String(b.checkInAt || '').localeCompare(String(a.checkInAt || '')));
-    const latest = todays[0];
-    if (latest && !latest.checkOutAt && latest.dayType !== 'Absent') return error('End this staff member’s active shift before marking absent.', 409);
+    const markedAt = new Date().toISOString();
+    // Use the same deterministic daily ID as staff check-in so both operations
+    // serialize against the same document and cannot create duplicate day records.
+    const id = 'staff-' + createHash('sha256').update(member.id + '|' + workDate).digest('hex').slice(0, 40);
+    const attendanceRef = firestore.collection('attendance').doc(id);
+    const lockRef = firestore.collection('active_shift_locks').doc(member.id);
+    const auditRef = firestore.collection('audit_logs').doc();
     const absence = {
       userId: member.id, displayName: member.displayName, workDate,
-      checkInAt: '', checkOutAt: new Date().toISOString(), createdAt: latest?.createdAt || new Date().toISOString(), updatedAt: new Date().toISOString(), status: 'Absent', dayType: 'Absent',
+      checkInAt: '', checkOutAt: markedAt, createdAt: markedAt, updatedAt: markedAt, status: 'Absent', dayType: 'Absent',
       absenceReason: reason, markedAbsentBy: admin.displayName, attendanceSource: 'Admin',
     };
-    if (latest) {
-      const [updated] = await db.tx.update('attendance', [{ id: String(latest.id), record: absence }], { patch: true });
-      if (!updated) return error('Could not mark this staff member absent.', 500);
-      await writeAudit(admin, 'MARK_ABSENT', 'attendance', String(latest.id), 'Marked ' + member.displayName + ' absent: ' + reason);
-      return json({ updated: true, id: String(latest.id) });
-    }
-    const [id] = await db.add('attendance', [absence]);
-    if (!id) return error('Could not mark this staff member absent.', 500);
-    await writeAudit(admin, 'MARK_ABSENT', 'attendance', id, 'Marked ' + member.displayName + ' absent: ' + reason);
+    const outcome = await firestore.runTransaction(async transaction => {
+      // Reading the lock makes this transaction conflict safely with a concurrent check-in.
+      await transaction.get(lockRef);
+      const snapshot = await transaction.get(firestore.collection('attendance').where('userId', '==', member.id));
+      const existing: Record<string, unknown>[] = snapshot.docs.map(document => ({ ...(document.data() as Record<string, unknown>), id: document.id }));
+      const todays = existing.filter(item => item.workDate === workDate)
+        .sort((a, b) => String(b.checkInAt || '').localeCompare(String(a.checkInAt || '')));
+      const latest = todays[0] || null;
+      const decision = attendanceAbsenceDecision(latest, Boolean(findOpenShift(existing, member.id)));
+      if (decision !== 'create') return decision;
+      const dailySnapshot = await transaction.get(attendanceRef);
+      if (dailySnapshot.exists) return 'already-recorded';
+      transaction.create(attendanceRef, absence);
+      transaction.create(auditRef, {
+        actorId: admin.id, actorName: admin.displayName, action: 'MARK_ABSENT',
+        entityType: 'attendance', entityId: id,
+        description: cleanText('Marked ' + member.displayName + ' absent: ' + reason, 240),
+        createdAt: markedAt,
+      });
+      return 'created';
+    });
+    if (outcome === 'active-shift') return error('End this staff member’s active shift before marking absent.', 409);
+    if (outcome === 'already-absent') return error('This staff member is already marked absent today.', 409);
+    if (outcome === 'already-recorded') return error('Attendance is already recorded today. Use attendance correction to change the day type without replacing shift times.', 409);
     return json({ id, ...absence }, 201);
   }),
 
@@ -984,9 +1199,16 @@ export const handler = router({
     const [member] = await db.get<UserRecord>('users', [staffId], { consistent: true });
     if (!member || member.role !== 'staff' || !member.active) return error('Choose an active staff member.', 400);
     const workDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
-    const result = await db.list<Record<string, unknown>>('attendance', { limit: 1000 });
-    const todays = result.items
-      .filter(item => item.userId === member.id && item.workDate === workDate)
+    const settings = await getWorkforceSettings();
+    const result = await listAttendanceForUser(member.id);
+    const openShift = findOpenShift(result, member.id);
+    if (openShift) {
+      return error(shiftDueAt(openShift, settings.shiftEndTime) > Date.now()
+        ? 'This staff member already has an active shift.'
+        : 'The previous shift is waiting for automatic checkout. Please retry shortly.', 409);
+    }
+    const todays = result
+      .filter(item => item.workDate === workDate)
       .sort((a, b) => String(b.checkInAt || '').localeCompare(String(a.checkInAt || '')));
     const latest = todays[0];
     const gpsRestartAllowed = Boolean(latest && (
@@ -999,50 +1221,128 @@ export const handler = router({
         ? 'Attendance is already completed for this staff member today.'
         : 'This staff member already has an active shift.', 409);
     }
+    const startedAt = new Date().toISOString();
     const record: Record<string, unknown> = {
-      userId: member.id,
-      displayName: member.displayName,
-      workDate,
-      checkInAt: new Date().toISOString(),
-      createdAt: new Date().toISOString(),
-      status: 'Checked in',
-      startedByAdmin: admin.displayName,
-      attendanceSource: 'Admin',
+      userId: member.id, displayName: member.displayName, workDate,
+      checkInAt: startedAt, createdAt: startedAt, status: 'Checked in',
+      startedByAdmin: admin.displayName, attendanceSource: 'Admin',
       dayType: input.dayType === 'Half day' ? 'Half day' : 'Full day',
+      shiftStartTime: settings.shiftStartTime, shiftEndTime: settings.shiftEndTime,
+      autoCheckoutAt: computeAutoCheckoutAt(workDate, startedAt, settings.shiftEndTime),
+      scheduledEndAt: computeAutoCheckoutAt(workDate, startedAt, settings.shiftEndTime),
     };
     if (gpsRestartAllowed && latest) {
       record.restartOfAttendanceId = String(latest.id);
       record.restartedAfterGpsCancellation = true;
     }
-    const [id] = await db.add('attendance', [record]);
-    return id ? json({ id, ...record }, 201) : error('Could not start this staff shift.', 500);
+    const attendanceRef = firestore.collection('attendance').doc();
+    const auditRef = firestore.collection('audit_logs').doc();
+    const notificationRef = firestore.collection('staff_notifications').doc();
+    const id = attendanceRef.id;
+    const lockRef = firestore.collection('active_shift_locks').doc(member.id);
+    const outcome = await firestore.runTransaction(async transaction => {
+      const lockSnapshot = await transaction.get(lockRef);
+      const lockedId = String(lockSnapshot.data()?.attendanceId || '');
+      if (lockedId) {
+        const lockedSnapshot = await transaction.get(firestore.collection('attendance').doc(lockedId));
+        const locked = lockedSnapshot.data();
+        if (locked && isOpenShift({ ...locked, id: lockedId })) {
+          return { kind: 'active', active: shiftDueAt({ ...locked, id: lockedId }, settings.shiftEndTime) > Date.now() };
+        }
+      }
+      const snapshot = await transaction.get(firestore.collection('attendance').where('userId', '==', member.id));
+      const existing: Record<string, unknown>[] = snapshot.docs.map(document => ({ ...(document.data() as Record<string, unknown>), id: document.id }));
+      const open = findOpenShift(existing, member.id);
+      if (open) return { kind: 'active', active: shiftDueAt(open, settings.shiftEndTime) > Date.now() };
+      const latestToday = existing.filter(item => item.workDate === workDate)
+        .sort((a, b) => String(b.checkInAt || '').localeCompare(String(a.checkInAt || '')))[0];
+      const canRestart = Boolean(latestToday && (
+        latestToday.gpsRestartRequired === true ||
+        latestToday.gpsCancelled === true ||
+        String(latestToday.status || '').toLowerCase().includes('cancelled - gps')
+      ));
+      if (latestToday && !canRestart) return { kind: 'completed', active: false };
+      transaction.create(attendanceRef, record);
+      transaction.set(lockRef, { userId: member.id, attendanceId: id, updatedAt: startedAt }, { merge: true });
+      transaction.set(auditRef, {
+        actorId: admin.id, actorName: admin.displayName, action: 'ADMIN_START_SHIFT',
+        entityType: 'attendance', entityId: id,
+        description: cleanText('Started a shift for ' + member.displayName + ' at ' + startedAt + '.', 240),
+        createdAt: startedAt,
+      });
+      transaction.set(notificationRef, {
+        recipientId: member.id, recipientRole: 'staff', type: 'admin-shift-started',
+        title: 'Your shift was started by an administrator',
+        message: admin.displayName + ' started your work shift. Location sharing is active only while this shift is active.',
+        createdAt: startedAt, read: false, attendanceId: id,
+      });
+      return { kind: 'created', active: false };
+    });
+    if (outcome.kind === 'active') return error(outcome.active
+      ? 'This staff member already has an active shift.'
+      : 'The previous shift is waiting for automatic checkout. Please retry shortly.', 409);
+    if (outcome.kind === 'completed') return error('Attendance is already completed for this staff member today.', 409);
+    return json({ id, ...record }, 201);
   }),
 
   'POST /api/attendance/admin-end': protectedRoute(['admin'], async ({ body }, admin) => {
     const input = (body || {}) as Record<string, unknown>;
     const staffId = cleanText(input.userId, 128);
-    const workDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
-    const result = await db.list<Record<string, unknown>>('attendance', { limit: 1000 });
-    const existing = result.items
-      .filter(item => item.userId === staffId && item.workDate === workDate && !item.checkOutAt)
-      .sort((a, b) => String(b.checkInAt || '').localeCompare(String(a.checkInAt || '')))[0];
+    if (!staffId) return error('Choose a staff member.', 400);
+    const settings = await getWorkforceSettings();
+    const result = await listAttendanceForUser(staffId);
+    const existing = findOpenShift(result, staffId);
     if (!existing) return error('There is no active shift for this staff member.', 400);
-    const [updated] = await db.tx.update('attendance', [{
-      id: String(existing.id),
-      record: {
-        checkOutAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        status: 'Completed',
-        endedByAdminId: admin.id,
-        endedByAdminName: admin.displayName,
-        endedByAdmin: admin.displayName,
-        gpsIssueStartedAt: FieldValue.delete(),
-        gpsIssueId: FieldValue.delete(),
-        gpsIssueReason: FieldValue.delete(),
-        gpsReminderStage: FieldValue.delete(),
-      },
-    }], { patch: true });
-    return updated ? json({ updated: true }) : error('Could not end this staff shift.', 500);
+    const id = String(existing.id);
+    const attendanceRef = firestore.collection('attendance').doc(id);
+    const lockRef = firestore.collection('active_shift_locks').doc(staffId);
+    const auditRef = firestore.collection('audit_logs').doc();
+    const notificationRef = firestore.collection('staff_notifications').doc();
+    const requestedAt = Date.now();
+    const outcome = await firestore.runTransaction(async transaction => {
+      const snapshot = await transaction.get(attendanceRef);
+      const lockSnapshot = await transaction.get(lockRef);
+      if (!snapshot.exists) return 'not-found';
+      const current = snapshot.data() as Record<string, unknown>;
+      if (current.userId !== staffId) return 'not-found';
+      if (!isOpenShift(current)) return 'already-ended';
+      const deadline = shiftDueAt(current, settings.shiftEndTime);
+      const autoEnded = deadline <= requestedAt;
+      const endedAt = new Date(autoEnded ? deadline : requestedAt).toISOString();
+      transaction.update(attendanceRef, {
+        checkOutAt: endedAt, updatedAt: endedAt, status: 'Completed',
+        ...(autoEnded
+          ? { endedBy: 'system', endedByName: 'Automatic scheduled checkout', autoCheckedOut: true, autoCheckedOutAt: endedAt }
+          : { endedByAdminId: admin.id, endedByAdminName: admin.displayName, endedByAdmin: admin.displayName }),
+        gpsStatus: current.gpsIssueStartedAt ? 'disabled-at-checkout' : (current.gpsStatus || 'enabled'),
+        gpsIssueStartedAt: FieldValue.delete(), gpsIssueId: FieldValue.delete(),
+        gpsIssueReason: FieldValue.delete(), gpsReminderStage: FieldValue.delete(),
+      });
+      if (String(lockSnapshot.data()?.attendanceId || '') === id) transaction.delete(lockRef);
+      transaction.create(auditRef, {
+        actorId: autoEnded ? 'system' : admin.id,
+        actorName: autoEnded ? 'K&B automatic attendance' : admin.displayName,
+        action: autoEnded ? 'AUTO_CHECKOUT' : 'ADMIN_END_SHIFT',
+        entityType: 'attendance', entityId: id,
+        description: autoEnded
+          ? 'Automatically checked out ' + String(current.displayName || staffId) + ' at the scheduled shift end time.'
+          : cleanText('Ended ' + String(current.displayName || staffId) + '’s shift at ' + endedAt + '.', 240),
+        createdAt: endedAt,
+      });
+      transaction.create(notificationRef, {
+        recipientId: staffId, recipientRole: 'staff',
+        type: autoEnded ? 'attendance-auto-checkout' : 'admin-shift-ended',
+        title: autoEnded ? 'Shift automatically ended' : 'Your shift was ended by an administrator',
+        message: autoEnded
+          ? 'Your shift was automatically checked out at the scheduled end time.'
+          : admin.displayName + ' ended your work shift. Location sharing has stopped.',
+        createdAt: endedAt, read: false, attendanceId: id,
+      });
+      return autoEnded ? 'auto-ended' : 'admin-ended';
+    });
+    if (outcome === 'not-found') return error('Attendance record not found.', 404);
+    if (outcome === 'already-ended') return error('This shift has already ended.', 409);
+    return json({ updated: true, autoCheckedOut: outcome === 'auto-ended' });
   }),
 
   'GET /api/holidays': protectedRoute(['admin', 'staff'], async (_ctx, user) => {
@@ -1140,11 +1440,9 @@ export const handler = router({
       return error('A valid GPS reading is required.', 400);
     }
 
-    const workDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
-    const attendance = await db.list<Record<string, unknown>>('attendance', { limit: 1000 });
-    const active = attendance.items
-      .filter(item => item.userId === user.id && item.workDate === workDate && !item.checkOutAt)
-      .sort((a, b) => String(b.checkInAt || '').localeCompare(String(a.checkInAt || '')))[0];
+    const attendance = await listAttendanceForUser(user.id);
+    const settings = await getWorkforceSettings();
+    const active = findActiveShift(attendance, user.id, Date.now(), settings.shiftEndTime);
     if (!active || active.gpsRestartRequired) return error('Location can be shared only during an active, authorised shift.', 403);
 
     if (active.gpsIssueStartedAt && Date.now() - Date.parse(String(active.gpsIssueStartedAt)) >= 15 * 60 * 1000) {
@@ -1152,39 +1450,53 @@ export const handler = router({
     }
 
     const capturedAt = cleanText(body?.capturedAt, 40) || new Date().toISOString();
+    if (!isFreshLocationTimestamp(capturedAt)) return error('The GPS reading is too old or has an invalid device timestamp. Wait for a fresh location update and try again.', 400);
     const record = {
-      id: user.id, staffId: user.id, staffName: user.displayName,
+      id: user.id, staffId: user.id, staffName: user.displayName, attendanceId: String(active.id),
       latitude, longitude, accuracy, capturedAt,
       source: cleanText(body?.source, 80) || 'staff-app-background',
     };
-    await firestore.collection('staff_live_locations').doc(user.id).set(record, { merge: true });
-    await db.add('locations', [{ ...record, id: undefined }]);
-
     const gpsRestored = Boolean(active.gpsIssueStartedAt);
+    const liveLocationRef = firestore.collection('staff_live_locations').doc(user.id);
+    const historyRef = firestore.collection('locations').doc();
+    const batch = firestore.batch();
+    const historyRecord: Record<string, unknown> = { ...record };
+    delete historyRecord.id;
+    batch.set(liveLocationRef, record, { merge: true });
+    batch.set(historyRef, historyRecord);
     if (gpsRestored) {
-      await db.tx.update('attendance', [{
-        id: String(active.id),
-        record: {
-          gpsIssueStartedAt: FieldValue.delete(), gpsIssueId: FieldValue.delete(),
-          gpsIssueReason: FieldValue.delete(), gpsReminderStage: FieldValue.delete(),
-          gpsStatus: 'active', gpsRestoredAt: capturedAt,
-        },
-      }], { patch: true });
-
-      const notifications = await db.list<Record<string, unknown>>('staff_notifications', { limit: 1000 });
-      const oldGpsNotifications = notifications.items.filter(item =>
-        item.attendanceId === active.id && String(item.type || '').startsWith('gps-')
+      const attendanceRef = firestore.collection('attendance').doc(String(active.id));
+      const restoredNotificationRef = firestore.collection('staff_notifications').doc(
+        String(active.id) + '-gps-restored-' + String(active.gpsIssueId || capturedAt),
       );
-      if (oldGpsNotifications.length) {
-        await db.tx.update('staff_notifications', oldGpsNotifications.map(item => ({
-          id: String(item.id), record: { read: true, resolvedAt: capturedAt },
-        })), { patch: true });
-      }
-      await db.add('staff_notifications', [{
+      batch.update(attendanceRef, {
+        gpsIssueStartedAt: FieldValue.delete(), gpsIssueId: FieldValue.delete(),
+        gpsIssueReason: FieldValue.delete(), gpsReminderStage: FieldValue.delete(),
+        gpsStatus: 'active', gpsRestoredAt: capturedAt,
+      });
+      batch.set(restoredNotificationRef, {
         recipientId: user.id, recipientRole: 'staff', type: 'gps-restored',
         title: 'GPS restored', message: 'Your location is available again. Your shift continues normally.',
         createdAt: capturedAt, read: false, attendanceId: active.id,
-      }]);
+      });
+    }
+    await batch.commit();
+
+    if (gpsRestored) {
+      try {
+        const notifications = await db.list<Record<string, unknown>>('staff_notifications', { limit: 1000 });
+        const oldGpsNotifications = notifications.items.filter(item =>
+          item.attendanceId === active.id && String(item.type || '').startsWith('gps-') &&
+          item.type !== 'gps-restored'
+        );
+        if (oldGpsNotifications.length) {
+          await db.tx.update('staff_notifications', oldGpsNotifications.map(item => ({
+            id: String(item.id), record: { read: true, resolvedAt: capturedAt },
+          })), { patch: true });
+        }
+      } catch (notificationError) {
+        console.error('GPS was restored, but old reminder notifications could not be marked read:', notificationError);
+      }
     }
 
     return json({ updated: true, capturedAt, gpsRestored });
@@ -1194,14 +1506,22 @@ export const handler = router({
     const [member] = await db.get<UserRecord>('users', [params.id], { consistent: true });
     if (!member || member.role !== 'staff' || !member.active) return error('Active staff member not found.', 404);
 
-    const workDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
-    const attendance = await db.list<Record<string, unknown>>('attendance', { limit: 1000 });
-    const active = attendance.items
-      .filter(item => item.userId === params.id && item.workDate === workDate)
-      .sort((a, b) => String(b.checkInAt || '').localeCompare(String(a.checkInAt || '')))[0];
-    if (!active || (active.checkOutAt && !active.gpsRestartRequired && !active.gpsCancelled)) return json({ status: 'shift-not-active', item: null, isFresh: false, ageSeconds: null });
+    const attendance = await listAttendanceForUser(params.id);
+    const settings = await getWorkforceSettings();
+    const active = findActiveShift(attendance, params.id, Date.now(), settings.shiftEndTime);
+    if (!active) {
+      const latestRecord = attendance.slice().sort((a, b) => Date.parse(String(b.checkInAt || '')) - Date.parse(String(a.checkInAt || '')))[0];
+      const cancelled = latestRecord && (latestRecord.gpsRestartRequired === true || latestRecord.gpsCancelled === true || String(latestRecord.status || '').toLowerCase().includes('cancelled - gps'))
+        ? latestRecord
+        : null;
+      if (cancelled) return json({ status: 'gps-off', item: null, isFresh: false, ageSeconds: null, cancelled: true, cancelledAt: cancelled.gpsCancelledAt || cancelled.checkOutAt || null });
+      return json({ status: 'shift-not-active', item: null, isFresh: false, ageSeconds: null });
+    }
     
-    const [location] = await db.get<Record<string, unknown>>('staff_live_locations', [params.id], { consistent: true });
+    const [storedLocation] = await db.get<Record<string, unknown>>('staff_live_locations', [params.id], { consistent: true });
+    // Never present a previous shift's last point as if it belonged to the current shift.
+    const location = storedLocation && String(storedLocation.attendanceId || '') === String(active.id)
+      ? storedLocation : null;
     const gpsOff = Boolean(active.gpsIssueStartedAt || active.gpsRestartRequired || active.gpsStatus === 'disabled');
     const deadlineAt = active.gpsIssueStartedAt
       ? new Date(Date.parse(String(active.gpsIssueStartedAt)) + 15 * 60 * 1000).toISOString()
@@ -1209,9 +1529,9 @@ export const handler = router({
     if (!location) return json({ status: gpsOff ? 'gps-off' : 'location-unavailable', item: null, isFresh: false, ageSeconds: null, deadlineAt });
 
     const capturedAt = String(location.capturedAt || '');
-    const ageMs = capturedAt ? Math.max(0, Date.now() - Date.parse(capturedAt)) : Number.POSITIVE_INFINITY;
-    const ageSeconds = Number.isFinite(ageMs) ? Math.floor(ageMs / 1000) : null;
-    const isFresh = Number.isFinite(ageMs) && ageMs <= 90000;
+    const ageMs = capturedAt ? Date.now() - Date.parse(capturedAt) : Number.POSITIVE_INFINITY;
+    const ageSeconds = Number.isFinite(ageMs) && ageMs >= -60000 ? Math.floor(Math.max(0, ageMs) / 1000) : null;
+    const isFresh = Number.isFinite(ageMs) && ageMs >= -60000 && ageMs <= 90000;
     return json({
       item: location, status: gpsOff ? 'gps-off' : isFresh ? 'live' : 'stale',
       isFresh: isFresh && !gpsOff, ageSeconds, deadlineAt,
@@ -1223,19 +1543,27 @@ export const handler = router({
     const staffId = cleanText(body?.staffId, 128);
     const [member] = await db.get<UserRecord>('users', [staffId], { consistent: true });
     if (!member || member.role !== 'staff' || !member.active) return error('Choose an active staff member.', 400);
+    const [attendance, settings] = await Promise.all([listAttendanceForUser(member.id), getWorkforceSettings()]);
+    const active = findActiveShift(attendance, member.id, Date.now(), settings.shiftEndTime);
+    if (!active || active.gpsRestartRequired) return error('A one-time location request is available only during an active, authorised shift.', 409);
+    const gpsIssueStartedAt = Date.parse(String(active.gpsIssueStartedAt || ''));
+    if (Number.isFinite(gpsIssueStartedAt) && Date.now() - gpsIssueStartedAt >= 15 * 60 * 1000) return error('The GPS restoration period has expired. Contact an administrator to restart your shift.', 409);
     const createdAt = new Date().toISOString();
-    const record = { staffId: member.id, staffName: member.displayName, requestedBy: admin.id, requestedByName: admin.displayName, status: 'pending', createdAt, expiresAt: new Date(Date.now() + 2 * 60 * 1000).toISOString() };
+    const record = { staffId: member.id, staffName: member.displayName, attendanceId: String(active.id), requestedBy: admin.id, requestedByName: admin.displayName, status: 'pending', createdAt, expiresAt: new Date(Date.now() + 2 * 60 * 1000).toISOString() };
     const [id] = await db.add('location_requests', [record]);
     if (!id) return error('Could not send the location request.', 500);
-    await db.add('staff_notifications', [{ recipientId: member.id, recipientRole: 'staff', type: 'location-request', title: 'Admin requested your location', message: admin.displayName + ' requested a one-time current GPS location. Open the app to respond.', relatedId: id, createdAt, read: false }]);
+    await db.add('staff_notifications', [{ recipientId: member.id, recipientRole: 'staff', type: 'location-request', title: 'Admin requested your location', message: admin.displayName + ' requested a one-time current GPS location during your active shift. Open the app to respond.', relatedId: id, createdAt, read: false }]);
     await writeAudit(admin, 'REQUEST_LOCATION', 'staff_location', id, 'Requested a one-time location from ' + member.displayName);
     return json({ id, ...record }, 201);
   }),
 
   'GET /api/location-requests/pending': protectedRoute(['staff'], async (_ctx, user) => {
-    const result = await db.list<Record<string, unknown>>('location_requests', { limit: 100 });
+    const snapshot = await firestore.collection('location_requests').where('staffId', '==', user.id).get();
     const nowTime = Date.now();
-    const items = result.items.filter(item => item.staffId === user.id && item.status === 'pending' && new Date(String(item.expiresAt || 0)).getTime() > nowTime);
+    const records: Record<string, unknown>[] = snapshot.docs.map(document => ({ ...(document.data() as Record<string, unknown>), id: document.id }));
+    const items = records
+      .filter(item => item.status === 'pending' && new Date(String(item.expiresAt || 0)).getTime() > nowTime)
+      .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
     return json({ items });
   }),
 
@@ -1243,24 +1571,63 @@ export const handler = router({
     const [request] = await db.get<Record<string, unknown>>('location_requests', [params.id], { consistent: true });
     if (!request || request.staffId !== user.id) return error('Location request not found.', 404);
     if (request.status !== 'pending' || new Date(String(request.expiresAt || 0)).getTime() <= Date.now()) return error('This location request has expired or was already answered.', 409);
+    const [attendance, settings] = await Promise.all([listAttendanceForUser(user.id), getWorkforceSettings()]);
+    const active = findActiveShift(attendance, user.id, Date.now(), settings.shiftEndTime);
+    if (!active || String(active.id) !== String(request.attendanceId || '') || active.gpsRestartRequired) return error('This request is no longer valid because your authorised shift is not active.', 409);
+    const gpsIssueStartedAt = Date.parse(String(active.gpsIssueStartedAt || ''));
+    if (Number.isFinite(gpsIssueStartedAt) && Date.now() - gpsIssueStartedAt >= 15 * 60 * 1000) return error('The GPS restoration period has expired. Contact an administrator to restart your shift.', 409);
     const input = (body || {}) as Record<string, unknown>;
     const status = input.status === 'failed' ? 'unavailable' : 'captured';
-    const latitude = Number(input.latitude), longitude = Number(input.longitude);
-    if (status === 'captured' && (!Number.isFinite(latitude) || !Number.isFinite(longitude) || Math.abs(latitude) > 90 || Math.abs(longitude) > 180)) return error('A valid current GPS location is required.', 400);
-    const capturedAt = new Date().toISOString();
+    const latitude = Number(input.latitude), longitude = Number(input.longitude), accuracy = Number(input.accuracy || 0);
+    if (status === 'captured' && (!Number.isFinite(latitude) || !Number.isFinite(longitude) || Math.abs(latitude) > 90 || Math.abs(longitude) > 180 || !Number.isFinite(accuracy) || accuracy < 0 || accuracy > 100000)) return error('A valid current GPS location is required.', 400);
+    const capturedAt = status === 'captured' ? cleanText(input.capturedAt, 40) || new Date().toISOString() : new Date().toISOString();
+    if (status === 'captured' && !isFreshLocationTimestamp(capturedAt)) return error('The location reading is too old or has an invalid timestamp. Try again.', 400);
     const patch: Record<string, unknown> = {
       status,
       capturedAt,
       responseMessage: status === 'unavailable' ? cleanText(input.message, 240) || 'Staff location was unavailable.' : '',
       ...(status === 'captured' ? {
-        latitude, longitude,
-        accuracy: Math.min(Math.max(Number(input.accuracy) || 0, 0), 100000),
+        latitude, longitude, accuracy,
         address: cleanText(input.address, 500) || 'Address not available; open in Google Maps.',
       } : {}),
     };
-    const [updated] = await db.tx.update('location_requests', [{ id: params.id, record: patch }], { patch: true });
-    if (updated) await writeAudit(user, 'SHARE_LOCATION', 'staff_location', params.id, 'Shared a one-time GPS location in response to an admin request.');
-    return updated ? json({ updated: true, status }) : error('Could not submit the location response.', 500);
+    const requestRef = firestore.collection('location_requests').doc(params.id);
+    const batch = firestore.batch();
+    batch.update(requestRef, patch);
+    if (status === 'captured') {
+      const point = {
+        id: user.id, staffId: user.id, staffName: user.displayName, attendanceId: String(active.id),
+        latitude, longitude, accuracy, capturedAt, source: 'staff-one-time-location-request',
+      };
+      batch.set(firestore.collection('staff_live_locations').doc(user.id), point, { merge: true });
+      const historyRef = firestore.collection('locations').doc();
+      const historyPoint: Record<string, unknown> = { ...point };
+      delete historyPoint.id;
+      batch.set(historyRef, historyPoint);
+      if (active.gpsIssueStartedAt) {
+        batch.update(firestore.collection('attendance').doc(String(active.id)), {
+          gpsIssueStartedAt: FieldValue.delete(), gpsIssueId: FieldValue.delete(),
+          gpsIssueReason: FieldValue.delete(), gpsReminderStage: FieldValue.delete(),
+          gpsStatus: 'active', gpsRestoredAt: capturedAt,
+        });
+        batch.set(firestore.collection('staff_notifications').doc(String(active.id) + '-gps-restored-' + String(active.gpsIssueId || capturedAt)), {
+          recipientId: user.id, recipientRole: 'staff', type: 'gps-restored',
+          title: 'GPS restored', message: 'Your current location was shared and GPS is available again. Your shift continues normally.',
+          createdAt: capturedAt, read: false, attendanceId: active.id,
+        });
+      }
+    }
+    const adminNotificationRef = firestore.collection('staff_notifications').doc();
+    batch.set(adminNotificationRef, {
+      recipientId: String(request.requestedBy || ''), recipientRole: 'admin',
+      type: 'location-request-response', title: 'Location request ' + (status === 'captured' ? 'completed' : 'unavailable'),
+      message: status === 'captured' ? user.displayName + ' shared a one-time GPS location.' : user.displayName + ' could not share a location: ' + String(patch.responseMessage || ''),
+      relatedId: params.id, createdAt: new Date().toISOString(), read: false,
+    });
+    await batch.commit();
+    await writeAudit(user, status === 'captured' ? 'SHARE_LOCATION' : 'LOCATION_UNAVAILABLE', 'staff_location', params.id,
+      status === 'captured' ? 'Shared a one-time GPS location during an active shift.' : 'Could not provide the requested location during an active shift.');
+    return json({ updated: true, status });
   }),
 
   'GET /api/location-requests/:id': protectedRoute(['admin'], async ({ params }) => {
@@ -1281,49 +1648,60 @@ export const handler = router({
 
   'POST /api/saved-locations': protectedRoute(['admin'], async ({ body }, admin) => {
     const requestId = cleanText(body?.requestId, 128);
-    const [request] = await db.get<Record<string, unknown>>('location_requests', [requestId], { consistent: true });
-    if (!request || request.status !== 'captured') return error('Only a successfully captured location can be saved.', 400);
-    if (request.savedLocationId) return error('This location has already been saved.', 409);
-    const record = {
-      staffId: String(request.staffId || ''),
-      staffName: String(request.staffName || 'Staff member'),
-      latitude: Number(request.latitude),
-      longitude: Number(request.longitude),
-      accuracy: Number(request.accuracy || 0),
-      address: cleanText(request.address, 500),
-      capturedAt: String(request.capturedAt || ''),
-      savedAt: new Date().toISOString(),
-      savedBy: admin.id,
-      savedByName: admin.displayName,
-      requestId,
+    let record: Record<string, unknown>;
+    if (requestId) {
+      const [request] = await db.get<Record<string, unknown>>('location_requests', [requestId], { consistent: true });
+      if (!request || request.status !== 'captured') return error('Only a successfully captured location can be saved.', 400);
+      if (request.savedLocationId) return error('This location has already been saved.', 409);
+      record = {
+        staffId: String(request.staffId || ''),
+        staffName: String(request.staffName || 'Staff member'),
+        latitude: Number(request.latitude), longitude: Number(request.longitude),
+        accuracy: Number(request.accuracy || 0), address: cleanText(request.address, 500),
+        capturedAt: String(request.capturedAt || ''), requestId,
+      };
+    } else {
+      const staffId = cleanText(body?.staffId, 128);
+      const [member] = await db.get<UserRecord>('users', [staffId], { consistent: true });
+      const latitude = Number(body?.latitude), longitude = Number(body?.longitude);
+      if (!member || member.role !== 'staff' || !member.active) return error('Active staff member not found.', 404);
+      if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || Math.abs(latitude) > 90 || Math.abs(longitude) > 180) return error('A valid live location is required.', 400);
+      record = {
+        staffId, staffName: member.displayName, latitude, longitude,
+        accuracy: Math.min(Math.max(Number(body?.accuracy) || 0, 0), 100000),
+        address: 'Coordinates available in Google Maps.',
+        capturedAt: cleanText(body?.capturedAt, 40) || new Date().toISOString(),
+      };
+    }
+    const savedRecord = {
+      ...record, savedAt: new Date().toISOString(),
+      savedBy: admin.id, savedByName: admin.displayName,
     };
-    const [id] = await db.add('saved_locations', [record]);
+    const [id] = await db.add('saved_locations', [savedRecord]);
     if (!id) return error('Could not save this location.', 500);
-    await db.tx.update('location_requests', [{ id: requestId, record: { savedLocationId: id } }], { patch: true });
-    await writeAudit(admin, 'SAVE_LOCATION', 'saved_location', id, 'Saved the location of ' + record.staffName);
-    return json({ id, ...record }, 201);
+    if (requestId) await db.tx.update('location_requests', [{ id: requestId, record: { savedLocationId: id } }], { patch: true });
+    await writeAudit(admin, 'SAVE_LOCATION', 'saved_location', id, 'Saved the location of ' + String(record.staffName || 'staff member'));
+    return json({ id, ...savedRecord }, 201);
   }),
 
   'GET /api/locations': protectedRoute(['admin'], async () => {
-    const today = new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit',
-    }).format(new Date());
-    const [locationResult, attendanceResult] = await Promise.all([
+    const [locationResult, attendanceSnapshot] = await Promise.all([
       db.list<Record<string, unknown>>('locations', { limit: 1000 }),
-      db.list<Record<string, unknown>>('attendance', { limit: 1000 }),
+      firestore.collection('attendance').where('status', '==', 'Checked in').get(),
     ]);
-    const latestShiftByStaff = new Map<string, Record<string, unknown>>();
-    const todays = attendanceResult.items
-      .filter(item => item.workDate === today)
-      .sort((a, b) => String(a.checkInAt || '').localeCompare(String(b.checkInAt || '')));
-    for (const shift of todays) {
-      if (shift.userId) latestShiftByStaff.set(String(shift.userId), shift);
+    const attendanceResult: Record<string, unknown>[] = attendanceSnapshot.docs.map(document => ({
+      ...(document.data() as Record<string, unknown>), id: document.id,
+    }));
+    const latestActiveShiftByStaff = new Map<string, Record<string, unknown>>();
+    for (const shift of attendanceResult) {
+      const staffId = String(shift.userId || '');
+      if (!staffId || !isOpenShift(shift) || shiftDueAt(shift) <= Date.now()) continue;
+      const previous = latestActiveShiftByStaff.get(staffId);
+      if (!previous || String(shift.checkInAt || '') > String(previous.checkInAt || '')) {
+        latestActiveShiftByStaff.set(staffId, shift);
+      }
     }
-    const activeShiftIds = new Set(
-      Array.from(latestShiftByStaff.values())
-        .filter(shift => !shift.checkOutAt && shift.gpsRestartRequired !== true && shift.gpsCancelled !== true)
-        .map(shift => String(shift.id)),
-    );
+    const activeShiftIds = new Set(Array.from(latestActiveShiftByStaff.values()).map(shift => String(shift.id)));
     const latestLocationByStaff = new Map<string, Record<string, unknown>>();
     for (const point of locationResult.items) {
       const attendanceId = String(point.attendanceId || '');
