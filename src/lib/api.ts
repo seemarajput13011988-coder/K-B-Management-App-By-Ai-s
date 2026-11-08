@@ -112,7 +112,7 @@ export async function signInAppUser(userId: string, password: string, role: 'adm
     });
     // Keep the timeout active while consuming the response body too. Some
     // mobile/network failures occur after headers arrive but before JSON completes.
-    try { data = await response.json(); } catch { data = {}; }
+    try { data = await response.json(); } catch (error) { if (controller.signal.aborted) throw error; data = {}; }
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') {
       throw new Error('Sign-in timed out while waiting for the K&B server. Check your connection and tap Sign In to retry.');
