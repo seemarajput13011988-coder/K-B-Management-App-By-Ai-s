@@ -1,43 +1,45 @@
-# Staff sign-in diagnosis and safe account migration
+# K&B Nexus sign-in diagnosis and safe staff account setup
 
-## What the preserved AppDeploy app does today
+## Active sign-in architecture
 
-The preserved `main` app imports `@appdeploy/client` in `src/App.tsx` and calls `POST /api/auth/login` with `userId` and `password`. The AppDeploy backend in `backend/index.ts`:
+The active Nexus app does **not** use Firebase Authentication for staff or administrator sign-in.
 
-1. Looks up the primary admin by the fixed `admin-primary` record ID, or searches the AppDeploy `users` collection for a matching staff `userId`.
-2. Checks that the account is active.
-3. Verifies the supplied password against a per-user scrypt hash and salt.
-4. Creates an eight-hour random session record in the `sessions` collection.
-5. The client stores that session token in browser localStorage and sends it on subsequent API requests.
+1. The React client calls `POST /api/auth/login` on the Render API with the K&B user ID and password.
+2. The Render API looks up the account in Firestore collection `users`, checks that it is active, and verifies the password against its salted scrypt hash.
+3. The server creates an opaque random session token. Only the SHA-256 hash of that token is stored in Firestore collection `sessions`.
+4. Subsequent API requests send the token in the `Authorization: Bearer` header. The server checks the stored session expiry and current account status on every protected request.
 
-Therefore, staff login can fail when the AppDeploy user record is absent, inactive, the entered ID does not match the stored ID, or the password does not match the stored hash. A Firebase Authentication user by itself cannot authenticate against this legacy endpoint.
+Admin sessions last eight hours. Staff sessions last 26 hours to support an administrator-started shift that can extend into the following day. Revoking a user's sessions invalidates their existing tokens.
 
-## What the Firebase migration branch does
+## Staff registration and approval
 
-The migration client maps a staff ID to a Firebase Auth email:
+- A prospective staff member can submit a public request using `POST /api/staff-registration-requests`.
+- A request is not a user account and cannot sign in.
+- The request remains pending until an authenticated administrator reviews it.
+- Approval requires the administrator to set a temporary password of at least 10 characters. The server creates the staff account and records the review.
+- The request-status endpoint requires the private tracking code returned at submission. The tracking code is stored only as a hash.
+- The public registration form never accepts a role or administrator capability. It cannot create an admin account.
 
-`lowercase(staffUserId)@accounts.kandbnetservice.in`
+If a staff member cannot sign in, first check whether the registration request is still pending or rejected, then confirm that the approved account is active and that the temporary password was entered correctly.
 
-It then signs in with Firebase Email/Password and calls the Cloud Functions API with a Firebase ID token in the Authorization Bearer header. The server verifies the token with revocation checking and loads `users/{Firebase UID}` from Firestore. A missing profile, inactive profile, or invalid role prevents API access even when Firebase Authentication accepted the password.
+## Common responses
 
-This separates two distinct failure cases:
+- **404 — no account:** the K&B user ID has not been created or approved yet.
+- **401 — incorrect credentials or inactive account:** verify the exact K&B user ID, temporary/current password and active status. Ask an administrator to reset the password if necessary.
+- **401 — expired or revoked session:** sign in again. The server checks session expiry and account status.
+- **403 — insufficient permission:** the account is authenticated but does not have the role/capability required for that operation.
+- **503 — primary owner not initialized:** the Render owner-setup environment is incomplete. The business owner must configure the required private environment values in Render; never put them in GitHub or chat.
 
-- **Firebase Auth rejects credentials:** the user has not been provisioned in Firebase Authentication, the password is wrong, or Email/Password/provider/domain configuration is incorrect.
-- **Firebase Auth accepts credentials but profile loading fails:** the Firebase UID has no corresponding active Firestore `users/{uid}` profile, or the profile role/status is invalid. Do not create a client-side role or let a user self-register as admin to bypass this.
+## Primary administrator protection
 
-## Safe staff account migration
+The fixed owner account ID is `Brajraj`. Only the server-provisioned primary-super-admin capability can create, update or remove other admin accounts. The server does not trust a role or capability sent by the client. The primary owner account cannot be disabled or deleted through the admin-management API.
 
-1. Export and back up the AppDeploy `users` collection and related business collections through an owner-authorized process. Keep the backup outside GitHub.
-2. Create a reviewed mapping table containing the legacy AppDeploy user record ID, staff login ID, display name, active state, new Firebase UID, and provisioning status. Never include plaintext passwords or password hashes in a public repository.
-3. Create Firebase Authentication accounts for staff with administrator-controlled temporary passwords or a secure password-reset/invitation process. Existing scrypt hashes are not Firebase passwords and must not be copied into Firebase Authentication.
-4. Create each matching Firestore `users/{Firebase UID}` profile server-side with the approved `userId`, `displayName`, `role: staff`, and `active` state. Never accept a role from a public registration form.
-5. Remap every staff reference (assignments, payments, attendance, tasks, visits, messages, expenses and audit records) using the reviewed UID mapping.
-6. Verify a staff member can read only their own/assigned records, and that disabled staff and invalid/expired tokens are rejected.
-7. Keep the AppDeploy app and its data available until reconciliation and owner acceptance are complete.
+## Legacy code and migration boundary
 
-## Current migration limitations to resolve before production
+- `render-backend/` is the active API.
+- `functions/` is preserved legacy Firebase Functions source and must not be deployed as a parallel API.
+- `backend/` is a preserved AppDeploy backend snapshot, not the active Render API.
+- Firebase Authentication accounts are not required for the active K&B sign-in flow.
+- Existing AppDeploy users and business records have **not** been automatically imported. Back up and reconcile records before any production migration. Do not assume that creating a Firebase Authentication user provisions a Nexus account.
 
-- Existing old passwords are not imported; each account needs a Firebase provisioning/reset path.
-- Firebase Auth success plus a missing Firestore profile must produce a clear, recoverable admin-side provisioning diagnosis.
-- Automated tests must exercise valid login, invalid credentials/session, revoked/expired ID tokens, admin-vs-staff authorization, and staff record isolation against an emulator or a testable injected auth/data layer. Existing route-path unit tests alone do not prove these security properties.
-- Do not delete any records after six months unless the owner explicitly specifies which data categories, retention trigger, legal/accounting constraints, and backup requirements. Customer, payment, invoice, and other business records are excluded by default.
+For data migration, preserve stable K&B user IDs and Firestore user-document references, or create and review an explicit old-ID-to-new-ID mapping before changing any references. Never expose customer exports, password hashes, service-account credentials or recovery secrets in this repository.
