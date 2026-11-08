@@ -215,6 +215,12 @@ export function attendanceAbsenceDecision(
 }
 
 
+/** Pending and approved holiday requests both exempt a staff shift from GPS-loss cancellation. */
+export function isGpsGraceExemptHolidayStatus(status: unknown): boolean {
+  const normalized = String(status || '').toLowerCase();
+  return normalized === 'pending' || normalized === 'approved';
+}
+
 /** Rejects implausibly old or future client timestamps before treating GPS as live. */
 export function isFreshLocationTimestamp(value: unknown, currentTime = Date.now(), maxAgeMs = 5 * 60 * 1000, maxFutureSkewMs = 60 * 1000): boolean {
   if (typeof value !== 'string' || !value.trim() || !Number.isFinite(currentTime)) return false;
