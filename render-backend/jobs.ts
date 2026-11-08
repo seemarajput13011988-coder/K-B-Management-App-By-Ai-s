@@ -1,7 +1,7 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { getMessaging } from 'firebase-admin/messaging';
 import { FieldValue, firestore } from './firestore-adapter.js';
-import { subscriptionExpiryKind, taskReminderKind } from './route-path.js';
+import { isGpsGraceExemptHolidayStatus, subscriptionExpiryKind, taskReminderKind } from './route-path.js';
 
 type Item = Record<string, any>;
 const now = () => new Date().toISOString();
@@ -35,7 +35,7 @@ export async function runGpsGracePeriod() {
     const elapsed = currentTime - issueTime;
     const exempt = requests.some(request =>
       request.userId === item.userId &&
-      String(request.status) === 'approved' &&
+      isGpsGraceExemptHolidayStatus(request.status) &&
       String(request.startDate || '') <= String(item.workDate || '') &&
       String(request.endDate || '') >= String(item.workDate || '')
     );
