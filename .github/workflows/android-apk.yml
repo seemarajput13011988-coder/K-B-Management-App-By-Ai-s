@@ -826,6 +826,26 @@ jobs:
           if "registerPlugin(WorkLocationTrackingPlugin.class);" not in s:
               raise SystemExit("Could not register WorkLocationTrackingPlugin in MainActivity")
           PY
+      - name: Verify native GPS shift-boundary safeguards
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          source = Path("android/app/src/main/java/kandbnet/service2010/WorkLocationTrackingService.java").read_text()
+          required = [
+              "private volatile boolean shiftServerConfirmed = false;",
+              "private boolean hasValidCachedDeadline()",
+              "if (stopping || !shiftServerConfirmed) return;",
+              "if (!shiftServerConfirmed || now - lastUploadAt < 9000L || stopping) return;",
+              "shiftServerConfirmed = false;",
+              "checkShiftStatus();",
+          ]
+          missing = [item for item in required if item not in source]
+          if source.count("stopIfCachedDeadlineExpired();") < 3:
+              missing.append("cached deadline guards before location startup and upload")
+          if missing:
+              raise SystemExit("Native GPS privacy checks are missing: " + "; ".join(missing))
+          print("Native GPS service confirms active shifts, validates its cached deadline, and guards every location upload.")
+          PY
       - name: Configure and validate Firebase Cloud Messaging for Android
         env:
           ANDROID_GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.ANDROID_GOOGLE_SERVICES_JSON_BASE64 }}
