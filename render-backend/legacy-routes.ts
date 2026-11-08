@@ -1115,27 +1115,36 @@ export const handler = router({
 
   'POST /api/attendance/check-out': protectedRoute(['staff'], async (_ctx, user) => {
     const settings = await getWorkforceSettings();
-    // An active shift may have been started by an administrator outside the normal window.
-    // Let the assigned staff member end that shift at any time before its saved deadline.
     const result = await listAttendanceForUser(user.id);
     const existing = findActiveShift(result, user.id, Date.now(), settings.shiftEndTime);
     if (!existing) return error('There is no active shift to check out.', 400);
-    const [updated] = await db.tx.update('attendance', [{
-      id: String(existing.id),
-      record: {
-        checkOutAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        endedBy: user.id,
-        endedByName: user.displayName,
+    const id = String(existing.id);
+    const attendanceRef = firestore.collection('attendance').doc(id);
+    const lockRef = firestore.collection('active_shift_locks').doc(user.id);
+    const endedAt = new Date().toISOString();
+    const outcome = await firestore.runTransaction(async transaction => {
+      const snapshot = await transaction.get(attendanceRef);
+      const lockSnapshot = await transaction.get(lockRef);
+      if (!snapshot.exists) return 'not-found';
+      const current = snapshot.data() as Record<string, unknown>;
+      if (current.userId !== user.id) return 'forbidden';
+      if (!isOpenShift(current)) return 'already-ended';
+      if (shiftDueAt(current, settings.shiftEndTime) <= Date.now()) return 'deadline-passed';
+      transaction.update(attendanceRef, {
+        checkOutAt: endedAt, updatedAt: endedAt, endedBy: user.id, endedByName: user.displayName,
         status: 'Completed',
-        gpsStatus: existing.gpsIssueStartedAt ? 'disabled-at-checkout' : (existing.gpsStatus || 'enabled'),
-        gpsIssueStartedAt: FieldValue.delete(),
-        gpsIssueId: FieldValue.delete(),
-        gpsIssueReason: FieldValue.delete(),
-        gpsReminderStage: FieldValue.delete(),
-      },
-    }], { patch: true });
-    return updated ? json({ updated: true }) : error('Could not save your check-out.', 500);
+        gpsStatus: current.gpsIssueStartedAt ? 'disabled-at-checkout' : (current.gpsStatus || 'enabled'),
+        gpsIssueStartedAt: FieldValue.delete(), gpsIssueId: FieldValue.delete(),
+        gpsIssueReason: FieldValue.delete(), gpsReminderStage: FieldValue.delete(),
+      });
+      if (String(lockSnapshot.data()?.attendanceId || '') === id) transaction.delete(lockRef);
+      return 'updated';
+    });
+    if (outcome === 'not-found') return error('Attendance record not found.', 404);
+    if (outcome === 'forbidden') return error('You can only check out your own shift.', 403);
+    if (outcome === 'already-ended') return error('This shift has already ended.', 409);
+    if (outcome === 'deadline-passed') return error('The scheduled shift end time has passed. Automatic checkout is being processed.', 409);
+    return json({ updated: true });
   }),
 
   'POST /api/attendance/admin-absent': protectedRoute(['admin'], async ({ body }, admin) => {
@@ -1279,34 +1288,62 @@ export const handler = router({
   'POST /api/attendance/admin-end': protectedRoute(['admin'], async ({ body }, admin) => {
     const input = (body || {}) as Record<string, unknown>;
     const staffId = cleanText(input.userId, 128);
+    const [member] = await db.get<UserRecord>('users', [staffId], { consistent: true });
+    if (!member || member.role !== 'staff' || !member.active) return error('Choose an active staff member.', 400);
+    const settings = await getWorkforceSettings();
     const result = await listAttendanceForUser(staffId);
     const existing = findOpenShift(result, staffId);
     if (!existing) return error('There is no active shift for this staff member.', 400);
-    const endedAt = new Date().toISOString();
-    const attendanceRef = firestore.collection('attendance').doc(String(existing.id));
+    const id = String(existing.id);
+    const attendanceRef = firestore.collection('attendance').doc(id);
+    const lockRef = firestore.collection('active_shift_locks').doc(staffId);
     const auditRef = firestore.collection('audit_logs').doc();
     const notificationRef = firestore.collection('staff_notifications').doc();
-    const batch = firestore.batch();
-    batch.update(attendanceRef, {
-      checkOutAt: endedAt, updatedAt: endedAt, status: 'Completed',
-      endedByAdminId: admin.id, endedByAdminName: admin.displayName, endedByAdmin: admin.displayName,
-      gpsIssueStartedAt: FieldValue.delete(), gpsIssueId: FieldValue.delete(),
-      gpsIssueReason: FieldValue.delete(), gpsReminderStage: FieldValue.delete(),
+    const requestedAt = Date.now();
+    const outcome = await firestore.runTransaction(async transaction => {
+      const snapshot = await transaction.get(attendanceRef);
+      const lockSnapshot = await transaction.get(lockRef);
+      if (!snapshot.exists) return 'not-found';
+      const current = snapshot.data() as Record<string, unknown>;
+      if (current.userId !== staffId) return 'not-found';
+      if (!isOpenShift(current)) return 'already-ended';
+      const deadline = shiftDueAt(current, settings.shiftEndTime);
+      const autoEnded = deadline <= requestedAt;
+      const endedAt = new Date(autoEnded ? deadline : requestedAt).toISOString();
+      transaction.update(attendanceRef, {
+        checkOutAt: endedAt, updatedAt: endedAt, status: 'Completed',
+        ...(autoEnded
+          ? { endedBy: 'system', endedByName: 'Automatic scheduled checkout', autoCheckedOut: true, autoCheckedOutAt: endedAt }
+          : { endedByAdminId: admin.id, endedByAdminName: admin.displayName, endedByAdmin: admin.displayName }),
+        gpsStatus: current.gpsIssueStartedAt ? 'disabled-at-checkout' : (current.gpsStatus || 'enabled'),
+        gpsIssueStartedAt: FieldValue.delete(), gpsIssueId: FieldValue.delete(),
+        gpsIssueReason: FieldValue.delete(), gpsReminderStage: FieldValue.delete(),
+      });
+      if (String(lockSnapshot.data()?.attendanceId || '') === id) transaction.delete(lockRef);
+      transaction.create(auditRef, {
+        actorId: autoEnded ? 'system' : admin.id,
+        actorName: autoEnded ? 'K&B automatic attendance' : admin.displayName,
+        action: autoEnded ? 'AUTO_CHECKOUT' : 'ADMIN_END_SHIFT',
+        entityType: 'attendance', entityId: id,
+        description: autoEnded
+          ? 'Automatically checked out ' + String(current.displayName || member.displayName) + ' at the scheduled shift end time.'
+          : cleanText('Ended ' + String(current.displayName || staffId) + '’s shift at ' + endedAt + '.', 240),
+        createdAt: endedAt,
+      });
+      transaction.create(notificationRef, {
+        recipientId: staffId, recipientRole: 'staff',
+        type: autoEnded ? 'attendance-auto-checkout' : 'admin-shift-ended',
+        title: autoEnded ? 'Shift automatically ended' : 'Your shift was ended by an administrator',
+        message: autoEnded
+          ? 'Your shift was automatically checked out at the scheduled end time.'
+          : admin.displayName + ' ended your work shift. Location sharing has stopped.',
+        createdAt: endedAt, read: false, attendanceId: id,
+      });
+      return autoEnded ? 'auto-ended' : 'admin-ended';
     });
-    batch.set(auditRef, {
-      actorId: admin.id, actorName: admin.displayName, action: 'ADMIN_END_SHIFT',
-      entityType: 'attendance', entityId: String(existing.id),
-      description: cleanText('Ended ' + String(existing.displayName || staffId) + '’s shift at ' + endedAt + '.', 240),
-      createdAt: endedAt,
-    });
-    batch.set(notificationRef, {
-      recipientId: staffId, recipientRole: 'staff', type: 'admin-shift-ended',
-      title: 'Your shift was ended by an administrator',
-      message: admin.displayName + ' ended your work shift. Location sharing has stopped.',
-      createdAt: endedAt, read: false, attendanceId: String(existing.id),
-    });
-    await batch.commit();
-    return json({ updated: true });
+    if (outcome === 'not-found') return error('Attendance record not found.', 404);
+    if (outcome === 'already-ended') return error('This shift has already ended.', 409);
+    return json({ updated: true, autoCheckedOut: outcome === 'auto-ended' });
   }),
 
   'GET /api/holidays': protectedRoute(['admin', 'staff'], async (_ctx, user) => {
