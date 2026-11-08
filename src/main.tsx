@@ -67,10 +67,30 @@ function showUpdateRequired(message: string, retry: () => void, retryEnabled = t
   appRoot.append(screen);
 }
 
+const UPDATE_CHECK_TIMEOUT_MS = 8_000;
+
+async function getLatestUpdateWithTimeout() {
+  let timeoutId: number | undefined;
+  try {
+    return await Promise.race([
+      CapacitorUpdater.getLatest(),
+      new Promise<never>((_, reject) => {
+        timeoutId = window.setTimeout(() => {
+          reject(new Error(`OTA update check timed out after ${UPDATE_CHECK_TIMEOUT_MS} ms.`));
+        }, UPDATE_CHECK_TIMEOUT_MS);
+      }),
+    ]);
+  } finally {
+    if (timeoutId !== undefined) window.clearTimeout(timeoutId);
+  }
+}
+
 async function runRequiredUpdate(updateWasPreviouslyRequired = false): Promise<void> {
   let updateWasAdvertised = updateWasPreviouslyRequired;
   try {
-    const latest = await CapacitorUpdater.getLatest();
+    // A stalled update endpoint must never hold the user at the startup screen.
+    // Timeout errors follow the existing fail-open path below and mount the last good app.
+    const latest = await getLatestUpdateWithTimeout();
     if (!latest?.url || !latest.version) {
       mountApp(true);
       return;
