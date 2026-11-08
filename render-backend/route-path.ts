@@ -203,7 +203,7 @@ export type AttendanceAbsenceDecision = 'create' | 'active-shift' | 'already-abs
 
 /** Prevents the administrator absence action from replacing an existing attendance record. */
 export function attendanceAbsenceDecision(
-  existing: { dayType?: unknown; status?: unknown } | null,
+  existing: Record<string, unknown> | null,
   hasActiveShift: boolean,
 ): AttendanceAbsenceDecision {
   if (hasActiveShift) return 'active-shift';
