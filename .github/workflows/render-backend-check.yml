@@ -1,0 +1,176 @@
+name: K&B Render backend checks
+on:
+  workflow_dispatch:
+  push:
+    branches: [render-backend-migration, quality-audit-2026-11-06, whole-app-stability-audit-2026-11-06, on-demand-gps-proof-permissions, ui-rebuild-gps-holidays-api-fixes, fixes-session-gps-ui-2026-11-06, whole-app-gps-ui-sync-audit-2026-11-07, nexus-workforce-payroll-media-ui-2026-11-07, nexus-release-audit-2026-11-07]
+    paths: ["render-backend/**", "src/**", "package.json", "package-lock.json", ".github/workflows/render-backend-check.yml", ".github/workflows/ota-release.yml"]
+  pull_request:
+    branches: [main, fixes-session-gps-ui-2026-11-06]
+    paths: ["render-backend/**", "src/**", "package.json", "package-lock.json"]
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: render-backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install
+      - name: Audit backend dependency advisories
+        run: |
+          npm audit --json > /tmp/kb-render-audit.json || true
+          node <<'NODE'
+          const audit = require('/tmp/kb-render-audit.json');
+          console.log('Render backend dependency vulnerabilities:', JSON.stringify(audit.metadata?.vulnerabilities || {}));
+          for (const [name, item] of Object.entries(audit.vulnerabilities || {})) {
+            console.log(JSON.stringify({ package: name, severity: item.severity, range: item.range, via: item.via, isDirect: item.isDirect, fixAvailable: item.fixAvailable }));
+          }
+          NODE
+          npm audit --omit=dev --audit-level=high
+      - run: npm run typecheck
+      - name: Repeat backend unit tests five times
+        run: |
+          for pass in 1 2 3 4 5; do
+            echo "Backend test pass $pass of 5"
+            npm test
+          done
+      - name: Verify staff registration route contracts
+        working-directory: .
+        run: |
+          set -euo pipefail
+          grep -Fq "method === 'POST' && path === '/api/staff-registration-requests'" render-backend/api-handler.ts
+          grep -Fq "method === 'GET' && path === '/api/staff-registration-requests/status'" render-backend/api-handler.ts
+          grep -Fq "path === '/api/staff-registration-requests' && method === 'GET'" render-backend/api-handler.ts
+          grep -Fq "path.startsWith('/api/staff-registration-requests/') && method === 'PUT'" render-backend/api-handler.ts
+          grep -Fq "if (!allow(user, ['admin'], res)) return;" render-backend/api-handler.ts
+          grep -Fq "'POST /api/location-requests'" render-backend/legacy-routes.ts
+          grep -Fq "'GET /api/location-requests/pending'" render-backend/legacy-routes.ts
+          grep -Fq "'POST /api/location-requests/:id/respond'" render-backend/legacy-routes.ts
+          grep -Fq "'GET /api/location-requests/:id'" render-backend/legacy-routes.ts
+          grep -Fq "'GET /api/saved-locations'" render-backend/legacy-routes.ts
+          grep -Fq "'POST /api/saved-locations'" render-backend/legacy-routes.ts
+          grep -Fq "path.startsWith('/api/admins/') && method === 'PUT'" render-backend/api-handler.ts
+          grep -Fq "The primary super-admin account cannot be disabled." render-backend/api-handler.ts
+          grep -Fq "db.collection('chat_groups').where('memberIds', 'array-contains', staffId)" render-backend/api-handler.ts
+          grep -Fq "app.use(legacyHandler)" render-backend/server.ts
+          echo "Public request/status, admin-only review, and staff GPS route handlers are present."
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install and build frontend
+        env:
+          VITE_API_BASE_URL: https://kandb-management-nexus-api-zv7f.onrender.com
+        run: |
+          npm install
+          npm audit --json > /tmp/kb-npm-audit.json || true
+          node <<'NODE'
+          const audit = require('/tmp/kb-npm-audit.json');
+          console.log('Dependency vulnerability totals:', JSON.stringify(audit.metadata?.vulnerabilities || {}));
+          for (const [name, item] of Object.entries(audit.vulnerabilities || {})) {
+            console.log(JSON.stringify({ package: name, severity: item.severity, range: item.range, via: item.via, effects: item.effects, isDirect: item.isDirect, fixAvailable: item.fixAvailable }));
+          }
+          NODE
+          npx tsc --noEmit
+          npm run build
+
+  api-smoke-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify live API and Firestore-backed login lookup
+        run: |
+          set -euo pipefail
+          base="https://kandb-management-nexus-api-zv7f.onrender.com"
+          curl --fail --silent --show-error --retry 5 --retry-delay 5 --retry-all-errors --max-time 60 "$base/api/_healthcheck"
+          for path in "/api/holidays" "/api/locations/history"; do
+            status=$(curl --silent --show-error --max-time 30 -o /tmp/kb-protected-route.json -w '%{http_code}' "$base$path")
+            if [ "$status" != "401" ]; then
+              cat /tmp/kb-protected-route.json
+              echo "::error::Expected $path to exist and require authentication (401), received HTTP $status."
+              exit 1
+            fi
+          done
+          # One-time staff GPS request routes must be registered and protected.
+          for spec in "GET /api/location-requests/pending" "GET /api/saved-locations" "POST /api/location-requests" "POST /api/staff/live-location" "GET /api/staff/__smoke__/live-location"; do
+            method="${spec%% *}"
+            path="${spec#* }"
+            status=$(curl --silent --show-error --max-time 30 -o /tmp/kb-gps-route.json -w '%{http_code}' -X "$method" "$base$path" -H 'Content-Type: application/json' --data '{}')
+            if [ "$status" != "401" ]; then
+              cat /tmp/kb-gps-route.json
+              echo "::error::Expected protected GPS route $method $path to return HTTP 401 without a session, received HTTP $status."
+              exit 1
+            fi
+          done
+          status=$(curl --silent --show-error --max-time 30 -o /tmp/kb-gps-route.json -w '%{http_code}' -X POST "$base/api/location-requests/__smoke__/respond" -H 'Content-Type: application/json' --data '{"status":"failed"}')
+          if [ "$status" != "401" ]; then
+            cat /tmp/kb-gps-route.json
+            echo "::error::Expected protected GPS response route to return HTTP 401 without a session, received HTTP $status."
+            exit 1
+          fi
+          # Every UI delete action must resolve to a protected API route, not a generic 404.
+          for path in "/api/tasks/__smoke__" "/api/complaints/__smoke__" "/api/customers/__smoke__" "/api/plans/__smoke__" "/api/payments/__smoke__" "/api/payroll/__smoke__" "/api/installations/__smoke__" "/api/notifications/__smoke__" "/api/staff/__smoke__" "/api/visits/__smoke__"; do
+            status=$(curl --silent --show-error --max-time 30 -o /tmp/kb-delete-route.json -w '%{http_code}' -X DELETE "$base$path")
+            if [ "$status" != "401" ]; then
+              cat /tmp/kb-delete-route.json
+              echo "::error::Expected protected delete route $path to return HTTP 401 without a session, received HTTP $status."
+              exit 1
+            fi
+          done
+          echo "All delete endpoints are registered and require authentication."
+          status=$(curl --silent --show-error --max-time 30 -o /tmp/kb-protected-route.json -w '%{http_code}' -X PUT "$base/api/attendance/__smoke__/day-type" -H 'Content-Type: application/json' --data '{}')
+          if [ "$status" != "401" ]; then
+            cat /tmp/kb-protected-route.json
+            echo "::error::Expected attendance correction route to exist and require authentication (401), received HTTP $status."
+            exit 1
+          fi
+          status=$(curl --silent --show-error --max-time 30 -o /tmp/kb-protected-route.json -w '%{http_code}' -X POST "$base/api/attendance/gps-lost" -H 'Content-Type: application/json' --data '{}')
+          if [ "$status" != "401" ]; then
+            cat /tmp/kb-protected-route.json
+            echo "::error::Expected GPS-loss route to exist and require authentication (401), received HTTP $status."
+            exit 1
+          fi
+          status=$(curl --silent --show-error --max-time 30 -o /tmp/kb-registration.json -w '%{http_code}' -X POST "$base/api/staff-registration-requests" -H 'Content-Type: application/json' --data '{}')
+          if [ "$status" != "400" ]; then
+            cat /tmp/kb-registration.json
+            echo "::error::Expected public staff registration route to validate input (400), received HTTP $status."
+            exit 1
+          fi
+          status=$(curl --silent --show-error --max-time 30 -o /tmp/kb-registration.json -w '%{http_code}' "$base/api/staff-registration-requests/status")
+          if [ "$status" != "400" ]; then
+            cat /tmp/kb-registration.json
+            echo "::error::Expected registration status route to require a tracking code (400), received HTTP $status."
+            exit 1
+          fi
+          status=$(curl --silent --show-error --max-time 30 -o /tmp/kb-registration.json -w '%{http_code}' "$base/api/staff-registration-requests")
+          if [ "$status" != "401" ]; then
+            cat /tmp/kb-registration.json
+            echo "::error::Expected admin registration list to require authentication (401), received HTTP $status."
+            exit 1
+          fi
+          status=$(curl --silent --show-error --max-time 30 -o /tmp/kb-registration.json -w '%{http_code}' -X PUT "$base/api/staff-registration-requests/__smoke__" -H 'Content-Type: application/json' --data '{}')
+          if [ "$status" != "401" ]; then
+            cat /tmp/kb-registration.json
+            echo "::error::Expected registration review route to require admin authentication (401), received HTTP $status."
+            exit 1
+          fi
+          status=$(curl --silent --show-error --retry 5 --retry-delay 5 --retry-all-errors --max-time 60 -o /tmp/kb-login-probe.json -w '%{http_code}' -X POST "$base/api/auth/login" -H 'Content-Type: application/json' --data '{"userId":"__kb_firestore_health_probe__","password":"not-a-real-password"}')
+          if [ "$status" != "404" ]; then
+            cat /tmp/kb-login-probe.json
+            echo "::error::Expected a 404 unknown-account response from the Firestore-backed login lookup probe, received HTTP $status."
+            exit 1
+          fi
+          # A deliberately wrong password checks only whether the fixed owner record exists.
+          # The API logs a credential-free diagnostic branch; this probe can never authenticate.
+          status=$(curl --silent --show-error --max-time 30 -o /tmp/kb-owner-probe.json -w '%{http_code}' -X POST "$base/api/auth/login" -H 'Content-Type: application/json' --data '{"userId":"Brajraj","password":"__kb_nonmatching_probe__"}')
+          if [ "$status" != "401" ]; then
+            cat /tmp/kb-owner-probe.json
+            echo "::error::Expected the fixed owner lookup probe to reject the deliberately wrong test password (401), received HTTP $status."
+            exit 1
+          fi
+          echo "API health check, Firestore-backed login lookup, GPS/attendance guards, and staff registration request/status routes passed their live HTTP checks."

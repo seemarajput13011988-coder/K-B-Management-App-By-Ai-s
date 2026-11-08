@@ -571,7 +571,7 @@ export const handler = router({
     const assignedTo = cleanText(input.assignedTo, 100);
     const dueDate = cleanText(input.dueDate, 20);
     const priority = ['Low', 'Normal', 'High'].includes(String(input.priority)) ? String(input.priority) : 'Normal';
-    if (!title || !assignedTo || !/^\\d{4}-\\d{2}-\\d{2}$/.test(dueDate)) return error('Enter a task title, active staff member and valid due date.', 400);
+    if (!title || !assignedTo || !/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) return error('Enter a task title, active staff member and valid due date.', 400);
     const [staffMember] = await db.get<UserRecord>('users', [assignedTo], { consistent: true });
     if (!staffMember || staffMember.role !== 'staff' || !staffMember.active) return error('Choose an active staff account.', 400);
     const record: TaskRecord = { title, details, assignedTo, assignedToName: staffMember.displayName, priority, dueDate, status: 'Pending', createdAt: new Date().toISOString().slice(0, 10), createdBy: user.id, createdByName: user.displayName };
@@ -809,7 +809,7 @@ export const handler = router({
     const amount = Number(input.amount);
     const spentAt = cleanText(input.spentAt, 20);
     const method = cleanText(input.method, 40);
-    if (!title || !category || !validMoney(amount) || amount <= 0 || !/^\\d{4}-\\d{2}-\\d{2}$/.test(spentAt) || !method) return error('Enter a valid expense title, category, amount, date and payment method.', 400);
+    if (!title || !category || !validMoney(amount) || amount <= 0 || !/^\d{4}-\d{2}-\d{2}$/.test(spentAt) || !method) return error('Enter a valid expense title, category, amount, date and payment method.', 400);
     const record = { title, category, amount, spentAt, method, notes: cleanText(input.notes, 300), createdBy: user.id, createdByName: user.displayName, createdAt: new Date().toISOString() };
     const [id] = await db.add('expenses', [record]);
     if (!id) return error('Could not save expense.', 500);
@@ -836,7 +836,7 @@ export const handler = router({
 
   'GET /api/invoices': protectedRoute(['admin'], async ({ query }) => {
     const period = cleanText(query.period, 7);
-    if (!/^\\d{4}-\\d{2}$/.test(period)) return error('Select a valid billing month.', 400);
+    if (!/^[0-9]{4}-[0-9]{2}$/.test(period)) return error('Select a valid billing month.', 400);
     const [invoiceResult, paymentResult] = await Promise.all([
       db.list<Record<string, unknown>>('invoices', { limit: 500 }),
       db.list<Payment>('payments', { limit: 500 })
@@ -854,7 +854,7 @@ export const handler = router({
   'POST /api/invoices/generate': protectedRoute(['admin'], async ({ body }, user) => {
     const input = (body || {}) as Record<string, unknown>;
     const period = cleanText(input.period, 7);
-    if (!/^\\d{4}-\\d{2}$/.test(period)) return error('Select a valid billing month.', 400);
+    if (!/^[0-9]{4}-[0-9]{2}$/.test(period)) return error('Select a valid billing month.', 400);
     const customers = await db.list<Customer>('customers', { limit: 500 });
     const existing = await db.list<Record<string, unknown>>('invoices', { limit: 500 });
     const existingKeys = new Set(existing.items.map(item => String(item.customerId) + '|' + String(item.period)));
@@ -864,7 +864,7 @@ export const handler = router({
       const key = customer.id + '|' + period;
       if (existingKeys.has(key)) continue;
       const [year, month] = period.split('-').map(Number);
-      const dueDay = customer.dueDate && /^\\d{4}-\\d{2}-\\d{2}$/.test(customer.dueDate) ? Number(customer.dueDate.slice(-2)) : 10;
+      const dueDay = customer.dueDate && /^\d{4}-\d{2}-\d{2}$/.test(customer.dueDate) ? Number(customer.dueDate.slice(-2)) : 10;
       const maxDay = new Date(year, month, 0).getDate();
       const dueDate = period + '-' + String(Math.min(Math.max(dueDay, 1), maxDay)).padStart(2, '0');
       const id = 'inv-' + createHash('sha256').update(key).digest('hex').slice(0, 32);
