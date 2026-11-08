@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Geolocation } from '@capacitor/geolocation';
+import { Capacitor } from '@capacitor/core';
 import { api as client, subscribeToApiChanges } from './lib/api';
 
 type Session = { token: string; user: { id: string; displayName: string; role: 'admin' | 'staff'; canManageAdmins?: boolean } };
@@ -14,6 +15,26 @@ type Message = { id: string; senderName: string; recipientName: string; message:
 type Payment = { id: string; recordedBy?: string; recordedByName?: string; amount: number; paidAt: string };
 type ChatGroup = { id: string; name: string; memberIds: string[]; memberNames: string[] };
 type GroupMessage = { id: string; groupId: string; senderId: string; senderName: string; message: string; createdAt: string };
+
+async function ensureLocationReadyForShift(): Promise<void> {
+  if (Capacitor.isNativePlatform()) {
+    let permission = await Geolocation.checkPermissions();
+    if (permission.location !== 'granted') permission = await Geolocation.requestPermissions();
+    if (permission.location !== 'granted') {
+      throw new Error('Location permission is required to start a shift. Allow it in Android permissions, then try again.');
+    }
+    await Geolocation.getCurrentPosition({ enableHighAccuracy: true, maximumAge: 0, timeout: 15000 });
+    return;
+  }
+  if (!navigator.geolocation) throw new Error('This browser does not support location. Open the app on a device with location services.');
+  await new Promise<void>((resolve, reject) => {
+    navigator.geolocation.getCurrentPosition(
+      () => resolve(),
+      error => reject(new Error(error.code === 1 ? 'Allow location access before starting a shift.' : 'Turn on device location and try again.')),
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 },
+    );
+  });
+}
 
 const localDay = () => new Intl.DateTimeFormat('en-CA', {
   timeZone: 'Asia/Kolkata',
@@ -326,6 +347,10 @@ export default function StaffOperations({ session, customers, flash, compact = f
   async function shift(action: 'check-in' | 'check-out') {
     setBusy(true);
     try {
+      // The backend applies a 15-minute GPS restoration grace period. Confirm
+      // permission and a fresh fix before opening a shift so staff are not
+      // checked in only to have the shift cancelled for missing location.
+      if (action === 'check-in') await ensureLocationReadyForShift();
       await request('post', '/api/attendance/' + action, { dayType, capturedAt: new Date().toISOString() });
       await refresh();
       onDataChanged?.();
@@ -561,7 +586,7 @@ export default function StaffOperations({ session, customers, flash, compact = f
       <div className="ops-panel-head"><div><span className="eyebrow">ATTENDANCE</span><h2>My workday</h2><p>Record your shift start and finish. Work location is shared with authorised Admins during an active shift. On Android, background tracking continues with a persistent notification and stops at checkout.</p></div><span className={'ops-pill ' + (activeShift ? 'is-live' : 'is-idle')}>{activeShift ? 'ON SHIFT' : waitingForAutoCheckout ? 'ENDING SHIFT' : myToday?.dayType === 'Absent' ? 'ABSENT' : myToday?.checkOutAt ? 'SHIFT COMPLETE' : 'OFF SHIFT'}</span></div>
       <div className="ops-clock-row"><div><small>CHECK IN</small><strong>{myToday?.dayType === 'Absent' ? 'Absent' : myToday ? stamp(myToday.checkInAt) : 'Not checked in'}</strong></div><div><small>CHECK OUT</small><strong>{myToday?.dayType === 'Absent' ? '—' : myToday?.checkOutAt ? stamp(myToday.checkOutAt) : '—'}</strong></div></div>
       <div className="ops-actions"><label className="ops-day-type">Attendance type <select value={dayType} disabled={!!myToday} onChange={e=>setDayType(e.target.value as 'Full day'|'Half day')}><option>Full day</option><option>Half day</option></select></label>{!myToday ? staffShiftWindowOpen ? <button className="btn primary" disabled={busy} onClick={() => shift('check-in')}>Check in and start shift</button> : <span className="ops-complete">Staff shifts are available from {shiftSettings.shiftStartTime} to {shiftSettings.shiftEndTime} India time.</span> : activeShift ? <button className="btn danger" disabled={busy} onClick={() => shift('check-out')}>Check out and end shift</button> : waitingForAutoCheckout ? <span className="ops-complete">Your scheduled shift end has passed. The system is completing automatic checkout; a new shift can start once it is confirmed.</span> : <span className="ops-complete">{myToday?.dayType === 'Absent' ? 'Today’s attendance is marked absent.' : 'Today’s attendance is complete. A new shift can start during the configured shift window.'}</span>}</div>
-      <p className="ops-gps-note">During an active shift, your location is shared automatically with authorised K&B administrators. Android shows a persistent tracking notification, and tracking stops when the shift ends. If location permission or phone location services are disabled, administrators will see the tracking interruption.</p>
+      <p className="ops-gps-note">During an active shift, your location is shared with authorised K&B administrators. Keep location permission and phone location services enabled. If GPS becomes unavailable, you receive reminders at 5, 10 and 14 minutes; if it is not restored within 15 minutes, the shift is automatically cancelled and an administrator must restart it. Android shows a persistent tracking notification; tracking stops at checkout.</p>
     </section>}
 
     {admin && <section className="panel ops-panel workforce-settings-panel">
@@ -571,12 +596,12 @@ export default function StaffOperations({ session, customers, flash, compact = f
         <label>Staff shift starts<input type="time" required value={shiftSettings.shiftStartTime} onChange={event=>setShiftSettings(current=>({...current,shiftStartTime:event.target.value}))}/></label>
         <label>Staff shift ends<input type="time" required value={shiftSettings.shiftEndTime} onChange={event=>setShiftSettings(current=>({...current,shiftEndTime:event.target.value}))}/></label>
         <button className="btn primary" disabled={!shiftSettingsAvailable || shiftSettingsBusy || toMinutes(shiftSettings.shiftStartTime)>=toMinutes(shiftSettings.shiftEndTime)}>{shiftSettingsBusy?'Saving…':'Save shift schedule'}</button>
-        <p className="form-hint wide">Timezone: India (IST). Automatic checkout uses the saved end time for each new shift. Existing shifts keep their original end deadline.</p>
+        <p className="form-hint wide">Timezone: India (IST). Saving a new schedule immediately reschedules all currently open shifts and sets the end time for future shifts.</p>
       </form>
     </section>}
 
     {admin && <section className="panel ops-panel">
-      <div className="ops-panel-head"><div><span className="eyebrow">STAFF ATTENDANCE</span><h2>Staff shift controls</h2><p>Start, end or correct a staff member’s attendance. GPS is not required for shifts.</p></div></div>
+      <div className="ops-panel-head"><div><span className="eyebrow">STAFF ATTENDANCE</span><h2>Staff shift controls</h2><p>Start, end or correct a staff member’s attendance. Active shifts are monitored for GPS availability; unresolved GPS loss cancels the shift after a 15-minute restoration period.</p></div></div>
       <div className="ops-location-list">{staff.map(member => {
         const shiftRecord = sortedAttendance.find(item => item.userId === member.id && isUnclosedShift(item)) ||
           sortedAttendance.find(item => item.userId === member.id && item.workDate === today);
