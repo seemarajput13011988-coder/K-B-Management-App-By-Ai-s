@@ -939,8 +939,8 @@ export const handler = router({
     const lockSnapshot = await lockRef.get();
     const lockedId = String(lockSnapshot.data()?.attendanceId || '');
     const formatActive = (record: Record<string, unknown>) => {
-      const shiftEndTime = typeof record.shiftEndTime === 'string' && /^([01]\\d|2[0-3]):[0-5]\\d$/.test(record.shiftEndTime) ? record.shiftEndTime : settings.shiftEndTime;
-      const shiftStartTime = typeof record.shiftStartTime === 'string' && /^([01]\\d|2[0-3]):[0-5]\\d$/.test(record.shiftStartTime) ? record.shiftStartTime : settings.shiftStartTime;
+      const shiftEndTime = typeof record.shiftEndTime === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(record.shiftEndTime) ? record.shiftEndTime : settings.shiftEndTime;
+      const shiftStartTime = typeof record.shiftStartTime === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(record.shiftStartTime) ? record.shiftStartTime : settings.shiftStartTime;
       const autoCheckoutAt = String(record.autoCheckoutAt || record.scheduledEndAt || '') ||
         computeShiftDeadline(String(record.workDate || ''), String(record.checkInAt || ''), shiftEndTime) || '';
       return { ...record, shiftStartTime, shiftEndTime, autoCheckoutAt, scheduledEndAt: autoCheckoutAt };
