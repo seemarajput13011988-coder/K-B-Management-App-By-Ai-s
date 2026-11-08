@@ -1,6 +1,6 @@
 import { router, json, error, db, secrets, firestore, FieldValue } from './firestore-adapter.js';
 import type { RouterMiddleware } from './firestore-adapter.js';
-import { computeShiftDeadline, isConfirmedGpsLossReason, isFreshLocationTimestamp, isValidDateRange } from './route-path.js';
+import { attendanceAbsenceDecision, computeShiftDeadline, isConfirmedGpsLossReason, isFreshLocationTimestamp, isValidDateRange } from './route-path.js';
 import { createHash, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 const notifySubscribers = async (..._args: unknown[]) => undefined; // Live updates are refreshed through the authenticated API.
 
@@ -998,24 +998,29 @@ export const handler = router({
     const dayType = input.dayType === 'Half day' ? 'Half day' : input.dayType === 'Full day' ? 'Full day' : input.dayType === 'Absent' ? 'Absent' : '';
     const reason = cleanText(input.reason, 300);
     if (!dayType || reason.length < 3) return error('Choose a day type and provide a correction reason.', 400);
-    const [attendance] = await db.get<Record<string, unknown>>('attendance', [params.id], { consistent: true });
-    if (!attendance) return error('Attendance record not found.', 404);
     const correctedAt = new Date().toISOString();
     const attendanceRef = firestore.collection('attendance').doc(params.id);
     const auditRef = firestore.collection('audit_logs').doc();
-    const batch = firestore.batch();
-    batch.update(attendanceRef, {
-      dayType,
-      status: dayType === 'Absent' ? 'Absent' : attendance.checkOutAt ? 'Completed' : 'Checked in',
-      correctionReason: reason, correctedAt, correctedBy: admin.id, correctedByName: admin.displayName,
+    const outcome = await firestore.runTransaction(async transaction => {
+      const snapshot = await transaction.get(attendanceRef);
+      if (!snapshot.exists) return 'not-found';
+      const attendance = snapshot.data() as Record<string, unknown>;
+      if (dayType === 'Absent' && isOpenShift(attendance)) return 'active-shift';
+      transaction.update(attendanceRef, {
+        dayType,
+        status: dayType === 'Absent' ? 'Absent' : attendance.checkOutAt ? 'Completed' : 'Checked in',
+        correctionReason: reason, correctedAt, correctedBy: admin.id, correctedByName: admin.displayName,
+      });
+      transaction.create(auditRef, {
+        actorId: admin.id, actorName: admin.displayName, action: 'CORRECT_ATTENDANCE',
+        entityType: 'attendance', entityId: params.id,
+        description: cleanText('Changed day type to ' + dayType + ': ' + reason, 240),
+        createdAt: correctedAt,
+      });
+      return 'updated';
     });
-    batch.set(auditRef, {
-      actorId: admin.id, actorName: admin.displayName, action: 'CORRECT_ATTENDANCE',
-      entityType: 'attendance', entityId: params.id,
-      description: cleanText('Changed day type to ' + dayType + ': ' + reason, 240),
-      createdAt: correctedAt,
-    });
-    await batch.commit();
+    if (outcome === 'not-found') return error('Attendance record not found.', 404);
+    if (outcome === 'active-shift') return error('End this staff member’s active shift before marking absent.', 409);
     return json({ updated: true });
   }),
 
@@ -1111,33 +1116,43 @@ export const handler = router({
     const [member] = await db.get<UserRecord>('users', [staffId], { consistent: true });
     if (!member || member.role !== 'staff' || !member.active) return error('Choose an active staff member.', 400);
     const workDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
-    const result = await listAttendanceForUser(member.id);
-    const todays = result.filter(item => item.workDate === workDate)
-      .sort((a, b) => String(b.checkInAt || '').localeCompare(String(a.checkInAt || '')));
-    const latest = todays[0];
-    if (latest && !latest.checkOutAt && latest.dayType !== 'Absent') return error('End this staff member’s active shift before marking absent.', 409);
     const markedAt = new Date().toISOString();
+    // Use the same deterministic daily ID as staff check-in so both operations
+    // serialize against the same document and cannot create duplicate day records.
+    const id = 'staff-' + createHash('sha256').update(member.id + '|' + workDate).digest('hex').slice(0, 40);
+    const attendanceRef = firestore.collection('attendance').doc(id);
+    const lockRef = firestore.collection('active_shift_locks').doc(member.id);
+    const auditRef = firestore.collection('audit_logs').doc();
     const absence = {
       userId: member.id, displayName: member.displayName, workDate,
-      checkInAt: '', checkOutAt: markedAt, createdAt: latest?.createdAt || markedAt, updatedAt: markedAt, status: 'Absent', dayType: 'Absent',
+      checkInAt: '', checkOutAt: markedAt, createdAt: markedAt, updatedAt: markedAt, status: 'Absent', dayType: 'Absent',
       absenceReason: reason, markedAbsentBy: admin.displayName, attendanceSource: 'Admin',
     };
-    const attendanceRef = latest
-      ? firestore.collection('attendance').doc(String(latest.id))
-      : firestore.collection('attendance').doc();
-    const auditRef = firestore.collection('audit_logs').doc();
-    const id = attendanceRef.id;
-    const batch = firestore.batch();
-    if (latest) batch.set(attendanceRef, absence, { merge: true });
-    else batch.set(attendanceRef, absence);
-    batch.set(auditRef, {
-      actorId: admin.id, actorName: admin.displayName, action: 'MARK_ABSENT',
-      entityType: 'attendance', entityId: id,
-      description: cleanText('Marked ' + member.displayName + ' absent: ' + reason, 240),
-      createdAt: markedAt,
+    const outcome = await firestore.runTransaction(async transaction => {
+      // Reading the lock makes this transaction conflict safely with a concurrent check-in.
+      await transaction.get(lockRef);
+      const snapshot = await transaction.get(firestore.collection('attendance').where('userId', '==', member.id));
+      const existing = snapshot.docs.map(document => ({ ...(document.data() as Record<string, unknown>), id: document.id }));
+      const todays = existing.filter(item => item.workDate === workDate)
+        .sort((a, b) => String(b.checkInAt || '').localeCompare(String(a.checkInAt || '')));
+      const latest = todays[0] || null;
+      const decision = attendanceAbsenceDecision(latest, Boolean(findOpenShift(existing, member.id)));
+      if (decision !== 'create') return decision;
+      const dailySnapshot = await transaction.get(attendanceRef);
+      if (dailySnapshot.exists) return 'already-recorded';
+      transaction.create(attendanceRef, absence);
+      transaction.create(auditRef, {
+        actorId: admin.id, actorName: admin.displayName, action: 'MARK_ABSENT',
+        entityType: 'attendance', entityId: id,
+        description: cleanText('Marked ' + member.displayName + ' absent: ' + reason, 240),
+        createdAt: markedAt,
+      });
+      return 'created';
     });
-    await batch.commit();
-    return latest ? json({ updated: true, id }) : json({ id, ...absence }, 201);
+    if (outcome === 'active-shift') return error('End this staff member’s active shift before marking absent.', 409);
+    if (outcome === 'already-absent') return error('This staff member is already marked absent today.', 409);
+    if (outcome === 'already-recorded') return error('Attendance is already recorded today. Use attendance correction to change the day type without replacing shift times.', 409);
+    return json({ id, ...absence }, 201);
   }),
 
   'POST /api/attendance/admin-start': protectedRoute(['admin'], async ({ body }, admin) => {
