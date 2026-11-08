@@ -1,6 +1,6 @@
 import { router, json, error, db, secrets, firestore, FieldValue } from './firestore-adapter.js';
 import type { RouterMiddleware } from './firestore-adapter.js';
-import { attendanceAbsenceDecision, computeShiftDeadline, isConfirmedGpsLossReason, isFreshLocationTimestamp, isValidDateRange } from './route-path.js';
+import { attendanceAbsenceDecision, computeShiftDeadline, isConfirmedGpsLossReason, isFreshLocationTimestamp, isGpsGraceExemptHolidayStatus, isValidDateRange } from './route-path.js';
 import { createHash, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 const notifySubscribers = async (..._args: unknown[]) => undefined; // Live updates are refreshed through the authenticated API.
 
@@ -933,6 +933,35 @@ export const handler = router({
     return json({ deleted: true });
   }),
 
+  'GET /api/attendance/active': protectedRoute(['staff'], async (_ctx, user) => {
+    const settings = await getWorkforceSettings();
+    const lockRef = firestore.collection('active_shift_locks').doc(user.id);
+    const lockSnapshot = await lockRef.get();
+    const lockedId = String(lockSnapshot.data()?.attendanceId || '');
+    const formatActive = (record: Record<string, unknown>) => {
+      const shiftEndTime = typeof record.shiftEndTime === 'string' && /^([01]\\d|2[0-3]):[0-5]\\d$/.test(record.shiftEndTime) ? record.shiftEndTime : settings.shiftEndTime;
+      const shiftStartTime = typeof record.shiftStartTime === 'string' && /^([01]\\d|2[0-3]):[0-5]\\d$/.test(record.shiftStartTime) ? record.shiftStartTime : settings.shiftStartTime;
+      const autoCheckoutAt = String(record.autoCheckoutAt || record.scheduledEndAt || '') ||
+        computeShiftDeadline(String(record.workDate || ''), String(record.checkInAt || ''), shiftEndTime) || '';
+      return { ...record, shiftStartTime, shiftEndTime, autoCheckoutAt, scheduledEndAt: autoCheckoutAt };
+    };
+    if (lockedId) {
+      const snapshot = await firestore.collection('attendance').doc(lockedId).get();
+      if (snapshot.exists) {
+        const record = { ...(snapshot.data() as Record<string, unknown>), id: snapshot.id };
+        if (record.userId === user.id && isOpenShift(record) && shiftDueAt(record, settings.shiftEndTime) > Date.now()) {
+          return json({ items: [formatActive(record)] });
+        }
+      }
+    }
+    // Repair missing or stale lock records once, then serve the single active row on fast polls.
+    const records = await listAttendanceForUser(user.id);
+    const active = findActiveShift(records, user.id, Date.now(), settings.shiftEndTime);
+    if (!active) return json({ items: [] });
+    await lockRef.set({ userId: user.id, attendanceId: String(active.id), updatedAt: new Date().toISOString() }, { merge: true });
+    return json({ items: [formatActive(active)] });
+  }),
+
   'GET /api/attendance': protectedRoute(['admin', 'staff'], async (_ctx, user) => {
     const [records, settings] = await Promise.all([
       user.role === 'admin' ? listRecentAttendance(5000) : listAttendanceForUser(user.id),
@@ -1033,7 +1062,7 @@ export const handler = router({
 
     const holidays = await db.list<Record<string, unknown>>('holiday_requests', { limit: 1000 });
     const exempt = holidays.items.some(item =>
-      item.userId === user.id && ['pending', 'approved'].includes(String(item.status)) &&
+      item.userId === user.id && isGpsGraceExemptHolidayStatus(item.status) &&
       String(item.startDate || '') <= workDate && String(item.endDate || '') >= workDate
     );
     if (exempt) return json({ monitoring: false, reason: 'holiday-exempt' });
