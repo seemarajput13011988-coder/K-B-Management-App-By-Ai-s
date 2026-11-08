@@ -1288,8 +1288,7 @@ export const handler = router({
   'POST /api/attendance/admin-end': protectedRoute(['admin'], async ({ body }, admin) => {
     const input = (body || {}) as Record<string, unknown>;
     const staffId = cleanText(input.userId, 128);
-    const [member] = await db.get<UserRecord>('users', [staffId], { consistent: true });
-    if (!member || member.role !== 'staff' || !member.active) return error('Choose an active staff member.', 400);
+    if (!staffId) return error('Choose a staff member.', 400);
     const settings = await getWorkforceSettings();
     const result = await listAttendanceForUser(staffId);
     const existing = findOpenShift(result, staffId);
@@ -1326,7 +1325,7 @@ export const handler = router({
         action: autoEnded ? 'AUTO_CHECKOUT' : 'ADMIN_END_SHIFT',
         entityType: 'attendance', entityId: id,
         description: autoEnded
-          ? 'Automatically checked out ' + String(current.displayName || member.displayName) + ' at the scheduled shift end time.'
+          ? 'Automatically checked out ' + String(current.displayName || staffId) + ' at the scheduled shift end time.'
           : cleanText('Ended ' + String(current.displayName || staffId) + '’s shift at ' + endedAt + '.', 240),
         createdAt: endedAt,
       });
