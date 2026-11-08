@@ -328,6 +328,7 @@ jobs:
             private LocationCallback locationCallback;
             private final ExecutorService uploader = Executors.newSingleThreadExecutor();
             private volatile boolean stopping = false;
+            private volatile boolean shiftServerConfirmed = false;
             private volatile long lastUploadAt = 0L;
             private volatile long lastShiftCheckAt = 0L;
             private volatile boolean locationUnavailableReported = false;
@@ -339,11 +340,12 @@ jobs:
             private final Runnable statusWatchdog = new Runnable() {
               @Override public void run() {
                 if (!stopping) {
-                  handleLocationProviderChange();
                   long now = System.currentTimeMillis();
-                  if (now - lastShiftCheckAt >= 30000L) {
+                  if (now - lastShiftCheckAt >= 20000L) {
                     lastShiftCheckAt = now;
                     checkShiftStatus();
+                  } else if (shiftServerConfirmed) {
+                    handleLocationProviderChange();
                   }
                   statusHandler.postDelayed(this, 20000L);
                 }
@@ -386,6 +388,10 @@ jobs:
                 if (scheduledEndAt != null && !scheduledEndAt.isEmpty()) preferences.putString(KEY_SCHEDULED_END_AT, scheduledEndAt);
                 else preferences.remove(KEY_SCHEDULED_END_AT);
                 preferences.apply();
+                shiftServerConfirmed = true; // The web app starts this service only after a server-confirmed active shift.
+              } else {
+                // A sticky service restart must re-confirm the shift before resuming GPS collection.
+                shiftServerConfirmed = false;
               }
               String token = getSharedPreferences(PREFS, MODE_PRIVATE).getString(KEY_TOKEN, null);
               String api = getSharedPreferences(PREFS, MODE_PRIVATE).getString(KEY_API, null);
@@ -395,7 +401,7 @@ jobs:
               }
               stopping = false;
               startVisibleNotification();
-              handleLocationProviderChange();
+              checkShiftStatus();
               statusHandler.removeCallbacks(statusWatchdog);
               statusHandler.postDelayed(statusWatchdog, 20000L);
               return START_STICKY;
@@ -453,6 +459,8 @@ jobs:
             }
 
             private void handleLocationProviderChange() {
+              if (stopping || !shiftServerConfirmed) return;
+              stopIfCachedDeadlineExpired();
               if (stopping) return;
               boolean permissionGranted = hasLocationPermission();
               boolean phoneLocationEnabled = permissionGranted && isPhoneLocationEnabled();
@@ -556,7 +564,12 @@ jobs:
                     return;
                   }
                   if (status < 200 || status >= 300) {
-                    stopIfCachedDeadlineExpired();
+                    if (hasValidCachedDeadline()) {
+                      shiftServerConfirmed = true; // Continue only to the last server-confirmed deadline while offline.
+                      handleLocationProviderChange();
+                    } else {
+                      stopTrackingAndService();
+                    }
                     return;
                   }
                   String responseText;
@@ -589,28 +602,39 @@ jobs:
                     if (!activeId.isEmpty()) cache.putString(KEY_ATTENDANCE_ID, activeId);
                     if (!deadline.isEmpty()) cache.putString(KEY_SCHEDULED_END_AT, deadline);
                     cache.apply();
+                    shiftServerConfirmed = hasValidCachedDeadline();
+                    if (shiftServerConfirmed) handleLocationProviderChange();
+                    else stopTrackingAndService();
                   }
                 } catch (Exception ignored) {
                   // Keep tracking only until the last server-confirmed deadline when offline.
-                  stopIfCachedDeadlineExpired();
+                  if (hasValidCachedDeadline()) {
+                    shiftServerConfirmed = true;
+                    handleLocationProviderChange();
+                  } else {
+                    stopTrackingAndService();
+                  }
                 } finally {
                   if (connection != null) connection.disconnect();
                 }
               });
             }
 
-            private void stopIfCachedDeadlineExpired() {
+            private boolean hasValidCachedDeadline() {
               String deadline = getSharedPreferences(PREFS, MODE_PRIVATE).getString(KEY_SCHEDULED_END_AT, "");
-              if (deadline == null || deadline.isEmpty()) return;
+              if (deadline == null || deadline.isEmpty()) return false;
               try {
                 SimpleDateFormat format = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US);
                 format.setTimeZone(TimeZone.getTimeZone("UTC"));
                 Date parsed = format.parse(deadline);
-                if (parsed != null && System.currentTimeMillis() >= parsed.getTime()) stopTrackingAndService();
+                return parsed != null && System.currentTimeMillis() < parsed.getTime();
               } catch (Exception ignored) {
-                // An unreadable cache is not treated as a valid future deadline.
-                stopTrackingAndService();
+                return false;
               }
+            }
+
+            private void stopIfCachedDeadlineExpired() {
+              if (!hasValidCachedDeadline()) stopTrackingAndService();
             }
 
             private void reportGpsUnavailable(String reason) {
@@ -694,15 +718,17 @@ jobs:
             }
 
             private void uploadLocation(Location location) {
+              stopIfCachedDeadlineExpired();
               long now = System.currentTimeMillis();
-              if (now - lastUploadAt < 9000L || stopping) return;
+              if (!shiftServerConfirmed || now - lastUploadAt < 9000L || stopping) return;
               lastUploadAt = now;
               uploader.execute(() -> {
                 HttpURLConnection connection = null;
                 try {
+                  stopIfCachedDeadlineExpired();
                   String token = getSharedPreferences(PREFS, MODE_PRIVATE).getString(KEY_TOKEN, null);
                   String api = getSharedPreferences(PREFS, MODE_PRIVATE).getString(KEY_API, null);
-                  if (token == null || api == null || stopping) return;
+                  if (!shiftServerConfirmed || token == null || api == null || stopping) return;
                   URL url = new URL(api.replaceAll("/+$", "") + "/api/staff/live-location");
                   connection = (HttpURLConnection) url.openConnection();
                   connection.setRequestMethod("POST");
