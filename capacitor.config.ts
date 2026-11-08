@@ -15,15 +15,15 @@ const config: CapacitorConfig = {
     },
     CapacitorUpdater: {
       appId: 'kandbnet.service2010',
-      autoUpdate: 'onLaunch',
+      autoUpdate: 'background',
       updateUrl: 'https://kandb-management-nexus-api-zv7f.onrender.com/api/app-updates/check',
       statsUrl: '',
-      appReadyTimeout: 30000,
+      appReadyTimeout: 15000,
       resetWhenUpdate: true,
-      autoSplashscreen: true,
+      autoSplashscreen: false,
     },
     SplashScreen: {
-      launchAutoHide: false,
+      launchAutoHide: true,
     },
   },
 };
