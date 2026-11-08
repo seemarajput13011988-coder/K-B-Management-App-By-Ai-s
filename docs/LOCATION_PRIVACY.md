@@ -3,11 +3,12 @@
 This is an operational notice for the private K&B staff app. The business owner should review it with staff before enabling live location features.
 
 ## When location is collected
-- Location is requested only for an active work shift.
-- Staff are shown a consent prompt before starting a shift. If an administrator starts a shift, the staff member is asked for consent when they open the app; declining ends that shift.
+- Location is collected only while the server confirms an active work shift.
+- Before staff check in, the app explains the location requirement and requests Android/browser location permission if it has not already been granted.
+- If an administrator starts a shift, the staff member is prompted for permission when opening the app. If permission is denied or location is unavailable, GPS restoration reminders are sent at 5, 10 and 14 minutes; if service is not restored within 15 minutes, the shift is automatically cancelled and an administrator must restart it.
 - On Android, a persistent system notification remains visible while the background location service is active.
 - In the browser version, location updates are foreground-only while the page is open.
-- Location sharing stops at checkout or when the server ends the shift.
+- Location sharing stops at checkout, automatic checkout, GPS cancellation or when the server ends the shift.
 
 ## What is collected
 - Latitude and longitude.
