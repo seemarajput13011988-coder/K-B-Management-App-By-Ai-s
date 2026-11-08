@@ -1132,7 +1132,7 @@ export const handler = router({
       // Reading the lock makes this transaction conflict safely with a concurrent check-in.
       await transaction.get(lockRef);
       const snapshot = await transaction.get(firestore.collection('attendance').where('userId', '==', member.id));
-      const existing = snapshot.docs.map(document => ({ ...(document.data() as Record<string, unknown>), id: document.id }));
+      const existing: Record<string, unknown>[] = snapshot.docs.map(document => ({ ...(document.data() as Record<string, unknown>), id: document.id }));
       const todays = existing.filter(item => item.workDate === workDate)
         .sort((a, b) => String(b.checkInAt || '').localeCompare(String(a.checkInAt || '')));
       const latest = todays[0] || null;
