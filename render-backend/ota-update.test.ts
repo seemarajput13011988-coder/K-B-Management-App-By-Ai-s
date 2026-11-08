@@ -36,6 +36,15 @@ test('returns a checksum-verified release URL for an older bundle', () => {
   });
 });
 
+test('accepts the trusted latest-release redirect URL', () => {
+  const url = 'https://github.com/seemarajput13011988-coder/K-B-Management-App-By-Ai-s/releases/latest/download/nexus-update.zip';
+  assert.deepEqual(buildOtaDecision('builtin', manifest, url), {
+    version: '1.0.42',
+    url,
+    checksum: 'a'.repeat(64),
+  });
+});
+
 test('rejects insecure and untrusted bundle hosts', () => {
   const insecure = buildOtaDecision('builtin', manifest, 'http://github.com/update.zip');
   const untrusted = buildOtaDecision('builtin', manifest, 'https://evil.example/update.zip');
