@@ -948,7 +948,7 @@ export const handler = router({
     if (lockedId) {
       const snapshot = await firestore.collection('attendance').doc(lockedId).get();
       if (snapshot.exists) {
-        const record = { ...(snapshot.data() as Record<string, unknown>), id: snapshot.id };
+        const record: Record<string, unknown> = { ...(snapshot.data() as Record<string, unknown>), id: snapshot.id };
         if (record.userId === user.id && isOpenShift(record) && shiftDueAt(record, settings.shiftEndTime) > Date.now()) {
           return json({ items: [formatActive(record)] });
         }
