@@ -2,7 +2,7 @@
 
 ## Active system
 
-The active app is the React/Vite/Capacitor frontend with the Node API in `render-backend/`. The Render API uses Firebase Admin SDK to access Firestore project `kandb-net-sevice`. K&B user ID/password sign-in is app-managed; Firebase Authentication and the legacy Cloud Functions API are not part of the active request path.
+The active app is the React/Vite/Capacitor frontend with the Node API in `render-backend/`. The Render API uses Firebase Admin SDK to access Firestore project `kandb-net-sevice`. K&B user ID/password sign-in is managed by the Render API; Firebase Authentication and the legacy Cloud Functions API are not part of the active request path.
 
 - Browser and Android clients call the Render API through `VITE_API_BASE_URL`.
 - Firestore direct client access remains denied by `firestore.rules`.
@@ -12,7 +12,7 @@ The active app is the React/Vite/Capacitor frontend with the Node API in `render
 
 ## Workspaces in the active frontend
 
-Customers, plans, payments, complaints, tasks, staff and admin accounts, registration requests, attendance and corrections, shift scheduling, GPS tracking, announcements, direct/group chat, visits, calendar/festival themes, subscriptions, installations, inventory, GST invoice PDF generation, finance, ledgers, expenses, payroll, notifications, audit and retention review.
+Overview and analytics; customers and plans; payments and complaints; tasks; staff accounts and registration approvals; attendance, corrections and shift scheduling; consent-based shift-scoped GPS; team messages, groups and announcements; visits; calendar and festival themes; subscriptions; installations; inventory; GST invoice PDF maker; finance, customer ledgers, expenses and payroll; notifications; audit and retention review.
 
 ## Safety and data rules
 
@@ -23,14 +23,16 @@ Customers, plans, payments, complaints, tasks, staff and admin accounts, registr
 5. Do not call a debug APK a production release. Use a protected signing key for updateable releases.
 6. The free Render service can sleep. Scheduled job checks are best-effort and depend on the default-branch GitHub workflow and matching job secrets.
 
-## Verification recorded on the latest Nexus work branch
+## Verification recorded on the Nexus audit source revision
 
 - Frontend TypeScript check and Vite production build passed.
-- Render backend type-check and 18 automated tests passed.
+- Render backend type-check passed.
+- The backend test suite contains 25 tests and passed five consecutive runs.
 - Live API smoke checks passed for health, protected routes and selected attendance/GPS/registration route contracts.
-- Android debug APK build completed successfully.
+- Android debug APK build completed successfully; the signed release APK step was skipped because the permanent signing secrets were not configured.
+- OTA archive packaging passed; publishing is restricted to reviewed commits on the default branch.
 
-These checks do not replace full browser end-to-end tests, Firestore data-integrity tests, physical Android GPS acceptance, notification/push delivery tests, or production data reconciliation.
+These checks do not replace full browser end-to-end tests, Firestore data-integrity tests, physical Android GPS acceptance, notification/push delivery tests, production Render deployment verification, or production data reconciliation.
 
 ## Remaining release gates
 
