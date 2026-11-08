@@ -53,6 +53,7 @@ jobs:
           grep -Fq "'GET /api/saved-locations'" render-backend/legacy-routes.ts
           grep -Fq "'POST /api/saved-locations'" render-backend/legacy-routes.ts
           grep -Fq "path.startsWith('/api/admins/') && method === 'PUT'" render-backend/api-handler.ts
+          grep -Fq "'GET /api/attendance/active'" render-backend/legacy-routes.ts
           grep -Fq "The primary super-admin account cannot be disabled." render-backend/api-handler.ts
           grep -Fq "db.collection('chat_groups').where('memberIds', 'array-contains', staffId)" render-backend/api-handler.ts
           grep -Fq "app.use(legacyHandler)" render-backend/server.ts
@@ -88,7 +89,7 @@ jobs:
           set -euo pipefail
           base="https://kandb-management-nexus-api-zv7f.onrender.com"
           curl --fail --silent --show-error --retry 5 --retry-delay 5 --retry-all-errors --max-time 60 "$base/api/_healthcheck"
-          for path in "/api/holidays" "/api/locations/history"; do
+          for path in "/api/holidays" "/api/locations/history" "/api/attendance/active"; do
             status=$(curl --silent --show-error --max-time 30 -o /tmp/kb-protected-route.json -w '%{http_code}' "$base$path")
             if [ "$status" != "401" ]; then
               cat /tmp/kb-protected-route.json
@@ -173,4 +174,10 @@ jobs:
             echo "::error::Expected the fixed owner lookup probe to reject the deliberately wrong test password (401), received HTTP $status."
             exit 1
           fi
-          echo "API health check, Firestore-backed login lookup, GPS/attendance guards, and staff registration request/status routes passed their live HTTP checks."
+          status=$(curl --silent --show-error --max-time 30 -o /tmp/kb-ota.json -w '%{http_code}' -X POST "$base/api/app-updates/check" -H 'Content-Type: application/json' --data '{"app_id":"kandbnet.service2010","platform":"android","version_name":"1.0.55"}')
+          if [ "$status" != "200" ]; then
+            cat /tmp/kb-ota.json
+            echo "::error::Expected the Android OTA check route to return HTTP 200, received HTTP $status."
+            exit 1
+          fi
+          echo "API health, active attendance, Firestore login lookup, GPS/attendance guards, registration routes and OTA check passed live HTTP checks."
