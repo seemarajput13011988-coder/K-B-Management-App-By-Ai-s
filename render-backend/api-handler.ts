@@ -34,18 +34,25 @@ const newPasswordFields = (password: string) => {
 const sessionTokenId = (token: string) => createHash('sha256').update(token).digest('hex');
 async function createSession(user: Data) {
   const token = randomBytes(32).toString('hex');
-  const expiresAt = Date.now() + 8 * 60 * 60 * 1000;
+  // Staff shifts can be admin-started after 7 PM and remain active until 7 PM the next day.
+  // Keep the staff session valid long enough for that maximum supported shift; admin sessions remain shorter.
+  const sessionHours = user.role === 'staff' ? 26 : 8;
+  const expiresAt = Date.now() + sessionHours * 60 * 60 * 1000;
   await db.collection('sessions').doc(sessionTokenId(token)).set({
     userId: user.id, expiresAt, createdAt: now(), authTime: Math.floor(Date.now() / 1000),
   });
   return { token, expiresAt };
 }
 async function revokeUserSessions(userId: string) {
-  const sessions = await db.collection('sessions').where('userId', '==', userId).limit(500).get();
-  if (sessions.empty) return;
-  const batch = db.batch();
-  sessions.docs.forEach(doc => batch.delete(doc.ref));
-  await batch.commit();
+  const baseQuery = db.collection('sessions').where('userId', '==', userId);
+  let page = await baseQuery.limit(450).get();
+  while (!page.empty) {
+    const batch = db.batch();
+    page.docs.forEach(doc => batch.delete(doc.ref));
+    await batch.commit();
+    if (page.size < 450) break;
+    page = await baseQuery.startAfter(page.docs[page.docs.length - 1]).limit(450).get();
+  }
 }
 async function requireUser(req: any): Promise<AppUser | null> {
   const header = clean(req.headers.authorization, 4096);
@@ -83,13 +90,52 @@ function allowSuperAdmin(user: AppUser, res: any): boolean {
   return true;
 }
 async function list(collection: string): Promise<Data[]> {
-  const snap = await db.collection(collection).limit(1000).get();
-  return snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  const baseQuery = db.collection(collection);
+  const items: Data[] = [];
+  let page = await baseQuery.limit(400).get();
+  while (!page.empty) {
+    items.push(...page.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    if (page.size < 400) break;
+    page = await baseQuery.startAfter(page.docs[page.docs.length - 1]).limit(400).get();
+  }
+  return items;
 }
 async function getDoc(collection: string, id: string): Promise<Data | null> {
   const snap = await db.collection(collection).doc(id).get();
   return snap.exists ? { id: snap.id, ...snap.data() } : null;
 }
+async function staffHasActiveShift(userId: string): Promise<boolean> {
+  const settingsSnapshot = await db.collection('app_settings').doc('workforce').get();
+  const configuredEnd = String(settingsSnapshot.data()?.shiftEndTime || '19:00');
+  const fallbackEndTime = /^([01]\d|2[0-3]):[0-5]\d$/.test(configuredEnd) ? configuredEnd : '19:00';
+  const baseQuery = db.collection('attendance').where('userId', '==', userId);
+  let page = await baseQuery.limit(400).get();
+  while (!page.empty) {
+    for (const doc of page.docs) {
+      const item = doc.data();
+      if (item.status !== 'Checked in' || item.checkOutAt || item.dayType === 'Absent' || item.gpsRestartRequired || item.gpsCancelled) continue;
+      const savedDeadline = Date.parse(String(item.autoCheckoutAt || item.scheduledEndAt || ''));
+      if (Number.isFinite(savedDeadline)) {
+        if (savedDeadline > Date.now()) return true;
+        continue;
+      }
+      const checkIn = Date.parse(String(item.checkInAt || ''));
+      const workDate = String(item.workDate || '');
+      if (!Number.isFinite(checkIn) || !datePattern.test(workDate)) return true;
+      const parts = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date(checkIn));
+      const minutes = Number(parts.find(part => part.type === 'hour')?.value || 0) * 60 + Number(parts.find(part => part.type === 'minute')?.value || 0);
+      const endTime = typeof item.shiftEndTime === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(item.shiftEndTime) ? item.shiftEndTime : fallbackEndTime;
+      const [endHour, endMinute] = endTime.split(':').map(Number);
+      const endMinutes = endHour * 60 + endMinute;
+      const dueDate = minutes >= endMinutes ? new Date(Date.parse(workDate + 'T00:00:00Z') + 86400000).toISOString().slice(0, 10) : workDate;
+      if (Date.now() < Date.parse(dueDate + 'T' + endTime + ':00+05:30')) return true;
+    }
+    if (page.size < 400) break;
+    page = await baseQuery.startAfter(page.docs[page.docs.length - 1]).limit(400).get();
+  }
+  return false;
+}
+
 async function audit(user: AppUser, action: string, entityType: string, entityId: string, description: string) {
   await db.collection('audit_logs').add({
     actorId: user.uid, actorName: user.displayName, action, entityType, entityId,
@@ -234,7 +280,7 @@ export async function apiHandler(req: any, res: any) {
       authTrace('success');
       const user = { id: userDoc.id, ...record };
       const session = await createSession(user);
-      send(res, 200, { ...session, user: { id: userDoc.id, userId: clean(record.userId, 40), displayName: clean(record.displayName, 80), role: record.role, active: true, canManageAdmins: record.canManageAdmins === true } }); return;
+      send(res, 200, { ...session, user: { id: userDoc.id, userId: clean(record.userId, 40), displayName: clean(record.displayName, 80), role: record.role, active: true, canManageAdmins: hasAdminManagementAccess(record) } }); return;
     }
 
     if (method === 'POST' && path === '/api/auth/recover-admin') {
@@ -417,6 +463,9 @@ export async function apiHandler(req: any, res: any) {
       }
 
       if (method === 'POST' && path === '/api/auth/change-password') {
+        if (user.role === 'staff' && await staffHasActiveShift(user.uid)) {
+          send(res, 409, { error: 'Staff credentials cannot be changed during an active shift. Ask an administrator to end the shift first.' }); return;
+        }
         const currentPassword = typeof body.currentPassword === 'string' ? body.currentPassword : '';
         const newPassword = typeof body.newPassword === 'string' ? body.newPassword : '';
         if (newPassword.length < 10) { send(res, 400, { error: 'Choose a password with at least 10 characters.' }); return; }
@@ -432,6 +481,9 @@ export async function apiHandler(req: any, res: any) {
       }
 
       if (method === 'POST' && path === '/api/auth/change-user-id') {
+        if (user.role === 'staff' && await staffHasActiveShift(user.uid)) {
+          send(res, 409, { error: 'Staff credentials cannot be changed during an active shift. Ask an administrator to end the shift first.' }); return;
+        }
         if (!user.authTime || Date.now() / 1000 - user.authTime > 300) {
           send(res, 401, { error: 'Please sign in again before changing your user ID.' }); return;
         }
@@ -454,6 +506,9 @@ export async function apiHandler(req: any, res: any) {
         send(res, 200, { user: { id: user.uid, userId: user.userId, displayName: user.displayName, role: user.role, active: true, canManageAdmins: user.canManageAdmins === true } }); return;
       }
       if (method === 'POST' && path === '/api/auth/logout') {
+        if (user.role === 'staff' && await staffHasActiveShift(user.uid)) {
+          send(res, 409, { error: 'Sign out is blocked while your work shift is active. Ask an administrator to end the shift.' }); return;
+        }
         const authorization = clean(req.headers.authorization, 4096);
         const token = authorization.startsWith('Bearer ')
           ? authorization.slice(7)
@@ -474,14 +529,19 @@ export async function apiHandler(req: any, res: any) {
         const userId = clean(body.userId, 32);
         const displayName = clean(body.displayName, 80);
         const password = typeof body.password === 'string' ? body.password : '';
-        if (!/^[a-zA-Z0-9_-]{3,32}$/.test(userId) || userId.toLowerCase() === 'brajraj' || !displayName || password.length < 8) {
-          send(res, 400, { error: 'Enter a unique admin ID, name and password with at least 8 characters.' }); return;
+        if (!/^[a-zA-Z0-9_-]{3,32}$/.test(userId) || userId.toLowerCase() === 'brajraj' || !displayName || password.length < 10) {
+          send(res, 400, { error: 'Enter a unique admin ID, name and password with at least 10 characters.' }); return;
         }
         const existing = (await list('users')).some(item => String(item.userId).toLowerCase() === userId.toLowerCase());
         if (existing) { send(res, 409, { error: 'That account ID is already in use.' }); return; }
-        const accountId = 'admin-' + randomBytes(10).toString('hex');
+        const accountId = 'admin-' + createHash('sha256').update(userId.toLowerCase()).digest('hex').slice(0, 40);
         const record = { userId, userIdLower: userId.toLowerCase(), displayName, role: 'admin', canManageAdmins: false, active: true, ...newPasswordFields(password), createdAt: now(), createdBy: user.uid };
-        await db.collection('users').doc(accountId).set(record);
+        try {
+          await db.collection('users').doc(accountId).create(record);
+        } catch (error: any) {
+          if (error?.code === 6 || error?.code === 'already-exists') { send(res, 409, { error: 'That account ID is already in use.' }); return; }
+          throw error;
+        }
         await audit(user, 'CREATE', 'admin', accountId, 'Created administrator account ' + userId);
         const { passwordHash, salt, ...safe } = record;
         send(res, 201, { user: { id: accountId, ...safe } }); return;
@@ -498,9 +558,14 @@ export async function apiHandler(req: any, res: any) {
         const password = typeof body.password === 'string' ? body.password : '';
         if (!/^[a-zA-Z0-9_-]{3,32}$/.test(userId) || !displayName || password.length < 10) { send(res, 400, { error: 'Use a 3–32 character staff ID, a name and a password of at least 10 characters.' }); return; }
         if ((await list('users')).some(item => String(item.userId || '').toLowerCase() === userId.toLowerCase())) { send(res, 409, { error: 'That user ID is already in use.' }); return; }
-        const accountId = 'staff-' + randomBytes(10).toString('hex');
+        const accountId = 'staff-' + createHash('sha256').update(userId.toLowerCase()).digest('hex').slice(0, 40);
         const record: Data = { userId, userIdLower: userId.toLowerCase(), displayName, role: 'staff', active: true, canManageAdmins: false, ...newPasswordFields(password), createdAt: now(), createdBy: user.uid };
-        await db.collection('users').doc(accountId).create(record);
+        try {
+          await db.collection('users').doc(accountId).create(record);
+        } catch (error: any) {
+          if (error?.code === 6 || error?.code === 'already-exists') { send(res, 409, { error: 'That user ID is already in use.' }); return; }
+          throw error;
+        }
         await audit(user, 'CREATE', 'staff', accountId, 'Created staff account ' + userId);
         const { passwordHash, salt, ...safe } = record;
         send(res, 201, { user: { id: accountId, ...safe } }); return;
@@ -512,6 +577,7 @@ export async function apiHandler(req: any, res: any) {
         if (password.length < 10) { send(res, 400, { error: 'Password must contain at least 10 characters.' }); return; }
         const staff = await getDoc('users', staffId);
         if (!staff || staff.role !== 'staff') { send(res, 404, { error: 'Staff account not found.' }); return; }
+        if (await staffHasActiveShift(staffId)) { send(res,409,{error:'End the staff member’s active shift before resetting their password.'}); return; }
         await db.collection('users').doc(staffId).update(newPasswordFields(password));
         await revokeUserSessions(staffId);
         await audit(user, 'RESET_PASSWORD', 'staff', staffId, 'Reset staff password for ' + String(staff.userId || staffId));
@@ -525,6 +591,17 @@ export async function apiHandler(req: any, res: any) {
         if (typeof body.displayName === 'string') { const name = clean(body.displayName, 80); if (!name) { send(res, 400, { error: 'Enter a staff name.' }); return; } patch.displayName = name; }
         if (typeof body.userId === 'string') { const nextId = clean(body.userId, 32); if (!/^[a-zA-Z0-9_-]{3,32}$/.test(nextId)) { send(res, 400, { error: 'Use a 3–32 character staff ID.' }); return; } if ((await list('users')).some(item => item.id !== staffId && String(item.userId || '').toLowerCase() === nextId.toLowerCase())) { send(res, 409, { error: 'That user ID is already in use.' }); return; } patch.userId = nextId; patch.userIdLower = nextId.toLowerCase(); }
         if (typeof body.active === 'boolean') patch.active = body.active;
+        const changingUserId = typeof patch.userId === 'string' && patch.userId.toLowerCase() !== String(staff.userId || '').toLowerCase();
+        if ((patch.active === false || changingUserId) && await staffHasActiveShift(staffId)) {
+          send(res,409,{error:'End the staff member’s active shift before disabling the account or changing its user ID.'}); return;
+        }
+        if (body.monthlySalary !== undefined) {
+          const monthlySalary = Number(body.monthlySalary);
+          if (!Number.isFinite(monthlySalary) || monthlySalary < 0 || monthlySalary > 1000000) {
+            send(res, 400, { error: 'Monthly salary must be between ₹0 and ₹10,00,000.' }); return;
+          }
+          patch.monthlySalary = monthlySalary;
+        }
         await db.collection('users').doc(staffId).update(patch);
         if (patch.active === false || patch.userId) await revokeUserSessions(staffId);
         await audit(user, 'UPDATE', 'staff', staffId, 'Updated staff account ' + String(staff.userId || staffId));
@@ -534,12 +611,76 @@ export async function apiHandler(req: any, res: any) {
         if (!allow(user, ['admin'], res)) return;
         const staffId = routeId(path, '/api/staff'), staff = await getDoc('users', routeId(path, '/api/staff'));
         if (!staff || staff.role !== 'staff') { send(res, 404, { error: 'Staff account not found.' }); return; }
-        const assigned = (await list('customers')).filter(item => item.assignedTo === staffId);
-        await Promise.all(assigned.map(customer => db.collection('customers').doc(String(customer.id)).update({ assignedTo: '', assignedToName: '' })));
+        if (await staffHasActiveShift(staffId)) { send(res,409,{error:'End the staff member’s active shift before deleting the account.'}); return; }
+        const unassignedCounts: Record<string, number> = {};
+        // Remove active ownership from every operational queue before deleting the account.
+        // Keep the former assignee's display name as history for administrators.
+        for (const collection of ['customers', 'tasks', 'inventory', 'installations', 'complaints']) {
+          const snapshot = await db.collection(collection).where('assignedTo', '==', staffId).get();
+          unassignedCounts[collection] = snapshot.size;
+          for (let offset = 0; offset < snapshot.docs.length; offset += 400) {
+            const batch = db.batch();
+            for (const document of snapshot.docs.slice(offset, offset + 400)) {
+              const data = document.data();
+              batch.update(document.ref, {
+                assignedTo: '',
+                assignedToName: '',
+                previouslyAssignedToName: String(data.assignedToName || staff.displayName || ''),
+                unassignedAt: now(),
+                updatedAt: now(),
+              });
+            }
+            await batch.commit();
+          }
+        }
+        const groupSnapshot = await db.collection('chat_groups').where('memberIds', 'array-contains', staffId).get();
+        for (let offset = 0; offset < groupSnapshot.docs.length; offset += 400) {
+          const batch = db.batch();
+          for (const document of groupSnapshot.docs.slice(offset, offset + 400)) {
+            const group = document.data();
+            const memberIds = Array.isArray(group.memberIds) ? group.memberIds.filter((id: unknown) => id !== staffId) : [];
+            const memberNames = Array.isArray(group.memberNames)
+              ? group.memberNames.filter((_name: unknown, index: number) => !Array.isArray(group.memberIds) || group.memberIds[index] !== staffId)
+              : [];
+            batch.update(document.ref, { memberIds, memberNames, updatedAt: now() });
+          }
+          await batch.commit();
+        }
         await revokeUserSessions(staffId);
+        const tokenSnapshot = await db.collection('push_tokens').where('userId', '==', staffId).get();
+        for (let offset = 0; offset < tokenSnapshot.docs.length; offset += 400) {
+          const batch = db.batch();
+          tokenSnapshot.docs.slice(offset, offset + 400).forEach(document => batch.delete(document.ref));
+          await batch.commit();
+        }
+        await db.collection('staff_live_locations').doc(staffId).delete().catch(() => undefined);
+        await db.collection('active_shift_locks').doc(staffId).delete().catch(() => undefined);
         await db.collection('users').doc(staffId).delete();
-        await audit(user, 'DELETE', 'staff', staffId, 'Removed staff account ' + String(staff.displayName || staff.userId || staffId) + '; historical records preserved');
-        send(res, 200, { deleted: true, unassignedCustomers: assigned.length, historyPreserved: true }); return;
+        const totalUnassigned = Object.values(unassignedCounts).reduce((sum, count) => sum + count, 0);
+        await audit(user, 'DELETE', 'staff', staffId, 'Removed staff account ' + String(staff.displayName || staff.userId || staffId) + '; unassigned ' + totalUnassigned + ' operational records; historical records preserved');
+        send(res, 200, { deleted: true, unassignedCounts, historyPreserved: true }); return;
+      }
+      if (path.startsWith('/api/admins/') && method === 'PUT') {
+        if (!allowSuperAdmin(user, res)) return;
+        const adminId = routeId(path, '/api/admins');
+        const target = await getDoc('users', adminId);
+        if (!target || target.role !== 'admin') { send(res, 404, { error: 'Admin account not found.' }); return; }
+        const patch: Data = { updatedAt: now() };
+        if (typeof body.displayName === 'string') {
+          const displayName = clean(body.displayName, 80);
+          if (!displayName) { send(res, 400, { error: 'Enter an administrator name.' }); return; }
+          patch.displayName = displayName;
+        }
+        if (typeof body.active === 'boolean') {
+          if (body.active === false && (target.canManageAdmins === true || target.isSuperAdmin === true)) {
+            send(res, 403, { error: 'The primary super-admin account cannot be disabled.' }); return;
+          }
+          patch.active = body.active;
+        }
+        await db.collection('users').doc(adminId).update(patch);
+        if (patch.active === false) await revokeUserSessions(adminId);
+        await audit(user, 'UPDATE', 'admin', adminId, 'Updated administrator account ' + String(target.userId || adminId));
+        send(res, 200, { updated: true }); return;
       }
       if (path.startsWith('/api/admins/') && method === 'DELETE') {
         if (!allowSuperAdmin(user, res)) return;
@@ -628,7 +769,8 @@ export async function apiHandler(req: any, res: any) {
       }
       if (path === '/api/audit' && method === 'GET') {
         if (!allow(user, ['admin'], res)) return;
-        const items = (await list('audit_logs')).sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || ''))).slice(0, 300);
+        const auditSnapshot = await db.collection('audit_logs').orderBy('createdAt', 'desc').limit(300).get();
+        const items = auditSnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
         send(res, 200, { items }); return;
       }
       if (path === '/api/visits' && method === 'GET') {
@@ -736,7 +878,13 @@ export async function apiHandler(req: any, res: any) {
       if (method === 'GET' && path === '/api/notifications') {
         const user = await requireUser(req);
         if (!user) { send(res,401,{error:'Your session has expired. Please sign in again.'}); return; }
-        const items = (await list('staff_notifications')).filter(item => String(item.recipientId || '') === user.uid || String(item.recipientId || '') === user.userId)
+        const [byId, byUserId] = await Promise.all([
+          db.collection('staff_notifications').where('recipientId', '==', user.uid).get(),
+          db.collection('staff_notifications').where('recipientId', '==', user.userId).get(),
+        ]);
+        const notificationMap = new Map<string, Data>();
+        for (const document of [...byId.docs, ...byUserId.docs]) notificationMap.set(document.id, { id: document.id, ...document.data() });
+        const items = Array.from(notificationMap.values())
           .sort((a,b) => String(b.createdAt || '').localeCompare(String(a.createdAt || ''))).slice(0,150);
         send(res,200,{items}); return;
       }
@@ -801,12 +949,21 @@ export async function apiHandler(req: any, res: any) {
         }
         const staff = await getDoc('users',staffUserId);
         if (!staff || staff.role !== 'staff' || staff.active !== true) { send(res,404,{error:'Active staff account not found.'}); return; }
-        const existingPayroll = await db.collection('payroll').where('staffUserId','==',staffUserId).limit(500).get();
-        if (existingPayroll.docs.some(doc => String(doc.data().period || '') === period)) {
-          send(res,409,{error:'Salary has already been recorded for this staff member and month.'}); return;
-        }
         const record = {staffUserId,staffName:clean(staff.displayName,80),period,amount,paidAt,method:payMethod,notes:clean(req.body?.notes,500),recordedBy:user.uid,recordedByName:user.displayName,createdAt:now()};
-        const ref = await db.collection('payroll').add(record);
+        // A deterministic document ID plus a transaction prevents two admins from
+        // recording the same staff member's salary for the same month concurrently.
+        const payrollId = 'pay-' + createHash('sha256').update(staffUserId + '|' + period).digest('hex').slice(0, 48);
+        const ref = db.collection('payroll').doc(payrollId);
+        const created = await db.runTransaction(async transaction => {
+          const [byId, byStaff] = await Promise.all([
+            transaction.get(ref),
+            transaction.get(db.collection('payroll').where('staffUserId', '==', staffUserId).limit(500)),
+          ]);
+          if (byId.exists || byStaff.docs.some(doc => String(doc.data().period || '') === period)) return false;
+          transaction.create(ref, record);
+          return true;
+        });
+        if (!created) { send(res,409,{error:'Salary has already been recorded for this staff member and month.'}); return; }
         await audit(user,'CREATE','payroll',ref.id,'Recorded salary payment for '+record.staffName);
         send(res,201,{id:ref.id,...record}); return;
       }
@@ -825,10 +982,10 @@ export async function apiHandler(req: any, res: any) {
         const assignedTo=clean(body.assignedTo,128);
         const assignedStaff=assignedTo?await getDoc('users',assignedTo):null;
         if (assignedTo&&(!assignedStaff||assignedStaff.role!=='staff'||assignedStaff.active!==true)) { send(res,400,{error:'Choose an active staff member for this inventory assignment.'}); return; }
-        const quantity=Number(body.quantity), minimumQuantity=Number(body.minimumQuantity);
-        if (!name || !sku || !category || !Number.isInteger(quantity) || quantity<0 || !Number.isInteger(minimumQuantity) || minimumQuantity<0) { send(res,400,{error:'Enter a valid item name, SKU, category and stock quantities.'}); return; }
+        const quantity=Number(body.quantity), minimumQuantity=Number(body.minimumQuantity), unitCost=Number(body.unitCost ?? 0);
+        if (!name || !sku || !category || !Number.isInteger(quantity) || quantity<0 || !Number.isInteger(minimumQuantity) || minimumQuantity<0 || !Number.isFinite(unitCost) || unitCost<0 || unitCost>1000000) { send(res,400,{error:'Enter valid item details, stock quantities and a non-negative unit cost up to ₹10,00,000.'}); return; }
         if ((await list('inventory')).some(item => String(item.sku||'').toLowerCase()===sku.toLowerCase())) { send(res,409,{error:'That SKU is already in the inventory.'}); return; }
-        const record={name,sku,category,unit:clean(body.unit,30)||'pcs',quantity,minimumQuantity,unitCost:Number(body.unitCost||0),supplier:clean(body.supplier,120),location:clean(body.location,120),notes:clean(body.notes,500),assignedTo:assignedTo||'',assignedToName:assignedStaff?clean(assignedStaff.displayName,80):'',active:body.active!==false,createdAt:now(),createdBy:user.uid};
+        const record={name,sku,category,unit:clean(body.unit,30)||'pcs',quantity,minimumQuantity,unitCost,supplier:clean(body.supplier,120),location:clean(body.location,120),notes:clean(body.notes,500),assignedTo:assignedTo||'',assignedToName:assignedStaff?clean(assignedStaff.displayName,80):'',active:body.active!==false,createdAt:now(),createdBy:user.uid};
         const ref=await db.collection('inventory').add(record);
         await audit(user,'CREATE','inventory',ref.id,'Added inventory item '+name);
         send(res,201,{id:ref.id,...record}); return;
@@ -842,7 +999,8 @@ export async function apiHandler(req: any, res: any) {
         const inventoryRecord=itemSnap.data()||{};
         if (user.role!=='admin' && inventoryRecord.assignedTo!==user.uid) { send(res,403,{error:'You can view only inventory assigned to your account.'}); return; }
         if (method==='GET') {
-          const items=(await list('inventory_movements')).filter(item=>item.itemId===id).sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||'')));
+          const movementSnapshot=await db.collection('inventory_movements').where('itemId','==',id).get();
+          const items: Data[] = movementSnapshot.docs.map(doc=>({id:doc.id,...doc.data()} as Data)).sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||'')));
           send(res,200,{items}); return;
         }
         if (!allow(user,['admin'],res)) return;
@@ -869,11 +1027,13 @@ export async function apiHandler(req: any, res: any) {
         if (!allow(user,['admin'],res)) return;
         const id=routeId(path,'/api/inventory'), existing=await getDoc('inventory',id);
         if (!existing) { send(res,404,{error:'Inventory item not found.'}); return; }
-        const body=req.body||{}, quantity=Number(body.quantity), minimumQuantity=Number(body.minimumQuantity), assignedTo=clean(body.assignedTo,128);
+        const body=req.body||{}, quantity=Number(body.quantity), minimumQuantity=Number(body.minimumQuantity), unitCost=Number(body.unitCost ?? 0), assignedTo=clean(body.assignedTo,128);
         const assignedStaff=assignedTo?await getDoc('users',assignedTo):null;
         if (assignedTo&&(!assignedStaff||assignedStaff.role!=='staff'||assignedStaff.active!==true)) { send(res,400,{error:'Choose an active staff member for this inventory assignment.'}); return; }
-        if (!clean(body.name,120)||!clean(body.sku,60)||!clean(body.category,80)||!Number.isInteger(quantity)||quantity<0||!Number.isInteger(minimumQuantity)||minimumQuantity<0) { send(res,400,{error:'Enter valid inventory details.'}); return; }
-        const patch={name:clean(body.name,120),sku:clean(body.sku,60),category:clean(body.category,80),unit:clean(body.unit,30)||'pcs',quantity,minimumQuantity,unitCost:Number(body.unitCost||0),supplier:clean(body.supplier,120),location:clean(body.location,120),notes:clean(body.notes,500),assignedTo:assignedTo||'',assignedToName:assignedStaff?clean(assignedStaff.displayName,80):'',active:body.active!==false,updatedAt:now()};
+        if (!clean(body.name,120)||!clean(body.sku,60)||!clean(body.category,80)||!Number.isInteger(quantity)||quantity<0||!Number.isInteger(minimumQuantity)||minimumQuantity<0||!Number.isFinite(unitCost)||unitCost<0||unitCost>1000000) { send(res,400,{error:'Enter valid inventory details and a non-negative unit cost up to ₹10,00,000.'}); return; }
+        const nextSku=clean(body.sku,60);
+        if ((await list('inventory')).some(item => item.id !== id && String(item.sku || '').toLowerCase() === nextSku.toLowerCase())) { send(res,409,{error:'Another inventory item already uses that SKU.'}); return; }
+        const patch={name:clean(body.name,120),sku:nextSku,category:clean(body.category,80),unit:clean(body.unit,30)||'pcs',quantity,minimumQuantity,unitCost,supplier:clean(body.supplier,120),location:clean(body.location,120),notes:clean(body.notes,500),assignedTo:assignedTo||'',assignedToName:assignedStaff?clean(assignedStaff.displayName,80):'',active:body.active!==false,updatedAt:now()};
         await db.collection('inventory').doc(id).update(patch);
         await audit(user,'UPDATE','inventory',id,'Updated inventory item '+patch.name);
         send(res,200,{updated:true}); return;
@@ -891,7 +1051,7 @@ export async function apiHandler(req: any, res: any) {
         const body=req.body||{}, customerId=clean(body.customerId,128), assignedTo=clean(body.assignedTo,128);
         const customer=await getDoc('customers',customerId), staff=await getDoc('users',assignedTo);
         const scheduledDate=clean(body.scheduledDate,10), type=clean(body.type,80);
-        if (!customer||!staff||staff.role!=='staff'||staff.active!==true||!datePattern.test(scheduledDate)||!type) { send(res,400,{error:'Choose an existing customer, active staff member, job type and valid scheduled date.'}); return; }
+        if (!customer||!staff||staff.role!=='staff'||staff.active!==true||!isValidDateKey(scheduledDate)||!type) { send(res,400,{error:'Choose an existing customer, active staff member, job type and valid scheduled date.'}); return; }
         const record={customerId,customerName:clean(customer.name,120),phone:clean(customer.phone,40),address:clean(body.address,300)||clean(customer.address,300),type,scheduledDate,assignedTo,assignedToName:clean(staff.displayName,80),status:'Scheduled',notes:clean(body.notes,600),createdAt:now(),createdBy:user.uid};
         const ref=await db.collection('installations').add(record);
         await audit(user,'CREATE','installation',ref.id,'Assigned an installation job for '+record.customerName);
@@ -909,7 +1069,11 @@ export async function apiHandler(req: any, res: any) {
         if (user.role==='admin') {
           const assignedTo=clean(body.assignedTo,128);
           if (assignedTo) { const staff=await getDoc('users',assignedTo); if (!staff||staff.role!=='staff'||staff.active!==true) { send(res,400,{error:'Choose an active staff member.'}); return; } patch.assignedTo=assignedTo; patch.assignedToName=clean(staff.displayName,80); }
-          if (body.scheduledDate) patch.scheduledDate=clean(body.scheduledDate,10);
+          if (body.scheduledDate) {
+            const scheduledDate=clean(body.scheduledDate,10);
+            if (!isValidDateKey(scheduledDate)) { send(res,400,{error:'Choose a real calendar date for the installation.'}); return; }
+            patch.scheduledDate=scheduledDate;
+          }
           if (body.address) patch.address=clean(body.address,300);
         }
         await db.collection('installations').doc(id).update(patch);
