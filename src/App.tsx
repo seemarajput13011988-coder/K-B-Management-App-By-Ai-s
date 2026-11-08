@@ -2103,7 +2103,7 @@ function StaffPermissionSetup({ onComplete }: { onComplete:(locationGranted?:boo
         onComplete(true);
       } else {
         localStorage.removeItem('kb-staff-permissions-v1');
-        setMessage(outcomes.join('\n')+'\n\nLocation permission is required for admin GPS requests. Enable it in Android settings, then tap Allow required permissions again. Setup will stay open until location is granted.');
+        setMessage(outcomes.join('\n')+'\n\nLocation permission is required for active-shift GPS tracking. You can continue for now, but staff check-in requires permission and a fresh location fix. If an administrator has already started your shift, the app will ask again when you open it.');
       }
     } catch(error) {
       setMessage(error instanceof Error?error.message:'Could not check Android permissions. Please try again.');
