@@ -35,8 +35,10 @@ export function buildOtaDecision(
   } catch {
     return { message: 'The published OTA bundle URL is invalid.' };
   }
-  const trustedReleasePath = '/seemarajput13011988-coder/K-B-Management-App-By-Ai-s/releases/download/';
-  if (parsed.protocol !== 'https:' || parsed.hostname !== 'github.com' || !parsed.pathname.startsWith(trustedReleasePath)) {
+  const trustedReleasePath = '/seemarajput13011988-coder/K-B-Management-App-By-Ai-s/releases/';
+  const trustedAssetPath = parsed.pathname.startsWith(trustedReleasePath + 'download/')
+    || parsed.pathname.startsWith(trustedReleasePath + 'latest/download/');
+  if (parsed.protocol !== 'https:' || parsed.hostname !== 'github.com' || !trustedAssetPath) {
     return { message: 'The published OTA bundle host is not trusted.' };
   }
   if (typeof currentVersion === 'string' && SEMVER.test(currentVersion)) {
