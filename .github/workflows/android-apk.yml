@@ -105,6 +105,8 @@ jobs:
               raise SystemExit("Generated Gradle wrapper properties were not found")
           content = p.read_text()
           content = content.replace("-all.zip", "-bin.zip")
+          # Avoid the services.gradle.org redirect to GitHub Releases, which returned HTTP 504 in CI.
+          content = content.replace("https://services.gradle.org/distributions/", "https://downloads.gradle.org/distributions/")
           if "networkTimeout=" in content:
               import re
               content = re.sub(r"(?m)^networkTimeout=.*$", "networkTimeout=120000", content)
