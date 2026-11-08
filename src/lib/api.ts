@@ -101,6 +101,7 @@ export async function signInAppUser(userId: string, password: string, role: 'adm
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), 45000);
   let response: Response;
+  let data: any = {};
   try {
     response = await fetch(url.toString(), {
       method: 'POST',
@@ -109,16 +110,17 @@ export async function signInAppUser(userId: string, password: string, role: 'adm
       cache: 'no-store',
       signal: controller.signal,
     });
+    // Keep the timeout active while consuming the response body too. Some
+    // mobile/network failures occur after headers arrive but before JSON completes.
+    try { data = await response.json(); } catch { data = {}; }
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') {
-      throw new Error('Sign-in took too long. Please check your internet connection and try again.');
+      throw new Error('Sign-in timed out while waiting for the K&B server. Check your connection and tap Sign In to retry.');
     }
     throw new Error('Could not reach the K&B server. Check your internet connection and try again.');
   } finally {
     window.clearTimeout(timeout);
   }
-  let data: any = {};
-  try { data = await response.json(); } catch { data = {}; }
   if (!response.ok) throw new Error(typeof data.error === 'string' ? data.error : 'Sign-in failed. Check your user ID and password.');
   if (!data.user || data.user.role !== role) {
     await fetch(new URL('/api/auth/logout', API_BASE).toString(), {
