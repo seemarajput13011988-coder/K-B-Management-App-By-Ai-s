@@ -281,6 +281,7 @@ export async function autoCheckoutAtSevenPm() {
       const latest = await transaction.get(ref);
       const current = latest.data();
       if (!latest.exists || !current || current.checkOutAt ||
+          current.status !== 'Checked in' || current.dayType === 'Absent' ||
           current.workDate !== item.workDate) return false;
       // Re-check the live deadline inside the transaction. A settings change may
       // have extended this shift after the scheduler read its initial snapshot.
