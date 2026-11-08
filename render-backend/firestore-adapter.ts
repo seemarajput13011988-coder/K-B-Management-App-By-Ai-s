@@ -50,17 +50,23 @@ async function addRecords(collection: string, records: RecordData[]): Promise<st
 }
 
 async function transactionAdd(collection: string, records: RecordData[]): Promise<boolean[]> {
-  const batch = firestore.batch();
-  const refs = records.map(record => record.id
-    ? firestore.collection(collection).doc(String(record.id))
-    : firestore.collection(collection).doc());
-  const snapshots = await Promise.all(refs.map(ref => ref.get()));
-  const results = snapshots.map(snapshot => !snapshot.exists);
-  snapshots.forEach((snapshot, index) => {
-    if (results[index]) batch.create(refs[index], { ...withoutId(records[index]), id: refs[index].id });
+  // Read and create inside one Firestore transaction. A separate read followed by
+  // batch.create can race when two requests try to create the same deterministic ID.
+  return firestore.runTransaction(async transaction => {
+    const refs = records.map(record => record.id
+      ? firestore.collection(collection).doc(String(record.id))
+      : firestore.collection(collection).doc());
+    const snapshots = await Promise.all(refs.map(ref => transaction.get(ref)));
+    const results = snapshots.map(snapshot => !snapshot.exists);
+
+    // Firestore requires every transaction read to finish before its first write.
+    snapshots.forEach((snapshot, index) => {
+      if (results[index]) {
+        transaction.create(refs[index], { ...withoutId(records[index]), id: refs[index].id });
+      }
+    });
+    return results;
   });
-  if (results.some(Boolean)) await batch.commit();
-  return results;
 }
 
 async function updateRecords(collection: string, updates: UpdateData[]): Promise<boolean[]> {
@@ -108,7 +114,24 @@ export const db = {
       return transactionAdd(collection, records);
     },
     async update(collection: string, updates: UpdateData[], _options?: RecordData): Promise<boolean[]> {
-      return updateRecords(collection, updates);
+      // Preserve the tx.update contract: read all target documents and apply the
+      // complete update set atomically, with Firestore retrying on contention.
+      return firestore.runTransaction(async transaction => {
+        const refs = updates.map(item => firestore.collection(collection).doc(String(item.id)));
+        const snapshots = await Promise.all(refs.map(ref => transaction.get(ref)));
+        const results = snapshots.map(snapshot => snapshot.exists);
+
+        // All reads are complete before any writes are queued.
+        snapshots.forEach((snapshot, index) => {
+          if (results[index]) {
+            transaction.update(refs[index], {
+              ...withoutId(updates[index].record),
+              updatedAt: updates[index].record.updatedAt || new Date().toISOString(),
+            });
+          }
+        });
+        return results;
+      });
     },
   },
 };
