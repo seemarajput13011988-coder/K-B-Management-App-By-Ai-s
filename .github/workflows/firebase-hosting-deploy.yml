@@ -2,13 +2,15 @@ name: Deploy K&B Management Nexus to Firebase Hosting
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
 
 permissions:
   contents: read
 
 jobs:
   deploy:
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.event.head_commit.message == 'Deploy K&B Nexus Hosting once'))
     runs-on: ubuntu-latest
     steps:
       - name: Check out the reviewed production branch
