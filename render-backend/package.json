@@ -6,7 +6,7 @@
   "scripts": {
     "start": "tsx server.ts",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test payroll-validation.test.ts ota-update.test.ts"
+    "test": "tsx --test payroll-validation.test.ts ota-update.test.ts auth-authorization.test.ts"
   },
   "dependencies": {
     "cors": "^2.8.5",
