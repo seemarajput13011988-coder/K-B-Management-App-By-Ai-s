@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
-import { Capacitor } from '@capacitor/core';
+import { Capacitor, registerPlugin } from '@capacitor/core';
 import { Filesystem } from '@capacitor/filesystem';
 import { Camera } from '@capacitor/camera';
 import { Geolocation } from '@capacitor/geolocation';
@@ -18,7 +18,7 @@ import { useAppPreferences } from './appPreferences';
 import { DateRangeFilter, dateRangeBounds, initialDateRange, isInDateRange, sortReportRows } from './components/DateRangeFilter';
 import type { DateRange } from './components/DateRangeFilter';
 import { exportCsvFile } from './lib/file-export';
-import { api as client, changeAppPassword, changeAppUserId, signInAppUser, signOutAppUser, submitStaffRegistrationRequest, getStaffRegistrationStatus } from './lib/api';
+import { api as client, nativeApiPost, changeAppPassword, changeAppUserId, signInAppUser, signOutAppUser, submitStaffRegistrationRequest, getStaffRegistrationStatus } from './lib/api';
 import {
   Activity,
   Bell,
@@ -64,7 +64,7 @@ type Customer = {
   address: string;
   plan: string;
   monthlyFee: number;
-  status: 'Active' | 'Inactive' | 'Suspended';
+  status: 'Active' | 'Inactive' | 'Suspended' | 'Unknown';
   joinedAt: string;
   dueDate: string;
   notes?: string;
@@ -84,7 +84,9 @@ type Payment = {
 };
 type Staff = { id: string; userId: string; displayName: string; role: 'staff'; active: boolean; phone?: string; createdAt?: string };
 type AdminAccount = { id: string; userId: string; displayName: string; role: 'admin'; active: boolean; canManageAdmins?: boolean; isSuperAdmin?: boolean };
-type AttendanceRecord = { id: string; userId: string; displayName: string; workDate: string; checkInAt: string; checkOutAt?: string; dayType?: 'Full day' | 'Half day' | 'Absent'; status?: string; correctionReason?: string; correctedAt?: string; correctedByName?: string; startedByAdmin?: string; endedByAdminName?: string; endedByName?: string; attendanceSource?: string; absenceReason?: string };
+type AttendanceRecord = { id: string; userId: string; displayName: string; workDate: string; checkInAt: string; checkOutAt?: string; autoCheckoutAt?: string; scheduledEndAt?: string; shiftEndTime?: string; gpsRestartRequired?: boolean; gpsCancelled?: boolean; dayType?: 'Full day' | 'Half day' | 'Absent'; status?: string; correctionReason?: string; correctedAt?: string; correctedByName?: string; startedByAdmin?: string; endedByAdminName?: string; endedByName?: string; attendanceSource?: string; absenceReason?: string };
+interface WorkLocationTrackingPlugin { startTracking(options: { token: string; apiBaseUrl: string; attendanceId: string; scheduledEndAt: string }): Promise<{ started: boolean }>; stopTracking(): Promise<{ stopped: boolean }>; }
+const WorkLocationTracking = registerPlugin<WorkLocationTrackingPlugin>('WorkLocationTracking');
 type Task = { id: string; title: string; details: string; assignedTo: string; assignedToName: string; priority: 'Low' | 'Normal' | 'High'; dueDate: string; status: 'Pending' | 'In progress' | 'Completed'; createdAt: string; createdByName: string; updatedAt?: string; completedAt?: string; attachments?: Array<{mediaId:string;fileName:string;mimeType:string;size:number}> };
 type Complaint = {
   id: string;
@@ -124,7 +126,26 @@ type Plan = {
 };
 
 const money = (n: number) => '₹' + Number(n || 0).toLocaleString('en-IN');
-const customerStatusLabel = (value: unknown): Customer['status'] => { const status = String(value || 'Active').trim().toLowerCase(); return status === 'suspended' ? 'Suspended' : status === 'inactive' ? 'Inactive' : 'Active'; };
+const attendanceDeadlineAt = (item: AttendanceRecord): number => {
+  const stored = Date.parse(item.autoCheckoutAt || item.scheduledEndAt || '');
+  if (Number.isFinite(stored)) return stored;
+  const checkIn = Date.parse(item.checkInAt || '');
+  if (!Number.isFinite(checkIn) || !/^\d{4}-\d{2}-\d{2}$/.test(item.workDate || '')) return Number.NaN;
+  const parts = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date(checkIn));
+  const minuteOfDay = Number(parts.find(part => part.type === 'hour')?.value || 0) * 60 + Number(parts.find(part => part.type === 'minute')?.value || 0);
+  const endTime = /^([01]\d|2[0-3]):[0-5]\d$/.test(item.shiftEndTime || '') ? item.shiftEndTime! : '19:00';
+  const [hour, minute] = endTime.split(':').map(Number);
+  const dueDate = minuteOfDay >= hour * 60 + minute ? new Date(Date.parse(item.workDate + 'T00:00:00Z') + 86400000).toISOString().slice(0, 10) : item.workDate;
+  return Date.parse(dueDate + 'T' + endTime + ':00+05:30');
+};
+const isAttendanceShiftActive = (item: AttendanceRecord, now = Date.now()) => !item.checkOutAt && item.dayType !== 'Absent' && String(item.status || '').toLowerCase() !== 'absent' && !item.gpsRestartRequired && !item.gpsCancelled && !String(item.status || '').toLowerCase().includes('cancelled') && !String(item.status || '').toLowerCase().includes('completed') && now < attendanceDeadlineAt(item);
+const customerStatusLabel = (value: unknown): Customer['status'] => {
+  const status = String(value || '').trim().toLowerCase();
+  if (['suspended', 'paused', 'blocked'].includes(status)) return 'Suspended';
+  if (['active', 'connected', 'enabled', ''].includes(status)) return 'Active';
+  if (['inactive', 'disconnected', 'disabled', 'offline'].includes(status)) return 'Inactive';
+  return 'Unknown';
+};
 const dateLabel = (s: string) =>
   s
     ? new Date(s).toLocaleDateString('en-IN', {
@@ -425,10 +446,13 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
     .reduce((sum, c) => sum + Number(c.monthlyFee || 0), 0);
   const openComplaints = complaints.filter(c => !['Solved', 'Resolved'].includes(c.status)).length;
   const pendingTasks = tasks.filter(task => task.status !== 'Completed').length;
-  const currentBillingMonth = new Date().toLocaleString('en-IN', { month: 'long', year: 'numeric' });
+  const indiaToday = getIndiaDateKey();
+  const [indiaYear, indiaMonth] = indiaToday.split('-').map(Number);
+  const currentBillingMonth = new Date(Date.UTC(indiaYear, indiaMonth - 1, 1)).toLocaleString('en-IN', { month: 'long', year: 'numeric', timeZone: 'UTC' });
   const paidByCustomer = new Map<string, number>();
   payments.filter(p => p.month === currentBillingMonth).forEach(p => paidByCustomer.set(p.customerId, (paidByCustomer.get(p.customerId) || 0) + Number(p.amount || 0)));
-  const today = new Date().toISOString().slice(0, 10);
+  const today = indiaToday;
+  const staffShiftActive = attendanceRecords.some(item => item.userId === session.user.id && isAttendanceShiftActive(item));
   const overdueValue = customers.filter(c => c.status === 'Active' && c.dueDate && c.dueDate <= today).reduce((sum, c) => sum + Math.max(0, Number(c.monthlyFee || 0) - (paidByCustomer.get(c.id) || 0)), 0);
   const filtered = useMemo(
     () =>
@@ -1229,7 +1253,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                 <div className="staff-record-heading"><div><span className="eyebrow">INDIVIDUAL STAFF FILE</span><h2>{selectedStaffProfile.displayName}</h2><p>{selectedStaffProfile.userId} · {selectedStaffProfile.active ? 'Active account' : 'Access disabled'}{selectedStaffProfile.phone?' · '+selectedStaffProfile.phone:''}{selectedStaffProfile.createdAt?' · Joined '+new Date(selectedStaffProfile.createdAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'}):''}</p></div><button className="btn secondary compact" onClick={() => setSelectedStaffProfileId('')}>Close record</button></div>
                 <div className="staff-record-metrics">
                   <article><small>Total collected</small><strong>{money(selectedStaffCollected)}</strong><span>{selectedStaffPayments.length} payment records</span></article>
-                  <article><small>Attendance days</small><strong>{selectedStaffAttendanceEquivalent.toLocaleString('en-IN')}</strong><span>{selectedStaffAttendance.filter(record => !!record.checkOutAt && record.dayType !== 'Absent').length} completed shifts</span></article>
+                  <article><small>Attendance days</small><strong>{selectedStaffAttendanceEquivalent.toLocaleString('en-IN')}</strong><span>{selectedStaffAttendance.filter(record => !!record.checkInAt && !!record.checkOutAt && record.dayType !== 'Absent' && String(record.status || '').toLowerCase() !== 'absent').length} completed shifts</span></article>
                   <article><small>Absent days</small><strong>{selectedStaffAbsentDays}</strong><span>Admin-marked absence records</span></article>
                   <article><small>Assigned customers</small><strong>{customers.filter(customer => customer.assignedTo === selectedStaffProfile.id).length}</strong><span>Currently assigned</span></article>
                   <article><small>Assigned tasks</small><strong>{selectedStaffTasks.length}</strong><span>{selectedStaffTasks.filter(task => task.status === 'Completed').length} completed</span></article>
@@ -1496,7 +1520,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
           onSave={savePayment}
         />
       )}
-      {!isAdmin && <StaffLocationResponder />}
+      {!isAdmin && <StaffLocationResponder activeShift={staffShiftActive} userId={session.user.id} />}
       {permissionSetupOpen && <StaffPermissionSetup onComplete={() => { localStorage.setItem('kb-staff-permissions-v1', 'done'); setPermissionSetupOpen(false); }} />}
       {completingTask && <TaskCompletionModal task={completingTask} onClose={() => setCompletingTask(null)} onComplete={(photo: File | null, video: File | null) => completeTaskWithEvidence(completingTask, photo, video)} />}
       {taskPreview && <Modal title={taskPreview.name} subtitle="Task completion evidence" onClose={() => setTaskPreview(null)}><div className="complaint-preview">{taskPreview.mimeType.startsWith('video/') ? <video src={taskPreview.dataUrl} controls playsInline /> : <img src={taskPreview.dataUrl} alt={taskPreview.name}/>}</div><div className="form-actions"><a className="btn secondary" href={taskPreview.dataUrl} download={taskPreview.name}>Download evidence</a><button type="button" className="btn primary" onClick={() => setTaskPreview(null)}>Close</button></div></Modal>}
@@ -1953,7 +1977,76 @@ function StaffModal({ onClose, onSave }: any) {
   const [busy, setBusy] = useState(false);
   return <Modal title="Create staff account" subtitle="Give this team member a secure sign-in." onClose={onClose}><form className="form-grid" onSubmit={async e => { e.preventDefault(); setBusy(true); await onSave(form); setBusy(false); }}><Field label="Staff full name"><input required value={form.displayName} onChange={e => setForm({ ...form, displayName: e.target.value })} /></Field><Field label="Staff user ID"><input required minLength={3} maxLength={32} pattern="[a-zA-Z0-9_-]{3,32}" value={form.userId} onChange={e => setForm({ ...form, userId: e.target.value })} /></Field><Field label="Temporary password" wide><input required type="password" minLength={10} value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} /></Field><p className="form-hint">Use at least 10 characters and share it privately. Admin can reset it from Staff if needed.</p><div className="form-actions"><button type="button" className="btn secondary" onClick={onClose}>Cancel</button><button className="btn primary" disabled={busy}>{busy ? 'Creating…' : 'Create account'}</button></div></form></Modal>;
 }
-function StaffLocationResponder() {
+function StaffLocationResponder({ activeShift, userId }: { activeShift: boolean; userId: string }) {
+  const [shiftActive, setShiftActive] = useState(activeShift);
+  const [activeShiftId, setActiveShiftId] = useState('');
+  const [scheduledEndAt, setScheduledEndAt] = useState('');
+  const [scheduleReady, setScheduleReady] = useState(false);
+  useEffect(() => {
+    let stopped = false;
+    const checkShift = async () => {
+      try {
+        const result = await api.get('/api/attendance');
+        const current = (result.data.items || []).filter((item: AttendanceRecord) => item.userId === userId && isAttendanceShiftActive(item)).sort((a: AttendanceRecord, b: AttendanceRecord) => String(b.checkInAt || '').localeCompare(String(a.checkInAt || '')))[0];
+        if (!stopped) {
+          setShiftActive(Boolean(current));
+          setActiveShiftId(current?.id || '');
+          setScheduledEndAt(current ? new Date(attendanceDeadlineAt(current)).toISOString() : '');
+          setScheduleReady(true);
+        }
+      } catch { /* Keep last confirmed shift state while the API is unavailable. */ }
+    };
+    setShiftActive(activeShift);
+    void checkShift();
+    const timer = window.setInterval(checkShift, 15000);
+    return () => { stopped = true; window.clearInterval(timer); };
+  }, [activeShift, userId]);
+  useEffect(() => {
+    let stopped = false;
+    let browserTimer: number | null = null;
+    if (!scheduleReady) return;
+    if (!shiftActive) {
+      if (Capacitor.isNativePlatform()) void WorkLocationTracking.stopTracking().catch(() => undefined);
+      return;
+    }
+    if (!activeShiftId || !scheduledEndAt) return;
+    const reportGpsUnavailable = (reason: string) => {
+      const payload = { reason };
+      const update = Capacitor.isNativePlatform() ? nativeApiPost('/api/attendance/gps-lost', payload) : api.post('/api/attendance/gps-lost', payload);
+      void update.catch(() => undefined);
+    };
+    const publishNative = async () => {
+      try {
+        let permission = await Geolocation.checkPermissions();
+        if (permission.location !== 'granted') permission = await Geolocation.requestPermissions();
+        if (permission.location !== 'granted') { reportGpsUnavailable('Location permission denied'); return; }
+        await Geolocation.getCurrentPosition({ enableHighAccuracy: true, maximumAge: 0, timeout: 15000 });
+        const token = getToken();
+        if (!token) return;
+        const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'https://kandb-management-nexus-api-zv7f.onrender.com';
+        await WorkLocationTracking.startTracking({ token, apiBaseUrl, attendanceId: activeShiftId, scheduledEndAt });
+      } catch { reportGpsUnavailable('Phone location services are unavailable'); }
+    };
+    const publishBrowser = () => {
+      if (stopped || document.visibilityState !== 'visible') return;
+      if (!navigator.geolocation) { reportGpsUnavailable('GPS location unavailable'); return; }
+      navigator.geolocation.getCurrentPosition(async position => {
+        try { await api.post('/api/staff/live-location', { latitude: position.coords.latitude, longitude: position.coords.longitude, accuracy: position.coords.accuracy, capturedAt: new Date(position.timestamp).toISOString(), source: 'staff-app-foreground' }); }
+        catch { /* The admin view reports the age of the latest confirmed location. */ }
+      }, error => reportGpsUnavailable(error.code === 1 ? 'Location permission denied' : 'GPS location unavailable'), { enableHighAccuracy: true, maximumAge: 5000, timeout: 12000 });
+    };
+    if (Capacitor.isNativePlatform()) {
+      void publishNative();
+      // Keep the native service running across Activity destruction; the backend
+      // rejects updates outside this exact active attendance record and deadline.
+      return () => { stopped = true; };
+    }
+    publishBrowser();
+    browserTimer = window.setInterval(publishBrowser, 15000);
+    const onVisibility = () => { if (document.visibilityState === 'visible') publishBrowser(); };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => { stopped = true; if (browserTimer !== null) window.clearInterval(browserTimer); document.removeEventListener('visibilitychange', onVisibility); };
+  }, [shiftActive, activeShiftId, scheduledEndAt, scheduleReady]);
   useEffect(() => {
     let stopped = false;
     let polling = false;
@@ -2365,5 +2458,6 @@ function LoginScreen({onLogin}:{onLogin:(id:string,pw:string,role:'admin'|'staff
  <div className="auth-security"><KeyRound size={14}/> Keep your password private. Access is based on your account role.</div></form></div></div>;
 }
 export default App;
+
 
 
