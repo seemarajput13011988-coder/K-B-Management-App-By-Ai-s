@@ -773,6 +773,19 @@ jobs:
           PY
           python3 - <<'PY'
           from pathlib import Path
+          gradle = Path("android/app/build.gradle")
+          source = gradle.read_text()
+          dependency = 'implementation "com.google.android.gms:play-services-location:21.3.0"'
+          if dependency not in source:
+              marker = "dependencies {"
+              if marker not in source:
+                  raise SystemExit("Could not find Android app dependencies block")
+              source = source.replace(marker, marker + "\n    " + dependency, 1)
+              gradle.write_text(source)
+          print("Google Play Services location dependency is present for the foreground GPS service.")
+          PY
+          python3 - <<'PY'
+          from pathlib import Path
           p = Path("android/app/src/main/java/kandbnet/service2010/MainActivity.java")
           s = p.read_text()
           if "registerPlugin(WorkLocationTrackingPlugin.class);" not in s:
