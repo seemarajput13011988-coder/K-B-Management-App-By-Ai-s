@@ -587,6 +587,10 @@ td b {
   background: #fff0e9;
   color: #d36e3d;
 }
+.status.unknown {
+  background: #fff7dd;
+  color: #8a6500;
+}
 .row-action {
   background: #fff;
   border: 1px solid #e7ebf1;
@@ -1905,3 +1909,4 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
   *,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
 }
 .date-range-controls{display:flex;align-items:flex-end;gap:9px;flex-wrap:wrap;margin:10px 0 14px;padding:10px;border:1px solid #e7edf5;border-radius:12px;background:linear-gradient(120deg,#fff,#f6faff)}.date-range-controls label{display:grid;gap:4px;min-width:130px;flex:1}.date-range-controls label span{font-size:9px;font-weight:800;letter-spacing:.35px;color:#78879b}.date-range-controls input,.date-range-controls select{height:38px;min-width:0;width:100%;padding:0 10px;border:1px solid #dce4ef;border-radius:9px;background:#fff;color:#34445a;font:inherit;font-size:11px}.date-range-controls .result-count{align-self:center}.date-range-controls .btn{min-height:38px}@media(max-width:600px){.date-range-controls{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:9px}.date-range-controls label{min-width:0}.date-range-controls>.btn{grid-column:1/-1;width:100%;justify-content:center}.date-range-controls>.result-count{grid-column:1/-1;text-align:center}}
+
