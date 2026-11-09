@@ -161,6 +161,646 @@ jobs:
           # Capacitor's generated project uses Java MainActivity; remove any
           # generated Kotlin counterpart so the app has a single entry point.
           rm -f android/app/src/main/java/kandbnet/service2010/MainActivity.kt
+      - name: Install persistent active-shift Android location service
+        run: |
+          PACKAGE_DIR=android/app/src/main/java/kandbnet/service2010
+          mkdir -p "$PACKAGE_DIR"
+          cat > "$PACKAGE_DIR/WorkLocationTrackingPlugin.java" <<'JAVA'
+          package kandbnet.service2010;
+
+          import android.content.Intent;
+          import android.os.Build;
+          import com.getcapacitor.Plugin;
+          import com.getcapacitor.PluginCall;
+          import com.getcapacitor.PluginMethod;
+          import com.getcapacitor.annotation.CapacitorPlugin;
+          import com.getcapacitor.JSObject;
+
+          @CapacitorPlugin(name = "WorkLocationTracking")
+          public class WorkLocationTrackingPlugin extends Plugin {
+            @PluginMethod
+            public void startTracking(PluginCall call) {
+              String token = call.getString("token");
+              String apiBaseUrl = call.getString("apiBaseUrl");
+              String attendanceId = call.getString("attendanceId");
+              String scheduledEndAt = call.getString("scheduledEndAt");
+              if (attendanceId == null) attendanceId = "";
+              if (scheduledEndAt == null) scheduledEndAt = "";
+              if (token == null || token.trim().isEmpty() || apiBaseUrl == null || !apiBaseUrl.startsWith("https://")) {
+                call.reject("A valid signed-in session and secure K&B API address are required.");
+                return;
+              }
+              Intent intent = new Intent(getContext(), WorkLocationTrackingService.class);
+              intent.setAction(WorkLocationTrackingService.ACTION_START);
+              intent.putExtra(WorkLocationTrackingService.EXTRA_TOKEN, token);
+              intent.putExtra(WorkLocationTrackingService.EXTRA_API_BASE_URL, apiBaseUrl);
+              intent.putExtra(WorkLocationTrackingService.EXTRA_ATTENDANCE_ID, attendanceId);
+              intent.putExtra(WorkLocationTrackingService.EXTRA_SCHEDULED_END_AT, scheduledEndAt);
+              try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) getContext().startForegroundService(intent);
+                else getContext().startService(intent);
+                JSObject result = new JSObject();
+                result.put("started", true);
+                call.resolve(result);
+              } catch (Exception error) {
+                call.reject("Android could not start the visible work-location service: " + error.getMessage(), error);
+              }
+            }
+
+            @PluginMethod
+            public void stopTracking(PluginCall call) {
+              Intent intent = new Intent(getContext(), WorkLocationTrackingService.class);
+              intent.setAction(WorkLocationTrackingService.ACTION_STOP);
+              try {
+                getContext().startService(intent);
+                JSObject result = new JSObject();
+                result.put("stopped", true);
+                call.resolve(result);
+              } catch (Exception error) {
+                call.reject("Android could not stop work-location sharing: " + error.getMessage(), error);
+              }
+            }
+          }
+          JAVA
+          cat > "$PACKAGE_DIR/WorkLocationTrackingService.java" <<'JAVA'
+          package kandbnet.service2010;
+
+          import android.Manifest;
+          import android.app.Notification;
+          import android.app.NotificationChannel;
+          import android.app.NotificationManager;
+          import android.app.PendingIntent;
+          import android.app.Service;
+          import android.content.BroadcastReceiver;
+          import android.content.Context;
+          import android.content.Intent;
+          import android.content.IntentFilter;
+          import android.content.pm.PackageManager;
+          import android.content.pm.ServiceInfo;
+          import android.location.Location;
+          import android.location.LocationManager;
+          import android.os.Build;
+          import android.os.Handler;
+          import android.os.IBinder;
+          import android.os.Looper;
+          import androidx.core.app.NotificationCompat;
+          import androidx.core.content.ContextCompat;
+          import com.google.android.gms.location.FusedLocationProviderClient;
+          import com.google.android.gms.location.LocationCallback;
+          import com.google.android.gms.location.LocationRequest;
+          import com.google.android.gms.location.LocationResult;
+          import com.google.android.gms.location.LocationServices;
+          import com.google.android.gms.location.Priority;
+          import org.json.JSONArray;
+          import org.json.JSONObject;
+          import java.io.ByteArrayOutputStream;
+          import java.io.InputStream;
+          import java.io.OutputStream;
+          import java.net.HttpURLConnection;
+          import java.net.URL;
+          import java.text.SimpleDateFormat;
+          import java.util.Calendar;
+          import java.util.Date;
+          import java.util.Locale;
+          import java.util.TimeZone;
+          import java.util.concurrent.ExecutorService;
+          import java.util.concurrent.Executors;
+
+          public class WorkLocationTrackingService extends Service {
+            public static final String ACTION_START = "kandbnet.service2010.WORK_LOCATION_START";
+            public static final String ACTION_STOP = "kandbnet.service2010.WORK_LOCATION_STOP";
+            public static final String EXTRA_TOKEN = "session_token";
+            public static final String EXTRA_API_BASE_URL = "api_base_url";
+            public static final String EXTRA_ATTENDANCE_ID = "attendance_id";
+            public static final String EXTRA_SCHEDULED_END_AT = "scheduled_end_at";
+            private static final String PREFS = "kb_work_location_service";
+            private static final String KEY_TOKEN = "token";
+            private static final String KEY_API = "api_base_url";
+            private static final String KEY_ATTENDANCE_ID = "attendance_id";
+            private static final String KEY_SCHEDULED_END_AT = "scheduled_end_at";
+            private static final int NOTIFICATION_ID = 7316;
+            private static final String CHANNEL_ID = "kb_active_shift_location";
+            private FusedLocationProviderClient fusedClient;
+            private LocationCallback locationCallback;
+            private final ExecutorService uploader = Executors.newSingleThreadExecutor();
+            private volatile boolean stopping = false;
+            private volatile boolean shiftServerConfirmed = false;
+            private volatile long lastUploadAt = 0L;
+            private volatile long lastShiftCheckAt = 0L;
+            private volatile boolean locationUnavailableReported = false;
+            private volatile boolean locationReady = false;
+            private volatile long lastGpsLossReportAt = 0L;
+            private volatile String lastUnavailableReason = "";
+            private BroadcastReceiver providerStateReceiver;
+            private final Handler statusHandler = new Handler(Looper.getMainLooper());
+            private final Runnable statusWatchdog = new Runnable() {
+              @Override public void run() {
+                if (!stopping) {
+                  long now = System.currentTimeMillis();
+                  if (now - lastShiftCheckAt >= 20000L) {
+                    lastShiftCheckAt = now;
+                    checkShiftStatus();
+                  } else if (shiftServerConfirmed) {
+                    handleLocationProviderChange();
+                  }
+                  statusHandler.postDelayed(this, 20000L);
+                }
+              }
+            };
+
+            @Override public void onCreate() {
+              super.onCreate();
+              fusedClient = LocationServices.getFusedLocationProviderClient(this);
+              createNotificationChannel();
+              providerStateReceiver = new BroadcastReceiver() {
+                @Override public void onReceive(Context context, Intent intent) {
+                  if (intent != null && LocationManager.PROVIDERS_CHANGED_ACTION.equals(intent.getAction())) {
+                    handleLocationProviderChange();
+                  }
+                }
+              };
+              IntentFilter filter = new IntentFilter(LocationManager.PROVIDERS_CHANGED_ACTION);
+              if (Build.VERSION.SDK_INT >= 33) registerReceiver(providerStateReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
+              else registerReceiver(providerStateReceiver, filter);
+            }
+
+            @Override public int onStartCommand(Intent intent, int flags, int startId) {
+              if (intent != null && ACTION_STOP.equals(intent.getAction())) {
+                stopTrackingAndService();
+                return START_NOT_STICKY;
+              }
+              if (intent != null && ACTION_START.equals(intent.getAction())) {
+                String token = intent.getStringExtra(EXTRA_TOKEN);
+                String api = intent.getStringExtra(EXTRA_API_BASE_URL);
+                if (token == null || token.isEmpty() || api == null || !api.startsWith("https://")) {
+                  stopTrackingAndService();
+                  return START_NOT_STICKY;
+                }
+                String attendanceId = intent.getStringExtra(EXTRA_ATTENDANCE_ID);
+                String scheduledEndAt = intent.getStringExtra(EXTRA_SCHEDULED_END_AT);
+                android.content.SharedPreferences.Editor preferences = getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                  .putString(KEY_TOKEN, token).putString(KEY_API, api);
+                if (attendanceId != null && !attendanceId.isEmpty()) preferences.putString(KEY_ATTENDANCE_ID, attendanceId);
+                if (scheduledEndAt != null && !scheduledEndAt.isEmpty()) preferences.putString(KEY_SCHEDULED_END_AT, scheduledEndAt);
+                else preferences.remove(KEY_SCHEDULED_END_AT);
+                preferences.apply();
+              }
+              // Do not resume GPS on either a fresh start or sticky restart until
+              // this service confirms the active shift (or validates its cached deadline offline).
+              shiftServerConfirmed = false;
+              String token = getSharedPreferences(PREFS, MODE_PRIVATE).getString(KEY_TOKEN, null);
+              String api = getSharedPreferences(PREFS, MODE_PRIVATE).getString(KEY_API, null);
+              if (token == null || api == null) {
+                stopSelf();
+                return START_NOT_STICKY;
+              }
+              stopping = false;
+              startVisibleNotification();
+              checkShiftStatus();
+              statusHandler.removeCallbacks(statusWatchdog);
+              statusHandler.postDelayed(statusWatchdog, 20000L);
+              return START_STICKY;
+            }
+
+            private void createNotificationChannel() {
+              if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                NotificationChannel channel = new NotificationChannel(CHANNEL_ID, "K&B active-shift location", NotificationManager.IMPORTANCE_LOW);
+                channel.setDescription("Visible notification while your location is shared during an active K&B work shift.");
+                NotificationManager manager = getSystemService(NotificationManager.class);
+                if (manager != null) manager.createNotificationChannel(channel);
+              }
+            }
+
+            private Notification buildNotification(String title, String message) {
+              Intent launch = getPackageManager().getLaunchIntentForPackage(getPackageName());
+              PendingIntent pending = launch == null ? null : PendingIntent.getActivity(this, 7316, launch,
+                PendingIntent.FLAG_UPDATE_CURRENT | (Build.VERSION.SDK_INT >= 23 ? PendingIntent.FLAG_IMMUTABLE : 0));
+              return new NotificationCompat.Builder(this, CHANNEL_ID)
+                .setSmallIcon(getApplicationInfo().icon)
+                .setContentTitle(title)
+                .setContentText(message)
+                .setOngoing(true)
+                .setCategory(NotificationCompat.CATEGORY_SERVICE)
+                .setPriority(NotificationCompat.PRIORITY_LOW)
+                .setContentIntent(pending)
+                .build();
+            }
+
+            private void startVisibleNotification() {
+              Notification notification = buildNotification("K&B work location active",
+                "Your location is shared with authorised K&B administrators during this active shift. It stops at checkout.");
+              if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION);
+              } else {
+                startForeground(NOTIFICATION_ID, notification);
+              }
+            }
+
+            private void updateVisibleNotification(String title, String message) {
+              NotificationManager manager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+              if (manager != null) manager.notify(NOTIFICATION_ID, buildNotification(title, message));
+            }
+
+            private boolean isPhoneLocationEnabled() {
+              LocationManager manager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
+              if (manager == null) return false;
+              try {
+                if (Build.VERSION.SDK_INT >= 28) return manager.isLocationEnabled();
+                return manager.isProviderEnabled(LocationManager.GPS_PROVIDER) ||
+                  manager.isProviderEnabled(LocationManager.NETWORK_PROVIDER);
+              } catch (Exception ignored) {
+                return false;
+              }
+            }
+
+            private void handleLocationProviderChange() {
+              if (stopping || !shiftServerConfirmed) return;
+              stopIfCachedDeadlineExpired();
+              if (stopping) return;
+              boolean permissionGranted = hasLocationPermission();
+              boolean phoneLocationEnabled = permissionGranted && isPhoneLocationEnabled();
+              if (!permissionGranted || !phoneLocationEnabled) {
+                if (locationCallback != null) fusedClient.removeLocationUpdates(locationCallback);
+                locationCallback = null;
+                locationReady = false;
+                if (!permissionGranted) {
+                  markLocationUnavailable("Location permission denied", "K&B location permission needed",
+                    "Location sharing is paused. Re-enable location permission to resume during this active shift.");
+                } else {
+                  markLocationUnavailable("Phone location services are unavailable", "Phone location is OFF",
+                    "K&B location sharing is paused. Turn on phone location to resume during this active shift.");
+                }
+                return;
+              }
+              if (locationCallback != null) return;
+              beginLocationUpdates();
+            }
+
+            private boolean isShiftStillActive(JSONObject item, long now) {
+              if (item == null || !item.optString("checkOutAt").isEmpty() ||
+                  "Absent".equalsIgnoreCase(item.optString("dayType")) ||
+                  item.optBoolean("gpsRestartRequired", false) || item.optBoolean("gpsCancelled", false) ||
+                  item.optString("status").toLowerCase(Locale.US).contains("cancelled") ||
+                  item.optString("status").toLowerCase(Locale.US).contains("completed")) return false;
+              try {
+                String savedDeadline = item.optString("autoCheckoutAt");
+                if (savedDeadline.isEmpty()) savedDeadline = item.optString("scheduledEndAt");
+                if (!savedDeadline.isEmpty()) {
+                  SimpleDateFormat savedDeadlineFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US);
+                  savedDeadlineFormat.setTimeZone(TimeZone.getTimeZone("UTC"));
+                  Date savedDeadlineDate = savedDeadlineFormat.parse(savedDeadline);
+                  if (savedDeadlineDate != null) return now < savedDeadlineDate.getTime();
+                }
+                String workDate = item.optString("workDate");
+                String checkInAt = item.optString("checkInAt");
+                SimpleDateFormat utc = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US);
+                utc.setTimeZone(TimeZone.getTimeZone("UTC"));
+                Date checkIn = utc.parse(checkInAt);
+                if (checkIn == null) return false;
+                SimpleDateFormat localClock = new SimpleDateFormat("HH:mm", Locale.US);
+                localClock.setTimeZone(TimeZone.getTimeZone("Asia/Kolkata"));
+                String[] clock = localClock.format(checkIn).split(":");
+                int minutes = Integer.parseInt(clock[0]) * 60 + Integer.parseInt(clock[1]);
+                SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd", Locale.US);
+                dateFormat.setTimeZone(TimeZone.getTimeZone("Asia/Kolkata"));
+                Date date = dateFormat.parse(workDate);
+                if (date == null) return false;
+                String endTime = item.optString("shiftEndTime", "19:00");
+                if (!endTime.matches("([01]\\d|2[0-3]):[0-5]\\d")) endTime = "19:00";
+                String[] endParts = endTime.split(":");
+                int endMinutes = Integer.parseInt(endParts[0]) * 60 + Integer.parseInt(endParts[1]);
+                if (minutes >= endMinutes) {
+                  Calendar calendar = Calendar.getInstance(TimeZone.getTimeZone("Asia/Kolkata"), Locale.US);
+                  calendar.setTime(date);
+                  calendar.add(Calendar.DAY_OF_MONTH, 1);
+                  date = calendar.getTime();
+                }
+                String dueDate = dateFormat.format(date);
+                SimpleDateFormat dueFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US);
+                dueFormat.setTimeZone(TimeZone.getTimeZone("Asia/Kolkata"));
+                Date due = dueFormat.parse(dueDate + "T" + endTime + ":00");
+                return due != null && now < due.getTime();
+              } catch (Exception ignored) {
+                return false;
+              }
+            }
+
+            private void markLocationUnavailable(String reason, String title, String message) {
+              if (!reason.equals(lastUnavailableReason)) {
+                lastUnavailableReason = reason;
+                updateVisibleNotification(title, message);
+              }
+              locationUnavailableReported = true;
+              long now = System.currentTimeMillis();
+              // Retry status reporting after network recovery. The server treats repeated reports
+              // for the same active attendance record as idempotent and does not duplicate alerts.
+              if (now - lastGpsLossReportAt >= 60000L) {
+                lastGpsLossReportAt = now;
+                reportGpsUnavailable(reason);
+              }
+            }
+
+            private void checkShiftStatus() {
+              uploader.execute(() -> {
+                HttpURLConnection connection = null;
+                try {
+                  String token = getSharedPreferences(PREFS, MODE_PRIVATE).getString(KEY_TOKEN, null);
+                  String api = getSharedPreferences(PREFS, MODE_PRIVATE).getString(KEY_API, null);
+                  if (token == null || api == null || stopping) return;
+                  URL url = new URL(api.replaceAll("/+$", "") + "/api/attendance/active");
+                  connection = (HttpURLConnection) url.openConnection();
+                  connection.setRequestMethod("GET");
+                  connection.setConnectTimeout(10000);
+                  connection.setReadTimeout(10000);
+                  connection.setRequestProperty("Authorization", "Bearer " + token);
+                  int status = connection.getResponseCode();
+                  if (status == 401 || status == 403) {
+                    stopFromServer();
+                    return;
+                  }
+                  if (status < 200 || status >= 300) {
+                    if (hasValidCachedDeadline()) {
+                      shiftServerConfirmed = true; // Continue only to the last server-confirmed deadline while offline.
+                      handleLocationProviderChange();
+                    } else {
+                      stopTrackingAndService();
+                    }
+                    return;
+                  }
+                  String responseText;
+                  try (InputStream input = connection.getInputStream(); ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+                    byte[] buffer = new byte[4096];
+                    int count;
+                    while ((count = input.read(buffer)) != -1) output.write(buffer, 0, count);
+                    responseText = output.toString("UTF-8");
+                  }
+                  JSONObject response = new JSONObject(responseText);
+                  JSONArray items = response.optJSONArray("items");
+                  JSONObject activeItem = null;
+                  if (items != null) {
+                    long now = System.currentTimeMillis();
+                    for (int index = 0; index < items.length(); index++) {
+                      JSONObject candidate = items.optJSONObject(index);
+                      if (isShiftStillActive(candidate, now)) {
+                        activeItem = candidate;
+                        break;
+                      }
+                    }
+                  }
+                  if (activeItem == null) {
+                    stopTrackingAndService();
+                  } else {
+                    android.content.SharedPreferences.Editor cache = getSharedPreferences(PREFS, MODE_PRIVATE).edit();
+                    String activeId = activeItem.optString("id", "");
+                    String deadline = activeItem.optString("autoCheckoutAt", "");
+                    if (deadline.isEmpty()) deadline = activeItem.optString("scheduledEndAt", "");
+                    if (!activeId.isEmpty()) cache.putString(KEY_ATTENDANCE_ID, activeId);
+                    if (!deadline.isEmpty()) cache.putString(KEY_SCHEDULED_END_AT, deadline);
+                    cache.apply();
+                    shiftServerConfirmed = hasValidCachedDeadline();
+                    if (shiftServerConfirmed) handleLocationProviderChange();
+                    else stopTrackingAndService();
+                  }
+                } catch (Exception ignored) {
+                  // Keep tracking only until the last server-confirmed deadline when offline.
+                  if (hasValidCachedDeadline()) {
+                    shiftServerConfirmed = true;
+                    handleLocationProviderChange();
+                  } else {
+                    stopTrackingAndService();
+                  }
+                } finally {
+                  if (connection != null) connection.disconnect();
+                }
+              });
+            }
+
+            private boolean hasValidCachedDeadline() {
+              String deadline = getSharedPreferences(PREFS, MODE_PRIVATE).getString(KEY_SCHEDULED_END_AT, "");
+              if (deadline == null || deadline.isEmpty()) return false;
+              try {
+                SimpleDateFormat format = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US);
+                format.setTimeZone(TimeZone.getTimeZone("UTC"));
+                Date parsed = format.parse(deadline);
+                return parsed != null && System.currentTimeMillis() < parsed.getTime();
+              } catch (Exception ignored) {
+                return false;
+              }
+            }
+
+            private void stopIfCachedDeadlineExpired() {
+              if (!hasValidCachedDeadline()) stopTrackingAndService();
+            }
+
+            private void reportGpsUnavailable(String reason) {
+              uploader.execute(() -> {
+                HttpURLConnection connection = null;
+                try {
+                  String token = getSharedPreferences(PREFS, MODE_PRIVATE).getString(KEY_TOKEN, null);
+                  String api = getSharedPreferences(PREFS, MODE_PRIVATE).getString(KEY_API, null);
+                  if (token == null || api == null || stopping) return;
+                  URL url = new URL(api.replaceAll("/+$", "") + "/api/attendance/gps-lost");
+                  connection = (HttpURLConnection) url.openConnection();
+                  connection.setRequestMethod("POST");
+                  connection.setConnectTimeout(12000);
+                  connection.setReadTimeout(12000);
+                  connection.setDoOutput(true);
+                  connection.setRequestProperty("Authorization", "Bearer " + token);
+                  connection.setRequestProperty("Content-Type", "application/json");
+                  JSONObject body = new JSONObject();
+                  body.put("reason", reason);
+                  byte[] bytes = body.toString().getBytes("UTF-8");
+                  try (OutputStream output = connection.getOutputStream()) { output.write(bytes); output.flush(); }
+                  int status = connection.getResponseCode();
+                  if (status == 401 || status == 403 || status == 409) stopFromServer();
+                } catch (Exception ignored) {
+                  // The next provider change or location update will retry status reporting.
+                } finally {
+                  if (connection != null) connection.disconnect();
+                }
+              });
+            }
+
+            private boolean hasLocationPermission() {
+              return ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                || ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED;
+            }
+
+            private void beginLocationUpdates() {
+              if (stopping || !hasLocationPermission() || !isPhoneLocationEnabled()) {
+                handleLocationProviderChange();
+                return;
+              }
+              if (locationCallback != null) return;
+              LocationRequest request = new LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 15000L)
+                .setMinUpdateIntervalMillis(10000L)
+                .setMinUpdateDistanceMeters(10f)
+                .build();
+              LocationCallback callback = new LocationCallback() {
+                @Override public void onLocationResult(LocationResult result) {
+                  if (result == null || stopping) return;
+                  Location location = result.getLastLocation();
+                  if (location != null) uploadLocation(location);
+                }
+              };
+              locationCallback = callback;
+              try {
+                fusedClient.requestLocationUpdates(request, callback, Looper.getMainLooper())
+                  .addOnSuccessListener(unused -> {
+                    if (stopping || locationCallback != callback) return;
+                    locationReady = true;
+                    locationUnavailableReported = false;
+                    lastUnavailableReason = "";
+                    lastGpsLossReportAt = 0L;
+                    updateVisibleNotification("K&B work location active",
+                      "Your location is shared with authorised K&B administrators during this active shift.");
+                  })
+                  .addOnFailureListener(error -> {
+                    if (locationCallback == callback) {
+                      fusedClient.removeLocationUpdates(callback);
+                      locationCallback = null;
+                    }
+                    locationReady = false;
+                    markLocationUnavailable("GPS location unavailable", "K&B location update unavailable",
+                      "Location updates are interrupted. Check phone location and permissions; tracking will retry automatically.");
+                  });
+              } catch (SecurityException error) {
+                if (locationCallback == callback) locationCallback = null;
+                locationReady = false;
+                markLocationUnavailable("Location permission denied", "K&B location permission needed",
+                  "Location sharing is paused. Re-enable location permission to resume during this active shift.");
+              }
+            }
+
+            private void uploadLocation(Location location) {
+              stopIfCachedDeadlineExpired();
+              long now = System.currentTimeMillis();
+              if (!shiftServerConfirmed || now - lastUploadAt < 9000L || stopping) return;
+              lastUploadAt = now;
+              uploader.execute(() -> {
+                HttpURLConnection connection = null;
+                try {
+                  stopIfCachedDeadlineExpired();
+                  String token = getSharedPreferences(PREFS, MODE_PRIVATE).getString(KEY_TOKEN, null);
+                  String api = getSharedPreferences(PREFS, MODE_PRIVATE).getString(KEY_API, null);
+                  if (!shiftServerConfirmed || token == null || api == null || stopping) return;
+                  URL url = new URL(api.replaceAll("/+$", "") + "/api/staff/live-location");
+                  connection = (HttpURLConnection) url.openConnection();
+                  connection.setRequestMethod("POST");
+                  connection.setConnectTimeout(15000);
+                  connection.setReadTimeout(15000);
+                  connection.setDoOutput(true);
+                  connection.setRequestProperty("Authorization", "Bearer " + token);
+                  connection.setRequestProperty("Content-Type", "application/json");
+                  JSONObject body = new JSONObject();
+                  body.put("latitude", location.getLatitude());
+                  body.put("longitude", location.getLongitude());
+                  body.put("accuracy", (double) location.getAccuracy());
+                  SimpleDateFormat iso = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US);
+                  iso.setTimeZone(TimeZone.getTimeZone("UTC"));
+                  body.put("capturedAt", iso.format(new Date(location.getTime())));
+                  body.put("source", "android-native-active-shift-service");
+                  byte[] bytes = body.toString().getBytes("UTF-8");
+                  try (OutputStream output = connection.getOutputStream()) { output.write(bytes); output.flush(); }
+                  int status = connection.getResponseCode();
+                  if (status == 401 || status == 403 || status == 409) stopFromServer();
+                } catch (Exception ignored) {
+                  // Temporary network errors retain the last point; the next GPS update retries.
+                } finally {
+                  if (connection != null) connection.disconnect();
+                }
+              });
+            }
+
+            private void stopFromServer() {
+              stopTrackingAndService();
+            }
+
+            private void stopTrackingAndService() {
+              stopping = true;
+              statusHandler.removeCallbacks(statusWatchdog);
+              if (fusedClient != null && locationCallback != null) fusedClient.removeLocationUpdates(locationCallback);
+              locationCallback = null;
+              getSharedPreferences(PREFS, MODE_PRIVATE).edit().clear().apply();
+              if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) stopForeground(STOP_FOREGROUND_REMOVE);
+              else stopForeground(true);
+              stopSelf();
+            }
+
+            @Override public void onTaskRemoved(Intent rootIntent) {
+              // Keep the foreground service running when the app is swiped from Recents.
+              super.onTaskRemoved(rootIntent);
+            }
+
+            @Override public void onDestroy() {
+              stopping = true;
+              statusHandler.removeCallbacks(statusWatchdog);
+              if (fusedClient != null && locationCallback != null) fusedClient.removeLocationUpdates(locationCallback);
+              if (providerStateReceiver != null) {
+                try { unregisterReceiver(providerStateReceiver); } catch (Exception ignored) { }
+                providerStateReceiver = null;
+              }
+              uploader.shutdown();
+              super.onDestroy();
+            }
+
+            @Override public IBinder onBind(Intent intent) { return null; }
+          }
+          JAVA
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          manifest = Path("android/app/src/main/AndroidManifest.xml")
+          tree = ET.parse(manifest)
+          root = tree.getroot()
+          ns = "http://schemas.android.com/apk/res/android"
+          ET.register_namespace("android", ns)
+          app = root.find("application")
+          if app is None:
+              raise SystemExit("Android manifest has no application element")
+          service_name = "kandbnet.service2010.WorkLocationTrackingService"
+          existing = next((node for node in app.findall("service") if node.get("{%s}name" % ns) == service_name), None)
+          if existing is None:
+              existing = ET.SubElement(app, "service")
+          existing.set("{%s}name" % ns, service_name)
+          existing.set("{%s}enabled" % ns, "true")
+          existing.set("{%s}exported" % ns, "false")
+          existing.set("{%s}foregroundServiceType" % ns, "location")
+          for permission in ["android.permission.ACCESS_FINE_LOCATION", "android.permission.ACCESS_COARSE_LOCATION", "android.permission.FOREGROUND_SERVICE", "android.permission.FOREGROUND_SERVICE_LOCATION", "android.permission.POST_NOTIFICATIONS", "android.permission.INTERNET"]:
+              if not any(node.get("{%s}name" % ns) == permission for node in root.findall("uses-permission")):
+                  ET.SubElement(root, "uses-permission", {"{%s}name" % ns: permission})
+          tree.write(manifest, encoding="utf-8", xml_declaration=True)
+          PY
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("android/app/src/main/java/kandbnet/service2010/MainActivity.java")
+          s = p.read_text()
+          if "registerPlugin(WorkLocationTrackingPlugin.class);" not in s:
+              s = s.replace("registerPlugin(DocumentSaverPlugin.class);", "registerPlugin(DocumentSaverPlugin.class);\n      registerPlugin(WorkLocationTrackingPlugin.class);")
+          p.write_text(s)
+          if "registerPlugin(WorkLocationTrackingPlugin.class);" not in s:
+              raise SystemExit("Could not register WorkLocationTrackingPlugin in MainActivity")
+          PY
+      - name: Verify native GPS shift-boundary safeguards
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          source = Path("android/app/src/main/java/kandbnet/service2010/WorkLocationTrackingService.java").read_text()
+          required = [
+              "private volatile boolean shiftServerConfirmed = false;",
+              "private boolean hasValidCachedDeadline()",
+              "if (stopping || !shiftServerConfirmed) return;",
+              "if (!shiftServerConfirmed || now - lastUploadAt < 9000L || stopping) return;",
+              "shiftServerConfirmed = false;",
+              "checkShiftStatus();",
+          ]
+          missing = [item for item in required if item not in source]
+          if source.count("stopIfCachedDeadlineExpired();") < 3:
+              missing.append("cached deadline guards before location startup and upload")
+          if missing:
+              raise SystemExit("Native GPS privacy checks are missing: " + "; ".join(missing))
+          print("Native GPS service confirms active shifts, validates its cached deadline, and guards every location upload.")
+          PY
       - name: Configure and validate Firebase Cloud Messaging for Android
         env:
           ANDROID_GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.ANDROID_GOOGLE_SERVICES_JSON_BASE64 }}
@@ -200,3 +840,4 @@ jobs:
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
+
