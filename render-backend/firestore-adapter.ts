@@ -200,9 +200,20 @@ export function router(routes: Record<string, RouterMiddleware[]>) {
         if (res.headersSent) return;
       }
       if (!res.headersSent) res.status(204).send();
-    } catch (cause) {
-      console.error('Legacy Firestore route failed:', cause instanceof Error ? cause.message : String(cause));
-      if (!res.headersSent) res.status(500).json({ error: 'Something went wrong. Please try again.' });
+    } catch (cause: any) {
+      const code = cause && typeof cause === 'object' ? cause.code : undefined;
+      console.error('[K&B_LEGACY_API_REQUEST_FAILED]', JSON.stringify({
+        method,
+        path,
+        code: typeof code === 'string' || typeof code === 'number' ? code : 'unknown',
+      }));
+      if (!res.headersSent) {
+        if (code === 7 || code === 'permission-denied') {
+          res.status(503).json({ error: 'K&B database access is unavailable. The server administrator must restore Firestore permissions before this action can continue.' });
+        } else {
+          res.status(500).json({ error: 'Something went wrong. Please try again.' });
+        }
+      }
     }
   };
 }
