@@ -5,10 +5,24 @@ import { apiHandler } from './api-handler.js';
 import { handler as legacyHandler } from './legacy-routes.js';
 import { runScheduledTick, startBackgroundJobs } from './jobs.js';
 import { buildOtaDecision, isValidOtaManifest } from './ota.js';
+import { firestore } from './firestore-adapter.js';
 const app=express();
 app.disable('x-powered-by');
 app.use(cors({origin:true,methods:['GET','POST','PUT','PATCH','DELETE','OPTIONS'],allowedHeaders:['Content-Type','Authorization']}));
 app.use(express.json({limit:'16mb'}));
+
+app.get('/api/_readycheck', async (_req, res) => {
+  try {
+    await firestore.collection('users').limit(1).get();
+    res.setHeader('Cache-Control', 'no-store, max-age=0');
+    res.status(200).json({ status: 'ready', database: 'reachable' });
+  } catch (error) {
+    const code = (error as { code?: unknown } | null)?.code;
+    console.error('[K&B_READY_CHECK_FAILED]', JSON.stringify({ code: typeof code === 'string' || typeof code === 'number' ? code : 'unknown' }));
+    res.setHeader('Cache-Control', 'no-store, max-age=0');
+    res.status(503).json({ status: 'not_ready', error: 'K&B database access is unavailable. Check the Render service account permissions.' });
+  }
+});
 
 let otaReleaseCache: { expiresAt: number; manifest: unknown; bundleUrl: string | null } | null = null;
 async function getLatestOtaRelease() {
@@ -60,7 +74,21 @@ app.post('/internal/jobs/tick', async (req,res) => {
   catch (error) { console.error('Scheduled tick failed:',error instanceof Error?error.message:String(error)); res.status(500).json({error:'Scheduled check failed.'}); }
 });
 app.use(legacyHandler);
-app.use((req,res)=>{void apiHandler(req,res);});
+app.use((req,res,next)=>{void apiHandler(req,res).catch(next);});
+app.use((error: any, req: any, res: any, next: any) => {
+  const code = error && typeof error === 'object' ? error.code : undefined;
+  console.error('[K&B_API_REQUEST_FAILED]', JSON.stringify({
+    method: String(req.method || ''),
+    path: String(req.path || ''),
+    code: typeof code === 'string' || typeof code === 'number' ? code : 'unknown',
+  }));
+  if (res.headersSent) return next(error);
+  if (code === 7 || code === 'permission-denied') {
+    res.status(503).json({ error: 'K&B database access is unavailable. The administrator must check the Render service account permissions.' });
+    return;
+  }
+  res.status(500).json({ error: 'K&B server encountered an error. Please retry.' });
+});
 
 
 const port=Number(process.env.PORT||10000);
