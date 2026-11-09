@@ -84,7 +84,8 @@ export default function StaffOperations({ session, customers, flash, compact = f
   const selectedGroupRef = useRef('');
   const today = localDay();
   const myToday = attendance.filter(item => item.userId === session.user.id && item.workDate === today).sort((a, b) => b.checkInAt.localeCompare(a.checkInAt))[0];
-  const activeShift = !!myToday && myToday.dayType !== 'Absent' && !myToday.checkOutAt;
+  const myTodayAbsent = myToday?.dayType === 'Absent' || String(myToday?.status || '').toLowerCase() === 'absent';
+  const activeShift = !!myToday && !myTodayAbsent && !myToday.checkOutAt;
 
   const request = useCallback((method: 'get' | 'post' | 'put' | 'delete', path: string, data?: Record<string, unknown>) => {
     if (method === 'get') return client.get(path + (path.includes('?') ? '&' : '?') + 'sessionToken=' + encodeURIComponent(session.token));
@@ -320,7 +321,7 @@ export default function StaffOperations({ session, customers, flash, compact = f
   const totalCollected = payments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
   const monthCollected = payments.filter(payment => String(payment.paidAt || '').slice(0, 7) === monthKey).reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
   const activeToday = attendance.filter(item => item.workDate === today && !item.checkOutAt).length;
-  const completedToday = attendance.filter(item => item.workDate === today && !!item.checkOutAt).length;
+  const completedToday = attendance.filter(item => item.workDate === today && !!item.checkInAt && !!item.checkOutAt && item.dayType !== 'Absent' && String(item.status || '').toLowerCase() !== 'absent').length;
   const sortedAttendance = [...attendance].sort((a, b) => b.workDate.localeCompare(a.workDate) || b.checkInAt.localeCompare(a.checkInAt));
   const historyAttendance = sortReportRows(attendance.filter(item => isInDateRange(item.workDate, attendanceRange)), attendanceSort, item => item.workDate + item.checkInAt, () => 0, item => item.displayName);
   const sortedVisits = [...visits].sort((a, b) => b.visitedAt.localeCompare(a.visitedAt));
@@ -328,13 +329,14 @@ export default function StaffOperations({ session, customers, flash, compact = f
   const attendanceTrend = Array.from({length:6},(_,index)=>{
     const date=new Date(); date.setDate(1); date.setMonth(date.getMonth()-(5-index));
     const key=date.getFullYear()+'-'+String(date.getMonth()+1).padStart(2,'0');
-    return {key,label:date.toLocaleString('en-IN',{month:'short'}),full:attendance.filter(item=>item.workDate.startsWith(key)&&(item.dayType||'Full day')==='Full day').length,half:attendance.filter(item=>item.workDate.startsWith(key)&&item.dayType==='Half day').length};
+    const eligible = attendance.filter(item=>item.workDate.startsWith(key)&&!!item.checkInAt&&item.dayType!=='Absent'&&String(item.status||'').toLowerCase()!=='absent');
+    return {key,label:date.toLocaleString('en-IN',{month:'short'}),full:eligible.filter(item=>(item.dayType||'Full day')==='Full day').length,half:eligible.filter(item=>item.dayType==='Half day').length};
   });
   const attendanceMax=Math.max(1,...attendanceTrend.map(item=>item.full+item.half*.5));
 
 
   if (compact && !admin) return <section className="panel ops-home-shift">
-    <div className="ops-home-shift-copy"><span className="eyebrow">TODAY’S ATTENDANCE</span><h2>{activeShift ? 'Your shift is active' : myToday?.dayType === 'Absent' ? 'Marked absent today' : myToday?.checkOutAt ? 'Shift completed' : 'Ready to start work?'}</h2><p>{activeShift ? 'Checked in at ' + stamp(myToday?.checkInAt) + '. Your workday is being recorded.' : myToday?.dayType === 'Absent' ? 'Your attendance was marked absent by an administrator.' : myToday?.checkOutAt ? 'You checked out at ' + stamp(myToday.checkOutAt) + '.' : 'Start your shift directly from the home screen.'}</p></div>
+    <div className="ops-home-shift-copy"><span className="eyebrow">TODAY’S ATTENDANCE</span><h2>{activeShift ? 'Your shift is active' : myToday?.dayType === 'Absent' || String(myToday?.status || '').toLowerCase() === 'absent' ? 'Marked absent today' : myToday?.checkOutAt ? 'Shift completed' : 'Ready to start work?'}</h2><p>{activeShift ? 'Checked in at ' + stamp(myToday?.checkInAt) + '. Your workday is being recorded.' : myToday?.dayType === 'Absent' || String(myToday?.status || '').toLowerCase() === 'absent' ? 'Your attendance was marked absent by an administrator.' : myToday?.checkOutAt ? 'You checked out at ' + stamp(myToday.checkOutAt) + '.' : 'Start your shift directly from the home screen.'}</p></div>
     <div className="ops-home-shift-action">{!myToday ? <button className="btn primary" disabled={busy || loading} onClick={() => shift('check-in')}>{busy ? 'Starting…' : 'Start shift'}</button> : activeShift ? <button className="btn danger" disabled={busy} onClick={() => shift('check-out')}>{busy ? 'Ending…' : 'End shift'}</button> : <span className="ops-complete">Completed for today</span>}</div>
     {loading && <small className="ops-home-loading">Loading attendance status…</small>}
   </section>;
@@ -373,9 +375,10 @@ export default function StaffOperations({ session, customers, flash, compact = f
         const memberPayments = payments.filter(payment => payment.recordedBy === member.id);
         const memberTotal = memberPayments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
         const memberMonth = memberPayments.filter(payment => String(payment.paidAt || '').slice(0, 7) === monthKey).reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
-        const memberDays = attendance.filter(item => item.userId === member.id && item.dayType !== 'Absent' && String(item.status || '').toLowerCase() !== 'absent').reduce((sum,item) => sum + (item.dayType === 'Half day' ? 0.5 : 1), 0);
+        const memberDays = attendance.filter(item => item.userId === member.id && !!item.checkInAt && item.dayType !== 'Absent' && String(item.status || '').toLowerCase() !== 'absent').reduce((sum,item) => sum + (item.dayType === 'Half day' ? 0.5 : 1), 0);
         const memberShift = attendance.find(item => item.userId === member.id && item.workDate === today);
-        return <tr key={member.id}><td><b>{member.displayName}</b></td><td>{memberPayments.length}</td><td className="amount">₹{memberTotal.toLocaleString('en-IN')}</td><td className="amount">₹{memberMonth.toLocaleString('en-IN')}</td><td>{memberDays}</td><td>{memberShift?.dayType === 'Absent' ? 'Absent' : memberShift?.checkOutAt ? 'Completed' : memberShift ? 'On shift' : 'Not started'}</td></tr>;
+        const memberAbsent = memberShift?.dayType === 'Absent' || String(memberShift?.status || '').toLowerCase() === 'absent';
+        return <tr key={member.id}><td><b>{member.displayName}</b></td><td>{memberPayments.length}</td><td className="amount">₹{memberTotal.toLocaleString('en-IN')}</td><td className="amount">₹{memberMonth.toLocaleString('en-IN')}</td><td>{memberDays}</td><td>{memberAbsent ? 'Absent' : memberShift?.checkOutAt ? 'Completed' : memberShift ? 'On shift' : 'Not started'}</td></tr>;
       })}{!staff.length && <tr><td colSpan={6}>No staff records available yet.</td></tr>}</tbody></table></div>
     </section>}
 
@@ -387,7 +390,7 @@ export default function StaffOperations({ session, customers, flash, compact = f
         const memberPayments=payments.filter(item=>item.recordedBy===member.id);
         const memberCollected=memberPayments.reduce((sum,item)=>sum+Number(item.amount||0),0);
         const todayRecord=memberRecords.find(item=>item.workDate===today);
-        const todayStatus=todayRecord?.dayType==='Absent'?'Absent':todayRecord?.checkOutAt?'Completed':todayRecord?'On shift':'Not started';
+        const todayStatus=todayRecord?.dayType==='Absent'||String(todayRecord?.status||'').toLowerCase()==='absent'?'Absent':todayRecord?.checkOutAt?'Completed':todayRecord?'On shift':'Not started';
         return <details className="staff-calendar-accordion" key={member.id}>
           <summary><span className="avatar">{member.displayName.slice(0,2).toUpperCase()}</span><span><b>{member.displayName}</b><small>{memberRecords.length} attendance records · Tap to view staff details</small></span><span className="staff-calendar-chevron">⌄</span></summary>
           <div className="staff-calendar-profile">
@@ -493,8 +496,9 @@ export default function StaffOperations({ session, customers, flash, compact = f
     <section className="panel ops-panel">
       <div className="ops-panel-head"><div><span className="eyebrow">WORK HISTORY</span><h2>{admin ? 'Team attendance history' : 'My attendance history'}</h2><p>Daily attendance records, kept separate by staff member and date.</p></div></div>
       <DateRangeFilter value={attendanceRange} onChange={setAttendanceRange}><label><span>Sort by</span><select value={attendanceSort} onChange={event=>setAttendanceSort(event.target.value)}><option value="newest">Newest first</option><option value="oldest">Oldest first</option><option value="name">Staff name</option></select></label><span className="result-count">{historyAttendance.length} records</span><button type="button" className="btn secondary compact" disabled={!historyAttendance.length} onClick={()=>{const{start,end}=dateRangeBounds(attendanceRange);void exportCsvFile(`kb-attendance-${start&&end?`${start}_to_${end}`:'all-dates'}.csv`,[['Staff member','Work date','Check in','Check out','Day type','Status'],...historyAttendance.map(item=>[item.displayName,item.workDate,item.checkInAt,item.checkOutAt||'',item.dayType||'Full day',item.checkOutAt?'Completed':'On shift'])]);}}>Export selected</button></DateRangeFilter>
-      <div className="ops-history-list">{historyAttendance.map(item => <article className="ops-history-row" key={item.id}><div><b>{item.displayName}</b><small>{item.workDate}</small></div><span>{stamp(item.checkInAt)}</span><span>{item.checkOutAt ? stamp(item.checkOutAt) : 'Still checked in'}</span><strong>{item.dayType === 'Absent' ? 'Absent' : (item.dayType || 'Full day') + ' · ' + (item.checkOutAt ? 'Completed' : 'On shift')}</strong>{admin && <button className="btn secondary compact" onClick={()=>setAttendanceCorrection({id:item.id,dayType:item.dayType||'Full day',reason:''})}>Correct</button>}</article>)}{!historyAttendance.length && <p className="ops-empty">No attendance records match this date range.</p>}</div>
+      <div className="ops-history-list">{historyAttendance.map(item => <article className="ops-history-row" key={item.id}><div><b>{item.displayName}</b><small>{item.workDate}</small></div><span>{stamp(item.checkInAt)}</span><span>{item.checkOutAt ? stamp(item.checkOutAt) : 'Still checked in'}</span><strong>{item.dayType === 'Absent' || String(item.status || '').toLowerCase() === 'absent' ? 'Absent' : (item.dayType || 'Full day') + ' · ' + (item.checkOutAt ? 'Completed' : 'On shift')}</strong>{admin && <button className="btn secondary compact" onClick={()=>setAttendanceCorrection({id:item.id,dayType:item.dayType||'Full day',reason:''})}>Correct</button>}</article>)}{!historyAttendance.length && <p className="ops-empty">No attendance records match this date range.</p>}</div>
     </section>
     {loading && <div className="ops-loading">Loading team operations…</div>}
   </div>;
 }
+
