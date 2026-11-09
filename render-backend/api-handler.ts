@@ -251,7 +251,7 @@ export async function apiHandler(req: any, res: any) {
       let passwordMatches = Boolean(record.salt && record.passwordHash &&
         equalSecret(hashPassword(password, String(record.salt)), String(record.passwordHash)));
       if (!passwordMatches && userId.toLowerCase() === 'brajraj' &&
-          record.role === 'admin' && record.canManageAdmins === true &&
+          hasAdminManagementAccess(record) &&
           !record.bootstrapPasswordUsedAt &&
           initialPassword.length >= 10 && equalSecret(password, initialPassword)) {
         const bootstrapFields = newPasswordFields(password);
@@ -260,8 +260,7 @@ export async function apiHandler(req: any, res: any) {
           const latest = await transaction.get(userDoc.ref);
           const latestRecord = latest.data() || {};
           if (!latest.exists || latestRecord.active !== true ||
-              latestRecord.role !== 'admin' || latestRecord.canManageAdmins !== true ||
-              latestRecord.bootstrapPasswordUsedAt) return false;
+              !hasAdminManagementAccess(latestRecord) || latestRecord.bootstrapPasswordUsedAt) return false;
           transaction.update(userDoc.ref, {
             ...bootstrapFields,
             bootstrapPasswordUsedAt: bootstrapTime,
