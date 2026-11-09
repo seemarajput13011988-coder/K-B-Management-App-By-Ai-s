@@ -60,25 +60,25 @@ async function requireUser(req: any): Promise<AppUser | null> {
     ? header.slice(7)
     : clean(req.body?.sessionToken, 4096) || clean(req.query?.sessionToken, 4096);
   if (!token) return null;
-  try {
-    const sessionSnap = await db.collection('sessions').doc(sessionTokenId(token)).get();
-    if (!sessionSnap.exists) return null;
-    const session = sessionSnap.data()!;
-    if (!Number.isFinite(session.expiresAt) || session.expiresAt <= Date.now()) {
-      await sessionSnap.ref.delete().catch(() => undefined);
-      return null;
-    }
-    const snap = await db.collection('users').doc(String(session.userId)).get();
-    if (!snap.exists) return null;
-    const data = snap.data()!;
-    if (data.active !== true || !['admin', 'staff'].includes(data.role)) return null;
-    return {
-      uid: snap.id, id: snap.id, userId: clean(data.userId, 40),
-      displayName: clean(data.displayName, 80), role: data.role, active: true,
-      authTime: Number(session.authTime || 0), salt: clean(data.salt, 128), passwordHash: clean(data.passwordHash, 256),
-      canManageAdmins: hasAdminManagementAccess({ role: data.role, canManageAdmins: data.canManageAdmins, isSuperAdmin: data.isSuperAdmin }),
-    };
-  } catch { return null; }
+  // Do not convert Firestore outages or permission failures into an invalid-session
+  // result. Let the API error handler return a database-unavailable response instead.
+  const sessionSnap = await db.collection('sessions').doc(sessionTokenId(token)).get();
+  if (!sessionSnap.exists) return null;
+  const session = sessionSnap.data()!;
+  if (!Number.isFinite(session.expiresAt) || session.expiresAt <= Date.now()) {
+    await sessionSnap.ref.delete().catch(() => undefined);
+    return null;
+  }
+  const snap = await db.collection('users').doc(String(session.userId)).get();
+  if (!snap.exists) return null;
+  const data = snap.data()!;
+  if (data.active !== true || !['admin', 'staff'].includes(data.role)) return null;
+  return {
+    uid: snap.id, id: snap.id, userId: clean(data.userId, 40),
+    displayName: clean(data.displayName, 80), role: data.role, active: true,
+    authTime: Number(session.authTime || 0), salt: clean(data.salt, 128), passwordHash: clean(data.passwordHash, 256),
+    canManageAdmins: hasAdminManagementAccess({ role: data.role, canManageAdmins: data.canManageAdmins, isSuperAdmin: data.isSuperAdmin }),
+  };
 }
 
 function allow(user: AppUser, roles: Role[], res: any): boolean {
@@ -1091,11 +1091,20 @@ export async function apiHandler(req: any, res: any) {
       }
       send(res,404,{error:'This API route was not found.'});
     } catch (error: any) {
-      console.error('API request failed', { message: error?.message || String(error) });
-      if (error?.code === 'inventory/insufficient') { send(res, 409, { error: error.message }); return; }
-      if (error?.code === 'subscription/overlap') { send(res, 409, { error: error.message }); return; }
-      if (error?.code === 'auth/email-already-exists') { send(res,409,{error:'That staff ID is already in use.'}); return; }
-      if (error?.code === 'auth/invalid-password') { send(res,400,{error:'Password must contain at least 10 characters.'}); return; }
+      const code = error && typeof error === 'object' ? error.code : undefined;
+      console.error('[K&B_API_REQUEST_FAILED]', JSON.stringify({
+        method,
+        path,
+        code: typeof code === 'string' || typeof code === 'number' ? code : 'unknown',
+      }));
+      if (code === 7 || code === 'permission-denied') {
+        send(res, 503, { error: 'K&B database access is unavailable. The server administrator must restore Firestore permissions before this action can continue.' });
+        return;
+      }
+      if (code === 'inventory/insufficient') { send(res, 409, { error: error.message }); return; }
+      if (code === 'subscription/overlap') { send(res, 409, { error: error.message }); return; }
+      if (code === 'auth/email-already-exists') { send(res,409,{error:'That staff ID is already in use.'}); return; }
+      if (code === 'auth/invalid-password') { send(res,400,{error:'Password must contain at least 10 characters.'}); return; }
       send(res,500,{error:'Something went wrong. Please try again.'});
     }
 }
