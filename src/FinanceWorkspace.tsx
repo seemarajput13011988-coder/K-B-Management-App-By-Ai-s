@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api as client } from './lib/api';
 import { Download, Plus, RefreshCw, ReceiptText, Trash2, TrendingDown, TrendingUp, Wallet } from 'lucide-react';
 import { exportCsvFile, exportPdfFile } from './lib/file-export';
+import { DateRangeFilter, dateRangeBounds, initialDateRange, isInDateRange, sortReportRows } from './components/DateRangeFilter';
+import type { DateRange } from './components/DateRangeFilter';
 
 type Session = { token: string; user: { id: string; displayName: string; role: 'admin' | 'staff' } };
 type Customer = { id: string; name: string; monthlyFee: number; status: string; dueDate?: string };
@@ -107,6 +109,8 @@ export default function FinanceWorkspace({ session, customers, payments, flash, 
   const [salaryMethod, setSalaryMethod] = useState('Bank transfer');
   const [salaryNotes, setSalaryNotes] = useState('');
   const [period, setPeriod] = useState(today().slice(0, 7));
+  const [reportRange, setReportRange] = useState<DateRange>(initialDateRange);
+  const [reportSort, setReportSort] = useState('newest');
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState('Network / provider');
   const [amount, setAmount] = useState('');
@@ -121,7 +125,7 @@ export default function FinanceWorkspace({ session, customers, payments, flash, 
       client.get('/api/invoices?period=' + encodeURIComponent(period) + '&sessionToken=' + encodeURIComponent(session.token)),
       client.get('/api/audit' + tokenQuery),
       client.get('/api/staff' + tokenQuery),
-      client.get('/api/payroll?period=' + encodeURIComponent(period) + '&sessionToken=' + encodeURIComponent(session.token))
+      client.get('/api/payroll?sessionToken=' + encodeURIComponent(session.token))
     ]);
     setExpenses(e.data.items || []);
     setInvoices(i.data.items || []);
@@ -142,15 +146,17 @@ export default function FinanceWorkspace({ session, customers, payments, flash, 
     return () => { cancelled = true; };
   }, [ledgerCustomerId, session.token]);
   const monthPayments = payments.filter(item => item.month === monthName(period) || item.paidAt?.slice(0, 7) === period);
+  const reportPayments = sortReportRows(payments.filter(item => isInDateRange(item.paidAt, reportRange)), reportSort, item => item.paidAt, item => Number(item.amount||0), item => item.customerName);
+  const reportPayroll = sortReportRows(payroll.filter(item => isInDateRange(item.paidAt, reportRange)), reportSort, item => item.paidAt, item => Number(item.amount||0), item => item.staffName);
   const monthExpenses = expenses.filter(item => item.spentAt?.slice(0, 7) === period);
   const collected = monthPayments.reduce((sum, item) => sum + Number(item.amount || 0), 0);
-  const payrollTotal = payroll.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+  const payrollTotal = payroll.filter(item => item.period === period).reduce((sum, item) => sum + Number(item.amount || 0), 0);
   const spent = monthExpenses.reduce((sum, item) => sum + Number(item.amount || 0), 0) + payrollTotal;
   const outstanding = invoices.reduce((sum, item) => sum + Math.max(0, Number(item.amount || 0) - Number(item.paidAmount || 0)), 0);
   const cashResult = collected - spent;
   const activeCustomers = customers.filter(item => item.status === 'Active');
   const unpaidInvoices = invoices.filter(item => item.status !== 'Paid');
-  const sortedExpenses = useMemo(() => [...expenses].sort((a, b) => b.spentAt.localeCompare(a.spentAt)), [expenses]);
+  const sortedExpenses = sortReportRows(expenses.filter(item => isInDateRange(item.spentAt, reportRange)), reportSort, item => item.spentAt, item => Number(item.amount||0), item => item.title);
   const monthlyTrend = Array.from({length:6},(_,index)=>{
     const date=new Date(); date.setDate(1); date.setMonth(date.getMonth()-(5-index));
     const key=date.getFullYear()+'-'+String(date.getMonth()+1).padStart(2,'0');
@@ -231,10 +237,11 @@ export default function FinanceWorkspace({ session, customers, payments, flash, 
         <button className="btn primary" disabled={busy || !staff.length || !salaryStaffId || !salaryAmount}>{busy ? 'Saving…' : 'Record salary'}</button>
       </form>
       <div className="finance-table-wrap"><table><thead><tr><th>STAFF MEMBER</th><th>MONTH</th><th>PAID DATE</th><th>RECORDED AT</th><th>METHOD</th><th>AMOUNT</th>{session.user.role==='admin'&&<th>ACTIONS</th>}</tr></thead><tbody>
-        {payroll.map(item => <tr key={item.id}><td><b>{item.staffName}</b></td><td>{monthName(item.period)}</td><td>{item.paidAt}</td><td>{item.createdAt?new Date(item.createdAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'}):'—'}</td><td>{item.method}</td><td className="amount">{money(item.amount)}</td>{session.user.role==='admin'&&<td><button className="row-action danger" title="Delete salary record" disabled={busy} onClick={()=>void deleteSalary(item)}><Trash2 size={14}/></button></td>}</tr>)}
-        {!payroll.length && <tr><td colSpan={session.user.role==='admin'?7:6}>No salary payments recorded for this month.</td></tr>}
+        {reportPayroll.map(item => <tr key={item.id}><td><b>{item.staffName}</b></td><td>{monthName(item.period)}</td><td>{item.paidAt}</td><td>{item.createdAt?new Date(item.createdAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'}):'—'}</td><td>{item.method}</td><td className="amount">{money(item.amount)}</td>{session.user.role==='admin'&&<td><button className="row-action danger" title="Delete salary record" disabled={busy} onClick={()=>void deleteSalary(item)}><Trash2 size={14}/></button></td>}</tr>)}
+        {!reportPayroll.length && <tr><td colSpan={session.user.role==='admin'?7:6}>No salary payments match this date range.</td></tr>}
       </tbody></table></div>
-      <div className="finance-foot"><span>{payroll.length} staff payments · Total salary paid: <b>{money(payrollTotal)}</b></span><button className="btn secondary compact" disabled={!payroll.length} onClick={() => downloadCsv('kb-payroll-' + period + '.csv', [['Staff member','Staff ID','Month','Paid date','Method','Amount','Notes'], ...payroll.map(item => [item.staffName, item.staffUserId, monthName(item.period), item.paidAt, item.method, item.amount, item.notes || ''])])}><Download size={14}/> Export payroll</button><button className="btn secondary compact" disabled={!payroll.length} onClick={() => printReport('Payroll · ' + monthName(period), [['Staff member','Staff ID','Month','Paid date','Method','Amount','Notes'], ...payroll.map(item => [item.staffName, item.staffUserId, monthName(item.period), item.paidAt, item.method, money(item.amount), item.notes || ''])])}><ReceiptText size={14}/> Export payroll PDF</button></div>
+      <DateRangeFilter value={reportRange} onChange={setReportRange}><label><span>Sort by</span><select value={reportSort} onChange={event=>setReportSort(event.target.value)}><option value="newest">Newest first</option><option value="oldest">Oldest first</option><option value="amount-high">Amount: high to low</option><option value="amount-low">Amount: low to high</option><option value="name">Staff name</option></select></label></DateRangeFilter>
+      <div className="finance-foot"><span>{reportPayroll.length} matching salary records · Total: <b>{money(reportPayroll.reduce((sum,item)=>sum+Number(item.amount||0),0))}</b></span><button className="btn secondary compact" disabled={!reportPayroll.length} onClick={() => {const{start,end}=dateRangeBounds(reportRange);void downloadCsv('kb-payroll-'+(start&&end?`${start}_to_${end}`:'all-dates')+'.csv',[['Staff member','Staff ID','Month','Paid date','Method','Amount','Notes'],...reportPayroll.map(item=>[item.staffName,item.staffUserId,monthName(item.period),item.paidAt,item.method,item.amount,item.notes||''])]);}}><Download size={14}/> Export selected payroll</button><button className="btn secondary compact" disabled={!reportPayroll.length} onClick={() => printReport('Payroll · selected dates', [['Staff member','Staff ID','Month','Paid date','Method','Amount','Notes'], ...reportPayroll.map(item => [item.staffName, item.staffUserId, monthName(item.period), item.paidAt, item.method, money(item.amount), item.notes || ''])])}><ReceiptText size={14}/> Export payroll PDF</button></div>
     </section>
   </div>;
 
@@ -245,6 +252,7 @@ export default function FinanceWorkspace({ session, customers, payments, flash, 
       <article><span><Wallet size={17}/> Cash operating balance</span><strong className={cashResult < 0 ? 'negative' : ''}>{money(cashResult)}</strong><small>Collections minus recorded expenses</small></article>
       <article><span><ReceiptText size={17}/> Unpaid invoice balance</span><strong>{money(outstanding)}</strong><small>{unpaidInvoices.length} unpaid / partial invoices</small></article>
     </section>
+    <DateRangeFilter value={reportRange} onChange={setReportRange}><label><span>Sort by</span><select value={reportSort} onChange={event=>setReportSort(event.target.value)}><option value="newest">Newest first</option><option value="oldest">Oldest first</option><option value="amount-high">Amount: high to low</option><option value="amount-low">Amount: low to high</option><option value="name">Name</option></select></label></DateRangeFilter>
     <section className="panel finance-panel">
       <div className="finance-head"><div><span className="eyebrow">STAFF PAYROLL</span><h2>Monthly salary records</h2><p>Record each staff member's salary once per month. Salary is also added to the expense ledger automatically.</p></div></div>
       <form className="finance-expense-form" onSubmit={recordSalary}>
@@ -256,8 +264,8 @@ export default function FinanceWorkspace({ session, customers, payments, flash, 
         <button className="btn primary" disabled={busy || !staff.length || !salaryStaffId || !salaryAmount}>Record salary</button>
       </form>
       <div className="finance-table-wrap"><table><thead><tr><th>STAFF MEMBER</th><th>MONTH</th><th>PAID DATE</th><th>METHOD</th><th>AMOUNT</th></tr></thead><tbody>
-        {payroll.map(item => <tr key={item.id}><td><b>{item.staffName}</b></td><td>{monthName(item.period)}</td><td>{item.paidAt}</td><td>{item.method}</td><td className="amount">{money(item.amount)}</td></tr>)}
-        {!payroll.length && <tr><td colSpan={5}>No salary payments recorded for this month.</td></tr>}
+        {reportPayroll.map(item => <tr key={item.id}><td><b>{item.staffName}</b></td><td>{monthName(item.period)}</td><td>{item.paidAt}</td><td>{item.method}</td><td className="amount">{money(item.amount)}</td></tr>)}
+        {!reportPayroll.length && <tr><td colSpan={5}>No salary payments match this date range.</td></tr>}
       </tbody></table></div>
       <div className="finance-foot"><span>{payroll.length} staff payments · Total salary paid: <b>{money(payrollTotal)}</b></span><button className="btn secondary compact" disabled={!payroll.length} onClick={() => downloadCsv('kb-payroll-' + period + '.csv', [['Staff member','Staff ID','Month','Paid date','Method','Amount','Notes'], ...payroll.map(item => [item.staffName, item.staffUserId, monthName(item.period), item.paidAt, item.method, item.amount, item.notes || ''])])}><Download size={14}/> Export payroll</button><button className="btn secondary compact" disabled={!payroll.length} onClick={() => printReport('Payroll · ' + monthName(period), [['Staff member','Staff ID','Month','Paid date','Method','Amount','Notes'], ...payroll.map(item => [item.staffName, item.staffUserId, monthName(item.period), item.paidAt, item.method, money(item.amount), item.notes || ''])])}><ReceiptText size={14}/> Export payroll PDF</button></div>
     </section>
@@ -314,13 +322,13 @@ export default function FinanceWorkspace({ session, customers, payments, flash, 
         {sortedExpenses.map(item => <tr key={item.id}><td>{item.spentAt}</td><td><b>{item.title}</b>{item.notes && <small className="finance-note">{item.notes}</small>}</td><td>{item.category}</td><td>{item.method}</td><td className="amount">{money(item.amount)}</td><td>{item.createdByName}</td><td><button className="btn danger compact" disabled={busy} onClick={() => deleteExpense(item)}>Delete</button></td></tr>)}
         {!sortedExpenses.length && <tr><td colSpan={7}>No expenses recorded yet.</td></tr>}
       </tbody></table></div>
-      <div className="finance-foot"><span>{expenses.length} expense records · {payroll.length} salary payments included in exports</span><button className="btn secondary compact" onClick={() => downloadCsv('kb-expenses.csv', [['Date','Title','Category','Method','Amount','Notes','Recorded by'], ...sortedExpenses.map(e => [e.spentAt,e.title,e.category,e.method,e.amount,e.notes,e.createdByName]), ...payroll.map(item => [item.paidAt,'Salary - '+item.staffName,'Salary',item.method,item.amount,item.notes||'',item.recordedByName||''])])}><Download size={14}/> Export expenses</button><button className="btn secondary compact" onClick={() => printReport('Business expenses', [['Date','Title','Category','Method','Amount','Notes','Recorded by'], ...sortedExpenses.map(e => [e.spentAt,e.title,e.category,e.method,money(e.amount),e.notes||'',e.createdByName]), ...payroll.map(item => [item.paidAt,'Salary - '+item.staffName,'Salary',item.method,money(item.amount),item.notes||'',item.recordedByName||''])])}><ReceiptText size={14}/> Export PDF</button></div>
+      <div className="finance-foot"><span>{sortedExpenses.length} matching expenses · {reportPayroll.length} matching salaries</span><button className="btn secondary compact" disabled={!sortedExpenses.length&&!reportPayroll.length} onClick={() => downloadCsv('kb-expenses-selected.csv', [['Date','Title','Category','Method','Amount','Notes','Recorded by'], ...sortedExpenses.map(e => [e.spentAt,e.title,e.category,e.method,e.amount,e.notes,e.createdByName]), ...reportPayroll.map(item => [item.paidAt,'Salary - '+item.staffName,'Salary',item.method,item.amount,item.notes||'',item.recordedByName||''])])}><Download size={14}/> Export selected</button><button className="btn secondary compact" disabled={!sortedExpenses.length&&!reportPayroll.length} onClick={() => printReport('Business expenses · selected dates', [['Date','Title','Category','Method','Amount','Notes','Recorded by'], ...sortedExpenses.map(e => [e.spentAt,e.title,e.category,e.method,money(e.amount),e.notes||'',e.createdByName]), ...reportPayroll.map(item => [item.paidAt,'Salary - '+item.staffName,'Salary',item.method,money(item.amount),item.notes||'',item.recordedByName||''])])}><ReceiptText size={14}/> Export PDF</button></div>
     </section>
     <section className="panel finance-panel">
       <div className="finance-head"><div><span className="eyebrow">MANAGEMENT REPORTS</span><h2>Business reports</h2><p>Download your current payment and collection data for spreadsheet analysis.</p></div></div>
       <div className="finance-report-actions">
         <button className="btn secondary" onClick={() => printReport('Finance summary · ' + monthName(period), [['Metric','Amount'],['Collections',money(collected)],['Expenses including payroll',money(spent)],['Cash operating balance',money(cashResult)],['Outstanding invoices',money(outstanding)],['Payroll paid',money(payroll.reduce((sum,item)=>sum+Number(item.amount||0),0))]])}><ReceiptText size={15}/> Export PDF</button>
-        <button className="btn secondary" onClick={() => downloadCsv('kb-payments-' + period + '.csv', [['Date','Customer','Billing month','Method','Amount','Recorded by'], ...monthPayments.map(p => [p.paidAt,p.customerName,p.month,p.method,p.amount,p.recordedByName])])}><Download size={15}/> Export monthly collections</button><button className="btn secondary" onClick={() => printReport('Monthly collections · ' + monthName(period), [['Date','Customer','Billing month','Method','Amount','Recorded by'], ...monthPayments.map(p => [p.paidAt,p.customerName,p.month,p.method,money(p.amount),p.recordedByName||''])])}><ReceiptText size={15}/> Collections PDF</button>
+        <button className="btn secondary" disabled={!reportPayments.length} onClick={() => {const{start,end}=dateRangeBounds(reportRange);void downloadCsv('kb-payments-'+(start&&end?`${start}_to_${end}`:'all-dates')+'.csv',[['Date','Customer','Billing month','Method','Amount','Recorded by'],...reportPayments.map(p=>[p.paidAt,p.customerName,p.month,p.method,p.amount,p.recordedByName])]);}}><Download size={15}/> Export selected collections</button><button className="btn secondary" disabled={!reportPayments.length} onClick={() => printReport('Collections · selected dates', [['Date','Customer','Billing month','Method','Amount','Recorded by'], ...reportPayments.map(p => [p.paidAt,p.customerName,p.month,p.method,money(p.amount),p.recordedByName||''])])}><ReceiptText size={15}/> Collections PDF</button>
         <button className="btn secondary" onClick={() => downloadCsv('kb-customer-register.csv', [['Customer','Phone','Plan','Monthly fee','Status','Assigned to'], ...customers.map(c => [c.name,(c as any).phone,(c as any).plan,c.monthlyFee,c.status,(c as any).assignedToName])])}><Download size={15}/> Export customer register</button><button className="btn secondary" onClick={() => printReport('Customer register', [['Customer','Phone','Plan','Monthly fee','Status','Assigned to'], ...customers.map(c => [c.name,(c as any).phone,(c as any).plan,money(c.monthlyFee),c.status,(c as any).assignedToName||''])])}><ReceiptText size={15}/> Customer PDF</button>
         <button className="btn secondary" onClick={() => downloadCsv('kb-finance-summary-' + period + '.csv', [['Metric','Amount'],['Collections',collected],['Expenses including payroll',spent],['Cash operating balance',cashResult],['Outstanding invoices',outstanding]])}><Download size={15}/> Export finance summary</button><button className="btn secondary" onClick={() => printReport('Finance summary · ' + monthName(period), [['Metric','Amount'],['Collections',money(collected)],['Expenses including payroll',money(spent)],['Cash operating balance',money(cashResult)],['Outstanding invoices',money(outstanding)],['Payroll paid',money(payrollTotal)]])}><ReceiptText size={15}/> Summary PDF</button>
       </div>

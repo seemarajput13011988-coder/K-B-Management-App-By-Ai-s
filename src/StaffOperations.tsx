@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { api as client } from './lib/api';
+import { DateRangeFilter, dateRangeBounds, initialDateRange, isInDateRange, sortReportRows } from './components/DateRangeFilter';
+import type { DateRange } from './components/DateRangeFilter';
+import { exportCsvFile } from './lib/file-export';
 
 type Session = { token: string; user: { id: string; displayName: string; role: 'admin' | 'staff'; isSuperAdmin?: boolean } };
 type Attendance = { id: string; userId: string; displayName: string; workDate: string; checkInAt: string; checkOutAt?: string; dayType?: 'Full day' | 'Half day' | 'Absent'; correctionReason?: string; gpsRestartRequired?: boolean; gpsCancelled?: boolean; status?: string };
@@ -51,6 +54,8 @@ export default function StaffOperations({ session, customers, flash, compact = f
   const admin = session.user.role === 'admin';
   const superAdmin = admin && session.user.isSuperAdmin === true;
   const [attendance, setAttendance] = useState<Attendance[]>([]);
+  const [attendanceRange, setAttendanceRange] = useState<DateRange>(initialDateRange);
+  const [attendanceSort, setAttendanceSort] = useState('newest');
   const [holidays, setHolidays] = useState<HolidayRequest[]>([]);
   const [holidayForm, setHolidayForm] = useState({ startDate: localDay(), endDate: localDay(), reason: '' });
   const [visits, setVisits] = useState<Visit[]>([]);
@@ -317,6 +322,7 @@ export default function StaffOperations({ session, customers, flash, compact = f
   const activeToday = attendance.filter(item => item.workDate === today && !item.checkOutAt).length;
   const completedToday = attendance.filter(item => item.workDate === today && !!item.checkOutAt).length;
   const sortedAttendance = [...attendance].sort((a, b) => b.workDate.localeCompare(a.workDate) || b.checkInAt.localeCompare(a.checkInAt));
+  const historyAttendance = sortReportRows(attendance.filter(item => isInDateRange(item.workDate, attendanceRange)), attendanceSort, item => item.workDate + item.checkInAt, () => 0, item => item.displayName);
   const sortedVisits = [...visits].sort((a, b) => b.visitedAt.localeCompare(a.visitedAt));
   const sortedMessages = [...messages].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   const attendanceTrend = Array.from({length:6},(_,index)=>{
@@ -486,7 +492,8 @@ export default function StaffOperations({ session, customers, flash, compact = f
 
     <section className="panel ops-panel">
       <div className="ops-panel-head"><div><span className="eyebrow">WORK HISTORY</span><h2>{admin ? 'Team attendance history' : 'My attendance history'}</h2><p>Daily attendance records, kept separate by staff member and date.</p></div></div>
-      <div className="ops-history-list">{sortedAttendance.slice(0, 30).map(item => <article className="ops-history-row" key={item.id}><div><b>{item.displayName}</b><small>{item.workDate}</small></div><span>{stamp(item.checkInAt)}</span><span>{item.checkOutAt ? stamp(item.checkOutAt) : 'Still checked in'}</span><strong>{item.dayType === 'Absent' ? 'Absent' : (item.dayType || 'Full day') + ' · ' + (item.checkOutAt ? 'Completed' : 'On shift')}</strong>{admin && <button className="btn secondary compact" onClick={()=>setAttendanceCorrection({id:item.id,dayType:item.dayType||'Full day',reason:''})}>Correct</button>}</article>)}{!attendance.length && <p className="ops-empty">Attendance history will appear here.</p>}</div>
+      <DateRangeFilter value={attendanceRange} onChange={setAttendanceRange}><label><span>Sort by</span><select value={attendanceSort} onChange={event=>setAttendanceSort(event.target.value)}><option value="newest">Newest first</option><option value="oldest">Oldest first</option><option value="name">Staff name</option></select></label><span className="result-count">{historyAttendance.length} records</span><button type="button" className="btn secondary compact" disabled={!historyAttendance.length} onClick={()=>{const{start,end}=dateRangeBounds(attendanceRange);void exportCsvFile(`kb-attendance-${start&&end?`${start}_to_${end}`:'all-dates'}.csv`,[['Staff member','Work date','Check in','Check out','Day type','Status'],...historyAttendance.map(item=>[item.displayName,item.workDate,item.checkInAt,item.checkOutAt||'',item.dayType||'Full day',item.checkOutAt?'Completed':'On shift'])]);}}>Export selected</button></DateRangeFilter>
+      <div className="ops-history-list">{historyAttendance.map(item => <article className="ops-history-row" key={item.id}><div><b>{item.displayName}</b><small>{item.workDate}</small></div><span>{stamp(item.checkInAt)}</span><span>{item.checkOutAt ? stamp(item.checkOutAt) : 'Still checked in'}</span><strong>{item.dayType === 'Absent' ? 'Absent' : (item.dayType || 'Full day') + ' · ' + (item.checkOutAt ? 'Completed' : 'On shift')}</strong>{admin && <button className="btn secondary compact" onClick={()=>setAttendanceCorrection({id:item.id,dayType:item.dayType||'Full day',reason:''})}>Correct</button>}</article>)}{!historyAttendance.length && <p className="ops-empty">No attendance records match this date range.</p>}</div>
     </section>
     {loading && <div className="ops-loading">Loading team operations…</div>}
   </div>;
