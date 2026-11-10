@@ -174,7 +174,7 @@ export default function GpsTrackingWorkspace({flash}:{flash:(message:string)=>vo
         {staff.map(member=><article className="gps-staff-row" key={member.id}>
           <div className="gps-avatar"><MapPin size={17}/></div>
           <div className="gps-staff-name"><strong>{member.displayName}</strong><small>Staff account</small></div>
-          <div className="gps-row-actions"><button className="btn secondary compact" disabled={!!busyStaffId||requestingStaffId===member.id||!onShiftIds.includes(member.id)} <button className="btn primary compact" disabled={!!busyStaffId} onClick={()=>void getLiveLocation(member)}>{busyStaffId===member.id?'Requesting fresh GPS…':'Get Live Location'}</button></div>
+          <div className="gps-row-actions"><button className="btn primary compact" disabled={!!busyStaffId||!onShiftIds.includes(member.id)} onClick={()=>void getLiveLocation(member)}>{busyStaffId===member.id?'Requesting fresh GPS…':'Get Live Location'}</button></div>
         </article>)}
         {!staff.length&&<p className="ops-empty">No active staff accounts found.</p>}
       </div>}
