@@ -91,7 +91,30 @@ export default function GpsTrackingWorkspace({flash}:{flash:(message:string)=>vo
     setLocationFresh(false);
     setLocationAge(null);
     try {
-      const result=await api.get<{item?:LiveLocation|null;isFresh?:boolean;ageSeconds?:number|null;status?:string;deadlineAt?:string;cancelled?:boolean}>('/api/staff/'+encodeURIComponent(member.id)+'/live-location');
+      const endpoint='/api/staff/'+encodeURIComponent(member.id)+'/live-location';
+      let result=await api.get<{item?:LiveLocation|null;isFresh?:boolean;ageSeconds?:number|null;status?:string;deadlineAt?:string;cancelled?:boolean}>(endpoint);
+      // If the stored point is stale, actively ask the staff app for a new
+      // GPS fix instead of presenting the old database point as live.
+      if (!result.data.isFresh && onShiftIds.includes(member.id)) {
+        const requestResult=await api.post<{id:string}>('/api/location-requests',{staffId:member.id});
+        flash('Fresh GPS requested from '+member.displayName+'. Waiting for their app to share a new reading…');
+        let captured=false;
+        for(let attempt=0;attempt<18;attempt++){
+          await new Promise(resolve=>window.setTimeout(resolve,2500));
+          const requestStatus=await api.get<{item?:{status?:string;responseMessage?:string}}>('/api/location-requests/'+encodeURIComponent(requestResult.data.id));
+          const status=String(requestStatus.data.item?.status||'');
+          if(status==='captured'){captured=true;break;}
+          if(status==='unavailable'||status==='expired'){
+            throw new Error(requestStatus.data.item?.responseMessage || 'The staff phone could not provide a fresh GPS reading. Ask them to open the app and check location permission.');
+          }
+        }
+        if(captured){
+          result=await api.get(endpoint);
+        }else{
+          flash('GPS request is still pending. The staff member must open the app and respond; the map will continue refreshing automatically.');
+          result=await api.get(endpoint);
+        }
+      }
       const status=result.data.status || (result.data.isFresh ? 'live' : 'stale');
       setLocationStatus(status);
       setGpsDeadline(result.data.deadlineAt || null);
@@ -101,10 +124,11 @@ export default function GpsTrackingWorkspace({flash}:{flash:(message:string)=>vo
       setLocationAge(result.data.ageSeconds ?? null);
       if(status==='gps-off') flash('GPS is OFF on '+member.displayName+'’s phone.');
       else if(status==='shift-not-active') flash(member.displayName+' does not have an active shift.');
-      else if(status==='location-unavailable') flash('Location is not available from '+member.displayName+'’s phone yet.');
-      else flash(result.data.isFresh?'Latest live location loaded for '+member.displayName+'.':'Showing the last shared location for '+member.displayName+'.');
+      else if(status==='location-unavailable') flash('No location has been received from '+member.displayName+' yet.');
+      else if(result.data.isFresh) flash('Fresh GPS location received. Live map refresh is active for '+member.displayName+'.');
+      else flash('Showing the last known location. Its age is displayed; it is not being labelled as live.');
     }catch(error){
-      flash(error instanceof Error?error.message:'No live location is available. The staff app must be open with location permission enabled.');
+      flash(error instanceof Error?error.message:'No live location is available. Check the staff app and location permission.');
     }finally{setBusyStaffId('');}
   }
 
@@ -149,7 +173,7 @@ export default function GpsTrackingWorkspace({flash}:{flash:(message:string)=>vo
 
   return <section className="panel gps-workspace">
     <div className="toolbar">
-      <div><h2>GPS Tracking</h2><p className="subtle">Select a staff member to load their latest shared live location.</p></div>
+      <div><h2>GPS Tracking</h2><p className="subtle">Choose a staff member to request a fresh GPS reading and monitor updates during their active shift.</p></div>
       <button className="btn secondary" onClick={()=>void load()} disabled={loading}><RefreshCw size={15}/> Refresh staff</button>
     </div>
     <div className="gps-tabs">
@@ -157,12 +181,12 @@ export default function GpsTrackingWorkspace({flash}:{flash:(message:string)=>vo
       <button className={section==='saved'?'active':''} onClick={()=>setSection('saved')}><Save size={15}/> Saved Locations <span>{saved.length}</span></button>
     </div>
     {section==='live' ? <>
-      <div className="gps-notice"><MapPin size={17}/><span>Background GPS updates are available only during an active shift. You can also request a one-time GPS point; staff must respond in the app, and requests are limited to active shifts.</span></div>
+      <div className="gps-notice"><MapPin size={17}/><span>Live GPS is available only during an active shift. If the phone has not uploaded a fresh point, this screen requests one from the staff app. The staff member must have the app available and respond; fresh updates are then monitored automatically.</span></div>
       {loading?<p className="ops-empty">Loading staff…</p>:<div className="gps-staff-list">
         {staff.map(member=><article className="gps-staff-row" key={member.id}>
           <div className="gps-avatar"><MapPin size={17}/></div>
           <div className="gps-staff-name"><strong>{member.displayName}</strong><small>Staff account</small></div>
-          <div className="gps-row-actions"><button className="btn secondary compact" disabled={!!busyStaffId||requestingStaffId===member.id||!onShiftIds.includes(member.id)} title={onShiftIds.includes(member.id)?'Ask staff to share one current GPS point':'Available only while this staff member is on an active shift'} onClick={()=>void requestOneTimeLocation(member)}>{requestingStaffId===member.id?'Sending…':'Request GPS'}</button><button className="btn primary compact" disabled={!!busyStaffId} onClick={()=>void getLiveLocation(member)}>{busyStaffId===member.id?'Fetching…':'View Location'}</button></div>
+          <div className="gps-row-actions"><button className="btn secondary compact" disabled={!!busyStaffId||requestingStaffId===member.id||!onShiftIds.includes(member.id)} <button className="btn primary compact" disabled={!!busyStaffId} onClick={()=>void getLiveLocation(member)}>{busyStaffId===member.id?'Requesting fresh GPS…':'Get Live Location'}</button></div>
         </article>)}
         {!staff.length&&<p className="ops-empty">No active staff accounts found.</p>}
       </div>}
