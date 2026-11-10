@@ -1453,7 +1453,7 @@ export const handler = router({
     if (!isFreshLocationTimestamp(capturedAt)) return error('The GPS reading is too old or has an invalid device timestamp. Wait for a fresh location update and try again.', 400);
     const record = {
       id: user.id, staffId: user.id, staffName: user.displayName, attendanceId: String(active.id),
-      latitude, longitude, accuracy, capturedAt,
+      latitude, longitude, accuracy, capturedAt, receivedAt: new Date().toISOString(),
       source: cleanText(body?.source, 80) || 'staff-app-background',
     };
     const gpsRestored = Boolean(active.gpsIssueStartedAt);
@@ -1597,7 +1597,7 @@ export const handler = router({
     if (status === 'captured') {
       const point = {
         id: user.id, staffId: user.id, staffName: user.displayName, attendanceId: String(active.id),
-        latitude, longitude, accuracy, capturedAt, source: 'staff-one-time-location-request',
+        latitude, longitude, accuracy, capturedAt, receivedAt: new Date().toISOString(), source: 'staff-one-time-location-request',
       };
       batch.set(firestore.collection('staff_live_locations').doc(user.id), point, { merge: true });
       const historyRef = firestore.collection('locations').doc();
