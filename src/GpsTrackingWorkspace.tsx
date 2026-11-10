@@ -81,9 +81,10 @@ export default function GpsTrackingWorkspace({flash}:{flash:(message:string)=>vo
     try {
       const endpoint='/api/staff/'+encodeURIComponent(member.id)+'/live-location';
       let result=await api.get<{item?:LiveLocation|null;isFresh?:boolean;ageSeconds?:number|null;status?:string;deadlineAt?:string;cancelled?:boolean}>(endpoint);
-      // If the stored point is stale, actively ask the staff app for a new
-      // GPS fix instead of presenting the old database point as live.
-      if (!result.data.isFresh && onShiftIds.includes(member.id)) {
+      // A deliberate admin click always requests a new phone reading, even if
+      // the cached point is recent. The map must not substitute a saved point
+      // for the location response requested by the administrator.
+      if (onShiftIds.includes(member.id)) {
         const requestResult=await api.post<{id:string}>('/api/location-requests',{staffId:member.id});
         flash('Fresh GPS requested from '+member.displayName+'. Waiting for their app to share a new reading…');
         let captured=false;
