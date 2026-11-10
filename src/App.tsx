@@ -1250,6 +1250,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
               <div className="table-wrap staff-table-wrap"><table><thead><tr><th>ADMIN</th><th>USER ID</th><th>ACCESS</th><th>ROLE</th><th>ACTIONS</th></tr></thead><tbody>
                 {visibleAdmins.map(account => <tr key={account.id}><td><strong>{account.displayName}</strong></td><td>{account.userId}</td><td><span className={'status ' + (account.active ? 'active' : 'inactive')}>{account.active ? 'Active' : 'Disabled'}</span></td><td>{account.canManageAdmins || account.isSuperAdmin ? 'Super admin' : 'Admin'}</td><td>{account.canManageAdmins || account.isSuperAdmin || account.id === session.user.id ? <span className="subtle">Protected</span> : <button className="row-action danger" title="Remove admin account" onClick={() => removeAdmin(account)}><Trash2 size={15}/></button>}</td></tr>)}
               </tbody></table></div>
+              {adminAccounts.length>0&&!visibleAdmins.length&&<p className="ops-empty">No admin accounts match these filters.</p>}
               {!adminAccounts.length && <Empty icon={<ShieldCheck />} title="No admin accounts" text="Create the first additional admin account when needed." />}
             </section>
           )}
@@ -1272,11 +1273,11 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                   <div><b>{item.displayName} · {item.startDate}{item.endDate!==item.startDate?' to '+item.endDate:''}</b><p>{item.reason}</p><small>Requested {new Date(item.createdAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'})}{item.reviewedAt?' · Reviewed '+new Date(item.reviewedAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'}):''}</small></div>
                   <div className="staff-request-actions"><span className={'status '+(item.status==='approved'?'active':item.status==='rejected'?'inactive':'')}>{item.status.toUpperCase()}</span>{item.status==='pending'&&<><button className="btn primary compact" onClick={()=>void reviewHolidayRequest(item,'approved')}>Approve</button><button className="btn danger compact" onClick={()=>void reviewHolidayRequest(item,'rejected')}>Decline</button></>}</div>
                 </article>)}
-                {!staffHolidayRequests.length&&<p className="staff-record-empty">No holiday requests have been submitted yet.</p>}
+                {!staffHolidayRequests.length&&<p className="staff-record-empty">No holiday requests have been submitted yet.</p>}{staffHolidayRequests.length>0&&!visibleHolidays.length&&<p className="staff-record-empty">No holiday requests match these filters.</p>}
               </div>
             </section>
             <section className="panel table-panel">
-              <div className="toolbar"><div className="searchbox"><Search size={17}/><input value={staffSearch} onChange={e => setStaffSearch(e.target.value)} placeholder="Search staff name or user ID..."/></div><span className="result-count">{filteredStaff.length} of {staff.length} members</span></div>
+              <div className="toolbar"><div className="searchbox"><Search size={17}/><input value={staffSearch} onChange={e => setStaffSearch(e.target.value)} placeholder="Search staff name or user ID..."/></div><label className="data-filter-label">Sort by<select value={staffSort} onChange={e=>setStaffSort(e.target.value as typeof staffSort)}><option value="name">Name A–Z</option><option value="active">Active first</option><option value="records">Most attendance records</option></select></label><span className="result-count">{filteredStaff.length} of {staff.length} members</span></div>
               <div className="table-wrap"><table><thead><tr><th>STAFF MEMBER</th><th>USER ID</th><th>ASSIGNED CUSTOMERS</th><th>COLLECTIONS RECORDED</th><th>ACCESS</th><th>ACTIONS</th></tr></thead><tbody>
                 {filteredStaff.map(member => {
                   const assigned = customers.filter(c => c.assignedTo === member.id).length;
@@ -1358,7 +1359,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                   <label className="task-status-control"><span>Progress</span><select value={task.status} onChange={e => updateTask(task, e.target.value)}><option>Pending</option><option>In progress</option><option>Completed</option></select></label>
                   {isAdmin && <button type="button" className="btn danger compact" onClick={()=>void deleteTask(task)}><Trash2 size={14}/> Delete task</button>}
                 </article>
-              ))}</div> : <Empty icon={<ClipboardList />} title={isAdmin ? 'No tasks assigned yet' : 'No work assigned yet'} text={isAdmin ? 'Create a task and assign it to an active staff member.' : 'Your administrator will assign work here when it is ready.'} action={isAdmin ? 'Assign first task' : undefined} onClick={() => setShowTask(true)} />}
+              ))}</div>{tasks.length>0&&!visibleTasks.length&&<p className="ops-empty">No tasks match the selected filters.</p>} : <Empty icon={<ClipboardList />} title={isAdmin ? 'No tasks assigned yet' : 'No work assigned yet'} text={isAdmin ? 'Create a task and assign it to an active staff member.' : 'Your administrator will assign work here when it is ready.'} action={isAdmin ? 'Assign first task' : undefined} onClick={() => setShowTask(true)} />}
             </section>
           )}
 
@@ -1521,6 +1522,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                   </article>;
                 })}
               </div>
+              {complaints.length>0&&!visibleComplaints.length&&<p className="ops-empty">No complaints match the selected filters.</p>}
               {!complaints.length && <Empty icon={<MessageSquare/>} title="No complaints yet" text="Create a customer or staff complaint to start tracking it." action="New complaint" onClick={() => setShowComplaint(true)}/>}
             </section>
           )}
