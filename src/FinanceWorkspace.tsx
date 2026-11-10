@@ -108,6 +108,8 @@ export default function FinanceWorkspace({ session, customers, payments, flash, 
   const [salaryNotes, setSalaryNotes] = useState('');
   const [salaryDrafts, setSalaryDrafts] = useState<Record<string, string>>({});
   const [period, setPeriod] = useState(today().slice(0, 7));
+  const [invoiceWeek, setInvoiceWeek] = useState<'all'|'1'|'2'|'3'|'4'|'5'>('all');
+  const [invoiceStatus, setInvoiceStatus] = useState<'all'|'Paid'|'Partially paid'|'Unpaid'|'Void'>('all');
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState('Network / provider');
   const [amount, setAmount] = useState('');
@@ -178,6 +180,11 @@ export default function FinanceWorkspace({ session, customers, payments, flash, 
   const cashResult = collected - spent;
   const activeCustomers = customers.filter(item => item.status === 'Active');
   const unpaidInvoices = invoices.filter(item => item.status !== 'Paid');
+  const filteredInvoices = invoices.filter(item => {
+    const dueDay = Number(String(item.dueDate || '').slice(-2));
+    const dueWeek = dueDay >= 1 && dueDay <= 31 ? String(Math.ceil(dueDay / 7)) : '0';
+    return (invoiceWeek === 'all' || dueWeek === invoiceWeek) && (invoiceStatus === 'all' || item.status === invoiceStatus);
+  });
   const sortedExpenses = useMemo(() => [...expenses].sort((a, b) => b.spentAt.localeCompare(a.spentAt)), [expenses]);
   const monthlyTrend = Array.from({length:6},(_,index)=>{
     const date=new Date(); date.setDate(1); date.setMonth(date.getMonth()-(5-index));
@@ -328,12 +335,12 @@ export default function FinanceWorkspace({ session, customers, payments, flash, 
       <div className="finance-chart-foot"><span>Highest month: {monthlyTrend.reduce((best,item)=>item.income>best.income?item:best,monthlyTrend[0]).label}</span><span>Chart uses recorded transactions only</span></div>
     </section>
     <section className="panel finance-panel">
-      <div className="finance-head"><div><span className="eyebrow">MONTHLY BILLING</span><h2>Customer invoices</h2><p>Generate a monthly bill for every active customer. Existing invoices for the same customer and month are skipped.</p></div><div className="finance-actions"><input aria-label="Billing month" type="month" value={period} onChange={e => setPeriod(e.target.value)}/><button className="btn primary" disabled={busy || !activeCustomers.length} onClick={generateInvoices}>Generate invoices</button></div></div>
+      <div className="finance-head"><div><span className="eyebrow">MONTHLY BILLING</span><h2>Customer invoices</h2><p>Filter invoices by billing month, due-date week and payment status.</p></div><div className="finance-actions"><input aria-label="Billing month" type="month" value={period} onChange={e => { setPeriod(e.target.value); setInvoiceWeek('all'); }}/><select aria-label="Filter invoices by due-date week" value={invoiceWeek} onChange={e => setInvoiceWeek(e.target.value as typeof invoiceWeek)}><option value="all">All weeks</option><option value="1">Week 1 · 1–7</option><option value="2">Week 2 · 8–14</option><option value="3">Week 3 · 15–21</option><option value="4">Week 4 · 22–28</option><option value="5">Week 5 · 29–31</option></select><select aria-label="Filter invoices by status" value={invoiceStatus} onChange={e => setInvoiceStatus(e.target.value as typeof invoiceStatus)}><option value="all">All statuses</option><option value="Paid">Paid</option><option value="Partially paid">Partially paid</option><option value="Unpaid">Unpaid</option><option value="Void">Void</option></select><button className="btn primary" disabled={busy || !activeCustomers.length} onClick={generateInvoices}>Generate invoices</button></div></div>
       <div className="finance-table-wrap"><table><thead><tr><th>CUSTOMER</th><th>PERIOD</th><th>DUE DATE</th><th>AMOUNT</th><th>PAID</th><th>BALANCE</th><th>STATUS</th></tr></thead><tbody>
-        {invoices.map(item => <tr key={item.id}><td><b>{item.customerName}</b></td><td>{monthName(item.period)}</td><td>{item.dueDate}</td><td>{money(item.amount)}</td><td>{money(item.paidAmount)}</td><td className="amount">{money(Math.max(0, item.amount - item.paidAmount))}</td><td><span className={'status ' + (item.status === 'Paid' ? 'active' : 'inactive')}>{item.status}</span></td></tr>)}
-        {!invoices.length && <tr><td colSpan={7}>No invoices for this month. Generate invoices to start monthly billing.</td></tr>}
+        {filteredInvoices.map(item => <tr key={item.id}><td><b>{item.customerName}</b></td><td>{monthName(item.period)}</td><td>{item.dueDate}</td><td>{money(item.amount)}</td><td>{money(item.paidAmount)}</td><td className="amount">{money(Math.max(0, item.amount - item.paidAmount))}</td><td><span className={'status ' + (item.status === 'Paid' ? 'active' : 'inactive')}>{item.status}</span></td></tr>)}
+        {!filteredInvoices.length && <tr><td colSpan={7}>{invoices.length ? 'No invoices match the selected week and status filters.' : 'No invoices for this month. Generate invoices to start monthly billing.'}</td></tr>}
       </tbody></table></div>
-      <div className="finance-foot"><span>{invoices.length} invoices · {activeCustomers.length} active customers</span><button className="btn secondary compact" onClick={() => downloadCsv('kb-invoices-' + period + '.csv', [['Customer','Period','Due date','Amount','Paid','Balance','Status'], ...invoices.map(i => [i.customerName, monthName(i.period), i.dueDate, i.amount, i.paidAmount, Math.max(0, i.amount-i.paidAmount), i.status])])}><Download size={14}/> Export invoices</button><button className="btn secondary compact" onClick={() => printReport('Customer invoices · ' + monthName(period), [['Customer','Period','Due date','Amount','Paid','Balance','Status'], ...invoices.map(i => [i.customerName, monthName(i.period), i.dueDate, money(i.amount), money(i.paidAmount), money(Math.max(0,i.amount-i.paidAmount)), i.status])])}><ReceiptText size={14}/> Export PDF</button></div>
+      <div className="finance-foot"><span>{filteredInvoices.length} shown of {invoices.length} invoices · {activeCustomers.length} active customers</span><button className="btn secondary compact" onClick={() => downloadCsv('kb-invoices-' + period + '.csv', [['Customer','Period','Due date','Amount','Paid','Balance','Status'], ...invoices.map(i => [i.customerName, monthName(i.period), i.dueDate, i.amount, i.paidAmount, Math.max(0, i.amount-i.paidAmount), i.status])])}><Download size={14}/> Export invoices</button><button className="btn secondary compact" onClick={() => printReport('Customer invoices · ' + monthName(period), [['Customer','Period','Due date','Amount','Paid','Balance','Status'], ...filteredInvoices.map(i => [i.customerName, monthName(i.period), i.dueDate, money(i.amount), money(i.paidAmount), money(Math.max(0,i.amount-i.paidAmount)), i.status])])}><ReceiptText size={14}/> Export PDF</button></div>
     </section>
     <section className="panel finance-panel">
       <div className="finance-head"><div><span className="eyebrow">CUSTOMER ACCOUNT</span><h2>Customer transaction ledger</h2><p>View billed invoices, received payments and the running balance for one customer.</p></div><div className="finance-actions"><select aria-label="Select customer ledger" value={ledgerCustomerId} onChange={event => setLedgerCustomerId(event.target.value)}><option value="">Select customer</option>{customers.map(customer => <option key={customer.id} value={customer.id}>{customer.name}</option>)}</select></div></div>
