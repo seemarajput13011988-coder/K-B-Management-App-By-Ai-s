@@ -859,7 +859,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
             <strong>
               K&B <span>NET SERVICE</span>
             </strong>
-            <small>Customer management</small>
+            <small>Enterprise operations</small>
           </div>
           <button className="mobile-close" onClick={() => setMobileNav(false)}>
             <X size={18} />
@@ -867,7 +867,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
         </div>
         <div className="workspace">
           <span className="workspace-dot" />
-          <span>K&B Operations</span>
+          <span>Operations command centre</span>
           <ChevronDown size={14} />
         </div>
         <nav className="nexus-navigation" aria-label="Main navigation">
