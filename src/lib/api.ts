@@ -100,10 +100,11 @@ async function waitForApiReady(): Promise<void> {
   const deadline = Date.now() + 60000;
   let lastStatus = 0;
   while (Date.now() < deadline) {
+    // Newer API builds verify Firestore readiness. Older deployed builds expose
+    // only the Render health route, so retain a safe compatibility fallback.
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), 12000);
     try {
-      // _readycheck verifies Firestore access too, not merely that Express responds.
       const response = await fetch(new URL('/api/_readycheck', API_BASE).toString(), {
         method: 'GET',
         cache: 'no-store',
@@ -111,21 +112,27 @@ async function waitForApiReady(): Promise<void> {
       });
       lastStatus = response.status;
       if (response.ok) return;
-      if (response.status >= 400 && response.status < 500) {
-        throw new Error('K&B server rejected its readiness check (HTTP ' + response.status + ').');
+      if (response.status === 503) {
+        throw new Error('K&B server is running, but Firestore is not ready. Please try again later.');
+      }
+      if (response.status === 401 || response.status === 404) {
+        const legacy = await fetch(new URL('/api/_healthcheck', API_BASE).toString(), {
+          method: 'GET',
+          cache: 'no-store',
+          signal: controller.signal,
+        });
+        lastStatus = legacy.status;
+        if (legacy.ok) return;
       }
     } catch (error) {
-      if (error instanceof Error && error.message.startsWith('K&B server rejected')) throw error;
+      if (error instanceof Error && error.message.startsWith('K&B server is running')) throw error;
       // A sleeping Render service or a temporary network interruption gets another attempt.
     } finally {
       window.clearTimeout(timeout);
     }
     await new Promise(resolve => window.setTimeout(resolve, 2500));
   }
-  if (lastStatus === 503) {
-    throw new Error('K&B server started, but its database is not ready. Please try again later.');
-  }
-  throw new Error('K&B server did not become ready within 60 seconds. Please wait and try signing in again.');
+  throw new Error('K&B server did not become ready within 60 seconds (last HTTP status ' + lastStatus + '). Please wait and try signing in again.');
 }
 
 export async function signInAppUser(userId: string, password: string, role: 'admin'|'staff') {
