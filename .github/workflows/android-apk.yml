@@ -18,6 +18,7 @@ on:
       - nexus-workforce-payroll-media-ui-2026-11-07
       - nexus-release-audit-2026-11-07
       - recovery/live-gps-fix-2026-11-10
+      - nexus-new-generation-redesign-2026-11-10
     paths:
       - "src/**"
       - "render-backend/**"
