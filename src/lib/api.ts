@@ -96,7 +96,31 @@ export const api = {
   put: <T = any>(path: string, payload?: Record<string, unknown>) => request<T>(path, 'PUT', payload),
   delete: <T = any>(path: string) => request<T>(path, 'DELETE'),
 };
+async function waitForApiReady(): Promise<void> {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 60000);
+  try {
+    const response = await fetch(new URL('/api/_healthcheck', API_BASE).toString(), {
+      method: 'GET',
+      cache: 'no-store',
+      signal: controller.signal,
+    });
+    if (!response.ok) throw new Error('K&B server returned HTTP ' + response.status + ' while starting.');
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw new Error('The K&B server is still waking up. Wait a little and try signing in again.');
+    }
+    if (error instanceof Error && error.message.startsWith('K&B server returned')) throw error;
+    throw new Error('Could not reach the K&B server. Check your internet connection and try again.');
+  } finally {
+    window.clearTimeout(timeout);
+  }
+}
+
 export async function signInAppUser(userId: string, password: string, role: 'admin'|'staff') {
+  // Render's free service can sleep when idle. Wait for its health endpoint
+  // before sending credentials so a cold start is not mistaken for bad login.
+  await waitForApiReady();
   const url = new URL('/api/auth/login', API_BASE);
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), 45000);
