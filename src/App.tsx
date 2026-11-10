@@ -243,6 +243,8 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   const [showPayment, setShowPayment] = useState(false);
   const [editingPayment, setEditingPayment] = useState<Payment | null>(null);
   const [paymentSearch, setPaymentSearch] = useState('');
+  const [paymentMonth, setPaymentMonth] = useState('');
+  const [paymentWeek, setPaymentWeek] = useState<'all'|'1'|'2'|'3'|'4'|'5'>('all');
   const [staffSearch, setStaffSearch] = useState('');
   const [showComplaint, setShowComplaint] = useState(false);
   const [complaintPreview, setComplaintPreview] = useState<{name:string;mimeType:string;dataUrl:string}|null>(null);
@@ -452,7 +454,14 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   );
   const selectedStaffProfile = staff.find(member => member.id === selectedStaffProfileId);
   const filteredStaff = staff.filter(member => [member.displayName, member.userId].join(' ').toLowerCase().includes(staffSearch.toLowerCase()));
-  const filteredPayments = payments.filter(payment => [payment.customerName, payment.month, payment.method, payment.paidAt, payment.recordedByName || ''].join(' ').toLowerCase().includes(paymentSearch.toLowerCase()));
+  const filteredPayments = payments.filter(payment => {
+    const paidDate = String(payment.paidAt || '').slice(0, 10);
+    const day = Number(paidDate.slice(8, 10));
+    const matchesMonth = !paymentMonth || paidDate.slice(0, 7) === paymentMonth;
+    const matchesWeek = paymentWeek === 'all' || (day >= 1 && day <= 31 && String(Math.ceil(day / 7)) === paymentWeek);
+    const matchesSearch = [payment.customerName, payment.month, payment.method, payment.paidAt, payment.recordedByName || ''].join(' ').toLowerCase().includes(paymentSearch.toLowerCase());
+    return matchesMonth && matchesWeek && matchesSearch;
+  });
   const selectedStaffPayments = payments.filter(payment => payment.recordedBy === selectedStaffProfileId).sort((a, b) => b.paidAt.localeCompare(a.paidAt));
   const selectedStaffAttendance = attendanceRecords.filter(record => record.userId === selectedStaffProfileId).sort((a, b) => b.workDate.localeCompare(a.workDate));
   const selectedStaffAttendanceEquivalent = selectedStaffAttendance.filter(record => record.dayType !== 'Absent' && String(record.status || '').toLowerCase() !== 'absent').reduce((sum, record) => sum + (record.dayType === 'Half day' ? 0.5 : 1), 0);
@@ -1404,10 +1413,11 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                   <p className="subtle">All recorded customer collections</p>
                 </div>
                 <div className="searchbox"><Search size={17}/><input value={paymentSearch} onChange={e => setPaymentSearch(e.target.value)} placeholder="Search customer, month, method or date..."/></div>
+                <div className="finance-actions"><input aria-label="Filter payments by month" type="month" value={paymentMonth} onChange={e => { setPaymentMonth(e.target.value); setPaymentWeek('all'); }}/><select aria-label="Filter payments by week of month" value={paymentWeek} onChange={e => setPaymentWeek(e.target.value as typeof paymentWeek)}><option value="all">All weeks</option><option value="1">Week 1 · 1–7</option><option value="2">Week 2 · 8–14</option><option value="3">Week 3 · 15–21</option><option value="4">Week 4 · 22–28</option><option value="5">Week 5 · 29–31</option></select><button type="button" className="btn secondary compact" onClick={() => { setPaymentMonth(''); setPaymentWeek('all'); setPaymentSearch(''); }}>Clear filters</button></div>
                 <span className="result-count">{filteredPayments.length} of {payments.length} records</span>
               </div>
               <PaymentTable rows={filteredPayments} isAdmin={isAdmin} onEdit={(payment: Payment) => { setEditingPayment(payment); setShowPayment(true); }} onDelete={isAdmin ? deletePayment : undefined} />
-              {payments.length > 0 && !filteredPayments.length && <p className="ops-empty">No payments match your search.</p>}
+              {payments.length > 0 && !filteredPayments.length && <p className="ops-empty">No payments match the selected search and date filters.</p>}
               {!payments.length && (
                 <Empty
                   icon={<CreditCard />}
