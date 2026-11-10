@@ -697,9 +697,11 @@ jobs:
                 return;
               }
               if (locationCallback != null) return;
+              // Keep timestamped live fixes arriving even while the staff member is stationary.
+              // A distance threshold can leave the admin map showing an old saved point indefinitely.
               LocationRequest request = new LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 15000L)
                 .setMinUpdateIntervalMillis(10000L)
-                .setMinUpdateDistanceMeters(10f)
+                .setMinUpdateDistanceMeters(0f)
                 .build();
               LocationCallback callback = new LocationCallback() {
                 @Override public void onLocationResult(LocationResult result) {
