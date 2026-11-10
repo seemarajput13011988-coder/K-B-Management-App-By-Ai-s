@@ -97,24 +97,35 @@ export const api = {
   delete: <T = any>(path: string) => request<T>(path, 'DELETE'),
 };
 async function waitForApiReady(): Promise<void> {
-  const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), 60000);
-  try {
-    const response = await fetch(new URL('/api/_healthcheck', API_BASE).toString(), {
-      method: 'GET',
-      cache: 'no-store',
-      signal: controller.signal,
-    });
-    if (!response.ok) throw new Error('K&B server returned HTTP ' + response.status + ' while starting.');
-  } catch (error) {
-    if (error instanceof DOMException && error.name === 'AbortError') {
-      throw new Error('The K&B server is still waking up. Wait a little and try signing in again.');
+  const deadline = Date.now() + 60000;
+  let lastStatus = 0;
+  while (Date.now() < deadline) {
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 12000);
+    try {
+      // _readycheck verifies Firestore access too, not merely that Express responds.
+      const response = await fetch(new URL('/api/_readycheck', API_BASE).toString(), {
+        method: 'GET',
+        cache: 'no-store',
+        signal: controller.signal,
+      });
+      lastStatus = response.status;
+      if (response.ok) return;
+      if (response.status >= 400 && response.status < 500) {
+        throw new Error('K&B server rejected its readiness check (HTTP ' + response.status + ').');
+      }
+    } catch (error) {
+      if (error instanceof Error && error.message.startsWith('K&B server rejected')) throw error;
+      // A sleeping Render service or a temporary network interruption gets another attempt.
+    } finally {
+      window.clearTimeout(timeout);
     }
-    if (error instanceof Error && error.message.startsWith('K&B server returned')) throw error;
-    throw new Error('Could not reach the K&B server. Check your internet connection and try again.');
-  } finally {
-    window.clearTimeout(timeout);
+    await new Promise(resolve => window.setTimeout(resolve, 2500));
   }
+  if (lastStatus === 503) {
+    throw new Error('K&B server started, but its database is not ready. Please try again later.');
+  }
+  throw new Error('K&B server did not become ready within 60 seconds. Please wait and try signing in again.');
 }
 
 export async function signInAppUser(userId: string, password: string, role: 'admin'|'staff') {
