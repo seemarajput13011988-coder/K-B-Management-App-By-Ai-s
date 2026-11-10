@@ -30,6 +30,7 @@ on:
     branches:
       - main
       - fixes-session-gps-ui-2026-11-06
+      - recovery/live-gps-fix-2026-11-10
 jobs:
   build:
     runs-on: ubuntu-latest
