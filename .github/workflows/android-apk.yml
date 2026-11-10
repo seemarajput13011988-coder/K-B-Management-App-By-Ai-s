@@ -860,6 +860,7 @@ jobs:
               "if (!shiftServerConfirmed || now - lastUploadAt < 9000L || stopping) return;",
               "shiftServerConfirmed = false;",
               "checkShiftStatus();",
+              ".setMinUpdateDistanceMeters(0f)",
           ]
           missing = [item for item in required if item not in source]
           if source.count("stopIfCachedDeadlineExpired();") < 3:
