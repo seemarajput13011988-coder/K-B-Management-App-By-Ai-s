@@ -180,3 +180,33 @@ input:focus,select:focus,textarea:focus{outline:0;border-color:#6ba9a1!important
 [data-theme="dark"] .mobile-bottom-nav{background:rgba(17,39,45,.95);border-color:#315057}
 [data-theme="dark"] .mobile-bottom-nav button{color:#a9bfba}
 [data-theme="dark"] .mobile-bottom-nav button.active{background:#254b4b;color:#e4c07e}
+
+.calendar-panel,.finance-panel,.ops-panel,.ops-home-shift,.ops-location-card{border:1px solid #e4ebed!important;border-radius:16px!important;background:#fff!important;box-shadow:0 7px 25px rgba(25,50,60,.035)!important}
+.calendar-panel{padding:20px}
+.calendar-toolbar h2{font:800 21px Manrope,sans-serif;color:#213a43}
+.calendar-eyebrow{color:#9a7b4c;font-weight:800;letter-spacing:1.2px}
+.calendar-controls button{border:1px solid #dfe9e6;border-radius:10px;background:#fbfdfc;color:#35555a}
+.calendar-controls button:hover{border-color:#9dc5bd;color:#23756f}
+.calendar-day{border-radius:10px}
+.calendar-day.selected{background:#eaf4f1;border-color:#8cbeb5;color:#1f716d}
+.calendar-day.today>span{background:#267b76;color:#fff;border-radius:9px}
+.calendar-summary{color:#778a8b}
+.calendar-agenda{background:#fff}
+.calendar-agenda-head h3{color:#213a43;font:800 16px Manrope}
+.calendar-event{border-radius:12px}
+.finance-metrics article{border:1px solid #e4ebed;border-radius:14px;box-shadow:0 5px 18px rgba(25,50,60,.03)}
+.finance-metrics strong{font-family:Manrope;color:#1b3941}
+.finance-panel{padding:20px}
+.finance-table-wrap{border-radius:12px;overflow:hidden}
+.finance-table-wrap th{background:#f6f9f8!important}
+.ops-summary{border-radius:15px!important}
+.ops-home-shift{border-radius:15px!important}
+[data-theme="dark"] .calendar-panel,[data-theme="dark"] .finance-panel,[data-theme="dark"] .finance-metrics article,[data-theme="dark"] .ops-panel,[data-theme="dark"] .ops-home-shift,[data-theme="dark"] .ops-location-card{background:#142e35!important;border-color:#2c4b50!important;color:#e4efeb}
+[data-theme="dark"] .calendar-toolbar h2,[data-theme="dark"] .calendar-agenda-head h3,[data-theme="dark"] .finance-metrics strong,[data-theme="dark"] .finance-head h2{color:#e4efeb!important}
+[data-theme="dark"] .calendar-day{background:#193941;border-color:#2c4b50;color:#dce9e5}
+[data-theme="dark"] .calendar-day.outside{color:#647e80}
+[data-theme="dark"] .calendar-day.selected{background:#24514e;border-color:#4a8f83}
+[data-theme="dark"] .calendar-controls button,[data-theme="dark"] .finance-actions input{background:#18373d;border-color:#36565a;color:#e2eeea}
+[data-theme="dark"] .finance-table-wrap th{background:#193941!important;color:#a9c0ba!important}
+[data-theme="dark"] .finance-table-wrap td{color:#d5e3de;border-color:#29474c}
+[data-theme="dark"] .calendar-summary,[data-theme="dark"] .calendar-toolbar p,[data-theme="dark"] .finance-head p{color:#a5b9b5}
