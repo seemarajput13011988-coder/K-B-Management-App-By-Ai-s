@@ -5,7 +5,7 @@ import { MapPin, RefreshCw, Save, ExternalLink, LocateFixed } from 'lucide-react
 type StaffMember = { id: string; displayName: string; active: boolean };
 type LiveLocation = {
   staffId: string; staffName: string; latitude: number; longitude: number;
-  accuracy: number; capturedAt: string; source?: string;
+  accuracy: number; capturedAt: string; receivedAt?: string; source?: string;
 };
 type SavedLocation = {
   id: string; staffId: string; staffName: string; latitude: number; longitude: number;
