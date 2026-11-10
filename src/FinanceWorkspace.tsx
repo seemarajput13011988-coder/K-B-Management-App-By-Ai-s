@@ -110,6 +110,7 @@ export default function FinanceWorkspace({ session, customers, payments, flash, 
   const [period, setPeriod] = useState(today().slice(0, 7));
   const [invoiceWeek, setInvoiceWeek] = useState<'all'|'1'|'2'|'3'|'4'|'5'>('all');
   const [invoiceStatus, setInvoiceStatus] = useState<'all'|'Paid'|'Partially paid'|'Unpaid'|'Void'>('all');
+  const [expenseRange, setExpenseRange] = useState<'all'|'week'|'month'>('all');
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState('Network / provider');
   const [amount, setAmount] = useState('');
@@ -186,6 +187,15 @@ export default function FinanceWorkspace({ session, customers, payments, flash, 
     return (invoiceWeek === 'all' || dueWeek === invoiceWeek) && (invoiceStatus === 'all' || item.status === invoiceStatus);
   });
   const sortedExpenses = useMemo(() => [...expenses].sort((a, b) => b.spentAt.localeCompare(a.spentAt)), [expenses]);
+  const filteredExpenses = sortedExpenses.filter(item => {
+    if (expenseRange === 'all') return true;
+    const todayDate = new Date(today() + 'T12:00:00+05:30');
+    if (expenseRange === 'month') return String(item.spentAt || '').slice(0, 7) === today().slice(0, 7);
+    const startOfWeek = new Date(todayDate);
+    startOfWeek.setDate(startOfWeek.getDate() - ((startOfWeek.getDay() + 6) % 7));
+    const startKey = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(startOfWeek);
+    return String(item.spentAt || '') >= startKey && String(item.spentAt || '') <= today();
+  });
   const monthlyTrend = Array.from({length:6},(_,index)=>{
     const date=new Date(); date.setDate(1); date.setMonth(date.getMonth()-(5-index));
     const key=date.getFullYear()+'-'+String(date.getMonth()+1).padStart(2,'0');
@@ -361,7 +371,7 @@ export default function FinanceWorkspace({ session, customers, payments, flash, 
       </> : <p className="finance-note">Select a customer to view their ledger.</p>}
     </section>
     <section className="panel finance-panel">
-      <div className="finance-head"><div><span className="eyebrow">CASH BOOK</span><h2>Record business expense</h2><p>Track provider bills, fuel, equipment and operating costs. Staff payroll is tracked separately and included in monthly outflow.</p></div></div>
+      <div className="finance-head"><div><span className="eyebrow">CASH BOOK</span><h2>Record business expense</h2><p>Track provider bills, fuel, equipment and operating costs. Staff payroll is tracked separately and included in monthly outflow.</p></div><div className="finance-actions"><select aria-label="Filter expenses by date" value={expenseRange} onChange={e => setExpenseRange(e.target.value as typeof expenseRange)}><option value="all">All time</option><option value="week">This week</option><option value="month">This month</option></select></div></div>
       <form className="finance-expense-form" onSubmit={addExpense}>
         <label>Expense title<input required maxLength={120} value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. Monthly upstream payment"/></label>
         <label>Category<select value={category} onChange={e => setCategory(e.target.value)}><option>Network / provider</option><option>Salary</option><option>Equipment</option><option>Fuel / travel</option><option>Office</option><option>Installation</option><option>Other</option></select></label>
@@ -372,10 +382,10 @@ export default function FinanceWorkspace({ session, customers, payments, flash, 
         <button className="btn primary" disabled={busy || !title.trim() || !amount}> <Plus size={15}/> Save expense</button>
       </form>
       <div className="finance-table-wrap"><table><thead><tr><th>DATE</th><th>EXPENSE</th><th>CATEGORY</th><th>METHOD</th><th>AMOUNT</th><th>RECORDED BY</th><th></th></tr></thead><tbody>
-        {sortedExpenses.map(item => <tr key={item.id}><td>{item.spentAt}</td><td><b>{item.title}</b>{item.notes && <small className="finance-note">{item.notes}</small>}</td><td>{item.category}</td><td>{item.method}</td><td className="amount">{money(item.amount)}</td><td>{item.createdByName}</td><td><button className="btn danger compact" disabled={busy} onClick={() => deleteExpense(item)}>Delete</button></td></tr>)}
-        {!sortedExpenses.length && <tr><td colSpan={7}>No expenses recorded yet.</td></tr>}
+        {filteredExpenses.map(item => <tr key={item.id}><td>{item.spentAt}</td><td><b>{item.title}</b>{item.notes && <small className="finance-note">{item.notes}</small>}</td><td>{item.category}</td><td>{item.method}</td><td className="amount">{money(item.amount)}</td><td>{item.createdByName}</td><td><button className="btn danger compact" disabled={busy} onClick={() => deleteExpense(item)}>Delete</button></td></tr>)}
+        {!filteredExpenses.length && <tr><td colSpan={7}>{expenses.length ? 'No expenses match this date filter.' : 'No expenses recorded yet.'}</td></tr>}
       </tbody></table></div>
-      <div className="finance-foot"><span>{expenses.length} expense records · {payroll.length} salary payments included in exports</span><button className="btn secondary compact" onClick={() => downloadCsv('kb-expenses.csv', [['Date','Title','Category','Method','Amount','Notes','Recorded by'], ...sortedExpenses.map(e => [e.spentAt,e.title,e.category,e.method,e.amount,e.notes,e.createdByName]), ...payroll.map(item => [item.paidAt,'Salary - '+item.staffName,'Salary',item.method,item.amount,item.notes||'',item.recordedByName||''])])}><Download size={14}/> Export expenses</button><button className="btn secondary compact" onClick={() => printReport('Business expenses', [['Date','Title','Category','Method','Amount','Notes','Recorded by'], ...sortedExpenses.map(e => [e.spentAt,e.title,e.category,e.method,money(e.amount),e.notes||'',e.createdByName]), ...payroll.map(item => [item.paidAt,'Salary - '+item.staffName,'Salary',item.method,money(item.amount),item.notes||'',item.recordedByName||''])])}><ReceiptText size={14}/> Export PDF</button></div>
+      <div className="finance-foot"><span>{filteredExpenses.length} shown of {expenses.length} expense records · {payroll.length} salary payments included in exports</span><button className="btn secondary compact" onClick={() => downloadCsv('kb-expenses.csv', [['Date','Title','Category','Method','Amount','Notes','Recorded by'], ...filteredExpenses.map(e => [e.spentAt,e.title,e.category,e.method,e.amount,e.notes,e.createdByName]), ...payroll.map(item => [item.paidAt,'Salary - '+item.staffName,'Salary',item.method,item.amount,item.notes||'',item.recordedByName||''])])}><Download size={14}/> Export expenses</button><button className="btn secondary compact" onClick={() => printReport('Business expenses', [['Date','Title','Category','Method','Amount','Notes','Recorded by'], ...filteredExpenses.map(e => [e.spentAt,e.title,e.category,e.method,money(e.amount),e.notes||'',e.createdByName]), ...payroll.map(item => [item.paidAt,'Salary - '+item.staffName,'Salary',item.method,money(item.amount),item.notes||'',item.recordedByName||''])])}><ReceiptText size={14}/> Export PDF</button></div>
     </section>
     <section className="panel finance-panel">
       <div className="finance-head"><div><span className="eyebrow">MANAGEMENT REPORTS</span><h2>Business reports</h2><p>Download your current payment and collection data for spreadsheet analysis.</p></div></div>
