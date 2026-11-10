@@ -34,7 +34,7 @@ on:
       - ".github/workflows/android-apk.yml"
       - ".github/workflows/ota-release.yml"
   pull_request:
-    branches: [main]
+    branches: [main, recovery/live-gps-fix-2026-11-10]
     paths:
       - "src/**"
       - "render-backend/**"
