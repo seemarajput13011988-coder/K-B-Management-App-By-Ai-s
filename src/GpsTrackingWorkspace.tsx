@@ -85,23 +85,32 @@ export default function GpsTrackingWorkspace({flash}:{flash:(message:string)=>vo
       // the cached point is recent. The map must not substitute a saved point
       // for the location response requested by the administrator.
       if (onShiftIds.includes(member.id)) {
+        const requestedAt = Date.now();
         const requestResult=await api.post<{id:string}>('/api/location-requests',{staffId:member.id});
-        flash('Fresh GPS requested from '+member.displayName+'. Waiting for their app to share a new reading…');
+        flash('Fresh GPS requested from '+member.displayName+'. Waiting for a new phone reading…');
         let captured=false;
         for(let attempt=0;attempt<18;attempt++){
           await new Promise(resolve=>window.setTimeout(resolve,2500));
-          const requestStatus=await api.get<{item?:{status?:string;responseMessage?:string}}>('/api/location-requests/'+encodeURIComponent(requestResult.data.id));
-          const status=String(requestStatus.data.item?.status||'');
-          if(status==='captured'){captured=true;break;}
-          if(status==='unavailable'||status==='expired'){
-            throw new Error(requestStatus.data.item?.responseMessage || 'The staff phone could not provide a fresh GPS reading. Ask them to open the app and check location permission.');
+          const [requestStatus, latestLocation]=await Promise.all([
+            api.get<{item?:{status?:string;responseMessage?:string}}>('/api/location-requests/'+encodeURIComponent(requestResult.data.id)),
+            api.get(endpoint),
+          ]);
+          result=latestLocation;
+          const receivedAt = Date.parse(String(latestLocation.data.item?.receivedAt || ''));
+          // The Android foreground service uploads continuously even if its app
+          // screen is swiped away. Do not depend only on the visible React poller.
+          if(Number.isFinite(receivedAt) && receivedAt >= requestedAt - 1000){
+            captured=true;
+            break;
           }
+          if(String(requestStatus.data.item?.status||'')==='captured'){
+            captured=true;
+            break;
+          }
+          if(['unavailable','expired'].includes(String(requestStatus.data.item?.status||'')) && attempt>=5) break;
         }
-        if(captured){
-          result=await api.get(endpoint);
-        }else{
-          flash('GPS request is still pending. The staff member must open the app and respond; the map will continue refreshing automatically.');
-          result=await api.get(endpoint);
+        if(!captured){
+          flash('No new GPS upload arrived yet. The map is showing the last saved point with its age, not calling it live.');
         }
       }
       const status=result.data.status || (result.data.isFresh ? 'live' : 'stale');
