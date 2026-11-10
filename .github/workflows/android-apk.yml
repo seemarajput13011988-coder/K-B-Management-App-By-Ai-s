@@ -217,6 +217,7 @@ jobs:
             @Override
             public void onCreate(Bundle savedInstanceState) {
               registerPlugin(DocumentSaverPlugin.class);
+              registerPlugin(WorkLocationTrackingPlugin.class);
               super.onCreate(savedInstanceState);
             }
           }
