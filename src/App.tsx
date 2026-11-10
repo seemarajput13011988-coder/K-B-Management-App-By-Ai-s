@@ -918,6 +918,21 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
           </div>
         </div>
       </aside>
+      <nav className="mobile-bottom-nav" aria-label="Quick navigation">
+        {nav.slice(0, 5).map(item => (
+          <button
+            type="button"
+            key={item.label}
+            className={page === item.label ? 'active' : ''}
+            aria-current={page === item.label ? 'page' : undefined}
+            onClick={() => { setPage(item.label); setNotificationsOpen(false); setMobileNav(false); }}
+          >
+            <item.icon size={18} />
+            <span>{item.label === taskPage ? (isAdmin ? 'Tasks' : 'My Work') : item.label}</span>
+            {item.count ? <i>{item.count > 99 ? '99+' : item.count}</i> : null}
+          </button>
+        ))}
+      </nav>
       {mobileNav && (
         <div className="scrim" onClick={() => setMobileNav(false)} />
       )}
