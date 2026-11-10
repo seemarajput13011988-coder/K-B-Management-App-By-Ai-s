@@ -179,7 +179,7 @@ export default function GpsTrackingWorkspace({flash}:{flash:(message:string)=>vo
       <button className={section==='saved'?'active':''} onClick={()=>setSection('saved')}><Save size={15}/> Saved Locations <span>{saved.length}</span></button>
     </div>
     {section==='live' ? <>
-      <div className="gps-notice"><MapPin size={17}/><span>Live GPS is available only during an active shift. If the phone has not uploaded a fresh point, this screen requests one from the staff app. The staff member must have the app available and respond; fresh updates are then monitored automatically.</span></div>
+      <div className="gps-notice"><MapPin size={17}/><span>Live GPS is available only during an active shift. On Android, the visible foreground location service uploads automatically while the shift is active, including when the app screen is in the background. The browser version can update location only while its page remains open. If no fresh point arrives, this screen shows the last known point as stale rather than calling it live.</span></div>
       {loading?<p className="ops-empty">Loading staff…</p>:<div className="gps-staff-list">
         {staff.map(member=><article className="gps-staff-row" key={member.id}>
           <div className="gps-avatar"><MapPin size={17}/></div>
