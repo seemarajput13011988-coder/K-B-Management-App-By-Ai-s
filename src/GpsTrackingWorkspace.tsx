@@ -19,7 +19,6 @@ const hasValidCoordinates=(lat:number,lng:number)=>Number.isFinite(lat)&&Number.
 export default function GpsTrackingWorkspace({flash}:{flash:(message:string)=>void}) {
   const [staff,setStaff]=useState<StaffMember[]>([]);
   const [onShiftIds,setOnShiftIds]=useState<string[]>([]);
-  const [requestingStaffId,setRequestingStaffId]=useState('');
   const [saved,setSaved]=useState<SavedLocation[]>([]);
   const [liveLocation,setLiveLocation]=useState<LiveLocation|null>(null);
   const [selectedStaff,setSelectedStaff]=useState<StaffMember|null>(null);
@@ -72,17 +71,6 @@ export default function GpsTrackingWorkspace({flash}:{flash:(message:string)=>vo
     return()=>{stopped=true;window.clearInterval(timer);};
   },[]);
   useEffect(()=>subscribeToApiChanges(()=>{void load();}),[]);
-
-  async function requestOneTimeLocation(member:StaffMember) {
-    setRequestingStaffId(member.id);
-    try {
-      await api.post('/api/location-requests',{staffId:member.id});
-      setSelectedStaff(member);
-      flash('One-time GPS request sent to '+member.displayName+'. They must respond in the app during their active shift.');
-    } catch(error) {
-      flash(error instanceof Error?error.message:'Could not send the one-time location request.');
-    } finally { setRequestingStaffId(''); }
-  }
 
   async function getLiveLocation(member:StaffMember) {
     setBusyStaffId(member.id);
