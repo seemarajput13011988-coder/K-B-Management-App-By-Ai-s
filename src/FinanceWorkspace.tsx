@@ -187,15 +187,18 @@ export default function FinanceWorkspace({ session, customers, payments, flash, 
     return (invoiceWeek === 'all' || dueWeek === invoiceWeek) && (invoiceStatus === 'all' || item.status === invoiceStatus);
   });
   const sortedExpenses = useMemo(() => [...expenses].sort((a, b) => b.spentAt.localeCompare(a.spentAt)), [expenses]);
-  const filteredExpenses = sortedExpenses.filter(item => {
+  const isWithinExpenseRange = (dateValue: string) => {
     if (expenseRange === 'all') return true;
+    const date = String(dateValue || '');
+    if (expenseRange === 'month') return date.slice(0, 7) === today().slice(0, 7);
     const todayDate = new Date(today() + 'T12:00:00+05:30');
-    if (expenseRange === 'month') return String(item.spentAt || '').slice(0, 7) === today().slice(0, 7);
     const startOfWeek = new Date(todayDate);
     startOfWeek.setDate(startOfWeek.getDate() - ((startOfWeek.getDay() + 6) % 7));
     const startKey = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(startOfWeek);
-    return String(item.spentAt || '') >= startKey && String(item.spentAt || '') <= today();
-  });
+    return date >= startKey && date <= today();
+  };
+  const filteredExpenses = sortedExpenses.filter(item => isWithinExpenseRange(item.spentAt));
+  const filteredExpensePayroll = payroll.filter(item => isWithinExpenseRange(item.paidAt));
   const monthlyTrend = Array.from({length:6},(_,index)=>{
     const date=new Date(); date.setDate(1); date.setMonth(date.getMonth()-(5-index));
     const key=date.getFullYear()+'-'+String(date.getMonth()+1).padStart(2,'0');
@@ -350,7 +353,7 @@ export default function FinanceWorkspace({ session, customers, payments, flash, 
         {filteredInvoices.map(item => <tr key={item.id}><td><b>{item.customerName}</b></td><td>{monthName(item.period)}</td><td>{item.dueDate}</td><td>{money(item.amount)}</td><td>{money(item.paidAmount)}</td><td className="amount">{money(Math.max(0, item.amount - item.paidAmount))}</td><td><span className={'status ' + (item.status === 'Paid' ? 'active' : 'inactive')}>{item.status}</span></td></tr>)}
         {!filteredInvoices.length && <tr><td colSpan={7}>{invoices.length ? 'No invoices match the selected week and status filters.' : 'No invoices for this month. Generate invoices to start monthly billing.'}</td></tr>}
       </tbody></table></div>
-      <div className="finance-foot"><span>{filteredInvoices.length} shown of {invoices.length} invoices · {activeCustomers.length} active customers</span><button className="btn secondary compact" onClick={() => downloadCsv('kb-invoices-' + period + '.csv', [['Customer','Period','Due date','Amount','Paid','Balance','Status'], ...invoices.map(i => [i.customerName, monthName(i.period), i.dueDate, i.amount, i.paidAmount, Math.max(0, i.amount-i.paidAmount), i.status])])}><Download size={14}/> Export invoices</button><button className="btn secondary compact" onClick={() => printReport('Customer invoices · ' + monthName(period), [['Customer','Period','Due date','Amount','Paid','Balance','Status'], ...filteredInvoices.map(i => [i.customerName, monthName(i.period), i.dueDate, money(i.amount), money(i.paidAmount), money(Math.max(0,i.amount-i.paidAmount)), i.status])])}><ReceiptText size={14}/> Export PDF</button></div>
+      <div className="finance-foot"><span>{filteredInvoices.length} shown of {invoices.length} invoices · {activeCustomers.length} active customers</span><button className="btn secondary compact" onClick={() => downloadCsv('kb-invoices-' + period + '.csv', [['Customer','Period','Due date','Amount','Paid','Balance','Status'], ...filteredInvoices.map(i => [i.customerName, monthName(i.period), i.dueDate, i.amount, i.paidAmount, Math.max(0, i.amount-i.paidAmount), i.status])])}><Download size={14}/> Export invoices</button><button className="btn secondary compact" onClick={() => printReport('Customer invoices · ' + monthName(period), [['Customer','Period','Due date','Amount','Paid','Balance','Status'], ...filteredInvoices.map(i => [i.customerName, monthName(i.period), i.dueDate, money(i.amount), money(i.paidAmount), money(Math.max(0,i.amount-i.paidAmount)), i.status])])}><ReceiptText size={14}/> Export PDF</button></div>
     </section>
     <section className="panel finance-panel">
       <div className="finance-head"><div><span className="eyebrow">CUSTOMER ACCOUNT</span><h2>Customer transaction ledger</h2><p>View billed invoices, received payments and the running balance for one customer.</p></div><div className="finance-actions"><select aria-label="Select customer ledger" value={ledgerCustomerId} onChange={event => setLedgerCustomerId(event.target.value)}><option value="">Select customer</option>{customers.map(customer => <option key={customer.id} value={customer.id}>{customer.name}</option>)}</select></div></div>
@@ -385,7 +388,7 @@ export default function FinanceWorkspace({ session, customers, payments, flash, 
         {filteredExpenses.map(item => <tr key={item.id}><td>{item.spentAt}</td><td><b>{item.title}</b>{item.notes && <small className="finance-note">{item.notes}</small>}</td><td>{item.category}</td><td>{item.method}</td><td className="amount">{money(item.amount)}</td><td>{item.createdByName}</td><td><button className="btn danger compact" disabled={busy} onClick={() => deleteExpense(item)}>Delete</button></td></tr>)}
         {!filteredExpenses.length && <tr><td colSpan={7}>{expenses.length ? 'No expenses match this date filter.' : 'No expenses recorded yet.'}</td></tr>}
       </tbody></table></div>
-      <div className="finance-foot"><span>{filteredExpenses.length} shown of {expenses.length} expense records · {payroll.length} salary payments included in exports</span><button className="btn secondary compact" onClick={() => downloadCsv('kb-expenses.csv', [['Date','Title','Category','Method','Amount','Notes','Recorded by'], ...filteredExpenses.map(e => [e.spentAt,e.title,e.category,e.method,e.amount,e.notes,e.createdByName]), ...payroll.map(item => [item.paidAt,'Salary - '+item.staffName,'Salary',item.method,item.amount,item.notes||'',item.recordedByName||''])])}><Download size={14}/> Export expenses</button><button className="btn secondary compact" onClick={() => printReport('Business expenses', [['Date','Title','Category','Method','Amount','Notes','Recorded by'], ...filteredExpenses.map(e => [e.spentAt,e.title,e.category,e.method,money(e.amount),e.notes||'',e.createdByName]), ...payroll.map(item => [item.paidAt,'Salary - '+item.staffName,'Salary',item.method,money(item.amount),item.notes||'',item.recordedByName||''])])}><ReceiptText size={14}/> Export PDF</button></div>
+      <div className="finance-foot"><span>{filteredExpenses.length} shown of {expenses.length} expense records · {filteredExpensePayroll.length} salary payments included in exports</span><button className="btn secondary compact" onClick={() => downloadCsv('kb-expenses.csv', [['Date','Title','Category','Method','Amount','Notes','Recorded by'], ...filteredExpenses.map(e => [e.spentAt,e.title,e.category,e.method,e.amount,e.notes,e.createdByName]), ...filteredExpensePayroll.map(item => [item.paidAt,'Salary - '+item.staffName,'Salary',item.method,item.amount,item.notes||'',item.recordedByName||''])])}><Download size={14}/> Export expenses</button><button className="btn secondary compact" onClick={() => printReport('Business expenses', [['Date','Title','Category','Method','Amount','Notes','Recorded by'], ...filteredExpenses.map(e => [e.spentAt,e.title,e.category,e.method,money(e.amount),e.notes||'',e.createdByName]), ...payroll.map(item => [item.paidAt,'Salary - '+item.staffName,'Salary',item.method,money(item.amount),item.notes||'',item.recordedByName||''])])}><ReceiptText size={14}/> Export PDF</button></div>
     </section>
     <section className="panel finance-panel">
       <div className="finance-head"><div><span className="eyebrow">MANAGEMENT REPORTS</span><h2>Business reports</h2><p>Download your current payment and collection data for spreadsheet analysis.</p></div></div>
