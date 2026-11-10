@@ -230,3 +230,12 @@ input:focus,select:focus,textarea:focus{outline:0;border-color:#6ba9a1!important
 [data-theme="dark"] .data-toolbar input,[data-theme="dark"] .data-toolbar select,[data-theme="dark"] .searchbox,[data-theme="dark"] .plan-search{background:#18373d!important;border-color:#36565a;color:#e2eeea}
 [data-theme="dark"] .searchbox input,[data-theme="dark"] .plan-search input{color:#e2eeea}
 [data-theme="dark"] .data-result-count{background:#24514e;color:#c8e6dc}
+
+
+/* Responsive filters used by customer, staff, task and complaint workspaces */
+.data-filter-label{display:grid;gap:6px;min-width:145px;color:#71838a;font-size:10px;font-weight:800}
+.data-filter-label select{box-sizing:border-box;width:100%;height:40px;min-width:0;padding:0 12px;border:1px solid #dce6e5;border-radius:9px;background:#fff;color:#29434a;font:500 12px 'DM Sans',sans-serif}
+.data-filter-label select:focus{border-color:#65a59b;box-shadow:0 0 0 3px rgba(36,123,120,.11)}
+@media(max-width:700px){.data-filter-label{min-width:0;width:100%}.toolbar .data-filter-label{flex:1 1 150px}}
+[data-theme="dark"] .data-filter-label{color:#a5b9b5}
+[data-theme="dark"] .data-filter-label select{background:#18373d;border-color:#36565a;color:#e2eeea}
