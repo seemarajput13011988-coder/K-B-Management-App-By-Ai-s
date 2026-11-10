@@ -138,6 +138,7 @@ export default function StaffOperations({ session, customers, flash, compact = f
   const [shiftSettingsBusy, setShiftSettingsBusy] = useState(false);
   const [shiftSettingsAvailable, setShiftSettingsAvailable] = useState(true);
   const [teamSearch, setTeamSearch] = useState('');
+  const [adminSearch, setAdminSearch] = useState('');
   const [teamSort, setTeamSort] = useState<'name'|'active'|'records'>('name');
   const [attendanceSearch, setAttendanceSearch] = useState('');
   const [attendanceStatus, setAttendanceStatus] = useState('all');
@@ -532,7 +533,7 @@ export default function StaffOperations({ session, customers, flash, compact = f
   const sortedMessages = [...messages].filter(item => matchesText(messageSearch,[item.senderName,item.recipientName,item.message,item.createdAt])).sort((a,b) => b.createdAt.localeCompare(a.createdAt));
   const sortedHolidays = [...holidays].filter(item => matchesText(holidaySearch,[item.displayName,item.reason,item.startDate,item.endDate,item.status]) && (holidayStatus === 'all' || item.status === holidayStatus)).sort((a,b) => holidaySort === 'name' ? a.displayName.localeCompare(b.displayName) : holidaySort === 'oldest' ? a.createdAt.localeCompare(b.createdAt) : b.createdAt.localeCompare(a.createdAt));
   const sortedAnnouncements = [...announcements].filter(item => matchesText(announcementSearch,[item.title,item.message,item.createdByName,item.createdAt])).sort((a,b) => b.createdAt.localeCompare(a.createdAt));
-  const sortedAdmins = [...admins].filter(item => matchesText(teamSearch,[item.displayName,item.userId])).sort((a,b) => a.displayName.localeCompare(b.displayName));
+  const sortedAdmins = [...admins].filter(item => matchesText(adminSearch,[item.displayName,item.userId])).sort((a,b) => a.displayName.localeCompare(b.displayName));
   const attendanceTrend = Array.from({length:6},(_,index)=>{
     const date=new Date(); date.setDate(1); date.setMonth(date.getMonth()-(5-index));
     const key=date.getFullYear()+'-'+String(date.getMonth()+1).padStart(2,'0');
@@ -578,7 +579,7 @@ export default function StaffOperations({ session, customers, flash, compact = f
         <input required minLength={12} type="password" autoComplete="new-password" placeholder="Temporary password (12+ characters)" value={adminForm.password} onChange={e=>setAdminForm({...adminForm,password:e.target.value})}/>
         <button className="btn primary" disabled={busy}>Add administrator</button>
       </form>
-      <div className="data-toolbar"><label className="data-search">Search administrators<input value={teamSearch} onChange={e=>setTeamSearch(e.target.value)} placeholder="Name or login ID"/></label><span className="data-result-count">{sortedAdmins.length} shown</span></div>
+      <div className="data-toolbar"><label className="data-search">Search administrators<input value={adminSearch} onChange={e=>setAdminSearch(e.target.value)} placeholder="Name or login ID"/></label><span className="data-result-count">{sortedAdmins.length} shown</span></div>
       <div className="ops-location-list">{sortedAdmins.map(item=><article className="ops-location-card" key={item.id}><div className="ops-person"><span className="avatar">{item.displayName.slice(0,2).toUpperCase()}</span><div><b>{item.displayName}</b><small>{item.userId} · {item.userId.toLowerCase()==='brajraj'?'Primary owner':'Administrator'}</small></div></div><div className="ops-location-detail"><span className={item.active?'ops-pill is-live':'ops-pill is-idle'}>{item.active?'ACTIVE':'DISABLED'}</span>{item.userId.toLowerCase()!=='brajraj' && <button className={'btn compact '+(item.active?'danger':'secondary')} disabled={busy} onClick={()=>updateAdminAccount(item,!item.active)}>{item.active?'Deactivate':'Reactivate'}</button>}</div></article>)}</div>
     </section>}
 
