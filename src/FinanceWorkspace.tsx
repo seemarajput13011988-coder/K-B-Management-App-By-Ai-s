@@ -111,6 +111,17 @@ export default function FinanceWorkspace({ session, customers, payments, flash, 
   const [invoiceWeek, setInvoiceWeek] = useState<'all'|'1'|'2'|'3'|'4'|'5'>('all');
   const [invoiceStatus, setInvoiceStatus] = useState<'all'|'Paid'|'Partially paid'|'Unpaid'|'Void'>('all');
   const [expenseRange, setExpenseRange] = useState<'all'|'week'|'month'>('all');
+  const [invoiceSearch, setInvoiceSearch] = useState('');
+  const [invoiceSort, setInvoiceSort] = useState<'due'|'customer'|'amount'>('due');
+  const [expenseSearch, setExpenseSearch] = useState('');
+  const [expenseCategory, setExpenseCategory] = useState('all');
+  const [expenseSort, setExpenseSort] = useState<'newest'|'oldest'|'amount'>('newest');
+  const [payrollSearch, setPayrollSearch] = useState('');
+  const [payrollSort, setPayrollSort] = useState<'newest'|'oldest'|'staff'|'amount'>('newest');
+  const [auditSearch, setAuditSearch] = useState('');
+  const [auditSort, setAuditSort] = useState<'newest'|'oldest'>('newest');
+  const [ledgerSearch, setLedgerSearch] = useState('');
+  const [salaryStaffSearch, setSalaryStaffSearch] = useState('');
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState('Network / provider');
   const [amount, setAmount] = useState('');
@@ -184,8 +195,9 @@ export default function FinanceWorkspace({ session, customers, payments, flash, 
   const filteredInvoices = invoices.filter(item => {
     const dueDay = Number(String(item.dueDate || '').slice(-2));
     const dueWeek = dueDay >= 1 && dueDay <= 31 ? String(Math.ceil(dueDay / 7)) : '0';
-    return (invoiceWeek === 'all' || dueWeek === invoiceWeek) && (invoiceStatus === 'all' || item.status === invoiceStatus);
-  });
+    const matches = !invoiceSearch.trim() || [item.customerName,item.period,item.dueDate,item.status].some(value=>String(value||'').toLowerCase().includes(invoiceSearch.trim().toLowerCase()));
+    return matches && (invoiceWeek === 'all' || dueWeek === invoiceWeek) && (invoiceStatus === 'all' || item.status === invoiceStatus);
+  }).sort((a,b)=>invoiceSort==='customer'?a.customerName.localeCompare(b.customerName):invoiceSort==='amount'?Number(b.amount)-Number(a.amount):a.dueDate.localeCompare(b.dueDate));
   const sortedExpenses = useMemo(() => [...expenses].sort((a, b) => b.spentAt.localeCompare(a.spentAt)), [expenses]);
   const isWithinExpenseRange = (dateValue: string) => {
     if (expenseRange === 'all') return true;
@@ -197,8 +209,12 @@ export default function FinanceWorkspace({ session, customers, payments, flash, 
     const startKey = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(startOfWeek);
     return date >= startKey && date <= today();
   };
-  const filteredExpenses = sortedExpenses.filter(item => isWithinExpenseRange(item.spentAt));
+  const filteredExpenses = sortedExpenses.filter(item => isWithinExpenseRange(item.spentAt) && (expenseCategory === 'all' || item.category === expenseCategory) && (!expenseSearch.trim() || [item.title,item.category,item.method,item.notes,item.createdByName,item.spentAt].some(value=>String(value||'').toLowerCase().includes(expenseSearch.trim().toLowerCase())))).sort((a,b)=>expenseSort==='amount'?Number(b.amount)-Number(a.amount):expenseSort==='oldest'?a.spentAt.localeCompare(b.spentAt):b.spentAt.localeCompare(a.spentAt));
   const filteredExpensePayroll = payroll.filter(item => isWithinExpenseRange(item.paidAt));
+  const visiblePayroll = selectedPayroll.filter(item => !payrollSearch.trim() || [item.staffName,item.staffUserId,item.period,item.paidAt,item.method,item.notes].some(value=>String(value||'').toLowerCase().includes(payrollSearch.trim().toLowerCase()))).sort((a,b)=>payrollSort==='staff'?a.staffName.localeCompare(b.staffName):payrollSort==='amount'?Number(b.amount)-Number(a.amount):payrollSort==='oldest'?a.paidAt.localeCompare(b.paidAt):b.paidAt.localeCompare(a.paidAt));
+  const visibleAudit = audit.filter(item => !auditSearch.trim() || [item.description,item.actorName,item.entityType,item.action,item.createdAt].some(value=>String(value||'').toLowerCase().includes(auditSearch.trim().toLowerCase()))).sort((a,b)=>auditSort==='oldest'?a.createdAt.localeCompare(b.createdAt):b.createdAt.localeCompare(a.createdAt)).slice(0,40);
+  const visibleSalaryStaff = staff.filter(member => !salaryStaffSearch.trim() || [member.displayName,member.userId].some(value=>value.toLowerCase().includes(salaryStaffSearch.trim().toLowerCase())));
+  const sortedLedgerItems = ledger ? [...ledger.items].sort((a,b)=>b.date.localeCompare(a.date)) : [];
   const monthlyTrend = Array.from({length:6},(_,index)=>{
     const date=new Date(); date.setDate(1); date.setMonth(date.getMonth()-(5-index));
     const key=date.getFullYear()+'-'+String(date.getMonth()+1).padStart(2,'0');
@@ -292,8 +308,9 @@ export default function FinanceWorkspace({ session, customers, payments, flash, 
   if (salaryOnly) return <div className="finance-workspace salary-workspace">
     <section className="panel finance-panel">
       <div className="finance-head"><div><span className="eyebrow">STAFF PAYROLL</span><h2>Monthly salary records</h2><p>Record payments and maintain each staff member's agreed monthly salary.</p></div></div>
+      <div className="data-toolbar"><label className="data-search">Search staff<input value={salaryStaffSearch} onChange={e=>setSalaryStaffSearch(e.target.value)} placeholder="Staff name or login ID"/></label><span className="data-result-count">{visibleSalaryStaff.length} staff</span></div>
       <div className="finance-table-wrap salary-settings-table"><table><thead><tr><th>STAFF MEMBER</th><th>MONTHLY SALARY (₹)</th><th> </th></tr></thead><tbody>
-        {staff.map(member=><tr key={member.id}><td><b>{member.displayName}</b><small>{member.userId}</small></td><td><input aria-label={'Monthly salary for '+member.displayName} type="number" min="0" max="1000000" step="0.01" value={salaryDrafts[member.id] ?? String(member.monthlySalary||0)} onChange={event=>setSalaryDrafts(current=>({...current,[member.id]:event.target.value}))}/></td><td><button type="button" className="btn secondary compact" disabled={busy} onClick={()=>void saveMonthlySalary(member)}>Save amount</button></td></tr>)}
+        {visibleSalaryStaff.map(member=><tr key={member.id}><td><b>{member.displayName}</b><small>{member.userId}</small></td><td><input aria-label={'Monthly salary for '+member.displayName} type="number" min="0" max="1000000" step="0.01" value={salaryDrafts[member.id] ?? String(member.monthlySalary||0)} onChange={event=>setSalaryDrafts(current=>({...current,[member.id]:event.target.value}))}/></td><td><button type="button" className="btn secondary compact" disabled={busy} onClick={()=>void saveMonthlySalary(member)}>Save amount</button></td></tr>)}
         {!staff.length&&<tr><td colSpan={3}>No active staff members.</td></tr>}
       </tbody></table></div>
       <form className="finance-expense-form" onSubmit={recordSalary}>
@@ -304,8 +321,9 @@ export default function FinanceWorkspace({ session, customers, payments, flash, 
         <label className="wide">Notes<input maxLength={300} value={salaryNotes} onChange={e => setSalaryNotes(e.target.value)} placeholder="Optional salary reference"/></label>
         <button className="btn primary" disabled={busy || !staff.length || !salaryStaffId || !salaryAmount}>{busy ? 'Saving…' : 'Record salary'}</button>
       </form>
+      <div className="data-toolbar"><label className="data-search">Search payroll<input value={payrollSearch} onChange={e=>setPayrollSearch(e.target.value)} placeholder="Staff, month, method or note"/></label><label>Sort by<select value={payrollSort} onChange={e=>setPayrollSort(e.target.value as typeof payrollSort)}><option value="newest">Newest payment</option><option value="oldest">Oldest payment</option><option value="staff">Staff A–Z</option><option value="amount">Amount high–low</option></select></label><span className="data-result-count">{visiblePayroll.length} records</span></div>
       <div className="finance-table-wrap"><table><thead><tr><th>STAFF MEMBER</th><th>MONTH</th><th>PAID DATE</th><th>RECORDED AT</th><th>METHOD</th><th>AMOUNT</th>{session.user.role==='admin'&&<th>ACTIONS</th>}</tr></thead><tbody>
-        {selectedPayroll.map(item => <tr key={item.id}><td><b>{item.staffName}</b></td><td>{monthName(item.period)}</td><td>{item.paidAt}</td><td>{item.createdAt?new Date(item.createdAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'}):'—'}</td><td>{item.method}</td><td className="amount">{money(item.amount)}</td>{session.user.role==='admin'&&<td><button className="row-action danger" title="Delete salary record" disabled={busy} onClick={()=>void deleteSalary(item)}><Trash2 size={14}/></button></td>}</tr>)}
+        {visiblePayroll.map(item => <tr key={item.id}><td><b>{item.staffName}</b></td><td>{monthName(item.period)}</td><td>{item.paidAt}</td><td>{item.createdAt?new Date(item.createdAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'}):'—'}</td><td>{item.method}</td><td className="amount">{money(item.amount)}</td>{session.user.role==='admin'&&<td><button className="row-action danger" title="Delete salary record" disabled={busy} onClick={()=>void deleteSalary(item)}><Trash2 size={14}/></button></td>}</tr>)}
         {!payroll.length && <tr><td colSpan={session.user.role==='admin'?7:6}>No salary payments recorded for this month.</td></tr>}
       </tbody></table></div>
       <div className="finance-foot"><span>{selectedPayroll.length} staff payments · Total salary paid: <b>{money(payrollTotal)}</b></span><button className="btn secondary compact" disabled={!selectedPayroll.length} onClick={() => downloadCsv('kb-payroll-' + period + '.csv', [['Staff member','Staff ID','Month','Paid date','Method','Amount','Notes'], ...selectedPayroll.map(item => [item.staffName, item.staffUserId, monthName(item.period), item.paidAt, item.method, item.amount, item.notes || ''])])}><Download size={14}/> Export payroll</button><button className="btn secondary compact" disabled={!selectedPayroll.length} onClick={() => printReport('Payroll · ' + monthName(period), [['Staff member','Staff ID','Month','Paid date','Method','Amount','Notes'], ...selectedPayroll.map(item => [item.staffName, item.staffUserId, monthName(item.period), item.paidAt, item.method, money(item.amount), item.notes || ''])])}><ReceiptText size={14}/> Export payroll PDF</button></div>
@@ -329,6 +347,7 @@ export default function FinanceWorkspace({ session, customers, payments, flash, 
         <label className="wide">Notes<input maxLength={300} value={salaryNotes} onChange={e => setSalaryNotes(e.target.value)} placeholder="Optional salary reference"/></label>
         <button className="btn primary" disabled={busy || !staff.length || !salaryStaffId || !salaryAmount}>Record salary</button>
       </form>
+      <div className="data-toolbar"><label className="data-search">Search payroll<input value={payrollSearch} onChange={e=>setPayrollSearch(e.target.value)} placeholder="Staff, month, method or note"/></label><label>Sort by<select value={payrollSort} onChange={e=>setPayrollSort(e.target.value as typeof payrollSort)}><option value="newest">Newest payment</option><option value="oldest">Oldest payment</option><option value="staff">Staff A–Z</option><option value="amount">Amount high–low</option></select></label><span className="data-result-count">{visiblePayroll.length} records</span></div>
       <div className="finance-table-wrap"><table><thead><tr><th>STAFF MEMBER</th><th>MONTH</th><th>PAID DATE</th><th>METHOD</th><th>AMOUNT</th></tr></thead><tbody>
         {selectedPayroll.map(item => <tr key={item.id}><td><b>{item.staffName}</b></td><td>{monthName(item.period)}</td><td>{item.paidAt}</td><td>{item.method}</td><td className="amount">{money(item.amount)}</td></tr>)}
         {!selectedPayroll.length && <tr><td colSpan={5}>No salary payments recorded for this month.</td></tr>}
@@ -349,6 +368,7 @@ export default function FinanceWorkspace({ session, customers, payments, flash, 
     </section>
     <section className="panel finance-panel">
       <div className="finance-head"><div><span className="eyebrow">MONTHLY BILLING</span><h2>Customer invoices</h2><p>Filter invoices by billing month, due-date week and payment status.</p></div><div className="finance-actions"><input aria-label="Billing month" type="month" value={period} onChange={e => { setPeriod(e.target.value); setInvoiceWeek('all'); }}/><select aria-label="Filter invoices by due-date week" value={invoiceWeek} onChange={e => setInvoiceWeek(e.target.value as typeof invoiceWeek)}><option value="all">All weeks</option><option value="1">Week 1 · 1–7</option><option value="2">Week 2 · 8–14</option><option value="3">Week 3 · 15–21</option><option value="4">Week 4 · 22–28</option><option value="5">Week 5 · 29–31</option></select><select aria-label="Filter invoices by status" value={invoiceStatus} onChange={e => setInvoiceStatus(e.target.value as typeof invoiceStatus)}><option value="all">All statuses</option><option value="Paid">Paid</option><option value="Partially paid">Partially paid</option><option value="Unpaid">Unpaid</option><option value="Void">Void</option></select><button className="btn primary" disabled={busy || !activeCustomers.length} onClick={generateInvoices}>Generate invoices</button></div></div>
+      <div className="data-toolbar"><label className="data-search">Search invoices<input value={invoiceSearch} onChange={e=>setInvoiceSearch(e.target.value)} placeholder="Customer, billing month, due date or status"/></label><label>Sort by<select value={invoiceSort} onChange={e=>setInvoiceSort(e.target.value as typeof invoiceSort)}><option value="due">Due date</option><option value="customer">Customer A–Z</option><option value="amount">Amount high–low</option></select></label><span className="data-result-count">{filteredInvoices.length} invoices</span></div>
       <div className="finance-table-wrap"><table><thead><tr><th>CUSTOMER</th><th>PERIOD</th><th>DUE DATE</th><th>AMOUNT</th><th>PAID</th><th>BALANCE</th><th>STATUS</th></tr></thead><tbody>
         {filteredInvoices.map(item => <tr key={item.id}><td><b>{item.customerName}</b></td><td>{monthName(item.period)}</td><td>{item.dueDate}</td><td>{money(item.amount)}</td><td>{money(item.paidAmount)}</td><td className="amount">{money(Math.max(0, item.amount - item.paidAmount))}</td><td><span className={'status ' + (item.status === 'Paid' ? 'active' : 'inactive')}>{item.status}</span></td></tr>)}
         {!filteredInvoices.length && <tr><td colSpan={7}>{invoices.length ? 'No invoices match the selected week and status filters.' : 'No invoices for this month. Generate invoices to start monthly billing.'}</td></tr>}
@@ -363,8 +383,9 @@ export default function FinanceWorkspace({ session, customers, payments, flash, 
           <article><span>Payments received</span><strong>{money(ledger.totalPaid)}</strong></article>
           <article><span>Outstanding balance</span><strong className={ledger.balance > 0 ? 'negative' : ''}>{money(ledger.balance)}</strong></article>
         </div>
+        <div className="data-toolbar"><label className="data-search">Search ledger<input placeholder="Search transaction description or reference" value={ledgerSearch} onChange={e=>setLedgerSearch(e.target.value)}/></label><span className="data-result-count">{sortedLedgerItems.filter(item=>!ledgerSearch.trim() || [item.date,item.type,item.description,item.reference].some(value=>String(value||'').toLowerCase().includes(ledgerSearch.trim().toLowerCase()))).length} entries</span></div>
         <div className="finance-table-wrap"><table><thead><tr><th>DATE</th><th>TRANSACTION</th><th>DESCRIPTION</th><th>DEBIT</th><th>CREDIT</th><th>RUNNING BALANCE</th></tr></thead><tbody>
-          {ledger.items.map(item => <tr key={item.id}><td>{item.date}</td><td><b>{item.type}</b></td><td>{item.description}</td><td className="amount">{item.debit ? money(item.debit) : '—'}</td><td className="amount">{item.credit ? money(item.credit) : '—'}</td><td className="amount"><b>{money(item.balance)}</b></td></tr>)}
+          {sortedLedgerItems.filter(item=>!ledgerSearch.trim() || [item.date,item.type,item.description,item.reference].some(value=>String(value||'').toLowerCase().includes(ledgerSearch.trim().toLowerCase()))).map(item => <tr key={item.id}><td>{item.date}</td><td><b>{item.type}</b></td><td>{item.description}</td><td className="amount">{item.debit ? money(item.debit) : '—'}</td><td className="amount">{item.credit ? money(item.credit) : '—'}</td><td className="amount"><b>{money(item.balance)}</b></td></tr>)}
           {!ledger.items.length && <tr><td colSpan={6}>No invoices or payments have been recorded for this customer.</td></tr>}
         </tbody></table></div>
         <div className="finance-foot"><span>{ledger.customer.name}{ledger.customer.phone ? ' · ' + ledger.customer.phone : ''}</span><div className="finance-actions">
@@ -384,6 +405,7 @@ export default function FinanceWorkspace({ session, customers, payments, flash, 
         <label className="wide">Notes<input maxLength={300} value={notes} onChange={e => setNotes(e.target.value)} placeholder="Optional reference or details"/></label>
         <button className="btn primary" disabled={busy || !title.trim() || !amount}> <Plus size={15}/> Save expense</button>
       </form>
+      <div className="data-toolbar"><label className="data-search">Search expenses<input value={expenseSearch} onChange={e=>setExpenseSearch(e.target.value)} placeholder="Title, category, method, note or staff"/></label><label>Category<select value={expenseCategory} onChange={e=>setExpenseCategory(e.target.value)}><option value="all">All categories</option>{Array.from(new Set(expenses.map(item=>item.category).filter(Boolean))).sort().map(value=><option key={value} value={value}>{value}</option>)}</select></label><label>Sort by<select value={expenseSort} onChange={e=>setExpenseSort(e.target.value as typeof expenseSort)}><option value="newest">Newest first</option><option value="oldest">Oldest first</option><option value="amount">Amount high–low</option></select></label><span className="data-result-count">{filteredExpenses.length} records</span></div>
       <div className="finance-table-wrap"><table><thead><tr><th>DATE</th><th>EXPENSE</th><th>CATEGORY</th><th>METHOD</th><th>AMOUNT</th><th>RECORDED BY</th><th></th></tr></thead><tbody>
         {filteredExpenses.map(item => <tr key={item.id}><td>{item.spentAt}</td><td><b>{item.title}</b>{item.notes && <small className="finance-note">{item.notes}</small>}</td><td>{item.category}</td><td>{item.method}</td><td className="amount">{money(item.amount)}</td><td>{item.createdByName}</td><td><button className="btn danger compact" disabled={busy} onClick={() => deleteExpense(item)}>Delete</button></td></tr>)}
         {!filteredExpenses.length && <tr><td colSpan={7}>{expenses.length ? 'No expenses match this date filter.' : 'No expenses recorded yet.'}</td></tr>}
@@ -402,7 +424,8 @@ export default function FinanceWorkspace({ session, customers, payments, flash, 
     </section>
     <section className="panel finance-panel">
       <div className="finance-head"><div><span className="eyebrow">ACCOUNTABILITY</span><h2>Recent activity log</h2><p>Records important finance actions such as invoices and expense changes.</p></div><button className="btn secondary compact" onClick={() => load().catch(() => flash('Could not refresh finance data.'))}><RefreshCw size={14}/> Refresh</button></div>
-      <div className="finance-audit-list">{audit.slice(0, 40).map(item => <article key={item.id}><div><b>{item.description}</b><small>{item.actorName} · {item.entityType} · {item.action}</small></div><time>{new Date(item.createdAt).toLocaleString('en-IN')}</time></article>)}{!audit.length && <p>No activity log entries yet. New finance actions will appear here.</p>}</div>
+      <div className="data-toolbar"><label className="data-search">Search activity<input value={auditSearch} onChange={e=>setAuditSearch(e.target.value)} placeholder="Description, actor or action"/></label><label>Sort by<select value={auditSort} onChange={e=>setAuditSort(e.target.value as typeof auditSort)}><option value="newest">Newest first</option><option value="oldest">Oldest first</option></select></label><span className="data-result-count">{visibleAudit.length} entries</span></div>
+      <div className="finance-audit-list">{visibleAudit.map(item => <article key={item.id}><div><b>{item.description}</b><small>{item.actorName} · {item.entityType} · {item.action}</small></div><time>{new Date(item.createdAt).toLocaleString('en-IN')}</time></article>)}{!audit.length && <p>No activity log entries yet. New finance actions will appear here.</p>}</div>
     </section>
   </div>;
 }
