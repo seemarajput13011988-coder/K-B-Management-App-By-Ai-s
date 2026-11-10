@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Geolocation } from '@capacitor/geolocation';
 import { Capacitor } from '@capacitor/core';
+import { startWorkLocationTracking, stopWorkLocationTracking } from './lib/work-location-tracking';
 import { api as client, subscribeToApiChanges } from './lib/api';
 
 type Session = { token: string; user: { id: string; displayName: string; role: 'admin' | 'staff'; canManageAdmins?: boolean } };
@@ -347,14 +348,46 @@ export default function StaffOperations({ session, customers, flash, compact = f
   async function shift(action: 'check-in' | 'check-out') {
     setBusy(true);
     try {
-      // The backend applies a 15-minute GPS restoration grace period. Confirm
-      // permission and a fresh fix before opening a shift so staff are not
-      // checked in only to have the shift cancelled for missing location.
+      // Confirm a fresh fix before opening a shift.
       if (action === 'check-in') await ensureLocationReadyForShift();
       await request('post', '/api/attendance/' + action, { dayType, capturedAt: new Date().toISOString() });
+
+      let gpsWarning = '';
+      if (Capacitor.isNativePlatform()) {
+        try {
+          if (action === 'check-in') {
+            // The Android foreground service must be explicitly started from
+            // the visible app after the server has created the active shift.
+            const result = await request('get', '/api/attendance');
+            const activeRecord = (result.data.items || [])
+              .filter((item: Attendance) => item.userId === session.user.id && isOpenShift(item))
+              .sort((a: Attendance, b: Attendance) => Date.parse(b.checkInAt) - Date.parse(a.checkInAt))[0];
+            if (!activeRecord) throw new Error('The server did not confirm the new active shift.');
+            await startWorkLocationTracking({
+              token: session.token,
+              attendanceId: activeRecord.id,
+              scheduledEndAt: activeRecord.autoCheckoutAt || activeRecord.scheduledEndAt || '',
+            });
+          } else {
+            // Stop collection immediately after the server confirms checkout.
+            await stopWorkLocationTracking();
+          }
+        } catch (gpsError) {
+          gpsWarning = gpsError instanceof Error ? gpsError.message : 'Android background GPS service could not be started.';
+        }
+      }
+
       await refresh();
       onDataChanged?.();
-      flash(action === 'check-in' ? 'You are checked in for today.' : 'Your shift has been checked out.');
+      if (action === 'check-in') {
+        flash(gpsWarning
+          ? 'You are checked in, but background GPS did not start: ' + gpsWarning
+          : 'You are checked in. Android background GPS tracking has started.');
+      } else {
+        flash(gpsWarning
+          ? 'Your shift has ended, but Android GPS service did not confirm stopping: ' + gpsWarning
+          : 'Your shift has been checked out.');
+      }
     } catch (err) {
       flash(err instanceof Error ? err.message : 'Attendance update failed.');
     } finally { setBusy(false); }
