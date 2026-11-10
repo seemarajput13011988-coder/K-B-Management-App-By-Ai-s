@@ -4,6 +4,7 @@ import { Capacitor } from '@capacitor/core';
 import { CapacitorUpdater } from '@capgo/capacitor-updater';
 import App from './App';
 import './index.css';
+import './nexus-redesign.css';
 
 const rootElement = document.getElementById('root');
 if (!rootElement) throw new Error('Nexus root element is missing.');
