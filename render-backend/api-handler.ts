@@ -915,7 +915,7 @@ export async function apiHandler(req: any, res: any) {
           if (existingToken.exists && String(existingToken.data()?.userId || '') === user.uid) await tokenRef.delete();
           send(res,200,{unregistered:true}); return;
         }
-        await tokenRef.set({userId:user.uid,token,platform:clean(req.body?.platform,30)||'android',createdAt:now(),updatedAt:now()},{merge:true});
+        await tokenRef.set({userId:user.uid,token,platform:clean(req.body?.platform,30)||'android',active:true,invalidAt:FieldValue.delete(),invalidReason:FieldValue.delete(),createdAt:now(),updatedAt:now()},{merge:true});
         send(res,201,{registered:true}); return;
       }
       if (path === '/api/payroll' && method === 'GET') {
