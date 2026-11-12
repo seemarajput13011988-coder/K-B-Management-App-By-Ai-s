@@ -1,4 +1,4 @@
-name: K&B Nexus desktop web preview
+name: K&B Nexus website deployment
 
 on:
   push:
@@ -10,11 +10,11 @@ permissions:
   contents: read
 
 concurrency:
-  group: kb-nexus-desktop-preview
+  group: kb-nexus-live-deploy
   cancel-in-progress: true
 
 jobs:
-  build-and-preview:
+  build-and-deploy:
     runs-on: ubuntu-latest
     steps:
       - name: Check out desktop web branch
@@ -33,11 +33,23 @@ jobs:
         env:
           VITE_API_BASE_URL: https://kandb-management-nexus-api-zv7f.onrender.com
 
-      - name: Deploy Firebase Hosting preview
-        uses: FirebaseExtended/action-hosting-deploy@v0
-        with:
-          repoToken: ${{ secrets.GITHUB_TOKEN }}
-          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_KAND_B_NET_SEVICE }}
-          projectId: kandb-net-sevice
-          channelId: desktop-preview
-          expires: 30d
+      - name: Prepare Firebase service account
+        shell: bash
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_KAND_B_NET_SEVICE }}
+        run: |
+          test -n "$FIREBASE_SERVICE_ACCOUNT"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/firebase-service-account.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/firebase-service-account.json" >> "$GITHUB_ENV"
+
+      - name: Create Firebase Hosting site if needed
+        run: |
+          npx --yes firebase-tools@latest hosting:sites:get kandbnexus --project kandb-net-sevice >/dev/null 2>&1 || \
+            npx --yes firebase-tools@latest hosting:sites:create kandbnexus --project kandb-net-sevice
+
+      - name: Deploy website to kandbnexus.web.app
+        run: npx --yes firebase-tools@latest deploy --only hosting:kandbnexus --project kandb-net-sevice --non-interactive
+
+      - name: Remove temporary service account file
+        if: always()
+        run: rm -f "$RUNNER_TEMP/firebase-service-account.json"
