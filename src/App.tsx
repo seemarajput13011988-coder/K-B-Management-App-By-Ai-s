@@ -853,13 +853,13 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
       <aside className={'sidebar ' + (mobileNav ? 'mobile-open' : '')}>
         <div className="brand">
           <div className="brand-mark">
-            <Signal size={21} />
+            <img className="brand-logo" src="/vypaar-management-logo.svg" alt="Vypaar Management logo" />
           </div>
           <div>
             <strong>
-              K&B <span>NET SERVICE</span>
+              Vypaar <span>Management</span>
             </strong>
-            <small>Customer management</small>
+            <small>Management software</small>
           </div>
           <button className="mobile-close" onClick={() => setMobileNav(false)}>
             <X size={18} />
@@ -952,7 +952,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
           <div className="page-heading">
             <div>
               <div className="eyebrow">
-                K&B NET SERVICE <span>•</span> OPERATIONS
+                VYPAAR MANAGEMENT <span>•</span> OPERATIONS
               </div>
               <h1>{page === 'Overview' ? (isAdmin ? greeting + ', ' + session.user.displayName : 'Your work at a glance') : page}</h1>
               <p>
@@ -1481,7 +1481,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
             </section>
           )}
           <footer>
-            © {new Date().getFullYear()} K&B NET SERVICE <span>•</span> Customer
+            © {new Date().getFullYear()} Vypaar Management <span>•</span> Management Software
             Management
           </footer>
         </div>
@@ -2564,7 +2564,7 @@ function FestivalCelebration(){
     <span className="kb-festival-spark kb-festival-spark-one" aria-hidden="true">✦</span><span className="kb-festival-spark kb-festival-spark-two" aria-hidden="true">✧</span>
   </section>;
 }
-function WelcomeIntro(){return <div className="kb-welcome-intro" role="status" aria-label="Welcome to K&B Management Nexus"><div className="kb-welcome-orbit"><span/><span/><span/><div className="kb-welcome-mark"><Signal size={34}/></div></div><div className="kb-welcome-brand">K&amp;B <b>NET SERVICE</b></div><div className="kb-welcome-caption">MANAGEMENT NEXUS</div><div className="kb-welcome-loading"><i/></div></div>;}
+function WelcomeIntro(){return <div className="kb-welcome-intro" role="status" aria-label="Welcome to Vypaar Management"><div className="kb-welcome-orbit"><span/><span/><span/><div className="kb-welcome-mark"><img src="/vypaar-management-logo.svg" alt="" /></div></div><div className="kb-welcome-brand">VYPAAR <b>MANAGEMENT</b></div><div className="kb-welcome-caption">BUSINESS MANAGEMENT SOFTWARE</div><div className="kb-welcome-loading"><i/></div></div>;}
 type WorkspaceErrorBoundaryProps={children:ReactNode;onReset:()=>void};
 type WorkspaceErrorBoundaryState={hasError:boolean};
 class WorkspaceErrorBoundary extends Component<WorkspaceErrorBoundaryProps,WorkspaceErrorBoundaryState>{
@@ -2600,7 +2600,7 @@ function LoginScreen({onLogin}:{onLogin:(id:string,pw:string,role:'admin'|'staff
  const [loginBusy,setLoginBusy]=useState(false);
  async function submit(e:FormEvent){e.preventDefault();if(loginBusy)return;setLoginBusy(true);setMsg('');try{if(role)await onLogin(id,pw,role);}catch(err){setMsg(err instanceof Error?err.message:'Sign-in failed.');}finally{setLoginBusy(false);}}
  async function submitRegistration(){setRegistrationBusy(true);setRegistrationMessage('');setRegistrationError(false);try{const result=await submitStaffRegistrationRequest(registration);localStorage.setItem('kandb-staff-registration',JSON.stringify({id:result.id,trackingCode:result.trackingCode}));setRegistrationStatus({status:'pending',createdAt:new Date().toISOString()});setRegistrationMessage(result.message);setRegistrationOpen(false);setRegistration({userId:'',displayName:'',phone:'',reason:''});}catch(err){setRegistrationMessage(err instanceof Error?err.message:'Could not submit your request.');setRegistrationError(true);}finally{setRegistrationBusy(false);}}
- return <div className="auth-shell"><div className="auth-side"><div className="auth-brand"><div className="brand-mark"><Signal/></div><strong>K&B NET SERVICE</strong></div><div className="auth-promo"><span className="auth-kicker">K&B OPERATIONS</span><h1>Every customer connection, in view.</h1><p>Customer records, staff assignments, collections and service requests in one shared workspace.</p></div></div><div className="auth-main"><FestivalCelebration/><form className="auth-card" onSubmit={submit}><div className="auth-icon">{role==='staff'?<UserRound/>:<ShieldCheck/>}</div><span className="eyebrow">SECURE SIGN IN</span><h2>{role?(role==='admin'?'Admin sign in':'Staff sign in'):'Welcome to K&B'}</h2><p>{role?'Enter your '+role+' account details to continue.':'Choose how you want to sign in.'}</p>
+ return <div className="auth-shell"><div className="auth-side"><div className="auth-brand"><div className="brand-mark"><img className="brand-logo" src="/vypaar-management-logo.svg" alt="Vypaar Management logo" /></div><strong>Vypaar Management</strong></div><div className="auth-promo"><span className="auth-kicker">MANAGEMENT SOFTWARE</span><h1>Every customer connection, in view.</h1><p>Customer records, staff assignments, collections and service requests in one shared workspace.</p></div></div><div className="auth-main"><FestivalCelebration/><form className="auth-card" onSubmit={submit}><div className="auth-icon">{role==='staff'?<UserRound/>:<ShieldCheck/>}</div><span className="eyebrow">SECURE SIGN IN</span><h2>{role?(role==='admin'?'Admin sign in':'Staff sign in'):'Welcome to Vypaar Management'}</h2><p>{role?'Enter your '+role+' account details to continue.':'Choose how you want to sign in.'}</p>
  {!role?<><div className="login-role-options"><button type="button" className="login-role-card admin-choice" onClick={()=>choose('admin')}><span className="login-role-icon"><ShieldCheck size={22}/></span><strong>Admin Sign In</strong><small>Manage customers, staff, plans and reports</small><span className="login-role-arrow">Continue →</span></button><button type="button" className="login-role-card staff-choice" onClick={()=>choose('staff')}><span className="login-role-icon"><UserRound size={22}/></span><strong>Staff Sign In</strong><small>View assigned customers and manage daily work</small><span className="login-role-arrow">Continue →</span></button></div>
  {registrationStatus ? <div className="registration-status">
   <div className="registration-status-steps"><span className="done">Submitted</span><span className={registrationStatus.status==='pending'?'current':'done'}>Admin review</span><span className={registrationStatus.status==='approved'?'done':registrationStatus.status==='rejected'?'rejected':''}>{registrationStatus.status==='rejected'?'Rejected':'Approved'}</span></div>
