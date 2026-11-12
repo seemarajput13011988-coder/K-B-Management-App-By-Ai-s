@@ -23,13 +23,18 @@ function indiaDateParts() {
 function sha(value: string) { return createHash('sha256').update(value).digest('hex'); }
 
 export async function runGpsGracePeriod() {
+  // Read the checked-in attendance set once, then avoid loading holiday and user
+  // collections on every tick when nobody currently has a GPS issue.
   const records = await readAllQuery(firestore.collection('attendance').where('status', '==', 'Checked in'));
+  const activeGpsIssues = records.filter(item =>
+    item.id && item.gpsIssueStartedAt && !item.checkOutAt && !item.gpsRestartRequired
+  );
+  if (!activeGpsIssues.length) return;
+
   const requests = await readAllQuery(firestore.collection('holiday_requests'));
-  const users = await readAllQuery(firestore.collection('users'));
   const currentTime = Date.now();
 
-  for (const item of records) {
-    if (!item.id || !item.gpsIssueStartedAt || item.checkOutAt || item.gpsRestartRequired) continue;
+  for (const item of activeGpsIssues) {
     const issueTime = Date.parse(String(item.gpsIssueStartedAt));
     if (!Number.isFinite(issueTime)) continue;
     const elapsed = currentTime - issueTime;
@@ -106,7 +111,9 @@ export async function runGpsGracePeriod() {
     });
     if (!didCancel) continue;
 
-    const admins = users.filter(entry => entry.role === 'admin' && entry.active === true);
+    // Fetch admin recipients only when a shift was actually cancelled.
+    const admins = (await readAllQuery(firestore.collection('users').where('role', '==', 'admin')))
+      .filter(entry => entry.active === true);
     await Promise.all(admins.map(admin => {
       const notificationRef = firestore.collection('staff_notifications').doc(String(item.id) + '-gps-' + issueId + '-cancelled-admin-' + String(admin.id));
       return notificationRef.set({
@@ -360,7 +367,7 @@ export async function runScheduledTick() {
 export function startBackgroundJobs() {
   // One scheduler owns attendance, GPS, reminders and push delivery. The former
   // separate 15-second checkout loop duplicated the attendance scan performed
-  // by runScheduledTick every minute and rapidly consumed Firestore read quota.
+  // by runScheduledTick every five minutes and rapidly consumed Firestore read quota.
   // A five-minute cadence keeps the service within a modest read budget while
   // still checking the 15-minute GPS grace window and scheduled shift end.
   const timer = setInterval(() => {
