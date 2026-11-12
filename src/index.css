@@ -2376,3 +2376,9 @@ td,th{padding:12px 13px}
   color: #fff;
   box-shadow: 0 8px 18px #071b3433;
 }
+
+/* Vypaar Management identity: shared brand artwork for navigation, sign-in and welcome screens. */
+.brand-mark { background: transparent; }
+.brand-logo { display: block; width: 40px; height: 40px; object-fit: contain; border-radius: 12px; }
+.auth-brand .brand-mark { flex: 0 0 40px; }
+.kb-welcome-mark img { display: block; width: 58px; height: 58px; object-fit: contain; }
