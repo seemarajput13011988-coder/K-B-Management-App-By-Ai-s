@@ -4,7 +4,7 @@
   },
   "hosting": [
     {
-      "target": "vypaar",
+      "target": "vypaarmanagement,
       "public": "dist",
       "ignore": [
         "firebase.json",
