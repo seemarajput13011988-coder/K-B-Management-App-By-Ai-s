@@ -22,3 +22,6 @@ The intended production Hosting URL is `https://kandb-net-sevice.web.app`. It is
 - Existing Firestore data and backend services are not migrated or modified by the frontend hosting workflow.
 - The Android app and its Capacitor GPS/native tracking implementation are not changed by this web preview workflow.
 - Browser GPS permissions and background tracking differ from Android native tracking. Do not assume Android background GPS behavior is available in a desktop browser.
+
+
+Current brand and Hosting destination: **Vypaar Management** — `https://vypaar.web.app` (Firebase Hosting site ID: `vypaar`).
