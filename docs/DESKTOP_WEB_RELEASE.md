@@ -10,7 +10,7 @@ Before the preview workflow can deploy, add this GitHub Actions repository secre
 
 - `FIREBASE_SERVICE_ACCOUNT_KAND_B_NET_SEVICE`: a Firebase service-account JSON key authorized to deploy Hosting for project `kandb-net-sevice`.
 
-The workflow uses Node.js 22, `npm ci`, and `npm run build`, with the existing Render API URL. It deploys only to the expiring `desktop-preview` Hosting channel, not to the production channel.
+The workflow uses Node.js 22, `npm install --no-audit --no-fund`, and `npm run build`, with the existing Render API URL. It deploys only to the expiring `desktop-preview` Hosting channel, not to the production channel.
 
 ## Production URL
 
