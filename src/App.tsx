@@ -1480,7 +1480,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
             </section>
           )}
           <footer>
-            © {new Date().getFullYear()} Vypaar Management <span>•</span> Management Software
+            © {new Date().getFullYear()} K&B NET SERVICE <span>•</span> Customer
             Management
           </footer>
         </div>
