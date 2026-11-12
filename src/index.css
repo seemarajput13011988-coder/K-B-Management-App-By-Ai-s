@@ -2326,3 +2326,43 @@ td,th{padding:12px 13px}
   outline: 2px solid #d88735;
   outline-offset: 2px;
 }
+
+
+/* Desktop web: remove native-only notification control and keep the whole workspace in one viewport. */
+@media (min-width: 1024px) {
+  html, body, #root {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+  .shell {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: clip;
+  }
+  .main {
+    width: calc(100% - 268px);
+    max-width: calc(100% - 268px);
+    min-width: 0;
+    box-sizing: border-box;
+    overflow-x: clip;
+  }
+  .content {
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+    box-sizing: border-box;
+    overflow-x: clip;
+  }
+  .content > *, .content section, .content article, .content .panel,
+  .content .toolbar, .content .table-panel {
+    min-width: 0;
+    max-width: 100%;
+  }
+}
+@media (min-width: 1440px) {
+  .main {
+    width: calc(100% - 284px);
+    max-width: calc(100% - 284px);
+  }
+}
