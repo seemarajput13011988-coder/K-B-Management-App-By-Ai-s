@@ -1,0 +1,39 @@
+name: K&B Nexus UX simplification preview
+
+on:
+  push:
+    branches:
+      - ux-simplification-2026-11-12
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kb-nexus-ux-preview
+  cancel-in-progress: true
+
+jobs:
+  build-and-preview:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out UX simplification branch
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Build browser application
+        run: npm run build
+        env:
+          VITE_API_BASE_URL: https://kandb-management-nexus-api-zv7f.onrender.com
+      - name: Deploy Firebase Hosting preview
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_KAND_B_NET_SEVICE }}
+          projectId: kandb-net-sevice
+          channelId: ux-simplification-preview
+          expires: 30d
