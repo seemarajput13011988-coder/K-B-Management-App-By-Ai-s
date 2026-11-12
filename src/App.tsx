@@ -250,6 +250,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   const [complaintPreview, setComplaintPreview] = useState<{name:string;mimeType:string;dataUrl:string}|null>(null);
   const [notice, setNotice] = useState('');
   const [mobileNav, setMobileNav] = useState(false);
+  const [expandedNavGroups, setExpandedNavGroups] = useState<Record<string, boolean>>({ HOME: true });
   const [retentionItems, setRetentionItems] = useState<RetentionReviewItem[]>([]);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
@@ -843,10 +844,18 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   ];
 
   const navGroups = [
-    { label: 'HOME', items: nav.filter(item => ['Overview', 'Calendar', taskPage, 'My Day', 'Salary'].includes(item.label)) },
-    { label: 'CUSTOMERS & FIELD', items: nav.filter(item => ['Customers', 'Subscriptions', 'Inventory', 'Installations', 'Payments', 'Complaints', 'Plans & Pricing'].includes(item.label)) },
-    { label: 'MANAGEMENT', items: nav.filter(item => ['Team Operations', 'GPS Tracking', 'Staff', 'Admin Accounts', 'Invoices', 'Finance & Billing'].includes(item.label)) },
+    { label: 'HOME', items: nav.filter(item => ['Overview', 'Calendar', taskPage, 'My Day'].includes(item.label)) },
+    { label: 'CUSTOMERS & SERVICE', items: nav.filter(item => ['Customers', 'Subscriptions', 'Plans & Pricing', 'Complaints'].includes(item.label)) },
+    { label: 'TEAM & OPERATIONS', items: nav.filter(item => ['Installations', 'Inventory', 'Team Operations', 'GPS Tracking', 'Staff', 'Admin Accounts'].includes(item.label)) },
+    { label: 'MONEY & REPORTS', items: nav.filter(item => ['Payments', 'Salary', 'Invoices', 'Finance & Billing'].includes(item.label)) },
   ].filter(group => group.items.length);
+
+  useEffect(() => {
+    const activeGroup = navGroups.find(group => group.items.some(item => item.label === page));
+    if (activeGroup) {
+      setExpandedNavGroups(current => current[activeGroup.label] ? current : { ...current, [activeGroup.label]: true });
+    }
+  }, [page]);
 
   return (
     <div className="shell">
@@ -871,24 +880,39 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
           <ChevronDown size={14} />
         </div>
         <nav className="nexus-navigation" aria-label="Main navigation">
-          {navGroups.map(group => <section className="nav-group" key={group.label}>
-            <div className="nav-group-label">{group.label}</div>
-            {group.items.map(item => (
+          {navGroups.map(group => {
+            const expanded = !!expandedNavGroups[group.label];
+            const groupId = 'nav-group-' + group.label.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+            return <section className="nav-group" key={group.label}>
               <button
-                key={item.label}
-                className={'nav-item ' + (page === item.label ? 'active' : '')}
-                onClick={() => {
-                  setPage(item.label);
-                  setNotificationsOpen(false);
-                  setMobileNav(false);
-                }}
+                type="button"
+                className="nav-group-toggle"
+                aria-expanded={expanded}
+                aria-controls={groupId}
+                onClick={() => setExpandedNavGroups(current => ({ ...current, [group.label]: !current[group.label] }))}
               >
-                <item.icon size={18} />
-                <span>{item.label}</span>
-                {item.count ? <em>{item.count}</em> : null}
+                <span>{group.label}</span>
+                <ChevronDown size={14} />
               </button>
-            ))}
-          </section>)}
+              {expanded && <div className="nav-group-items" id={groupId}>
+                {group.items.map(item => (
+                  <button
+                    key={item.label}
+                    className={'nav-item ' + (page === item.label ? 'active' : '')}
+                    onClick={() => {
+                      setPage(item.label);
+                      setNotificationsOpen(false);
+                      setMobileNav(false);
+                    }}
+                  >
+                    <item.icon size={18} />
+                    <span>{item.label}</span>
+                    {item.count ? <em>{item.count}</em> : null}
+                  </button>
+                ))}
+              </div>}
+            </section>;
+          })}
         </nav>
         <div className="sidebar-bottom">
           <button className="btn secondary compact" style={{width:'100%',marginBottom:12}} onClick={async()=>{if(Capacitor.isNativePlatform()){const permission=await LocalNotifications.requestPermissions();flash(permission.display==='granted'?'Notifications enabled. You will receive new messages, assigned work and reminders while the app is running.':'Notifications are blocked. Enable them in Android settings.');return;}if(typeof Notification==='undefined'){flash('This browser does not support desktop notifications.');return;}const permission=await Notification.requestPermission();flash(permission==='granted'?'Notifications enabled. You will receive new messages, assigned work and reminders while the app is open.': 'Notifications are blocked. Enable them in your browser settings.');}}>
