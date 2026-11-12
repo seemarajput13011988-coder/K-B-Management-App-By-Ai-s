@@ -358,14 +358,14 @@ export async function runScheduledTick() {
 }
 
 export function startBackgroundJobs() {
-  // Attendance and GPS deadlines are checked more frequently than non-urgent reminders.
-  const attendanceTimer = setInterval(() => {
-    void runAutoCheckoutJob().catch(error => console.error('K&B automatic checkout job failed:', error instanceof Error ? error.message : String(error)));
-  }, 15_000);
-  (attendanceTimer as any).unref?.();
+  // One scheduler owns attendance, GPS, reminders and push delivery. The former
+  // separate 15-second checkout loop duplicated the attendance scan performed
+  // by runScheduledTick every minute and rapidly consumed Firestore read quota.
+  // A five-minute cadence keeps the service within a modest read budget while
+  // still checking the 15-minute GPS grace window and scheduled shift end.
   const timer = setInterval(() => {
     void runScheduledTick().catch(error => console.error('K&B scheduled task failed:', error instanceof Error ? error.message : String(error)));
-  }, 60_000);
+  }, 5 * 60_000);
   (timer as any).unref?.();
   setTimeout(() => {
     void runScheduledTick().catch(error => console.error('K&B startup job failed:', error instanceof Error ? error.message : String(error)));
