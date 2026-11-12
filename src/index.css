@@ -2227,3 +2227,102 @@ td,th{padding:12px 13px}
 :where(img,video,iframe,canvas){max-width:100%}
 .content :where(.table-wrap,.finance-table-wrap,.inventory-table-wrap,.subscription-table-wrap){max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}
 @media(max-width:360px){.content{padding-left:8px;padding-right:8px}.content .panel,.content .finance-panel,.content .ops-panel{padding:12px}.content .page-heading h1{font-size:20px}.content .btn{min-height:38px;padding-inline:10px}}
+
+
+/* Desktop browser polish — scoped to wide layouts so Android/mobile behaviour stays unchanged. */
+@media (min-width: 1024px) {
+  .sidebar {
+    width: 268px;
+    padding: 26px 17px 18px;
+  }
+  .main {
+    margin-left: 268px;
+    min-width: 0;
+  }
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 18;
+    min-height: 70px;
+    padding: 12px clamp(24px, 3vw, 48px);
+    flex-wrap: nowrap;
+    backdrop-filter: blur(14px);
+  }
+  .top-actions {
+    flex-wrap: nowrap;
+    gap: clamp(8px, 1.2vw, 16px);
+  }
+  .content {
+    width: 100%;
+    max-width: 1680px;
+    padding: 32px clamp(24px, 3vw, 52px) 48px;
+  }
+  .page-heading {
+    align-items: flex-end;
+    gap: 24px;
+    margin-bottom: 26px;
+  }
+  .page-heading > div:first-child {
+    min-width: 0;
+  }
+  .heading-actions {
+    flex: 0 0 auto;
+    justify-content: flex-end;
+  }
+  .toolbar {
+    align-items: center;
+    gap: 16px;
+  }
+  .toolbar > :first-child {
+    min-width: 0;
+  }
+  .searchbox {
+    flex: 0 1 440px;
+    min-width: 260px;
+    width: 100%;
+  }
+  .table-wrap,
+  .finance-table-wrap,
+  .inventory-table-wrap,
+  .subscription-table-wrap {
+    scrollbar-width: thin;
+  }
+  .panel,
+  .ops-panel,
+  .finance-panel,
+  .task-board,
+  .table-panel,
+  .staff-insight {
+    scroll-margin-top: 88px;
+  }
+}
+
+@media (min-width: 1440px) {
+  .sidebar {
+    width: 284px;
+    padding-inline: 19px;
+  }
+  .main {
+    margin-left: 284px;
+  }
+  .content {
+    max-width: 1760px;
+  }
+  .stats-grid {
+    gap: 18px;
+  }
+  .overview-grid {
+    grid-template-columns: minmax(0, 1.7fr) minmax(320px, 1fr);
+    gap: 20px;
+  }
+  .plans-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 18px;
+  }
+}
+
+/* Keep keyboard focus visible without browser-default bright blue rectangles. */
+:where(.shell button, .shell a, .shell input, .shell select, .shell textarea):focus-visible {
+  outline: 2px solid #d88735;
+  outline-offset: 2px;
+}
