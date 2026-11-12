@@ -2439,3 +2439,18 @@ td,th{padding:12px 13px}
     height: 50px;
   }
 }
+
+/* Final logo tile treatment: match the orange startup-animation background on every screen. */
+.brand-mark,
+.auth-brand .brand-mark,
+.kb-welcome-mark {
+  background: linear-gradient(145deg, #ffbd68, #e57b2b) !important;
+  border: 1px solid rgba(255,255,255,.28);
+  border-radius: 20px;
+  box-shadow: 0 8px 22px rgba(229,123,43,.28);
+}
+.brand-mark .brand-logo,
+.auth-brand .brand-logo,
+.kb-welcome-mark img {
+  background: transparent !important;
+}
