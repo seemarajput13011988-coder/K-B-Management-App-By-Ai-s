@@ -973,6 +973,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
           </div>
         </header>
         <div className="content">
+          <div key={page} className="page-transition">
           <div className="page-heading">
             <div>
               <div className="eyebrow">
@@ -1504,6 +1505,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
               {!complaints.length && <Empty icon={<MessageSquare/>} title="No complaints yet" text="Create a customer or staff complaint to start tracking it." action="New complaint" onClick={() => setShowComplaint(true)}/>}
             </section>
           )}
+          </div>
           <footer>
             © {new Date().getFullYear()} K&B NET SERVICE <span>•</span> Customer
             Management
