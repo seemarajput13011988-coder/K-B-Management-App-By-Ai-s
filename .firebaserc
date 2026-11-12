@@ -5,8 +5,8 @@
   "targets": {
     "kandb-net-sevice": {
       "hosting": {
-        "vypaar": [
-          "vypaar"
+        "vypaarmanagement: [
+          "vypaarmanagement
         ]
       }
     }
