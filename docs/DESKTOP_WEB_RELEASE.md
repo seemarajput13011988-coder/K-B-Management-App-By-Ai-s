@@ -24,4 +24,4 @@ The intended production Hosting URL is `https://kandb-net-sevice.web.app`. It is
 - Browser GPS permissions and background tracking differ from Android native tracking. Do not assume Android background GPS behavior is available in a desktop browser.
 
 
-Current brand and Hosting destination: **Vypaar Management** — `https://vypaar.web.app` (Firebase Hosting site ID: `vypaar`).
+Current brand and Hosting destination: **Vypaar Management** — `https://vypaarmanagement.web.app` (Firebase Hosting site ID: `vypaarmanagement`).
