@@ -44,11 +44,11 @@ jobs:
 
       - name: Create Firebase Hosting site if needed
         run: |
-          npx --yes firebase-tools@latest hosting:sites:get vypaar --project kandb-net-sevice >/dev/null 2>&1 || \
-            npx --yes firebase-tools@latest hosting:sites:create vypaar --project kandb-net-sevice
+          npx --yes firebase-tools@latest hosting:sites:get vypaarmanagement --project kandb-net-sevice >/dev/null 2>&1 || \
+            npx --yes firebase-tools@latest hosting:sites:create vypaarmanagement --project kandb-net-sevice
 
-      - name: Deploy website to vypaar.web.app
-        run: npx --yes firebase-tools@latest deploy --only hosting:vypaar --project kandb-net-sevice --non-interactive
+      - name: Deploy website to vypaarmanagement.web.app
+        run: npx --yes firebase-tools@latest deploy --only hosting:vypaarmanagement --project kandb-net-sevice --non-interactive
 
       - name: Remove temporary service account file
         if: always()
