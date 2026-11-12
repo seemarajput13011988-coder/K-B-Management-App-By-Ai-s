@@ -826,6 +826,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
     { label: 'Subscriptions', icon: CalendarDays },
     { label: 'Inventory', icon: ClipboardList },
     { label: 'Installations', icon: MapPin },
+    ...(isAdmin ? [{ label: 'Plans & Pricing', icon: Wifi }] : []),
     ...(isAdmin ? [{ label: 'Team Operations', icon: Users }] : []),
     ...(isAdmin ? [{ label: 'GPS Tracking', icon: MapPin }] : []),
     ...(isAdmin ? [{ label: 'Staff', icon: UserRound, count: staff.length }] : []),
@@ -842,7 +843,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
 
   const navGroups = [
     { label: 'HOME', items: nav.filter(item => ['Overview', 'Calendar', taskPage, 'My Day', 'Salary'].includes(item.label)) },
-    { label: 'CUSTOMERS & FIELD', items: nav.filter(item => ['Customers', 'Subscriptions', 'Inventory', 'Installations', 'Payments', 'Complaints'].includes(item.label)) },
+    { label: 'CUSTOMERS & FIELD', items: nav.filter(item => ['Customers', 'Subscriptions', 'Inventory', 'Installations', 'Payments', 'Complaints', 'Plans & Pricing'].includes(item.label)) },
     { label: 'MANAGEMENT', items: nav.filter(item => ['Team Operations', 'GPS Tracking', 'Staff', 'Admin Accounts', 'Invoices', 'Finance & Billing'].includes(item.label)) },
   ].filter(group => group.items.length);
 
@@ -958,6 +959,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                   ? 'Here’s what is happening with your connections today.'
                   : page === 'Customers'
                     ? 'Manage customer details, connections and account status.'
+                    : page === 'Plans & Pricing'                      ? 'Your available internet packages and monthly pricing.'
                       : page === 'Subscriptions'
                         ? 'Manage customer renewals, subscription periods and expiry dates.'
                       : page === 'Installations'
@@ -1028,7 +1030,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
           {page === 'Calendar' && <CalendarWorkspace tasks={tasks} attendance={attendanceRecords} isAdmin={isAdmin} festivals={Object.entries(FESTIVAL_DATES).map(([date, festival]) => ({ date, ...festival }))} />}
           {page === 'Salary' && isAdmin && <FinanceWorkspace salaryOnly session={session} customers={customers} payments={payments} flash={flash} />}
           {page === 'My Day' && !isAdmin && <StaffOperations session={session} customers={customers} flash={flash} onDataChanged={() => { void load(true); }} />}
-          {page === 'Invoices' && isAdmin && <InvoiceWorkspace flash={flash} />}
+          {page === 'Invoices' && isAdmin && <InvoiceWorkspace customers={customers} plans={plans} flash={flash} />}
           {page === 'Finance & Billing' && isAdmin && <FinanceWorkspace session={session} customers={customers} payments={payments} flash={flash} />}
           {page === 'Subscriptions' && <SubscriptionWorkspace customers={customers} plans={plans} isAdmin={isAdmin} flash={flash} />}
           {page === 'Inventory' && <InventoryWorkspace isAdmin={isAdmin} flash={flash} />}
@@ -1360,7 +1362,47 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
             </section>
           )}
 
-
+          {page === 'Plans & Pricing' && (
+            <section className="plan-manager">
+              <div className="plan-toolbar">
+                <div>
+                  <h2>Internet plans</h2>
+                  <p className="subtle">Create packages, update prices and manage which plans are available for new customers.</p>
+                </div>
+                <button className="btn primary" onClick={() => { setEditingPlan(null); setShowPlan(true); }}><Plus size={15} /> Add plan</button>
+              </div>
+              <div className="plan-controls">
+                <div className="plan-search"><Search size={16} /><input value={planSearch} onChange={e => setPlanSearch(e.target.value)} placeholder="Search plan, provider or speed..." /></div>
+                <div className="plan-filters">
+                  {(['Active', 'Archived', 'All'] as const).map(filter => <button key={filter} className={planFilter === filter ? 'selected' : ''} onClick={() => setPlanFilter(filter)}>{filter}{filter === 'Active' ? ' · ' + plans.filter(plan => plan.active).length : filter === 'Archived' ? ' · ' + plans.filter(plan => !plan.active).length : ''}</button>)}
+                </div>
+              </div>
+              <div className="plans-grid">
+                {visiblePlans.map(p => (
+                  <article className={'plan-card ' + (p.featured && p.active ? 'featured' : '')} key={p.id}>
+                    {p.featured && p.active && <div className="popular">POPULAR</div>}
+                    <div className="plan-card-top">
+                      <div className="plan-icon"><Wifi size={20} /></div>
+                      <span className={'plan-state ' + (p.active ? 'is-active' : 'is-archived')}>{p.active ? 'Active' : 'Archived'}</span>
+                    </div>
+                    <div className="plan-provider">{p.provider} · {p.connectionType}</div>
+                    <h3>{p.name}</h3>
+                    <p>{p.note || 'Internet package'}</p>
+                    <div className="plan-price">{money(p.price)}<small>/ month</small></div>
+                    <div className="plan-spec"><span>Speed</span><b>{p.speed}</b></div>
+                    <div className="plan-spec"><span>Monthly data</span><b>{p.data}</b></div>
+                    <div className="plan-card-actions">
+                      <button className="btn secondary" disabled={!p.active} onClick={() => { setPreferredPlan(p.name); setEditing(null); setShowCustomer(true); }}>Add customer</button>
+                      <button className="btn secondary" onClick={() => { setEditingPlan(p); setShowPlan(true); }}><Pencil size={13} /> Edit</button>
+                      <button className="btn secondary" onClick={() => togglePlanStatus(p)}>{p.active ? 'Archive' : 'Restore'}</button>
+                      {isAdmin && <button className="btn danger compact" onClick={() => deletePlan(p)}><Trash2 size={13} /> Delete</button>}
+                    </div>
+                  </article>
+                ))}
+              </div>
+              {!visiblePlans.length && <Empty icon={<Wifi />} title="No plans found" text={planSearch ? 'Try another search or clear the search field.' : 'Add a plan or choose another filter to see your packages.'} action={planSearch ? 'Clear search' : 'Add plan'} onClick={() => planSearch ? setPlanSearch('') : (setEditingPlan(null), setShowPlan(true))} />}
+            </section>
+          )}
 
           {page === 'Payments' && (
             <section className="panel table-panel">
