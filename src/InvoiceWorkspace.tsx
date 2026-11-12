@@ -57,7 +57,8 @@ export default function InvoiceWorkspace({customers,plans,flash}:{customers:Cust
   const isIntraState = supplyStateCode.trim()==='24';
   const cgst = isIntraState ? Math.round(taxTotal/2*100)/100 : 0, sgst = isIntraState ? taxTotal-cgst : 0, igst = isIntraState ? 0 : taxTotal;
   const grandTotal = Math.round((subtotal+taxTotal)*100)/100;
-  const payable = Math.round(grandTotal);\n  const roundOff = Math.round((payable-grandTotal)*100)/100;
+  const payable = Math.round(grandTotal);
+  const roundOff = Math.round((payable-grandTotal)*100)/100;
   const selectedPlan = (planName:string)=>plans.find(p=>p.name===planName);
   function chooseCustomer(id:string) {
     setCustomerId(id);
