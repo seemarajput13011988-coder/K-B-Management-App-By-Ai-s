@@ -935,7 +935,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
               <label className="language-control" title="App language"><span>🌐</span><select aria-label="App language" value={language} onChange={event => setLanguage(event.target.value as 'en' | 'hi' | 'gu')}><option value="en">English</option><option value="hi">हिन्दी</option><option value="gu">ગુજરાતી</option></select></label>
               <button className="theme-toggle" onClick={toggleTheme} title={theme === 'dark' ? 'Switch to day mode' : 'Switch to night mode'} aria-label={theme === 'dark' ? 'Switch to day mode' : 'Switch to night mode'}>{theme === 'dark' ? '☀️' : '🌙'}<span>{theme === 'dark' ? 'Day' : 'Night'}</span></button>
             </div>
-            <div className="notification-anchor" ref={notificationAnchorRef}>
+            {Capacitor.isNativePlatform() && <div className="notification-anchor" ref={notificationAnchorRef}>
               <button className="icon-button notification-bell" onClick={() => setNotificationsOpen(open => !open)} aria-label="Open notifications">
                 <Bell size={18}/>{notifications.filter(item=>!item.read).length>0 && <span className="notification-count">{Math.min(99,notifications.filter(item=>!item.read).length)}</span>}
               </button>
@@ -944,7 +944,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                 {notifications.slice(0,12).map(item=><article className={'notification-item '+(!item.read?'unread':'')} key={item.id}><div className="notification-item-head" style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8}}><b>{item.title}</b><button type="button" className="row-action danger" aria-label="Delete notification" title="Delete notification" onClick={()=>void deleteNotification(item)}><Trash2 size={13}/></button></div><p>{item.message}</p><small>{item.createdAt ? new Date(item.createdAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'}) : ''}</small></article>)}
                 {!notifications.length && <p className="notification-empty">You’re all caught up.</p>}
               </div>}
-            </div>
+            </div>}
             <button type="button" className="icon-button account-trigger" title="Account settings" aria-label="Account settings" onClick={() => { setNotificationsOpen(false); setShowAccountSettings(true); }}><div className="avatar small-avatar">{session.user.displayName.slice(0, 2).toUpperCase()}</div></button>
           </div>
         </header>
