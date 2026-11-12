@@ -958,7 +958,6 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                   ? 'Here’s what is happening with your connections today.'
                   : page === 'Customers'
                     ? 'Manage customer details, connections and account status.'
-                    : page === 'Plans & Pricing'                      ? 'Your available internet packages and monthly pricing.'
                       : page === 'Subscriptions'
                         ? 'Manage customer renewals, subscription periods and expiry dates.'
                       : page === 'Installations'
@@ -1029,7 +1028,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
           {page === 'Calendar' && <CalendarWorkspace tasks={tasks} attendance={attendanceRecords} isAdmin={isAdmin} festivals={Object.entries(FESTIVAL_DATES).map(([date, festival]) => ({ date, ...festival }))} />}
           {page === 'Salary' && isAdmin && <FinanceWorkspace salaryOnly session={session} customers={customers} payments={payments} flash={flash} />}
           {page === 'My Day' && !isAdmin && <StaffOperations session={session} customers={customers} flash={flash} onDataChanged={() => { void load(true); }} />}
-          {page === 'Invoices' && isAdmin && <InvoiceWorkspace customers={customers} plans={plans} flash={flash} />}
+          {page === 'Invoices' && isAdmin && <InvoiceWorkspace flash={flash} />}
           {page === 'Finance & Billing' && isAdmin && <FinanceWorkspace session={session} customers={customers} payments={payments} flash={flash} />}
           {page === 'Subscriptions' && <SubscriptionWorkspace customers={customers} plans={plans} isAdmin={isAdmin} flash={flash} />}
           {page === 'Inventory' && <InventoryWorkspace isAdmin={isAdmin} flash={flash} />}
