@@ -2466,3 +2466,57 @@ td,th{padding:12px 13px}
     flex-basis: 56px !important;
   }
 }
+
+/* Final logo correction: the transparent PNG has generous empty canvas around the mark.
+   Enlarge the artwork inside transparent wrappers so it no longer looks like a tiny logo
+   sitting inside nested tiles. Keep the PNG itself transparent and unmodified. */
+.brand-mark,
+.auth-brand .brand-mark,
+:root[data-festival-theme] .brand-mark,
+.kb-welcome-mark {
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  overflow: visible !important;
+}
+.brand-mark .brand-logo,
+.auth-brand .brand-logo {
+  width: 112px !important;
+  height: 112px !important;
+  max-width: none !important;
+  max-height: none !important;
+  object-fit: contain !important;
+  transform: scale(1.65);
+  transform-origin: center;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+.kb-welcome-orbit {
+  overflow: visible !important;
+}
+.kb-welcome-mark {
+  overflow: visible !important;
+}
+.kb-welcome-mark img {
+  width: 190px !important;
+  height: 190px !important;
+  max-width: none !important;
+  max-height: none !important;
+  object-fit: contain !important;
+  transform: scale(1.05);
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+@media (max-width: 700px) {
+  .brand-mark .brand-logo,
+  .auth-brand .brand-logo {
+    width: 96px !important;
+    height: 96px !important;
+    transform: scale(1.55);
+  }
+}
