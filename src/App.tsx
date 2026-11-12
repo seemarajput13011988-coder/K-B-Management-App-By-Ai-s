@@ -28,7 +28,6 @@ import {
   MessageSquare,
   Plus,
   Search,
-  Signal,
   Users,
   Wifi,
   X,
