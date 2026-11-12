@@ -109,17 +109,28 @@ export default function InvoiceWorkspace({customers,plans,flash}:{customers:Cust
       textLine('GSTIN: '+BUSINESS.gstin+'  |  Toll Free: '+BUSINESS.tollFree+'  |  IFSC: '+BUSINESS.ifsc,left,8,[85,99,116]);
       textLine('Email: '+BUSINESS.email+(businessUpi?'  |  UPI: '+businessUpi:''),left,8,[85,99,116]);
       y+=4;
-      const cardY=y;doc.setDrawColor(215,224,234);doc.setFillColor(246,249,252);doc.roundedRect(left,cardY,width,34,2,2,'FD');
-      doc.setFont('helvetica','bold');doc.setFontSize(8);doc.setTextColor(40,94,139);doc.text('BILL TO',left+4,cardY+6);
-      doc.setTextColor(30,43,62);doc.setFontSize(11);doc.text(doc.splitTextToSize(customerName,80),left+4,cardY+13);
-      doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(75,88,105);
+      const cardY=y;
+      const billX=left+4, billWidth=91, detailsX=right-69, detailsWidth=65;
       const customerLines=[customerAddress, 'Phone: '+customerPhone, customerEmail?'Email: '+customerEmail:'', customerGstin?'GSTIN: '+customerGstin:''].filter(Boolean);
-      doc.text(doc.splitTextToSize(customerLines.join(' | '),width-10),left+4,cardY+19);
-      doc.setFont('helvetica','bold');doc.setTextColor(40,94,139);doc.text('INVOICE DETAILS',right-65,cardY+6);
-      doc.setFont('helvetica','normal');doc.setTextColor(55,68,86);
-      const detailLines=['Place of supply: '+placeOfSupply+' ('+supplyStateCode+')','Reverse charge: '+(reverseCharge?'Yes':'No'),'Reference: '+(reference||'—'),'Payment: '+paymentMode];
-      doc.text(detailLines,right-65,cardY+12);
-      y=cardY+41;
+      doc.setFont('helvetica','bold');doc.setFontSize(8);
+      const nameLines=doc.splitTextToSize(customerName, billWidth);
+      doc.setFont('helvetica','normal');doc.setFontSize(7.5);
+      const billLines=customerLines.flatMap(line=>doc.splitTextToSize(line,billWidth));
+      const detailLines=['Place of supply: '+placeOfSupply+' ('+supplyStateCode+')','Reverse charge: '+(reverseCharge?'Yes':'No'),'Reference: '+(reference||'—'),'Payment: '+paymentMode]
+        .flatMap(line=>doc.splitTextToSize(line,detailsWidth));
+      const cardHeight=Math.max(25, 15+(nameLines.length+billLines.length)*3.8, 15+detailLines.length*3.8);
+      doc.setDrawColor(215,224,234);doc.setFillColor(246,249,252);doc.roundedRect(left,cardY,width,cardHeight,2,2,'FD');
+      doc.setFont('helvetica','bold');doc.setFontSize(8);doc.setTextColor(40,94,139);
+      doc.text('BILL TO',billX,cardY+6);
+      doc.text('INVOICE DETAILS',detailsX,cardY+6);
+      let billY=cardY+12;
+      doc.setTextColor(30,43,62);doc.setFontSize(9);
+      doc.text(nameLines,billX,billY);billY+=nameLines.length*3.8;
+      doc.setFont('helvetica','normal');doc.setFontSize(7.5);doc.setTextColor(75,88,105);
+      if(billLines.length){doc.text(billLines,billX,billY); }
+      doc.setTextColor(55,68,86);
+      doc.text(detailLines,detailsX,cardY+12);
+      y=cardY+cardHeight+7;
       const tableHeaders=['#','SERVICE / DETAILS','QTY','RATE','TAXABLE','GST','TAX','TOTAL'];
       const colWidths=[8,62,12,22,22,14,20,24];
       const drawTableRow=(cells:string[],header=false)=>{
