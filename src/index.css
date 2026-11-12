@@ -2375,3 +2375,22 @@ td,th{padding:12px 13px}
 
 /* Keep the website brand mark visually identical to the welcome animation. */
 .brand-mark{background:linear-gradient(145deg,#ffbd68,#e57b2b);box-shadow:0 12px 28px #f09a4b40;color:#fff;border-color:#ffffff55}
+
+
+/* Subtle website motion: page changes, navigation and interactive feedback. */
+.page-transition{animation:nexusPageEnter .26s cubic-bezier(.2,.7,.25,1) both;transform-origin:top center}
+@keyframes nexusPageEnter{from{opacity:0;transform:translate3d(0,9px,0)}to{opacity:1;transform:translate3d(0,0,0)}}
+.nav-item{transition:background-color .2s ease,color .2s ease,box-shadow .2s ease,transform .18s ease}
+.nav-item:active{transform:scale(.985)}
+.nav-group-items{animation:nexusNavEnter .2s ease both}
+@keyframes nexusNavEnter{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}
+.nav-group-toggle{transition:background-color .18s ease,color .18s ease}
+.btn,.icon-button,.quick-actions button,.row-action{transition:transform .16s ease,box-shadow .18s ease,background-color .18s ease,border-color .18s ease}
+.btn:active,.icon-button:active,.quick-actions button:active,.row-action:active{transform:translateY(1px) scale(.985)}
+.quick-actions button:hover{transform:translateY(-2px);box-shadow:0 8px 20px #14243a12}
+.panel,.ops-panel,.finance-panel,.task-board,.table-panel,.staff-insight{transition:box-shadow .2s ease,border-color .2s ease}
+@media(prefers-reduced-motion:reduce){
+  .page-transition,.nav-group-items{animation:none!important}
+  .nav-item,.nav-group-toggle,.btn,.icon-button,.quick-actions button,.row-action,.panel,.ops-panel,.finance-panel,.task-board,.table-panel,.staff-insight{transition:none!important}
+  .nav-item:active,.btn:active,.icon-button:active,.quick-actions button:active,.row-action:active,.quick-actions button:hover{transform:none!important}
+}
