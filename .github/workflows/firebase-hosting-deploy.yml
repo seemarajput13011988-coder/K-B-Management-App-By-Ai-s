@@ -1,0 +1,40 @@
+name: Deploy K&B Management Nexus to Firebase Hosting
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the reviewed production branch
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Type-check and build production web app
+        env:
+          VITE_API_BASE_URL: https://kandb-management-nexus-api-zv7f.onrender.com
+        run: |
+          npx tsc --noEmit
+          npm run build
+
+      - name: Deploy production Hosting site
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_KANDB_NET_SEVICE }}
+          projectId: kandb-net-sevice
+          channelId: live
