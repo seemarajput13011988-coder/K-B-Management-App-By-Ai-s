@@ -1,0 +1,44 @@
+name: K&B Nexus desktop web preview
+
+on:
+  push:
+    branches:
+      - desktop-web-2026-11-12
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kb-nexus-desktop-preview
+  cancel-in-progress: true
+
+jobs:
+  build-and-preview:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out desktop web branch
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build browser application
+        run: npm run build
+        env:
+          VITE_API_BASE_URL: https://kandb-management-nexus-api-zv7f.onrender.com
+
+      - name: Deploy Firebase Hosting preview
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_KAND_B_NET_SEVICE }}
+          projectId: kandb-net-sevice
+          channelId: desktop-preview
+          expires: 30d
