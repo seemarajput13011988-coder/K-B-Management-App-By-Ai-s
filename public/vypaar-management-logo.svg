@@ -1,22 +1,21 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="logoTitle logoDesc">
-  <title id="logoTitle">Vypaar Management</title>
-  <desc id="logoDesc">A refined orange and white V monogram with an ascending business-growth accent.</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Vypaar Management symbol</title>
+  <desc id="desc">A premium abstract emblem made from four interlocking rounded bands around a warm central diamond. No lettering or arrows.</desc>
   <defs>
-    <linearGradient id="tile" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#FFB85C"/>
-      <stop offset=".52" stop-color="#F18B35"/>
-      <stop offset="1" stop-color="#D96B20"/>
-    </linearGradient>
-    <linearGradient id="shine" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#FFFFFF" stop-opacity=".2"/>
-      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
-    </linearGradient>
+    <linearGradient id="navy" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#315F91"/><stop offset="1" stop-color="#173B63"/></linearGradient>
+    <linearGradient id="teal" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#28B5AD"/><stop offset="1" stop-color="#087C82"/></linearGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#FFD18A"/><stop offset="1" stop-color="#D88B32"/></linearGradient>
+    <linearGradient id="blue" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#6797CB"/><stop offset="1" stop-color="#315D96"/></linearGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="7"/></filter>
   </defs>
-  <rect x="10" y="10" width="492" height="492" rx="116" fill="#B9551B" opacity=".18"/>
-  <rect x="8" y="8" width="496" height="496" rx="116" fill="url(#tile)"/>
-  <path d="M28 124Q28 28 124 28H388Q484 28 484 124V168Q380 104 256 104T28 168Z" fill="url(#shine)"/>
-  <path d="M92 126h91l73 205 73-205h91L289 405h-66z" fill="#fff"/>
-  <path d="M292 309l40-42 33 18 66-75" fill="none" stroke="#17324F" stroke-width="17" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M411 210h21v21" fill="none" stroke="#17324F" stroke-width="17" stroke-linecap="round" stroke-linejoin="round"/>
-  <circle cx="332" cy="267" r="8" fill="#17324F"/>
+  <ellipse cx="256" cy="438" rx="143" ry="19" fill="#173B63" opacity=".10" filter="url(#shadow)"/>
+  <g fill="none" stroke-linecap="round" stroke-width="43">
+    <path d="M139 182a117 117 0 0 1 234 0" stroke="url(#navy)"/>
+    <path d="M373 182a117 117 0 0 1 0 234" stroke="url(#teal)"/>
+    <path d="M373 416a117 117 0 0 1-234 0" stroke="url(#gold)"/>
+    <path d="M139 416a117 117 0 0 1 0-234" stroke="url(#blue)"/>
+  </g>
+  <path d="M256 185 327 256 256 327 185 256Z" fill="url(#gold)"/>
+  <path d="M256 211 301 256 256 301 211 256Z" fill="#FFF4DF"/>
+  <path d="M256 234 278 256 256 278 234 256Z" fill="#D88B32"/>
 </svg>
