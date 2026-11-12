@@ -2371,3 +2371,7 @@ td,th{padding:12px 13px}
     max-width: calc(100% - 284px);
   }
 }
+
+
+/* Keep the website brand mark visually identical to the welcome animation. */
+.brand-mark{background:linear-gradient(145deg,#ffbd68,#e57b2b);box-shadow:0 12px 28px #f09a4b40;color:#fff;border-color:#ffffff55}
