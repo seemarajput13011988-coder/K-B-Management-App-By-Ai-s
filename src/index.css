@@ -2409,3 +2409,60 @@ td,th{padding:12px 13px}
 .auth-brand .brand-mark { flex: 0 0 40px; }
 .kb-welcome-mark { background: transparent; box-shadow: none; }
 .kb-welcome-mark img { display: block; width: 72px; height: 72px; object-fit: contain; border-radius: 18px; }
+
+/* Vypaar logo sizing cleanup: show the Canva artwork directly, without nested CSS tiles. */
+.brand-mark,
+.auth-brand .brand-mark,
+:root[data-festival-theme] .brand-mark {
+  width: 64px !important;
+  height: 64px !important;
+  min-width: 64px;
+  flex: 0 0 64px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  overflow: visible !important;
+}
+.brand-mark .brand-logo,
+.brand-logo {
+  display: block;
+  width: 64px !important;
+  height: 64px !important;
+  max-width: none !important;
+  max-height: none !important;
+  object-fit: contain;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+.auth-brand .brand-mark { width: 64px !important; height: 64px !important; }
+.kb-welcome-orbit { width: 140px !important; height: 140px !important; }
+.kb-welcome-orbit > span { display: none !important; }
+.kb-welcome-mark {
+  width: 112px !important;
+  height: 112px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+.kb-welcome-mark img {
+  width: 112px !important;
+  height: 112px !important;
+  object-fit: contain;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+@media (max-width: 700px) {
+  .brand-mark, .auth-brand .brand-mark,
+  .brand-mark .brand-logo, .brand-logo {
+    width: 56px !important;
+    height: 56px !important;
+    min-width: 56px;
+    flex-basis: 56px !important;
+  }
+}
