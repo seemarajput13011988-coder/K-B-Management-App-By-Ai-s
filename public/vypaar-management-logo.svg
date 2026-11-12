@@ -1,8 +1,22 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
-  <title id="title">Vypaar Management</title>
-  <desc id="desc">Orange rounded square with a clean white V mark and ascending business bars.</desc>
-  <defs><linearGradient id="orange" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffb45b"/><stop offset="1" stop-color="#e87925"/></linearGradient></defs>
-  <rect x="12" y="12" width="488" height="488" rx="116" fill="url(#orange)"/>
-  <path d="M112 145h82l62 172 62-172h82L287 390h-62z" fill="#fff"/>
-  <path d="M314 335h38v55h-38zM365 294h38v96h-38z" fill="#fff" opacity=".94"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="logoTitle logoDesc">
+  <title id="logoTitle">Vypaar Management</title>
+  <desc id="logoDesc">A refined orange and white V monogram with an ascending business-growth accent.</desc>
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FFB85C"/>
+      <stop offset=".52" stop-color="#F18B35"/>
+      <stop offset="1" stop-color="#D96B20"/>
+    </linearGradient>
+    <linearGradient id="shine" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity=".2"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <rect x="10" y="10" width="492" height="492" rx="116" fill="#B9551B" opacity=".18"/>
+  <rect x="8" y="8" width="496" height="496" rx="116" fill="url(#tile)"/>
+  <path d="M28 124Q28 28 124 28H388Q484 28 484 124V168Q380 104 256 104T28 168Z" fill="url(#shine)"/>
+  <path d="M92 126h91l73 205 73-205h91L289 405h-66z" fill="#fff"/>
+  <path d="M292 309l40-42 33 18 66-75" fill="none" stroke="#17324F" stroke-width="17" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M411 210h21v21" fill="none" stroke="#17324F" stroke-width="17" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="332" cy="267" r="8" fill="#17324F"/>
 </svg>

@@ -2382,3 +2382,30 @@ td,th{padding:12px 13px}
 .brand-logo { display: block; width: 40px; height: 40px; object-fit: contain; border-radius: 12px; }
 .auth-brand .brand-mark { flex: 0 0 40px; }
 .kb-welcome-mark img { display: block; width: 58px; height: 58px; object-fit: contain; }
+
+ 
+/* Vypaar Management desktop refinement — scoped to desktop web widths. */
+@media (min-width: 901px) {
+  .sidebar nav { gap: 7px; }
+  .nav-label { font-size: 10px; letter-spacing: 1.45px; padding-bottom: 11px; }
+  .nav-item {
+    min-height: 50px;
+    height: 50px;
+    gap: 13px;
+    padding: 0 14px;
+    font-size: 13.5px;
+    font-weight: 600;
+    border-radius: 10px;
+  }
+  .nav-item svg { width: 19px; height: 19px; flex: 0 0 19px; }
+  .nav-item em { font-size: 10px; padding: 3px 8px; }
+  .help-card { padding: 9px 11px; margin-bottom: 11px; border-radius: 9px; }
+  .help-icon { width: 16px; height: 16px; margin-bottom: 3px; }
+  .help-card strong { font-size: 11px; }
+  .help-card p { font-size: 9px; line-height: 1.35; margin: 3px 0 5px; }
+  .help-card button { font-size: 9px; }
+}
+.brand-logo { width: 40px; height: 40px; object-fit: contain; border-radius: 11px; }
+.auth-brand .brand-mark { flex: 0 0 40px; }
+.kb-welcome-mark { background: transparent; box-shadow: none; }
+.kb-welcome-mark img { display: block; width: 72px; height: 72px; object-fit: contain; border-radius: 18px; }

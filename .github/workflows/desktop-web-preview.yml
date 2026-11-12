@@ -1,4 +1,4 @@
-name: K&B Nexus website deployment
+name: Vypaar Management website deployment
 
 on:
   push:
@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: kb-nexus-live-deploy
+  group: vypaar-management-live-deploy
   cancel-in-progress: true
 
 jobs:
@@ -44,11 +44,11 @@ jobs:
 
       - name: Create Firebase Hosting site if needed
         run: |
-          npx --yes firebase-tools@latest hosting:sites:get kandbnexus --project kandb-net-sevice >/dev/null 2>&1 || \
-            npx --yes firebase-tools@latest hosting:sites:create kandbnexus --project kandb-net-sevice
+          npx --yes firebase-tools@latest hosting:sites:get vypaar --project kandb-net-sevice >/dev/null 2>&1 || \
+            npx --yes firebase-tools@latest hosting:sites:create vypaar --project kandb-net-sevice
 
-      - name: Deploy website to kandbnexus.web.app
-        run: npx --yes firebase-tools@latest deploy --only hosting:kandbnexus --project kandb-net-sevice --non-interactive
+      - name: Deploy website to vypaar.web.app
+        run: npx --yes firebase-tools@latest deploy --only hosting:vypaar --project kandb-net-sevice --non-interactive
 
       - name: Remove temporary service account file
         if: always()
