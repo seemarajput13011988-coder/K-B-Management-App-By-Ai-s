@@ -2,7 +2,7 @@ import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
   appId: 'kandbnet.service2010',
-  appName: 'K&B Management Nexus',
+  appName: 'Vypaar Management',
   webDir: 'dist',
   android: {
     allowMixedContent: false,
