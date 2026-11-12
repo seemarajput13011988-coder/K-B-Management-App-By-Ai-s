@@ -1,5 +1,14 @@
 {
   "projects": {
     "default": "kandb-net-sevice"
+  },
+  "targets": {
+    "kandb-net-sevice": {
+      "hosting": {
+        "kandbnexus": [
+          "kandbnexus"
+        ]
+      }
+    }
   }
 }
