@@ -1,11 +1,18 @@
 import { CapacitorHttp } from '@capacitor/core';
 
-const API_BASE = import.meta.env.VITE_FIREBASE_FUNCTIONS_URL || 'https://asia-south1-kandb-net-sevice.cloudfunctions.net/api';
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'https://kandb-management-nexus-api-zv7f.onrender.com';
 type ApiResult<T = any> = { data: T };
 type LocalSession = { token: string; expiresAt: number; user: { id: string; userId: string; displayName: string; role: 'admin'|'staff'; active: boolean; canManageAdmins?: boolean } };
 function storedToken(): string {
-  try { return (JSON.parse(localStorage.getItem('kb-customer-session') || 'null') as LocalSession | null)?.token || ''; }
-  catch { return ''; }
+  // App.tsx stores the active login in sessionStorage. Keep localStorage as a
+  // fallback for older installations that still have a legacy saved session.
+  for (const storage of [sessionStorage, localStorage]) {
+    try {
+      const token = (JSON.parse(storage.getItem('kb-customer-session') || 'null') as LocalSession | null)?.token;
+      if (typeof token === 'string' && token.trim()) return token.trim();
+    } catch { /* Ignore malformed data in one storage and check the other. */ }
+  }
+  return '';
 }
 async function request<T = any>(path: string, method: string, payload?: Record<string, unknown>): Promise<ApiResult<T>> {
   const url = new URL(path, API_BASE);
@@ -26,7 +33,7 @@ async function request<T = any>(path: string, method: string, payload?: Record<s
   try { data = responseText ? JSON.parse(responseText) : {}; } catch { data = {}; }
   if (!response.ok) {
     if (typeof data.error === 'string' && data.error.trim()) throw new Error(data.error);
-    throw new Error(`K&B server returned HTTP ${response.status}. Check the Cloud Functions deployment.`);
+    throw new Error(`K&B server returned HTTP ${response.status}. Check that the K&B API service is available.`);
   }
   return { data };
 }

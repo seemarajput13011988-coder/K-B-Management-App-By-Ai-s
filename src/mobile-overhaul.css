@@ -1,0 +1,150 @@
+:root {
+  --kb-primary: #2563a6;
+  --kb-primary-deep: #174879;
+  --kb-accent: #f0a34a;
+  --festival-wash: #f7f9fc;
+  --festival-ink: #17243b;
+}
+
+.page-transition { animation: page-arrive 280ms cubic-bezier(.2,.7,.25,1) both; }
+.panel, .ops-panel, .finance-panel, .ops-summary, .task-card, .plan-card {
+  transition: transform 220ms ease, box-shadow 220ms ease, border-color 220ms ease;
+}
+.quick-actions button, .btn, .nav-item, .icon-button { transition: transform 180ms ease, background-color 180ms ease, box-shadow 180ms ease; }
+.finance-chart-bar { transform-origin: bottom; animation: graph-rise 650ms cubic-bezier(.2,.75,.25,1) both; }
+.finance-chart-bar:nth-child(2n) { animation-delay: 70ms; }
+.finance-chart-bar:nth-child(3n) { animation-delay: 130ms; }
+.status-chart-row i { animation: graph-fill 700ms cubic-bezier(.2,.75,.25,1) both; }
+
+.festival-banner {
+  --festival-color: #bc6519;
+  display: grid;
+  grid-template-columns: 48px minmax(0,1fr) 24px;
+  align-items: center;
+  gap: 12px;
+  position: relative;
+  overflow: hidden;
+  margin: 0 0 18px;
+  padding: 14px 16px;
+  border: 1px solid color-mix(in srgb, var(--festival-color) 18%, white);
+  border-radius: 18px;
+  color: var(--festival-ink);
+  background: linear-gradient(110deg, var(--festival-wash), #fff 68%);
+  box-shadow: 0 9px 22px color-mix(in srgb, var(--festival-color) 10%, transparent);
+  animation: festival-enter 500ms cubic-bezier(.2,.8,.25,1) both;
+}
+.festival-banner::after {
+  content: '';
+  position: absolute;
+  width: 160px;
+  height: 160px;
+  right: -60px;
+  top: -88px;
+  border: 1px solid color-mix(in srgb, var(--festival-color) 18%, transparent);
+  border-radius: 50%;
+  box-shadow: 0 0 0 16px color-mix(in srgb, var(--festival-color) 5%, transparent), 0 0 0 32px color-mix(in srgb, var(--festival-color) 4%, transparent);
+}
+.festival-banner-symbol { display: grid; place-items: center; width: 46px; height: 46px; border-radius: 15px; background: color-mix(in srgb, var(--festival-color) 12%, white); font-size: 25px; animation: festival-glow 2.8s ease-in-out infinite; }
+.festival-banner div { display: grid; gap: 3px; min-width: 0; }
+.festival-banner small { color: var(--festival-color); font-size: 9px; font-weight: 900; letter-spacing: .13em; }
+.festival-banner strong { color: var(--festival-ink); font: 800 17px/1.2 Manrope,sans-serif; }
+.festival-banner div span { color: #69788d; font-size: 11px; line-height: 1.4; }
+.festival-sparkle { z-index: 1; color: var(--festival-color); font-size: 22px; animation: sparkle-turn 5s linear infinite; }
+.festival-holi { --festival-color: #b43b8d; --festival-wash: #fff0f8; }
+.festival-ganesh { --festival-color: #b65c22; --festival-wash: #fff4e9; }
+.festival-diwali { --festival-color: #a96310; --festival-wash: #fff8df; }
+.festival-navratri { --festival-color: #8050be; --festival-wash: #f7efff; }
+.festival-janmashtami { --festival-color: #2867aa; --festival-wash: #edf5ff; }
+.festival-shivratri { --festival-color: #5261b7; --festival-wash: #f0f1ff; }
+.festival-ram-navami { --festival-color: #bd5a25; --festival-wash: #fff1e6; }
+
+[data-festival-theme="holi"] { --kb-primary: #9d367b; --kb-primary-deep: #712557; --kb-accent: #ef79a9; }
+[data-festival-theme="ganesh"] { --kb-primary: #a9511f; --kb-primary-deep: #773a19; --kb-accent: #f1a348; }
+[data-festival-theme="diwali"] { --kb-primary: #9a5b12; --kb-primary-deep: #71410b; --kb-accent: #f4bf44; }
+[data-festival-theme="navratri"] { --kb-primary: #7545aa; --kb-primary-deep: #53317e; --kb-accent: #e68ab4; }
+[data-festival-theme="janmashtami"] { --kb-primary: #235e9c; --kb-primary-deep: #183e68; --kb-accent: #71b3ed; }
+[data-festival-theme="shivratri"] { --kb-primary: #4d57a5; --kb-primary-deep: #363d79; --kb-accent: #adb6ff; }
+[data-festival-theme="ram-navami"] { --kb-primary: #ad5220; --kb-primary-deep: #7b3b17; --kb-accent: #f4a45b; }
+[data-festival-theme]:not([data-festival-theme="normal"]) .brand-mark { background: linear-gradient(145deg,var(--kb-accent),var(--kb-primary)); }
+[data-festival-theme]:not([data-festival-theme="normal"]) .nav-item.active { box-shadow: inset 3px 0 var(--kb-accent); }
+[data-festival-theme]:not([data-festival-theme="normal"]) .nav-item.active svg { color: var(--kb-accent); }
+[data-festival-theme]:not([data-festival-theme="normal"]) .btn.primary { background: linear-gradient(135deg,var(--kb-primary),var(--kb-primary-deep)); }
+[data-festival-theme]:not([data-festival-theme="normal"]) .page-heading .eyebrow { color: var(--kb-primary); }
+
+.mobile-tab-bar { display: none; }
+.workspace-loading { min-height: 88px; display: grid; place-items: center; color: #718096; font-size: 12px; }
+
+@media (max-width: 700px) {
+  .mobile-tab-bar {
+    position: fixed;
+    z-index: 19;
+    inset: auto 0 0;
+    display: grid;
+    grid-template-columns: repeat(5,minmax(0,1fr));
+    gap: 2px;
+    min-height: calc(62px + env(safe-area-inset-bottom,0px));
+    padding: 6px 8px calc(6px + env(safe-area-inset-bottom,0px));
+    border-top: 1px solid rgba(222,229,239,.88);
+    background: rgba(255,255,255,.94);
+    box-shadow: 0 -8px 26px rgba(33,52,79,.08);
+    backdrop-filter: blur(18px);
+  }
+  .mobile-tab {
+    display: grid;
+    place-items: center;
+    align-content: center;
+    gap: 3px;
+    min-width: 0;
+    min-height: 48px;
+    padding: 3px 0;
+    border: 0;
+    border-radius: 13px;
+    background: transparent;
+    color: #7b8799;
+  }
+  .mobile-tab span { max-width: 100%; overflow: hidden; color: inherit; font-size: 9px; font-weight: 750; text-overflow: ellipsis; white-space: nowrap; }
+  .mobile-tab.active { color: var(--kb-primary); background: color-mix(in srgb, var(--kb-primary) 9%, white); }
+  .mobile-tab.active svg { stroke-width: 2.5; }
+  .content { padding: 15px 14px calc(92px + env(safe-area-inset-bottom,0px))!important; }
+  .page-heading { align-items: flex-start!important; gap: 12px!important; margin-bottom: 17px; }
+  .page-heading h1 { font-size: clamp(23px,6vw,29px)!important; line-height: 1.13; letter-spacing: -.7px; }
+  .page-heading p { max-width: 34ch; font-size: 11px!important; line-height: 1.5; }
+  .page-heading .eyebrow { margin-bottom: 7px; font-size: 9px; }
+  .heading-actions { width: 100%; }
+  .heading-actions .btn { width: 100%; justify-content: center; }
+  .topbar { min-height: 56px; padding: 0 12px!important; }
+  .topbar .crumb { font-size: 10px!important; }
+  .topbar .system-status, .topbar .preference-controls { display: none!important; }
+  .top-actions { gap: 8px!important; }
+  .hamburger { width: 38px!important; height: 38px!important; border-radius: 12px!important; background: #f2f5fa!important; }
+  .festival-banner { grid-template-columns: 42px minmax(0,1fr) 18px; gap: 10px; margin-bottom: 15px; padding: 12px; border-radius: 16px; }
+  .festival-banner-symbol { width: 40px; height: 40px; border-radius: 13px; font-size: 22px; }
+  .festival-banner strong { font-size: 15px; }
+  .festival-banner div span { font-size: 10px; }
+  .quick-actions { gap: 8px!important; }
+  .quick-actions button { min-height: 74px; border-radius: 15px!important; box-shadow: 0 4px 14px rgba(27,46,73,.055); }
+  .panel,.ops-panel,.finance-panel,.calendar-panel { border-radius: 17px!important; box-shadow: 0 5px 20px rgba(26,47,77,.045); }
+  .content .stats-grid,.content .finance-metrics,.content .ops-summary-grid { gap: 8px!important; }
+  .content .stats-grid article,.content .finance-metrics article,.content .ops-summary { border-radius: 15px; }
+  .content .finance-metrics strong,.content .ops-summary strong { font-size: 20px; }
+  .content footer { padding-bottom: 8px; }
+  [data-theme="dark"] .mobile-tab-bar { border-color: #2b3a50; background: rgba(17,28,44,.96); }
+  [data-theme="dark"] .mobile-tab { color: #a9b8cb; }
+  [data-theme="dark"] .mobile-tab.active { color: #c5ddfa; background: #213c5c; }
+  [data-theme="dark"] .festival-banner { --festival-ink: #eef2f8; background: linear-gradient(110deg,#1a2a40,#162235 76%); border-color: color-mix(in srgb,var(--festival-color) 36%,#25364d); }
+  [data-theme="dark"] .festival-banner div span { color: #b5c1d2; }
+}
+
+@media (max-width: 380px) {
+  .mobile-tab-bar { padding-inline: 4px; }
+  .mobile-tab span { font-size: 8px; }
+  .content { padding-inline: 11px!important; }
+}
+
+@keyframes page-arrive { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes graph-rise { from { transform: scaleY(.08); opacity: .35; } to { transform: scaleY(1); opacity: 1; } }
+@keyframes graph-fill { from { width: 0; } }
+@keyframes festival-enter { from { opacity: 0; transform: translateY(8px) scale(.99); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@keyframes festival-glow { 0%,100% { box-shadow: 0 0 0 0 color-mix(in srgb,var(--festival-color) 0%,transparent); } 50% { box-shadow: 0 0 0 7px color-mix(in srgb,var(--festival-color) 10%,transparent); } }
+@keyframes sparkle-turn { to { transform: rotate(360deg); } }
+@media(prefers-reduced-motion:reduce){.page-transition,.festival-banner,.festival-banner-symbol,.festival-sparkle,.finance-chart-bar,.status-chart-row i{animation:none!important}}
