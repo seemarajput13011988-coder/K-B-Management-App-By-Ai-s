@@ -17,6 +17,8 @@ on:
       - whole-app-gps-ui-sync-audit-2026-11-07
       - nexus-workforce-payroll-media-ui-2026-11-07
       - nexus-release-audit-2026-11-07
+      - recovery/live-gps-fix-2026-11-10
+      - nexus-new-generation-redesign-2026-11-10
     paths:
       - "src/**"
       - "render-backend/**"
@@ -32,7 +34,7 @@ on:
       - ".github/workflows/android-apk.yml"
       - ".github/workflows/ota-release.yml"
   pull_request:
-    branches: [main]
+    branches: [main, recovery/live-gps-fix-2026-11-10]
     paths:
       - "src/**"
       - "render-backend/**"
@@ -217,6 +219,7 @@ jobs:
             @Override
             public void onCreate(Bundle savedInstanceState) {
               registerPlugin(DocumentSaverPlugin.class);
+              registerPlugin(WorkLocationTrackingPlugin.class);
               super.onCreate(savedInstanceState);
             }
           }
@@ -695,9 +698,11 @@ jobs:
                 return;
               }
               if (locationCallback != null) return;
+              // Keep timestamped live fixes arriving even while the staff member is stationary.
+              // A distance threshold can leave the admin map showing an old saved point indefinitely.
               LocationRequest request = new LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 15000L)
                 .setMinUpdateIntervalMillis(10000L)
-                .setMinUpdateDistanceMeters(10f)
+                .setMinUpdateDistanceMeters(0f)
                 .build();
               LocationCallback callback = new LocationCallback() {
                 @Override public void onLocationResult(LocationResult result) {
@@ -856,6 +861,7 @@ jobs:
               "if (!shiftServerConfirmed || now - lastUploadAt < 9000L || stopping) return;",
               "shiftServerConfirmed = false;",
               "checkShiftStatus();",
+              ".setMinUpdateDistanceMeters(0f)",
           ]
           missing = [item for item in required if item not in source]
           if source.count("stopIfCachedDeadlineExpired();") < 3:

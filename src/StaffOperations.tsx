@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Geolocation } from '@capacitor/geolocation';
 import { Capacitor } from '@capacitor/core';
+import { startWorkLocationTracking, stopWorkLocationTracking } from './lib/work-location-tracking';
 import { api as client, subscribeToApiChanges } from './lib/api';
 
 type Session = { token: string; user: { id: string; displayName: string; role: 'admin' | 'staff'; canManageAdmins?: boolean } };
@@ -136,6 +137,19 @@ export default function StaffOperations({ session, customers, flash, compact = f
   const [shiftSettings, setShiftSettings] = useState({ shiftStartTime: '08:00', shiftEndTime: '19:00' });
   const [shiftSettingsBusy, setShiftSettingsBusy] = useState(false);
   const [shiftSettingsAvailable, setShiftSettingsAvailable] = useState(true);
+  const [teamSearch, setTeamSearch] = useState('');
+  const [adminSearch, setAdminSearch] = useState('');
+  const [teamSort, setTeamSort] = useState<'name'|'active'|'records'>('name');
+  const [attendanceSearch, setAttendanceSearch] = useState('');
+  const [attendanceStatus, setAttendanceStatus] = useState('all');
+  const [attendanceSort, setAttendanceSort] = useState<'newest'|'oldest'|'name'>('newest');
+  const [holidaySearch, setHolidaySearch] = useState('');
+  const [holidayStatus, setHolidayStatus] = useState('all');
+  const [holidaySort, setHolidaySort] = useState<'newest'|'oldest'|'name'>('newest');
+  const [visitSearch, setVisitSearch] = useState('');
+  const [visitSort, setVisitSort] = useState<'newest'|'oldest'|'customer'>('newest');
+  const [announcementSearch, setAnnouncementSearch] = useState('');
+  const [messageSearch, setMessageSearch] = useState('');
   const toMinutes = (value: string) => { const [hour, minute] = value.split(':').map(Number); return hour * 60 + minute; };
   const staffShiftWindowOpen = indiaMinutes >= toMinutes(shiftSettings.shiftStartTime) && indiaMinutes < toMinutes(shiftSettings.shiftEndTime);
   const myTodayRecord = attendance.filter(item => item.userId === session.user.id && item.workDate === today).sort((a, b) => b.checkInAt.localeCompare(a.checkInAt))[0];
@@ -347,14 +361,46 @@ export default function StaffOperations({ session, customers, flash, compact = f
   async function shift(action: 'check-in' | 'check-out') {
     setBusy(true);
     try {
-      // The backend applies a 15-minute GPS restoration grace period. Confirm
-      // permission and a fresh fix before opening a shift so staff are not
-      // checked in only to have the shift cancelled for missing location.
+      // Confirm a fresh fix before opening a shift.
       if (action === 'check-in') await ensureLocationReadyForShift();
       await request('post', '/api/attendance/' + action, { dayType, capturedAt: new Date().toISOString() });
+
+      let gpsWarning = '';
+      if (Capacitor.isNativePlatform()) {
+        try {
+          if (action === 'check-in') {
+            // The Android foreground service must be explicitly started from
+            // the visible app after the server has created the active shift.
+            const result = await request('get', '/api/attendance');
+            const activeRecord = (result.data.items || [])
+              .filter((item: Attendance) => item.userId === session.user.id && isOpenShift(item))
+              .sort((a: Attendance, b: Attendance) => Date.parse(b.checkInAt) - Date.parse(a.checkInAt))[0];
+            if (!activeRecord) throw new Error('The server did not confirm the new active shift.');
+            await startWorkLocationTracking({
+              token: session.token,
+              attendanceId: activeRecord.id,
+              scheduledEndAt: activeRecord.autoCheckoutAt || activeRecord.scheduledEndAt || '',
+            });
+          } else {
+            // Stop collection immediately after the server confirms checkout.
+            await stopWorkLocationTracking();
+          }
+        } catch (gpsError) {
+          gpsWarning = gpsError instanceof Error ? gpsError.message : 'Android background GPS service could not be started.';
+        }
+      }
+
       await refresh();
       onDataChanged?.();
-      flash(action === 'check-in' ? 'You are checked in for today.' : 'Your shift has been checked out.');
+      if (action === 'check-in') {
+        flash(gpsWarning
+          ? 'You are checked in, but background GPS did not start: ' + gpsWarning
+          : 'You are checked in. Android background GPS tracking has started.');
+      } else {
+        flash(gpsWarning
+          ? 'Your shift has ended, but Android GPS service did not confirm stopping: ' + gpsWarning
+          : 'Your shift has been checked out.');
+      }
     } catch (err) {
       flash(err instanceof Error ? err.message : 'Attendance update failed.');
     } finally { setBusy(false); }
@@ -480,9 +526,14 @@ export default function StaffOperations({ session, customers, flash, compact = f
   const monthCollected = payments.filter(payment => String(payment.paidAt || '').slice(0, 7) === monthKey).reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
   const activeToday = attendance.filter(item => item.workDate === today && !item.checkOutAt).length;
   const completedToday = attendance.filter(item => item.workDate === today && !!item.checkOutAt).length;
-  const sortedAttendance = [...attendance].sort((a, b) => b.workDate.localeCompare(a.workDate) || b.checkInAt.localeCompare(a.checkInAt));
-  const sortedVisits = [...visits].sort((a, b) => b.visitedAt.localeCompare(a.visitedAt));
-  const sortedMessages = [...messages].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const matchesText = (query: string, values: unknown[]) => !query.trim() || values.some(value => String(value ?? '').toLowerCase().includes(query.trim().toLowerCase()));
+  const visibleStaff = staff.filter(item => matchesText(teamSearch, [item.displayName, item.id])).sort((a,b) => teamSort === 'active' ? Number(b.active)-Number(a.active) || a.displayName.localeCompare(b.displayName) : teamSort === 'records' ? attendance.filter(x=>x.userId===b.id).length-attendance.filter(x=>x.userId===a.id).length : a.displayName.localeCompare(b.displayName));
+  const sortedAttendance = [...attendance].filter(item => matchesText(attendanceSearch,[item.displayName,item.workDate,item.status,item.dayType,item.checkInAt,item.checkOutAt]) && (attendanceStatus === 'all' || (attendanceStatus === 'open' ? !item.checkOutAt && item.dayType !== 'Absent' : attendanceStatus === 'completed' ? !!item.checkOutAt : attendanceStatus === 'absent' ? item.dayType === 'Absent' || String(item.status||'').toLowerCase().includes('absent') : item.dayType === attendanceStatus))).sort((a,b) => attendanceSort === 'name' ? a.displayName.localeCompare(b.displayName) : attendanceSort === 'oldest' ? a.workDate.localeCompare(b.workDate) || a.checkInAt.localeCompare(b.checkInAt) : b.workDate.localeCompare(a.workDate) || b.checkInAt.localeCompare(a.checkInAt));
+  const sortedVisits = [...visits].filter(item => matchesText(visitSearch,[item.customerName,item.purpose,item.notes,item.staffName,item.visitedAt])).sort((a,b) => visitSort === 'customer' ? a.customerName.localeCompare(b.customerName) : visitSort === 'oldest' ? a.visitedAt.localeCompare(b.visitedAt) : b.visitedAt.localeCompare(a.visitedAt));
+  const sortedMessages = [...messages].filter(item => matchesText(messageSearch,[item.senderName,item.recipientName,item.message,item.createdAt])).sort((a,b) => b.createdAt.localeCompare(a.createdAt));
+  const sortedHolidays = [...holidays].filter(item => matchesText(holidaySearch,[item.displayName,item.reason,item.startDate,item.endDate,item.status]) && (holidayStatus === 'all' || item.status === holidayStatus)).sort((a,b) => holidaySort === 'name' ? a.displayName.localeCompare(b.displayName) : holidaySort === 'oldest' ? a.createdAt.localeCompare(b.createdAt) : b.createdAt.localeCompare(a.createdAt));
+  const sortedAnnouncements = [...announcements].filter(item => matchesText(announcementSearch,[item.title,item.message,item.createdByName,item.createdAt])).sort((a,b) => b.createdAt.localeCompare(a.createdAt));
+  const sortedAdmins = [...admins].filter(item => matchesText(adminSearch,[item.displayName,item.userId])).sort((a,b) => a.displayName.localeCompare(b.displayName));
   const attendanceTrend = Array.from({length:6},(_,index)=>{
     const date=new Date(); date.setDate(1); date.setMonth(date.getMonth()-(5-index));
     const key=date.getFullYear()+'-'+String(date.getMonth()+1).padStart(2,'0');
@@ -528,7 +579,8 @@ export default function StaffOperations({ session, customers, flash, compact = f
         <input required minLength={12} type="password" autoComplete="new-password" placeholder="Temporary password (12+ characters)" value={adminForm.password} onChange={e=>setAdminForm({...adminForm,password:e.target.value})}/>
         <button className="btn primary" disabled={busy}>Add administrator</button>
       </form>
-      <div className="ops-location-list">{admins.map(item=><article className="ops-location-card" key={item.id}><div className="ops-person"><span className="avatar">{item.displayName.slice(0,2).toUpperCase()}</span><div><b>{item.displayName}</b><small>{item.userId} · {item.userId.toLowerCase()==='brajraj'?'Primary owner':'Administrator'}</small></div></div><div className="ops-location-detail"><span className={item.active?'ops-pill is-live':'ops-pill is-idle'}>{item.active?'ACTIVE':'DISABLED'}</span>{item.userId.toLowerCase()!=='brajraj' && <button className={'btn compact '+(item.active?'danger':'secondary')} disabled={busy} onClick={()=>updateAdminAccount(item,!item.active)}>{item.active?'Deactivate':'Reactivate'}</button>}</div></article>)}</div>
+      <div className="data-toolbar"><label className="data-search">Search administrators<input value={adminSearch} onChange={e=>setAdminSearch(e.target.value)} placeholder="Name or login ID"/></label><span className="data-result-count">{sortedAdmins.length} shown</span></div>
+      <div className="ops-location-list">{sortedAdmins.map(item=><article className="ops-location-card" key={item.id}><div className="ops-person"><span className="avatar">{item.displayName.slice(0,2).toUpperCase()}</span><div><b>{item.displayName}</b><small>{item.userId} · {item.userId.toLowerCase()==='brajraj'?'Primary owner':'Administrator'}</small></div></div><div className="ops-location-detail"><span className={item.active?'ops-pill is-live':'ops-pill is-idle'}>{item.active?'ACTIVE':'DISABLED'}</span>{item.userId.toLowerCase()!=='brajraj' && <button className={'btn compact '+(item.active?'danger':'secondary')} disabled={busy} onClick={()=>updateAdminAccount(item,!item.active)}>{item.active?'Deactivate':'Reactivate'}</button>}</div></article>)}</div>
     </section>}
 
     {admin && <section className="panel ops-panel">
@@ -542,7 +594,8 @@ export default function StaffOperations({ session, customers, flash, compact = f
 
     {admin && <section className="panel ops-panel team-summary-panel">
       <div className="ops-panel-head"><div><span className="eyebrow">BUSINESS DATA</span><h2>Team collection summary</h2><p>Collections are attributed to the staff account that recorded each payment.</p></div><span className="ops-pill is-live">LIVE DATA</span></div>
-      <div className="table-wrap"><table><thead><tr><th>STAFF MEMBER</th><th>PAYMENT RECORDS</th><th>TOTAL COLLECTED</th><th>THIS MONTH</th><th>ATTENDANCE DAYS</th><th>TODAY</th></tr></thead><tbody>{staff.map(member => {
+      <div className="data-toolbar"><label className="data-search">Search staff<input value={teamSearch} onChange={e=>setTeamSearch(e.target.value)} placeholder="Staff name or ID"/></label><label>Sort by<select value={teamSort} onChange={e=>setTeamSort(e.target.value as typeof teamSort)}><option value="name">Name A–Z</option><option value="active">Active first</option><option value="records">Most attendance records</option></select></label><span className="data-result-count">{visibleStaff.length} staff</span></div>
+      <div className="table-wrap"><table><thead><tr><th>STAFF MEMBER</th><th>PAYMENT RECORDS</th><th>TOTAL COLLECTED</th><th>THIS MONTH</th><th>ATTENDANCE DAYS</th><th>TODAY</th></tr></thead><tbody>{visibleStaff.map(member => {
         const memberPayments = payments.filter(payment => payment.recordedBy === member.id);
         const memberTotal = memberPayments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
         const memberMonth = memberPayments.filter(payment => String(payment.paidAt || '').slice(0, 7) === monthKey).reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
@@ -555,7 +608,8 @@ export default function StaffOperations({ session, customers, flash, compact = f
 
     {admin && <section className="panel ops-panel">
       <div className="ops-panel-head"><div><span className="eyebrow">TEAM ATTENDANCE</span><h2>Individual staff calendars</h2><p>Green is full day, yellow is half day, red is absent. Sundays are weekly off by default; pending and approved holidays are marked separately.</p></div></div>
-      <div className="attendance-calendar-list">{staff.map(member=>{
+      <div className="data-toolbar"><label className="data-search">Search staff calendars<input value={teamSearch} onChange={e=>setTeamSearch(e.target.value)} placeholder="Staff name"/></label><label>Sort by<select value={teamSort} onChange={e=>setTeamSort(e.target.value as typeof teamSort)}><option value="name">Name A–Z</option><option value="active">Active first</option><option value="records">Most attendance records</option></select></label><span className="data-result-count">{visibleStaff.length} staff</span></div>
+      <div className="attendance-calendar-list">{visibleStaff.map(member=>{
         const memberRecords=attendance.filter(item=>item.userId===member.id);
         const memberDays=memberRecords.filter(item=>item.dayType!=='Absent').reduce((sum,item)=>sum+(item.dayType==='Half day'?0.5:1),0);
         const memberPayments=payments.filter(item=>item.recordedBy===member.id);
@@ -579,7 +633,8 @@ export default function StaffOperations({ session, customers, flash, compact = f
     <section className="panel ops-panel">
       <div className="ops-panel-head"><div><span className="eyebrow">HOLIDAY MANAGEMENT</span><h2>{admin ? 'Staff holiday requests' : 'Request a holiday'}</h2><p>Pending and approved holiday dates are exempt from automatic GPS shift cancellation.</p></div><span className="ops-pill">{holidays.filter(item=>item.status==='pending').length} PENDING</span></div>
       {!admin && <form className="ops-form" onSubmit={e=>{e.preventDefault();submit('/api/holidays',{...holidayForm},'Holiday request submitted for admin approval.');setHolidayForm({...holidayForm,reason:''});}}><label>From <input type="date" required value={holidayForm.startDate} onChange={e=>setHolidayForm({...holidayForm,startDate:e.target.value})}/></label><label>To <input type="date" required min={holidayForm.startDate} value={holidayForm.endDate} onChange={e=>setHolidayForm({...holidayForm,endDate:e.target.value})}/></label><textarea required maxLength={300} rows={2} placeholder="Reason for holiday request" value={holidayForm.reason} onChange={e=>setHolidayForm({...holidayForm,reason:e.target.value})}/><button className="btn primary" disabled={busy}>Submit holiday request</button></form>}
-      <div className="ops-feed">{holidays.map(item=><article className="ops-feed-item" key={item.id}><div className="ops-message-top"><b>{item.displayName} · {item.startDate}{item.endDate!==item.startDate?' to '+item.endDate:''}</b><span className={'ops-pill '+(item.status==='approved'?'is-live':item.status==='rejected'?'is-idle':'')}>{item.status.toUpperCase()}</span></div><p>{item.reason}</p><small>Requested {stamp(item.createdAt)}</small>{admin && item.status==='pending' && <div className="ops-actions"><button className="btn primary compact" disabled={busy} onClick={()=>submit('/api/holidays/'+item.id,{status:'approved'},'Holiday request approved.')}>Approve</button><button className="btn danger compact" disabled={busy} onClick={()=>submit('/api/holidays/'+item.id,{status:'rejected'},'Holiday request rejected.')}>Reject</button></div>}</article>)}{!holidays.length && <p className="ops-empty">No holiday requests yet.</p>}</div>
+      <div className="data-toolbar"><label className="data-search">Search holiday requests<input value={holidaySearch} onChange={e=>setHolidaySearch(e.target.value)} placeholder="Staff, reason or date"/></label><label>Status<select value={holidayStatus} onChange={e=>setHolidayStatus(e.target.value)}><option value="all">All statuses</option><option value="pending">Pending</option><option value="approved">Approved</option><option value="rejected">Rejected</option></select></label><label>Sort by<select value={holidaySort} onChange={e=>setHolidaySort(e.target.value as typeof holidaySort)}><option value="newest">Newest first</option><option value="oldest">Oldest first</option><option value="name">Staff A–Z</option></select></label><span className="data-result-count">{sortedHolidays.length} shown</span></div>
+      <div className="ops-feed">{sortedHolidays.map(item=><article className="ops-feed-item" key={item.id}><div className="ops-message-top"><b>{item.displayName} · {item.startDate}{item.endDate!==item.startDate?' to '+item.endDate:''}</b><span className={'ops-pill '+(item.status==='approved'?'is-live':item.status==='rejected'?'is-idle':'')}>{item.status.toUpperCase()}</span></div><p>{item.reason}</p><small>Requested {stamp(item.createdAt)}</small>{admin && item.status==='pending' && <div className="ops-actions"><button className="btn primary compact" disabled={busy} onClick={()=>submit('/api/holidays/'+item.id,{status:'approved'},'Holiday request approved.')}>Approve</button><button className="btn danger compact" disabled={busy} onClick={()=>submit('/api/holidays/'+item.id,{status:'rejected'},'Holiday request rejected.')}>Reject</button></div>}</article>)}{!holidays.length && <p className="ops-empty">No holiday requests yet.</p>}</div>
     </section>
 
     {!admin && <section className="panel ops-panel">
@@ -632,7 +687,8 @@ export default function StaffOperations({ session, customers, flash, compact = f
       <section className="panel ops-panel">
         <div className="ops-panel-head"><div><span className="eyebrow">TEAM UPDATES</span><h2>Announcements</h2><p>Important instructions and business updates.</p></div></div>
         {admin && <form className="ops-form" onSubmit={e => { e.preventDefault(); if (announcementForm.title.trim() && announcementForm.message.trim()) { submit('/api/announcements', announcementForm, 'Announcement published.'); setAnnouncementForm({ title: '', message: '' }); } }}><input required maxLength={120} placeholder="Announcement title" value={announcementForm.title} onChange={e => setAnnouncementForm({ ...announcementForm, title: e.target.value })}/><textarea required maxLength={2000} rows={3} placeholder="Write an update for the staff team..." value={announcementForm.message} onChange={e => setAnnouncementForm({ ...announcementForm, message: e.target.value })}/><button className="btn primary" disabled={busy}>Publish announcement</button></form>}
-        <div className="ops-feed">{announcements.map(item => <article className="ops-feed-item" key={item.id}><div className="ops-message-top"><b>{item.title}</b>{admin && <button className="btn danger compact" disabled={busy} onClick={() => deleteAdminRecord('/api/announcements/' + item.id, 'Delete this announcement for everyone?', 'Announcement deleted.')}>Delete</button>}</div><p>{item.message}</p><small>{item.createdByName} · {stamp(item.createdAt)}</small></article>)}{!announcements.length && <p className="ops-empty">No announcements yet.</p>}</div>
+        <div className="data-toolbar"><label className="data-search">Search announcements<input value={announcementSearch} onChange={e=>setAnnouncementSearch(e.target.value)} placeholder="Title, message or author"/></label><span className="data-result-count">{sortedAnnouncements.length} shown</span></div>
+        <div className="ops-feed">{sortedAnnouncements.map(item => <article className="ops-feed-item" key={item.id}><div className="ops-message-top"><b>{item.title}</b>{admin && <button className="btn danger compact" disabled={busy} onClick={() => deleteAdminRecord('/api/announcements/' + item.id, 'Delete this announcement for everyone?', 'Announcement deleted.')}>Delete</button>}</div><p>{item.message}</p><small>{item.createdByName} · {stamp(item.createdAt)}</small></article>)}{!announcements.length && <p className="ops-empty">No announcements yet.</p>}</div>
       </section>
       <section className="panel ops-panel">
         <div className="ops-panel-head"><div><span className="eyebrow">COMMUNICATION</span><h2>{admin ? 'Team inbox' : 'Message administration'}</h2><p>{admin ? 'Read staff messages and send a direct reply.' : 'Send a message to the K&B administrator.'}</p></div></div>
@@ -641,7 +697,8 @@ export default function StaffOperations({ session, customers, flash, compact = f
           <textarea required maxLength={1500} rows={3} placeholder="Write a message..." value={messageForm.message} onChange={e => setMessageForm({ ...messageForm, message: e.target.value })}/>
           <button className="btn primary" disabled={busy || (admin && !staff.length)}>Send message</button>
         </form>
-        <div className="ops-feed">{sortedMessages.map(item => <article className="ops-feed-item" key={item.id}><div className="ops-message-top"><b>{item.senderName}</b><small>{stamp(item.createdAt)}</small></div><p>{item.message}</p>{admin && <div className="ops-message-top"><small>To: {item.recipientName}</small><button className="btn danger compact" disabled={busy} onClick={() => deleteAdminRecord('/api/messages/' + item.id, 'Delete this direct message permanently?', 'Message deleted.')}>Delete</button></div>}</article>)}{!messages.length && <p className="ops-empty">No messages yet.</p>}</div>
+        <div className="data-toolbar"><label className="data-search">Search messages<input value={messageSearch} onChange={e=>setMessageSearch(e.target.value)} placeholder="Sender, recipient or message"/></label><span className="data-result-count">{sortedMessages.length} shown</span></div>
+         <div className="ops-feed">{sortedMessages.map(item => <article className="ops-feed-item" key={item.id}><div className="ops-message-top"><b>{item.senderName}</b><small>{stamp(item.createdAt)}</small></div><p>{item.message}</p>{admin && <div className="ops-message-top"><small>To: {item.recipientName}</small><button className="btn danger compact" disabled={busy} onClick={() => deleteAdminRecord('/api/messages/' + item.id, 'Delete this direct message permanently?', 'Message deleted.')}>Delete</button></div>}</article>)}{!messages.length && <p className="ops-empty">No messages yet.</p>}</div>
       </section>
     </div>
 
@@ -667,6 +724,7 @@ export default function StaffOperations({ session, customers, flash, compact = f
     <section className="panel ops-panel">
       <div className="ops-panel-head"><div><span className="eyebrow">CUSTOMER SERVICE</span><h2>{admin ? 'Field visit history' : 'Record a customer visit'}</h2><p>{admin ? 'Service visits submitted by the team.' : 'Save what you did at a customer location.'}</p></div></div>
       {!admin && <form className="ops-form ops-visit-form" onSubmit={e => { e.preventDefault(); if (visitForm.customerId && visitForm.purpose.trim()) submit('/api/visits', { ...visitForm, visitedAt: new Date().toISOString() }, 'Customer visit recorded.'); }}><select required value={visitForm.customerId} onChange={e => setVisitForm({ ...visitForm, customerId: e.target.value })}><option value="">Choose assigned customer</option>{customers.map(customer => <option key={customer.id} value={customer.id}>{customer.name}</option>)}</select><input required maxLength={120} value={visitForm.purpose} onChange={e => setVisitForm({ ...visitForm, purpose: e.target.value })} placeholder="Visit purpose"/><textarea rows={2} maxLength={1200} value={visitForm.notes} onChange={e => setVisitForm({ ...visitForm, notes: e.target.value })} placeholder="Work completed, issue found, follow-up needed..."/><button className="btn primary" disabled={busy || !customers.length}>Save visit</button>{!customers.length && <small className="ops-empty">No assigned customers are available for visits.</small>}</form>}
+      <div className="data-toolbar"><label className="data-search">Search field visits<input value={visitSearch} onChange={e=>setVisitSearch(e.target.value)} placeholder="Customer, staff, purpose or notes"/></label><label>Sort by<select value={visitSort} onChange={e=>setVisitSort(e.target.value as typeof visitSort)}><option value="newest">Newest first</option><option value="oldest">Oldest first</option><option value="customer">Customer A–Z</option></select></label><span className="data-result-count">{sortedVisits.length} shown</span></div>
       <div className="ops-feed">{sortedVisits.map(item => <article className="ops-feed-item" key={item.id}><div className="ops-message-top"><b>{item.customerName}</b><small>{stamp(item.visitedAt)}</small></div><p>{item.purpose}</p>{item.notes && <p>{item.notes}</p>}{admin && <small>Staff: {item.staffName}</small>}</article>)}{!visits.length && <p className="ops-empty">No field visits recorded yet.</p>}</div>
     </section>
 
@@ -678,6 +736,7 @@ export default function StaffOperations({ session, customers, flash, compact = f
 
     <section className="panel ops-panel">
       <div className="ops-panel-head"><div><span className="eyebrow">WORK HISTORY</span><h2>{admin ? 'Team attendance history' : 'My attendance history'}</h2><p>Daily attendance records, kept separate by staff member and date.</p></div></div>
+      <div className="data-toolbar"><label className="data-search">Search attendance<input value={attendanceSearch} onChange={e=>setAttendanceSearch(e.target.value)} placeholder="Staff, date or attendance status"/></label><label>Status<select value={attendanceStatus} onChange={e=>setAttendanceStatus(e.target.value)}><option value="all">All records</option><option value="open">On shift</option><option value="completed">Completed</option><option value="absent">Absent</option><option value="Full day">Full day</option><option value="Half day">Half day</option></select></label><label>Sort by<select value={attendanceSort} onChange={e=>setAttendanceSort(e.target.value as typeof attendanceSort)}><option value="newest">Newest first</option><option value="oldest">Oldest first</option><option value="name">Staff A–Z</option></select></label><span className="data-result-count">{sortedAttendance.length} records</span></div>
       <div className="ops-history-list">{sortedAttendance.slice(0, 30).map(item => <article className="ops-history-row" key={item.id}><div><b>{item.displayName}</b><small>{item.workDate}</small></div><span>{stamp(item.checkInAt)}</span><span>{item.checkOutAt ? stamp(item.checkOutAt) : 'Still checked in'}</span><strong>{item.dayType === 'Absent' ? 'Absent' : (item.dayType || 'Full day') + ' · ' + (item.checkOutAt ? 'Completed' : 'On shift')}</strong>{admin && <button className="btn secondary compact" onClick={()=>setAttendanceCorrection({id:item.id,dayType:item.dayType||'Full day',reason:''})}>Correct</button>}</article>)}{!attendance.length && <p className="ops-empty">Attendance history will appear here.</p>}</div>
     </section>
     {loading && <div className="ops-loading">Loading team operations…</div>}

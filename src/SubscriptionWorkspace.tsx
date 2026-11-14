@@ -39,6 +39,8 @@ export default function SubscriptionWorkspace({ customers, plans, isAdmin, flash
   const [paidAt,setPaidAt] = useState(todayKey());
   const [paymentMethod,setPaymentMethod] = useState('UPI');
   const [filter,setFilter] = useState<'All'|'Active'|'Pending'|'Expired'|'Cancelled'>('All');
+  const [search,setSearch] = useState('');
+  const [sortBy,setSortBy] = useState<'expiry'|'customer'|'amount'>('expiry');
 
   async function load() {
     setLoading(true);
@@ -64,7 +66,7 @@ export default function SubscriptionWorkspace({ customers, plans, isAdmin, flash
     if(selectedPlan) setAmount(String(selectedPlan.price));
   },[plan]);
 
-  const visible = useMemo(()=>items.filter(item=>filter==='All'||item.status===filter),[items,filter]);
+  const visible = useMemo(()=>items.filter(item=>(filter==='All'||item.status===filter)&&[item.customerName,item.plan,item.paymentStatus,item.paymentMethod||'',item.status,item.startDate,item.endDate].join(' ').toLowerCase().includes(search.trim().toLowerCase())).sort((a,b)=>sortBy==='customer'?a.customerName.localeCompare(b.customerName):sortBy==='amount'?b.amount-a.amount:a.endDate.localeCompare(b.endDate)),[items,filter,search,sortBy]);
   async function createRenewal(event: FormEvent) {
     event.preventDefault();
     if(!customerId||!plan||!startDate||!endDate||Number(amount)<=0) { flash('Complete all renewal details.'); return; }
@@ -92,6 +94,7 @@ export default function SubscriptionWorkspace({ customers, plans, isAdmin, flash
         <button className="btn primary" onClick={()=>setShowForm(value=>!value)} disabled={!customers.length}>+ New renewal</button>
       </div>
     </div>
+    <div className="data-toolbar subscription-data-toolbar"><label className="data-search"><span>Search renewals</span><input type="search" value={search} onChange={event=>setSearch(event.target.value)} placeholder="Customer, plan, payment or date…"/></label><label>Sort by<select value={sortBy} onChange={event=>setSortBy(event.target.value as typeof sortBy)}><option value="expiry">Expiry date</option><option value="customer">Customer A–Z</option><option value="amount">Amount (high–low)</option></select></label><span className="data-result-count">{visible.length} of {items.length} renewals</span></div>
     {showForm && <form className="subscription-form" onSubmit={createRenewal}>
       <label>Customer<select required value={customerId} onChange={event=>setCustomerId(event.target.value)}>{customers.map(item=><option key={item.id} value={item.id}>{item.name} · {item.phone || item.plan}</option>)}</select></label>
       <label>Plan<select required value={plan} onChange={event=>setPlan(event.target.value)}>{plans.filter(item=>item.active).map(item=><option key={item.id} value={item.name}>{item.name}</option>)}{plan&&!plans.some(item=>item.name===plan)&&<option value={plan}>{plan} (current)</option>}</select></label>
@@ -116,7 +119,7 @@ export default function SubscriptionWorkspace({ customers, plans, isAdmin, flash
       </tr>)}</tbody>
     </table>{!visible.length&&<p className="ops-empty">{items.length?'No renewals match this filter.':'No renewal records yet. Create the first renewal above.'}</p>}</div>}
     <style>{`
-      .subscription-toolbar-actions{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+      .subscription-toolbar-actions{display:flex;align-items:center;gap:9px;flex-wrap:wrap}.subscription-data-toolbar{margin:14px 0 16px}
       .subscription-toolbar-actions select,.subscription-table select,.subscription-form input,.subscription-form select{min-height:40px;padding:8px 10px;border:1px solid var(--border,#dbe2ec);border-radius:9px;background:var(--surface,#fff);color:var(--text,#172033);font:inherit}
       .subscription-form{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:13px;padding:16px;margin:12px 0 18px;border:1px solid var(--border,#dbe2ec);border-radius:14px;background:var(--surface-soft,#f7f9fc)}
       .subscription-form label{display:grid;gap:6px;font-size:12px;font-weight:700;color:var(--muted,#526176)}

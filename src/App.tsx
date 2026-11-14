@@ -243,7 +243,27 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   const [showPayment, setShowPayment] = useState(false);
   const [editingPayment, setEditingPayment] = useState<Payment | null>(null);
   const [paymentSearch, setPaymentSearch] = useState('');
+  const [paymentMonth, setPaymentMonth] = useState('');
+  const [paymentWeek, setPaymentWeek] = useState<'all'|'1'|'2'|'3'|'4'|'5'>('all');
   const [staffSearch, setStaffSearch] = useState('');
+  const [customerStatusFilter, setCustomerStatusFilter] = useState<'all'|'Active'|'Inactive'|'Suspended'>('all');
+  const [customerSort, setCustomerSort] = useState<'name'|'fee'|'newest'>('name');
+  const [planSort, setPlanSort] = useState<'name'|'price'>('name');
+  const [paymentSort, setPaymentSort] = useState<'newest'|'oldest'|'amount'|'customer'>('newest');
+  const [staffSort, setStaffSort] = useState<'name'|'active'|'records'>('name');
+  const [adminSearch, setAdminSearch] = useState('');
+  const [adminStatus, setAdminStatus] = useState('all');
+  const [holidaySearch, setHolidaySearch] = useState('');
+  const [holidayStatus, setHolidayStatus] = useState('all');
+  const [holidaySort, setHolidaySort] = useState<'newest'|'oldest'|'name'>('newest');
+  const [taskSearch, setTaskSearch] = useState('');
+  const [taskStatus, setTaskStatus] = useState('all');
+  const [taskPriority, setTaskPriority] = useState('all');
+  const [taskSort, setTaskSort] = useState<'due'|'newest'|'priority'|'name'>('due');
+  const [complaintSearch, setComplaintSearch] = useState('');
+  const [complaintStatus, setComplaintStatus] = useState('all');
+  const [complaintPriority, setComplaintPriority] = useState('all');
+  const [complaintSort, setComplaintSort] = useState<'newest'|'oldest'|'priority'|'subject'>('newest');
   const [showComplaint, setShowComplaint] = useState(false);
   const [complaintPreview, setComplaintPreview] = useState<{name:string;mimeType:string;dataUrl:string}|null>(null);
   const [notice, setNotice] = useState('');
@@ -443,16 +463,24 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   const filtered = useMemo(
     () =>
       customers.filter(c =>
-        [c.name, c.phone, c.address, c.plan]
+        [c.name, c.phone, c.address, c.plan, c.status, c.dueDate]
           .join(' ')
           .toLowerCase()
-          .includes(search.toLowerCase())
-      ),
-    [customers, search]
+          .includes(search.toLowerCase()) &&
+        (customerStatusFilter === 'all' || c.status === customerStatusFilter)
+      ).sort((a,b)=>customerSort==='fee'?Number(b.monthlyFee)-Number(a.monthlyFee):customerSort==='newest'?String(b.joinedAt||'').localeCompare(String(a.joinedAt||'')):a.name.localeCompare(b.name)),
+    [customers, search, customerStatusFilter, customerSort]
   );
   const selectedStaffProfile = staff.find(member => member.id === selectedStaffProfileId);
-  const filteredStaff = staff.filter(member => [member.displayName, member.userId].join(' ').toLowerCase().includes(staffSearch.toLowerCase()));
-  const filteredPayments = payments.filter(payment => [payment.customerName, payment.month, payment.method, payment.paidAt, payment.recordedByName || ''].join(' ').toLowerCase().includes(paymentSearch.toLowerCase()));
+  const filteredStaff = staff.filter(member => [member.displayName, member.userId].join(' ').toLowerCase().includes(staffSearch.toLowerCase())).sort((a,b)=>staffSort==='active'?Number(b.active)-Number(a.active)||a.displayName.localeCompare(b.displayName):staffSort==='records'?attendanceRecords.filter(x=>x.userId===b.id).length-attendanceRecords.filter(x=>x.userId===a.id).length:a.displayName.localeCompare(b.displayName));
+  const filteredPayments = payments.filter(payment => {
+    const paidDate = String(payment.paidAt || '').slice(0, 10);
+    const day = Number(paidDate.slice(8, 10));
+    const matchesMonth = !paymentMonth || paidDate.slice(0, 7) === paymentMonth;
+    const matchesWeek = paymentWeek === 'all' || (day >= 1 && day <= 31 && String(Math.ceil(day / 7)) === paymentWeek);
+    const matchesSearch = [payment.customerName, payment.month, payment.method, payment.paidAt, payment.recordedByName || ''].join(' ').toLowerCase().includes(paymentSearch.toLowerCase());
+    return matchesMonth && matchesWeek && matchesSearch;
+  }).sort((a,b)=>paymentSort==='oldest'?a.paidAt.localeCompare(b.paidAt):paymentSort==='amount'?Number(b.amount)-Number(a.amount):paymentSort==='customer'?a.customerName.localeCompare(b.customerName):b.paidAt.localeCompare(a.paidAt));
   const selectedStaffPayments = payments.filter(payment => payment.recordedBy === selectedStaffProfileId).sort((a, b) => b.paidAt.localeCompare(a.paidAt));
   const selectedStaffAttendance = attendanceRecords.filter(record => record.userId === selectedStaffProfileId).sort((a, b) => b.workDate.localeCompare(a.workDate));
   const selectedStaffAttendanceEquivalent = selectedStaffAttendance.filter(record => record.dayType !== 'Absent' && String(record.status || '').toLowerCase() !== 'absent').reduce((sum, record) => sum + (record.dayType === 'Half day' ? 0.5 : 1), 0);
@@ -468,7 +496,11 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
     const matchesStatus = planFilter === 'All' || (planFilter === 'Active' ? plan.active : !plan.active);
     const matchesSearch = [plan.name, plan.provider, plan.speed, plan.connectionType, plan.note].join(' ').toLowerCase().includes(planSearch.toLowerCase());
     return matchesStatus && matchesSearch;
-  });
+  }).sort((a,b)=>planSort==='price'?Number(a.price)-Number(b.price):a.name.localeCompare(b.name));
+  const visibleAdmins = adminAccounts.filter(item => (adminStatus==='all'||(adminStatus==='active'?item.active:!item.active)) && [item.displayName,item.userId,item.role].join(' ').toLowerCase().includes(adminSearch.toLowerCase())).sort((a,b)=>a.displayName.localeCompare(b.displayName));
+  const visibleHolidays = staffHolidayRequests.filter(item=>(holidayStatus==='all'||item.status===holidayStatus) && [item.displayName,item.userId,item.reason,item.startDate,item.endDate,item.status].join(' ').toLowerCase().includes(holidaySearch.toLowerCase())).sort((a,b)=>holidaySort==='name'?a.displayName.localeCompare(b.displayName):holidaySort==='oldest'?a.createdAt.localeCompare(b.createdAt):b.createdAt.localeCompare(a.createdAt));
+  const visibleTasks = tasks.filter(item=>(taskStatus==='all'||item.status===taskStatus)&&(taskPriority==='all'||item.priority===taskPriority)&&[item.title,item.details,item.assignedToName,item.createdByName,item.dueDate,item.status,item.priority].join(' ').toLowerCase().includes(taskSearch.toLowerCase())).sort((a,b)=>taskSort==='name'?a.title.localeCompare(b.title):taskSort==='newest'?String(b.createdAt||'').localeCompare(String(a.createdAt||'')):taskSort==='priority'?({High:0,Normal:1,Low:2}[a.priority]-{High:0,Normal:1,Low:2}[b.priority]):String(a.dueDate||'').localeCompare(String(b.dueDate||'')));
+  const visibleComplaints = complaints.filter(item=>(complaintStatus==='all'||item.status===complaintStatus)&&(complaintPriority==='all'||item.priority===complaintPriority)&&[item.subject,item.details,item.customerName,item.staffName,item.assignedToName,item.createdByName,item.status,item.priority,item.locationText].join(' ').toLowerCase().includes(complaintSearch.toLowerCase())).sort((a,b)=>complaintSort==='oldest'?a.createdAt.localeCompare(b.createdAt):complaintSort==='priority'?({High:0,Normal:1,Low:2}[a.priority as 'High'|'Normal'|'Low']??1)-({High:0,Normal:1,Low:2}[b.priority as 'High'|'Normal'|'Low']??1):complaintSort==='subject'?a.subject.localeCompare(b.subject):b.createdAt.localeCompare(a.createdAt));
 
   function flash(message: string) {
     setNotice(message);
@@ -850,7 +882,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
             <strong>
               K&B <span>NET SERVICE</span>
             </strong>
-            <small>Customer management</small>
+            <small>Enterprise operations</small>
           </div>
           <button className="mobile-close" onClick={() => setMobileNav(false)}>
             <X size={18} />
@@ -858,7 +890,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
         </div>
         <div className="workspace">
           <span className="workspace-dot" />
-          <span>K&B Operations</span>
+          <span>Operations command centre</span>
           <ChevronDown size={14} />
         </div>
         <nav className="nexus-navigation" aria-label="Main navigation">
@@ -909,6 +941,21 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
           </div>
         </div>
       </aside>
+      <nav className="mobile-bottom-nav" aria-label="Quick navigation">
+        {nav.slice(0, 5).map(item => (
+          <button
+            type="button"
+            key={item.label}
+            className={page === item.label ? 'active' : ''}
+            aria-current={page === item.label ? 'page' : undefined}
+            onClick={() => { setPage(item.label); setNotificationsOpen(false); setMobileNav(false); }}
+          >
+            <item.icon size={18} />
+            <span>{item.label === taskPage ? (isAdmin ? 'Tasks' : 'My Work') : item.label}</span>
+            {item.count ? <i>{item.count > 99 ? '99+' : item.count}</i> : null}
+          </button>
+        ))}
+      </nav>
       {mobileNav && (
         <div className="scrim" onClick={() => setMobileNav(false)} />
       )}
@@ -1199,9 +1246,11 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
           {page === 'Admin Accounts' && canManageAdmins && (
             <section className="panel table-panel">
               <div className="toolbar"><div><h2>Admin accounts</h2><p className="subtle">Only the primary super-admin account can create additional admins.</p></div><span className="result-count">{adminAccounts.length} admins</span></div>
+              <div className="data-toolbar"><label className="data-search">Search admin accounts<input value={adminSearch} onChange={e=>setAdminSearch(e.target.value)} placeholder="Name or login ID"/></label><label>Access status<select value={adminStatus} onChange={e=>setAdminStatus(e.target.value)}><option value="all">All accounts</option><option value="active">Active</option><option value="disabled">Disabled</option></select></label><span className="data-result-count">{visibleAdmins.length} shown</span></div>
               <div className="table-wrap staff-table-wrap"><table><thead><tr><th>ADMIN</th><th>USER ID</th><th>ACCESS</th><th>ROLE</th><th>ACTIONS</th></tr></thead><tbody>
-                {adminAccounts.map(account => <tr key={account.id}><td><strong>{account.displayName}</strong></td><td>{account.userId}</td><td><span className={'status ' + (account.active ? 'active' : 'inactive')}>{account.active ? 'Active' : 'Disabled'}</span></td><td>{account.canManageAdmins || account.isSuperAdmin ? 'Super admin' : 'Admin'}</td><td>{account.canManageAdmins || account.isSuperAdmin || account.id === session.user.id ? <span className="subtle">Protected</span> : <button className="row-action danger" title="Remove admin account" onClick={() => removeAdmin(account)}><Trash2 size={15}/></button>}</td></tr>)}
+                {visibleAdmins.map(account => <tr key={account.id}><td><strong>{account.displayName}</strong></td><td>{account.userId}</td><td><span className={'status ' + (account.active ? 'active' : 'inactive')}>{account.active ? 'Active' : 'Disabled'}</span></td><td>{account.canManageAdmins || account.isSuperAdmin ? 'Super admin' : 'Admin'}</td><td>{account.canManageAdmins || account.isSuperAdmin || account.id === session.user.id ? <span className="subtle">Protected</span> : <button className="row-action danger" title="Remove admin account" onClick={() => removeAdmin(account)}><Trash2 size={15}/></button>}</td></tr>)}
               </tbody></table></div>
+              {adminAccounts.length>0&&!visibleAdmins.length&&<p className="ops-empty">No admin accounts match these filters.</p>}
               {!adminAccounts.length && <Empty icon={<ShieldCheck />} title="No admin accounts" text="Create the first additional admin account when needed." />}
             </section>
           )}
@@ -1218,16 +1267,17 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
             </section>
             <section className="panel table-panel staff-holiday-requests">
               <div className="toolbar"><div><h2>Staff holiday requests</h2><p className="subtle">Approve or decline leave requests submitted by staff members.</p></div><span className="result-count">{staffHolidayRequests.filter(item=>item.status==='pending').length} pending</span></div>
+              <div className="data-toolbar"><label className="data-search">Search holiday requests<input value={holidaySearch} onChange={e=>setHolidaySearch(e.target.value)} placeholder="Staff, reason or date"/></label><label>Status<select value={holidayStatus} onChange={e=>setHolidayStatus(e.target.value)}><option value="all">All statuses</option><option value="pending">Pending</option><option value="approved">Approved</option><option value="rejected">Rejected</option></select></label><label>Sort by<select value={holidaySort} onChange={e=>setHolidaySort(e.target.value as typeof holidaySort)}><option value="newest">Newest first</option><option value="oldest">Oldest first</option><option value="name">Staff A–Z</option></select></label><span className="data-result-count">{visibleHolidays.length} shown</span></div>
               <div className="staff-holiday-list">
-                {staffHolidayRequests.map(item=><article className="staff-request-card" key={item.id}>
+                {visibleHolidays.map(item=><article className="staff-request-card" key={item.id}>
                   <div><b>{item.displayName} · {item.startDate}{item.endDate!==item.startDate?' to '+item.endDate:''}</b><p>{item.reason}</p><small>Requested {new Date(item.createdAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'})}{item.reviewedAt?' · Reviewed '+new Date(item.reviewedAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'}):''}</small></div>
                   <div className="staff-request-actions"><span className={'status '+(item.status==='approved'?'active':item.status==='rejected'?'inactive':'')}>{item.status.toUpperCase()}</span>{item.status==='pending'&&<><button className="btn primary compact" onClick={()=>void reviewHolidayRequest(item,'approved')}>Approve</button><button className="btn danger compact" onClick={()=>void reviewHolidayRequest(item,'rejected')}>Decline</button></>}</div>
                 </article>)}
-                {!staffHolidayRequests.length&&<p className="staff-record-empty">No holiday requests have been submitted yet.</p>}
+                {!staffHolidayRequests.length&&<p className="staff-record-empty">No holiday requests have been submitted yet.</p>}{staffHolidayRequests.length>0&&!visibleHolidays.length&&<p className="staff-record-empty">No holiday requests match these filters.</p>}
               </div>
             </section>
             <section className="panel table-panel">
-              <div className="toolbar"><div className="searchbox"><Search size={17}/><input value={staffSearch} onChange={e => setStaffSearch(e.target.value)} placeholder="Search staff name or user ID..."/></div><span className="result-count">{filteredStaff.length} of {staff.length} members</span></div>
+              <div className="toolbar"><div className="searchbox"><Search size={17}/><input value={staffSearch} onChange={e => setStaffSearch(e.target.value)} placeholder="Search staff name or user ID..."/></div><label className="data-filter-label">Sort by<select value={staffSort} onChange={e=>setStaffSort(e.target.value as typeof staffSort)}><option value="name">Name A–Z</option><option value="active">Active first</option><option value="records">Most attendance records</option></select></label><span className="result-count">{filteredStaff.length} of {staff.length} members</span></div>
               <div className="table-wrap"><table><thead><tr><th>STAFF MEMBER</th><th>USER ID</th><th>ASSIGNED CUSTOMERS</th><th>COLLECTIONS RECORDED</th><th>ACCESS</th><th>ACTIONS</th></tr></thead><tbody>
                 {filteredStaff.map(member => {
                   const assigned = customers.filter(c => c.assignedTo === member.id).length;
@@ -1296,7 +1346,8 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                 </div>
                 <span className="result-count">{tasks.length} tasks · {pendingTasks} pending</span>
               </div>
-              {tasks.length ? <div className="task-list">{tasks.map(task => (
+              {tasks.length ? <><div className="data-toolbar"><label className="data-search">Search tasks<input value={taskSearch} onChange={e=>setTaskSearch(e.target.value)} placeholder="Title, details, staff or date"/></label><label>Status<select value={taskStatus} onChange={e=>setTaskStatus(e.target.value)}><option value="all">All statuses</option><option>Pending</option><option>In progress</option><option>Completed</option></select></label><label>Priority<select value={taskPriority} onChange={e=>setTaskPriority(e.target.value)}><option value="all">All priorities</option><option>High</option><option>Normal</option><option>Low</option></select></label><label>Sort by<select value={taskSort} onChange={e=>setTaskSort(e.target.value as typeof taskSort)}><option value="due">Due date</option><option value="newest">Newest first</option><option value="priority">Priority</option><option value="name">Title A–Z</option></select></label><span className="data-result-count">{visibleTasks.length} tasks</span></div>
+              <div className="task-list">{visibleTasks.map(task => (
                 <article className="task-card" key={task.id}>
                   <div className="task-card-main">
                     <div className="task-card-top"><span className={'priority ' + task.priority.toLowerCase()}>{task.priority} priority</span><span className={'task-state ' + task.status.toLowerCase().replace(/ /g, '-')}>{task.status}</span></div>
@@ -1308,7 +1359,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                   <label className="task-status-control"><span>Progress</span><select value={task.status} onChange={e => updateTask(task, e.target.value)}><option>Pending</option><option>In progress</option><option>Completed</option></select></label>
                   {isAdmin && <button type="button" className="btn danger compact" onClick={()=>void deleteTask(task)}><Trash2 size={14}/> Delete task</button>}
                 </article>
-              ))}</div> : <Empty icon={<ClipboardList />} title={isAdmin ? 'No tasks assigned yet' : 'No work assigned yet'} text={isAdmin ? 'Create a task and assign it to an active staff member.' : 'Your administrator will assign work here when it is ready.'} action={isAdmin ? 'Assign first task' : undefined} onClick={() => setShowTask(true)} />}
+              ))}</div>{tasks.length>0&&!visibleTasks.length&&<p className="ops-empty">No tasks match the selected filters.</p>}</> : <Empty icon={<ClipboardList />} title={isAdmin ? 'No tasks assigned yet' : 'No work assigned yet'} text={isAdmin ? 'Create a task and assign it to an active staff member.' : 'Your administrator will assign work here when it is ready.'} action={isAdmin ? 'Assign first task' : undefined} onClick={() => setShowTask(true)} />}
             </section>
           )}
 
@@ -1323,6 +1374,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                     placeholder="Search name, phone, address or plan..."
                   />
                 </div>
+                <label className="data-filter-label">Status<select value={customerStatusFilter} onChange={e=>setCustomerStatusFilter(e.target.value as typeof customerStatusFilter)}><option value="all">All statuses</option><option>Active</option><option>Inactive</option><option>Suspended</option></select></label><label className="data-filter-label">Sort by<select value={customerSort} onChange={e=>setCustomerSort(e.target.value as typeof customerSort)}><option value="name">Name A–Z</option><option value="fee">Monthly fee high–low</option><option value="newest">Newest added</option></select></label>
                 <span className="result-count">
                   {filtered.length} customers
                 </span>
@@ -1365,6 +1417,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
               </div>
               <div className="plan-controls">
                 <div className="plan-search"><Search size={16} /><input value={planSearch} onChange={e => setPlanSearch(e.target.value)} placeholder="Search plan, provider or speed..." /></div>
+                <label className="data-filter-label">Sort by<select value={planSort} onChange={e=>setPlanSort(e.target.value as typeof planSort)}><option value="name">Plan name A–Z</option><option value="price">Price low–high</option></select></label>
                 <div className="plan-filters">
                   {(['Active', 'Archived', 'All'] as const).map(filter => <button key={filter} className={planFilter === filter ? 'selected' : ''} onClick={() => setPlanFilter(filter)}>{filter}{filter === 'Active' ? ' · ' + plans.filter(plan => plan.active).length : filter === 'Archived' ? ' · ' + plans.filter(plan => !plan.active).length : ''}</button>)}
                 </div>
@@ -1404,10 +1457,11 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                   <p className="subtle">All recorded customer collections</p>
                 </div>
                 <div className="searchbox"><Search size={17}/><input value={paymentSearch} onChange={e => setPaymentSearch(e.target.value)} placeholder="Search customer, month, method or date..."/></div>
+                <label className="data-filter-label">Sort by<select value={paymentSort} onChange={e=>setPaymentSort(e.target.value as typeof paymentSort)}><option value="newest">Newest first</option><option value="oldest">Oldest first</option><option value="amount">Amount high–low</option><option value="customer">Customer A–Z</option></select></label><div className="finance-actions"><input aria-label="Filter payments by month" type="month" value={paymentMonth} onChange={e => { setPaymentMonth(e.target.value); setPaymentWeek('all'); }}/><select aria-label="Filter payments by week of month" value={paymentWeek} onChange={e => setPaymentWeek(e.target.value as typeof paymentWeek)}><option value="all">All weeks</option><option value="1">Week 1 · 1–7</option><option value="2">Week 2 · 8–14</option><option value="3">Week 3 · 15–21</option><option value="4">Week 4 · 22–28</option><option value="5">Week 5 · 29–31</option></select><button type="button" className="btn secondary compact" onClick={() => { setPaymentMonth(''); setPaymentWeek('all'); setPaymentSearch(''); }}>Clear filters</button></div>
                 <span className="result-count">{filteredPayments.length} of {payments.length} records</span>
               </div>
               <PaymentTable rows={filteredPayments} isAdmin={isAdmin} onEdit={(payment: Payment) => { setEditingPayment(payment); setShowPayment(true); }} onDelete={isAdmin ? deletePayment : undefined} />
-              {payments.length > 0 && !filteredPayments.length && <p className="ops-empty">No payments match your search.</p>}
+              {payments.length > 0 && !filteredPayments.length && <p className="ops-empty">No payments match the selected search and date filters.</p>}
               {!payments.length && (
                 <Empty
                   icon={<CreditCard />}
@@ -1427,8 +1481,9 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                 <div className="complaint-counts"><span><b>{complaints.filter(item => !['Solved','Resolved'].includes(item.status)).length}</b> Pending / active</span><span><b>{complaints.filter(item => item.status === 'Solved' || item.status === 'Resolved').length}</b> Solved</span><span><b>{complaints.filter(item => item.status === 'Not Solved').length}</b> Not solved</span></div>
                 <span className="result-count">{complaints.length} records</span>
               </div>
+              <div className="data-toolbar"><label className="data-search">Search complaints<input value={complaintSearch} onChange={e=>setComplaintSearch(e.target.value)} placeholder="Subject, customer, staff, details or location"/></label><label>Status<select value={complaintStatus} onChange={e=>setComplaintStatus(e.target.value)}><option value="all">All statuses</option><option>Pending</option><option>Assigned</option><option>In Progress</option><option>Solved</option><option>Not Solved</option></select></label><label>Priority<select value={complaintPriority} onChange={e=>setComplaintPriority(e.target.value)}><option value="all">All priorities</option><option>High</option><option>Normal</option><option>Low</option></select></label><label>Sort by<select value={complaintSort} onChange={e=>setComplaintSort(e.target.value as typeof complaintSort)}><option value="newest">Newest first</option><option value="oldest">Oldest first</option><option value="priority">Priority</option><option value="subject">Subject A–Z</option></select></label><span className="data-result-count">{visibleComplaints.length} records</span></div>
               <div className="complaint-list">
-                {complaints.map(c => {
+                {visibleComplaints.map(c => {
                   const canUpdate = isAdmin;
                   const targetName = c.complaintFor === 'Staff' ? (c.staffName || 'Staff member') : (c.customerName || 'Customer');
                   return <article className="complaint-card" key={c.id}>
@@ -1467,6 +1522,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                   </article>;
                 })}
               </div>
+              {complaints.length>0&&!visibleComplaints.length&&<p className="ops-empty">No complaints match the selected filters.</p>}
               {!complaints.length && <Empty icon={<MessageSquare/>} title="No complaints yet" text="Create a customer or staff complaint to start tracking it." action="New complaint" onClick={() => setShowComplaint(true)}/>}
             </section>
           )}
