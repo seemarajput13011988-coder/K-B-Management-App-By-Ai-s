@@ -15,6 +15,7 @@ const GpsTrackingWorkspace = lazy(() => import('./GpsTrackingWorkspace'));
 const InstallationsWorkspace = lazy(() => import('./InstallationsWorkspace'));
 const CalendarWorkspace = lazy(() => import('./CalendarWorkspace'));
 import { useAppPreferences } from './appPreferences';
+import QuickNavigation from './layout/QuickNavigation';
 import { api as client, changeAppPassword, changeAppUserId, signInAppUser, signOutAppUser, submitStaffRegistrationRequest, getStaffRegistrationStatus, nativeApiPost } from './lib/api';
 import {
   Activity,
@@ -1475,20 +1476,12 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
             Management
           </footer>
         </div>
-        <nav className="kb-mobile-nav" aria-label="Quick navigation">
-          <button type="button" className={page === 'Overview' ? 'is-active' : ''} aria-current={page === 'Overview' ? 'page' : undefined} onClick={() => { setPage('Overview'); setNotificationsOpen(false); }}>
-            <LayoutDashboard size={20} /><span>Home</span>
-          </button>
-          <button type="button" className={page === 'Customers' ? 'is-active' : ''} aria-current={page === 'Customers' ? 'page' : undefined} onClick={() => { setPage('Customers'); setNotificationsOpen(false); }}>
-            <Users size={20} /><span>Customers</span>
-          </button>
-          <button type="button" className={page === taskPage ? 'is-active' : ''} aria-current={page === taskPage ? 'page' : undefined} onClick={() => { setPage(taskPage); setNotificationsOpen(false); }}>
-            <ClipboardList size={20} /><span>{taskPage}</span>
-          </button>
-          <button type="button" onClick={() => { setMobileNav(true); setNotificationsOpen(false); }} aria-label="More sections">
-            <Menu size={20} /><span>More</span>
-          </button>
-        </nav>
+        <QuickNavigation
+          page={page}
+          taskPage={taskPage}
+          onNavigate={nextPage => { setPage(nextPage); setNotificationsOpen(false); }}
+          onMore={() => { setMobileNav(true); setNotificationsOpen(false); }}
+        />
       </main>
 
       {showCustomer && (
