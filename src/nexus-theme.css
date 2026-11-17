@@ -138,3 +138,105 @@ input:focus,select:focus,textarea:focus{border-color:#79a9ff;box-shadow:0 0 0 3p
 @media(max-width:900px){.content{padding:22px 18px}.sidebar{box-shadow:14px 0 38px rgba(17,38,70,.12)}.topbar{padding-inline:16px}.stats-grid{gap:11px}}
 @media(max-width:600px){.content{padding:19px 13px}.page-heading{gap:8px;margin-bottom:17px}.page-heading h1{font-size:24px}.page-heading p{font-size:12px}.welcome-strip{border-radius:17px}.stat-card,.panel{border-radius:15px}.panel{padding:15px}.topbar{min-height:60px}.preference-controls{gap:5px}.language-control{max-width:112px}.language-control select{max-width:72px}.theme-toggle{min-width:36px;justify-content:center}.finance-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
+
+
+/* Screen-level polish for the actual Nexus workspaces */
+.shell :focus-visible{outline:2px solid rgba(99,102,241,.48);outline-offset:2px;border-radius:8px}
+.shell .quick-actions{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:0 0 18px}
+.shell .quick-actions>button{min-width:0;min-height:92px;display:grid;grid-template-columns:34px 1fr;grid-template-rows:auto auto;align-content:center;align-items:center;column-gap:11px;row-gap:3px;padding:15px;text-align:left;border:1px solid #e3eaf5;border-radius:16px;background:linear-gradient(145deg,#fff,#f8fbff);color:#1e3354;box-shadow:0 6px 20px rgba(26,54,99,.045);transition:transform .18s ease,border-color .18s ease,box-shadow .18s ease}
+.shell .quick-actions>button:hover{transform:translateY(-2px);border-color:#c9dcff;box-shadow:0 12px 24px rgba(37,99,235,.09)}
+.shell .quick-actions>button svg{grid-row:1/3;width:34px;height:34px;padding:8px;border-radius:11px;background:#eaf2ff;color:#2563eb}
+.shell .quick-actions>button span{font-size:13px;font-weight:800;line-height:1.3}
+.shell .quick-actions>button small{font-size:11px;color:#8391a5}
+.shell .retention-review-panel,.shell .activity-panel,.shell .chart-panel,.shell .table-panel,.shell .bottom-panel{border-radius:18px}
+.shell .snapshot-row{border:1px solid #e8eef7;border-radius:13px;background:#f8faff;padding:12px}
+.shell .snapshot-icon{border-radius:11px}
+.shell .chart-grid,.shell .bottom-panel{gap:16px}
+.shell .chart-panel,.shell .activity-panel{min-width:0}
+.shell .chart-bars{min-height:150px}
+.shell .chart-track{border-radius:99px;overflow:hidden}
+.shell .table-wrap{max-width:100%;overscroll-behavior-x:contain}
+.shell .table-wrap table{min-width:640px}
+.shell .toolbar{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px}
+.shell .toolbar h2{margin:0}
+.shell .searchbox{min-width:min(100%,260px);max-width:100%;padding-inline:12px}
+.shell .searchbox input{min-width:0;width:100%;outline:0;box-shadow:none}
+.shell .staff-insight-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-top:16px}
+.shell .staff-insight{padding:16px;min-width:0}
+.shell .staff-insight-head{display:flex;align-items:center;gap:11px;min-width:0}
+.shell .staff-insight-head>div{display:grid;gap:3px;min-width:0}
+.shell .staff-insight-head b,.shell .staff-insight-head small{overflow-wrap:anywhere}
+.shell .staff-insight-stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:15px 0}
+.shell .staff-insight-stats>span{display:grid;gap:4px;padding:10px;border-radius:11px;background:#f5f8fd}
+.shell .staff-insight-stats small{font-size:10px;color:#8291a6}
+.shell .staff-insight-stats b{font-size:17px;color:#1b3152;overflow-wrap:anywhere}
+.shell .staff-profile-button{width:100%}
+.shell .task-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,330px),1fr));gap:13px}
+.shell .task-card{min-width:0;padding:17px}
+.shell .task-card h3{color:#1a2e4d;font-size:15px;line-height:1.4;overflow-wrap:anywhere}
+.shell .task-card p{color:#687b95;line-height:1.6;overflow-wrap:anywhere}
+.shell .task-card-top{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.shell .task-meta{display:flex;gap:8px 14px;flex-wrap:wrap;color:#8291a6}
+.shell .plan-toolbar,.shell .plan-controls{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.shell .plan-controls>*{min-width:0}
+.shell .plans-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,245px),1fr));gap:15px;align-items:stretch}
+.shell .plan-card{position:relative;display:flex;flex-direction:column;gap:12px;min-width:0;padding:18px;overflow:hidden}
+.shell .plan-card.popular{border:1px solid #9fc2ff;box-shadow:0 12px 28px rgba(37,99,235,.11)}
+.shell .plan-card-top{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.shell .plan-provider{color:#71819a;font-size:11px;font-weight:700}
+.shell .plan-price{font-family:Manrope,'DM Sans',sans-serif;font-size:clamp(25px,3vw,32px);font-weight:800;letter-spacing:-1px;color:#17345f;overflow-wrap:anywhere}
+.shell .plan-spec{display:flex;flex-wrap:wrap;gap:7px}
+.shell .plan-spec>*{padding:6px 9px;border-radius:8px;background:#f1f6ff;color:#49617f;font-size:11px}
+.shell .plan-card-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:auto;padding-top:6px}
+.shell .complaint-list{display:grid;gap:12px}
+.shell .complaint-card{min-width:0;padding:16px;border:1px solid #e7edf6;border-radius:16px;background:#fff;box-shadow:0 5px 18px rgba(26,54,99,.04)}
+.shell .complaint-card-head{display:flex;align-items:flex-start;gap:12px;min-width:0}
+.shell .complaint-symbol{flex:0 0 38px;width:38px;height:38px;display:grid;place-items:center;border-radius:12px;background:#eef4ff;color:#2563eb}
+.shell .complaint-info{flex:1;min-width:0;display:grid;gap:5px}
+.shell .complaint-info strong{color:#1b3152;font-size:14px;overflow-wrap:anywhere}
+.shell .complaint-info span,.shell .complaint-info small{color:#7b8ba2;line-height:1.5;overflow-wrap:anywhere}
+.shell .complaint-meta{display:flex;flex-wrap:wrap;gap:8px 16px;margin-top:13px;padding-top:12px;border-top:1px solid #edf1f7;color:#72829a;font-size:11px}
+.shell .complaint-controls,.shell .complaint-resolution,.shell .complaint-preview{margin-top:12px}
+.shell .notification-anchor{position:relative}
+.shell .notification-popover{z-index:100;max-width:min(380px,calc(100vw - 24px));max-height:min(70vh,560px);overflow:auto;background:#fff}
+.shell .notification-popover-head{position:sticky;top:0;z-index:1;padding:13px 15px;background:inherit;border-bottom:1px solid #edf1f7}
+.shell .notification-item{padding:12px 15px;border-bottom:1px solid #f0f3f8}
+.shell .notification-item p{margin:7px 0;color:#64748b;font-size:12px;line-height:1.5;overflow-wrap:anywhere}
+.shell .notification-empty{padding:18px;color:#71819a;text-align:center}
+.shell .modal-backdrop{z-index:80;display:flex;align-items:center;justify-content:center;padding:18px;overflow-y:auto}
+.shell .modal{width:min(100%,760px);max-height:calc(100dvh - 36px);overflow:auto}
+.shell .form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:13px}
+.shell .form-grid .wide{grid-column:1/-1}
+.shell .modal-actions,.shell .form-actions{display:flex;justify-content:flex-end;gap:9px;flex-wrap:wrap}
+.shell .auth-shell,.shell .login{min-height:100dvh}
+.shell .auth-main{width:100%;max-width:540px}
+.shell .auth-card{width:100%;background:rgba(255,255,255,.96)}
+.shell .login-role-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.shell .login-role-card{min-width:0;border:1px solid #e3eaf5;border-radius:15px;background:#fff;transition:border-color .18s ease,box-shadow .18s ease,transform .18s ease}
+.shell .login-role-card:hover{border-color:#b8d1ff;box-shadow:0 8px 20px rgba(37,99,235,.09);transform:translateY(-1px)}
+.shell .auth-field{min-width:0}
+.shell .auth-field input{width:100%;min-width:0}
+.shell .auth-submit{width:100%;min-height:46px;border-radius:12px}
+.shell .kb-festival-ribbon{max-width:calc(100vw - 24px);border-radius:0 0 14px 14px}
+.shell .toast{z-index:120;max-width:calc(100vw - 24px);overflow-wrap:anywhere}
+.shell .loading-cover{z-index:110}
+[data-theme="dark"] .shell .quick-actions>button,[data-theme="dark"] .shell .complaint-card,[data-theme="dark"] .shell .login-role-card{background:#142238;border-color:#293b54;color:#e7eef9}
+[data-theme="dark"] .shell .quick-actions>button span,[data-theme="dark"] .shell .task-card h3,[data-theme="dark"] .shell .complaint-info strong,[data-theme="dark"] .shell .staff-insight-stats b{color:#edf4ff}
+[data-theme="dark"] .shell .quick-actions>button small,[data-theme="dark"] .shell .task-card p,[data-theme="dark"] .shell .complaint-info span,[data-theme="dark"] .shell .complaint-info small{color:#a9bad0}
+[data-theme="dark"] .shell .staff-insight-stats>span,[data-theme="dark"] .shell .plan-spec>*{background:#1b2d47;color:#c7d7ed}
+[data-theme="dark"] .shell .notification-popover{background:#142238;border-color:#293b54;color:#e7eef9}
+[data-theme="dark"] .shell .notification-item{border-color:#293b54}
+[data-theme="dark"] .shell .notification-item p{color:#afbed2}
+[data-theme="dark"] .shell .snapshot-row{background:#101d31;border-color:#293b54;color:#dce7f5}
+[data-theme="dark"] .shell .plan-price{color:#edf4ff}
+@media(max-width:900px){.shell .quick-actions{grid-template-columns:repeat(2,minmax(0,1fr))}.shell .chart-grid,.shell .bottom-panel{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:600px){
+  .shell .quick-actions{gap:8px}.shell .quick-actions>button{min-height:82px;padding:11px;grid-template-columns:30px 1fr;column-gap:8px}
+  .shell .quick-actions>button svg{width:30px;height:30px;padding:7px}.shell .quick-actions>button span{font-size:12px}.shell .quick-actions>button small{font-size:10px}
+  .shell .toolbar{align-items:stretch}.shell .toolbar>*{max-width:100%}.shell .searchbox{width:100%;min-width:0}
+  .shell .form-grid{grid-template-columns:minmax(0,1fr)}.shell .form-grid .wide{grid-column:auto}
+  .shell .modal-backdrop{align-items:flex-end;padding:6px}.shell .modal{width:100%;max-height:94dvh;border-radius:18px 18px 10px 10px;padding:16px}
+  .shell .complaint-card{padding:13px}.shell .complaint-card-head{flex-wrap:wrap}
+  .shell .login-role-options{grid-template-columns:1fr}.shell .auth-card{padding:22px}
+}
+@media(prefers-reduced-motion:reduce){.shell .quick-actions>button,.shell .login-role-card{transition:none}}
