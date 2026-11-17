@@ -33,7 +33,7 @@
 .kb-app-sidebar .nav-item.active{color:#fff;border-color:rgb(133 183 235 / 20%);background:linear-gradient(100deg,rgb(54 113 177 / 42%),rgb(54 113 177 / 16%))}
 .kb-app-sidebar .nav-item.active svg{color:#9dcbfa}
 .kb-app-sidebar .sidebar-bottom{display:grid;flex:0 0 auto;gap:12px;padding-top:14px;border-top:1px solid rgb(255 255 255 / 10%)}
-.kb-app-sidebar .sidebar-bottom>.btn{justify-content:center;min-height:40px;margin:0!important;color:#eaf2fc;border-color:rgb(255 255 255 / 15%);background:rgb(255 255 255 / 7%)}
+.kb-app-sidebar .sidebar-bottom>.btn{justify-content:center;min-height:40px;margin:0;color:#eaf2fc;border-color:rgb(255 255 255 / 15%);background:rgb(255 255 255 / 7%)}
 .kb-app-sidebar .help-card{padding:12px;color:#e8f0fa;border:1px solid rgb(255 255 255 / 10%);border-radius:12px;background:rgb(255 255 255 / 5%)}
 .kb-app-sidebar .help-card strong{display:block;margin:7px 0 4px;color:#fff;font-size:11px}
 .kb-app-sidebar .help-card p{margin:0 0 8px;color:#aebed1;font-size:10px;line-height:1.45}
