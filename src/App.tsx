@@ -1049,7 +1049,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                     <Clock3 size={17}/>
                     <div><strong>Record review</strong><span>Older records are ready for a six-month review. Nothing is deleted automatically.</span></div>
                   </div>
-                  <strong className="kb-overview-review-count">{retentionItems.length} due</strong>
+                  <strong className="kb-overview-review-count"><span>{retentionItems.length}</span><em>Due</em></strong>
                   {retentionItems.length > 0 && <div className="kb-overview-review-list">{retentionItems.slice(0,3).map(item=><span key={item.collection+':'+item.id}>{item.recordLabel} <small>· {dateLabel(item.createdAt)}</small></span>)}</div>}
                   {retentionItems.length === 0 && <span className="kb-overview-review-clear"><CheckCircle2 size={14}/> No records due right now</span>}
                 </aside>
