@@ -240,3 +240,55 @@ input:focus,select:focus,textarea:focus{border-color:#79a9ff;box-shadow:0 0 0 3p
   .shell .login-role-options{grid-template-columns:1fr}.shell .auth-card{padding:22px}
 }
 @media(prefers-reduced-motion:reduce){.shell .quick-actions>button,.shell .login-role-card{transition:none}}
+
+
+/* Shared surface tokens keep the separately-loaded operational modules visually consistent. */
+:root{--surface:#fff;--surface-soft:#f4f7fc;--border:#e4eaf3;--text:#172b49;--muted:#71819a;--accent:#2563eb;--accent-soft:#eaf2ff}
+[data-theme="dark"]{--surface:#142238;--surface-soft:#101d31;--border:#293b54;--text:#edf4ff;--muted:#a9bad0;--accent:#60a5fa;--accent-soft:#1b2d47}
+.shell .ops-panel,.shell .ops-summary,.shell .attendance-calendar-card,.shell .team-summary-panel,.shell .workforce-settings-panel,.shell .group-chat-panel,.shell .finance-panel,.shell .gps-workspace{border:1px solid #e5ebf4;border-radius:18px;background:#fff;box-shadow:var(--kb-shadow)}
+.shell .ops-panel{padding:19px}
+.shell .ops-summary{padding:16px}
+.shell .ops-summary-grid{gap:12px}
+.shell .ops-summary strong{font-family:Manrope,'DM Sans',sans-serif;color:#172b49;font-size:22px;letter-spacing:-.5px}
+.shell .ops-summary small,.shell .ops-summary span{color:#8190a5}
+.shell .ops-panel-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:14px}
+.shell .ops-panel-head h2{margin:0;color:#172b49;font-family:Manrope,'DM Sans',sans-serif;font-weight:800}
+.shell .ops-panel-head p{color:#8190a5;line-height:1.55}
+.shell .ops-feed-item,.shell .ops-location-card,.shell .ops-history-row,.shell .ops-clock-row>div,.shell .ops-home-shift{border:1px solid #e8eef6;border-radius:13px;background:#f8faff}
+.shell .ops-feed-item{padding:13px}
+.shell .ops-person b,.shell .ops-feed-item>b,.shell .ops-message-top b,.shell .profile-item b{color:#1b3152}
+.shell .ops-person small,.shell .ops-feed-item p,.shell .profile-item small{color:#7d8ca2}
+.shell .ops-form input,.shell .ops-form select,.shell .ops-form textarea,.shell .field input,.shell .field select,.shell .field textarea{border:1px solid #dce5f0;border-radius:10px;background:#fff;color:#1d2f4b;min-height:40px}
+.shell .ops-form textarea,.shell .field textarea{min-height:88px;padding:10px}
+.shell .ops-location-detail,.shell .ops-empty{color:#71819a}
+.shell .attendance-calendar-card{padding:17px}
+.shell .attendance-calendar-head{margin-bottom:12px}
+.shell .attendance-calendar-weekday{color:#8391a6;font-weight:800}
+.shell .attendance-calendar-grid{gap:6px}
+.shell .attendance-calendar-blank,.shell .attendance-calendar-grid>button{border-radius:10px}
+.shell .attendance-calendar-grid>button{border:1px solid #e7edf6;background:#fff;color:#344965}
+.shell .attendance-calendar-grid>button:hover{border-color:#a9c8ff;background:#f3f7ff}
+.shell .attendance-calendar-legend{color:#7d8ca2}
+.shell .gps-workspace,.shell .finance-workspace{min-width:0}
+.shell .gps-staff-row,.shell .gps-saved-card,.shell .installation-card{border:1px solid #e7edf6;border-radius:14px;background:#fff}
+.shell .gps-avatar{border-radius:11px;background:#eaf2ff;color:#2563eb}
+.shell .gps-map{border-radius:14px;overflow:hidden;border:1px solid #e2eaf5}
+.shell .gps-coordinates{border:1px solid #e8eef6;border-radius:12px;background:#f6f9fe}
+.shell .invoice-intro{border:1px solid #e4ebf5;border-radius:18px;background:linear-gradient(120deg,#fff,#f2f7ff);box-shadow:var(--kb-shadow)}
+.shell .invoice-brand-chip{border-radius:999px;background:#eaf2ff;color:#2458b8}
+.shell .invoice-modal{border:1px solid #e4ebf5;border-radius:20px;box-shadow:0 24px 70px rgba(15,32,59,.2)}
+.shell .invoice-form-section{border:1px solid #e8eef6;border-radius:14px;background:#fbfcff}
+.shell .calendar-panel{border:1px solid #e5ebf4;border-radius:18px;background:#fff;box-shadow:var(--kb-shadow)}
+.shell .calendar-event{border:1px solid #e7edf6;border-radius:12px}
+.shell .calendar-empty{border:1px dashed #d6e1ef;border-radius:14px;background:#f8faff}
+[data-theme="dark"] .shell .ops-panel,[data-theme="dark"] .shell .ops-summary,[data-theme="dark"] .shell .attendance-calendar-card,[data-theme="dark"] .shell .team-summary-panel,[data-theme="dark"] .shell .workforce-settings-panel,[data-theme="dark"] .shell .group-chat-panel,[data-theme="dark"] .shell .finance-panel,[data-theme="dark"] .shell .gps-workspace,[data-theme="dark"] .shell .calendar-panel{background:#142238;border-color:#293b54;color:#e7eef9}
+[data-theme="dark"] .shell .ops-summary strong,[data-theme="dark"] .shell .ops-panel-head h2,[data-theme="dark"] .shell .ops-person b,[data-theme="dark"] .shell .ops-feed-item>b,[data-theme="dark"] .shell .ops-message-top b,[data-theme="dark"] .shell .profile-item b{color:#edf4ff}
+[data-theme="dark"] .shell .ops-summary small,[data-theme="dark"] .shell .ops-summary span,[data-theme="dark"] .shell .ops-panel-head p,[data-theme="dark"] .shell .ops-person small,[data-theme="dark"] .shell .ops-feed-item p,[data-theme="dark"] .shell .profile-item small{color:#a9bad0}
+[data-theme="dark"] .shell .ops-feed-item,[data-theme="dark"] .shell .ops-location-card,[data-theme="dark"] .shell .ops-history-row,[data-theme="dark"] .shell .ops-clock-row>div,[data-theme="dark"] .shell .ops-home-shift,[data-theme="dark"] .shell .gps-staff-row,[data-theme="dark"] .shell .gps-saved-card,[data-theme="dark"] .shell .installation-card,[data-theme="dark"] .shell .invoice-form-section,[data-theme="dark"] .shell .calendar-empty{background:#101d31;border-color:#293b54;color:#dce7f5}
+[data-theme="dark"] .shell .ops-form input,[data-theme="dark"] .shell .ops-form select,[data-theme="dark"] .shell .ops-form textarea,[data-theme="dark"] .shell .field input,[data-theme="dark"] .shell .field select,[data-theme="dark"] .shell .field textarea{background:#101d31;border-color:#30445f;color:#e7eef9}
+[data-theme="dark"] .shell .attendance-calendar-grid>button{background:#101d31;border-color:#30445f;color:#dce7f5}
+[data-theme="dark"] .shell .invoice-intro{background:linear-gradient(120deg,#142238,#1b2d47);border-color:#293b54}
+[data-theme="dark"] .shell .invoice-modal{background:#142238;border-color:#293b54;color:#e7eef9}
+[data-theme="dark"] .shell .invoice-brand-chip{background:#1b2d47;color:#c8ddff}
+[data-theme="dark"] .shell .calendar-event{background:#1a2b43;border-color:#30445f;color:#dce7f5}
+@media(max-width:720px){.shell .ops-panel{padding:14px}.shell .ops-panel-head{flex-wrap:wrap}.shell .attendance-calendar-card{padding:12px}.shell .gps-coordinates{grid-template-columns:1fr}}
