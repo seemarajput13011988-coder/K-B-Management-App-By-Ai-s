@@ -840,8 +840,8 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   ].filter(group => group.items.length);
 
   return (
-    <div className="shell">
-      <aside className={'sidebar ' + (mobileNav ? 'mobile-open' : '')}>
+    <div className="kb-app-shell">
+      <aside className={'kb-app-sidebar ' + (mobileNav ? 'is-open' : '')} aria-label="Application navigation">
         <div className="brand">
           <div className="brand-mark">
             <Signal size={21} />
@@ -910,11 +910,11 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
         </div>
       </aside>
       {mobileNav && (
-        <div className="scrim" onClick={() => setMobileNav(false)} />
+        <div className="kb-app-scrim" onClick={() => setMobileNav(false)} />
       )}
-      <main className="main">
-        <header className="topbar">
-          <button className="hamburger" onClick={() => setMobileNav(true)}>
+      <main className="kb-app-main">
+        <header className="kb-app-topbar">
+          <button type="button" className="hamburger" aria-label="Open navigation" aria-expanded={mobileNav} onClick={() => setMobileNav(true)}>
             <Menu />
           </button>
           <div className="crumb">
@@ -939,7 +939,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
             <button type="button" className="icon-button account-trigger" title="Account settings" aria-label="Account settings" onClick={() => { setNotificationsOpen(false); setShowAccountSettings(true); }}><div className="avatar small-avatar">{session.user.displayName.slice(0, 2).toUpperCase()}</div></button>
           </div>
         </header>
-        <div className="content">
+        <div className="content kb-app-content">
           <div className="page-heading">
             <div>
               <div className="eyebrow">
@@ -1475,6 +1475,20 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
             Management
           </footer>
         </div>
+        <nav className="kb-mobile-nav" aria-label="Quick navigation">
+          <button type="button" className={page === 'Overview' ? 'is-active' : ''} aria-current={page === 'Overview' ? 'page' : undefined} onClick={() => { setPage('Overview'); setNotificationsOpen(false); }}>
+            <LayoutDashboard size={20} /><span>Home</span>
+          </button>
+          <button type="button" className={page === 'Customers' ? 'is-active' : ''} aria-current={page === 'Customers' ? 'page' : undefined} onClick={() => { setPage('Customers'); setNotificationsOpen(false); }}>
+            <Users size={20} /><span>Customers</span>
+          </button>
+          <button type="button" className={page === taskPage ? 'is-active' : ''} aria-current={page === taskPage ? 'page' : undefined} onClick={() => { setPage(taskPage); setNotificationsOpen(false); }}>
+            <ClipboardList size={20} /><span>{taskPage}</span>
+          </button>
+          <button type="button" onClick={() => { setMobileNav(true); setNotificationsOpen(false); }} aria-label="More sections">
+            <Menu size={20} /><span>More</span>
+          </button>
+        </nav>
       </main>
 
       {showCustomer && (
