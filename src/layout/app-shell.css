@@ -77,3 +77,11 @@
  .kb-mobile-nav button span{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 }
 @media(prefers-reduced-motion:reduce){.kb-app-sidebar{transition:none}}
+[data-theme="dark"] .kb-app-shell{--kb-frame-ink:#e7edf6;--kb-frame-line:#2a3a50;--kb-frame-canvas:#0e1726;--kb-frame-surface:#172337}
+[data-theme="dark"] .kb-app-topbar{background:rgb(19 31 49 / 95%);border-bottom-color:#2a3a50;box-shadow:0 4px 18px rgb(0 0 0 / 12%)}
+[data-theme="dark"] .kb-app-topbar .crumb{color:#91a3bb}
+[data-theme="dark"] .kb-app-topbar .crumb strong{color:#edf3fb}
+[data-theme="dark"] .kb-app-topbar .hamburger{color:#d9e5f3;border-color:#34465e;background:#1a2a40}
+[data-theme="dark"] .kb-mobile-nav{border-top-color:#2a3a50;background:rgb(19 31 49 / 97%);box-shadow:0 -8px 28px rgb(0 0 0 / 22%)}
+[data-theme="dark"] .kb-mobile-nav button{color:#a6b5c9}
+[data-theme="dark"] .kb-mobile-nav button.is-active{color:#a8d1ff;background:#203c5e}
