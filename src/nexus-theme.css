@@ -315,3 +315,45 @@ input:focus,select:focus,textarea:focus{border-color:#79a9ff;box-shadow:0 0 0 3p
 [data-theme="dark"] .auth-shell .login-role-card small{color:#a9bad0}
 [data-theme="dark"] .auth-shell .auth-field input{background:#101d31;border-color:#30445f;color:#edf4ff}
 @media(max-width:600px){.auth-shell{padding:12px}.auth-shell .auth-card{padding:22px}.auth-shell .login-role-options{grid-template-columns:1fr}.auth-shell .login-role-card{min-height:120px}}
+
+
+/* Navigation, account controls and staff record details */
+.shell .nexus-navigation{display:block;overflow-y:auto;min-height:0;scrollbar-width:thin;scrollbar-color:#d6e1f0 transparent}
+.shell .nav-group{margin:13px 0 17px}
+.shell .nav-group-label{padding:0 17px 8px;color:#91a0b5;font-size:9px;font-weight:800;letter-spacing:.14em}
+.shell .mobile-close{color:#71819a;border-radius:9px;padding:7px}
+.shell .mobile-close:hover{background:#edf4ff;color:#2563eb}
+.shell .hamburger{border-radius:10px;color:#53647d}
+.shell .hamburger:hover{background:#eff6ff;color:#2563eb}
+.shell .scrim{background:rgba(12,25,46,.48);backdrop-filter:blur(2px)}
+.shell .account-trigger{border-radius:12px;background:#f8faff;color:#53647d}
+.shell .account-trigger:hover{background:#eff6ff;color:#2563eb;border-color:#c8dcff}
+.shell .notification-bell{position:relative}
+.shell .notification-count{position:absolute;top:-5px;right:-5px;min-width:18px;height:18px;display:grid;place-items:center;padding:0 4px;border:2px solid #fff;border-radius:999px;background:#ef4444;color:#fff;font-size:9px;font-weight:800}
+.shell .small-avatar{background:linear-gradient(140deg,#2563eb,#06b6d4);color:#fff}
+.shell .staff-request-card,.shell .staff-personal-record,.shell .staff-record-section,.shell .staff-record-work{border:1px solid #e5ebf4;border-radius:16px;background:#fff;box-shadow:0 6px 20px rgba(26,54,99,.04)}
+.shell .staff-request-card{padding:15px}
+.shell .staff-request-actions{display:flex;gap:8px;flex-wrap:wrap}
+.shell .staff-personal-record{padding:18px;margin-top:16px}
+.shell .staff-record-heading,.shell .staff-record-section-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.shell .staff-record-metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px}
+.shell .staff-record-metrics>*{padding:12px;border:1px solid #e8eef6;border-radius:12px;background:#f8faff}
+.shell .staff-record-section{padding:15px;margin-top:12px;box-shadow:none}
+.shell .staff-record-columns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:13px}
+.shell .staff-attendance-breakdown{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.shell .staff-attendance-stat{padding:10px;border-radius:11px;background:#f4f7fc;text-align:center}
+.shell .staff-attendance-track{height:9px;border-radius:99px;background:#e8eef6;overflow:hidden}
+.shell .staff-record-customer-list{display:grid;gap:8px}
+.shell .staff-record-customer-list>*{padding:10px;border:1px solid #e8eef6;border-radius:11px}
+.shell .staff-registration-requests,.shell .staff-holiday-requests{display:grid;gap:10px}
+.shell .staff-holiday-list{display:grid;gap:8px}
+.shell .staff-record-empty{padding:14px;border:1px dashed #d8e3f1;border-radius:12px;color:#8291a6;text-align:center}
+[data-theme="dark"] .shell .nav-group-label{color:#91a4bd}
+[data-theme="dark"] .shell .mobile-close,[data-theme="dark"] .shell .hamburger{color:#c4d3e7}
+[data-theme="dark"] .shell .mobile-close:hover,[data-theme="dark"] .shell .hamburger:hover{background:#203b61;color:#e4efff}
+[data-theme="dark"] .shell .account-trigger{background:#142238;border-color:#30445f;color:#dce8f8}
+[data-theme="dark"] .shell .notification-count{border-color:#142238}
+[data-theme="dark"] .shell .staff-request-card,[data-theme="dark"] .shell .staff-personal-record,[data-theme="dark"] .shell .staff-record-section,[data-theme="dark"] .shell .staff-record-work{background:#142238;border-color:#293b54;color:#e7eef9}
+[data-theme="dark"] .shell .staff-record-metrics>*,[data-theme="dark"] .shell .staff-attendance-stat,[data-theme="dark"] .shell .staff-record-customer-list>*{background:#101d31;border-color:#293b54;color:#dce7f5}
+[data-theme="dark"] .shell .staff-record-empty{border-color:#30445f;color:#a9bad0}
+@media(max-width:700px){.shell .staff-personal-record{padding:13px}.shell .staff-record-columns{grid-template-columns:1fr}.shell .staff-attendance-breakdown{grid-template-columns:repeat(3,minmax(0,1fr))}}
