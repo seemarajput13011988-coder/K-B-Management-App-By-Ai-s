@@ -43,7 +43,8 @@ import {
   ShieldCheck, KeyRound, BarChart3, LogOut, UserPlus, UserRound, LockKeyhole, ReceiptText,
 } from 'lucide-react';
 
-type Session={token:string;expiresAt:number;user:{id:string;userId:string;displayName:string;role:'admin'|'staff';active:boolean;canManageAdmins?:boolean}};
+type Session={token:string;expiresAt:number;businessId?:string;user:{id:string;userId:string;displayName:string;role:'admin'|'staff';active:boolean;businessId?:string;canManageAdmins?:boolean}};
+type BusinessWorkspace={id:string;name:string;role:string;createdAt?:string};
 type AppNotification={id:string;title:string;message:string;createdAt:string;read:boolean;type:string};
 type RetentionReviewItem={id:string;collection:string;collectionLabel:string;recordLabel:string;createdAt:string};
 type StaffRegistrationRequest={id:string;userId:string;displayName:string;phone?:string;reason?:string;status:'pending'|'approved'|'rejected';createdAt:string;reviewedAt?:string;};
@@ -204,6 +205,11 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
       : ({ en: 'Good evening', hi: 'शुभ संध्या', gu: 'શુભ સાંજ' }[language]);
   const taskPage = isAdmin ? 'Tasks' : 'My Work';
   const [page, setPage] = useState('Overview');
+  const [businesses,setBusinesses] = useState<BusinessWorkspace[]>([]);
+  const [activeBusinessId,setActiveBusinessId] = useState(session.businessId || session.user.businessId || '');
+  const [showBusinessModal,setShowBusinessModal] = useState(false);
+  const [newBusinessName,setNewBusinessName] = useState('');
+  const [businessBusy,setBusinessBusy] = useState(false);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [plans, setPlans] = useState<Plan[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
@@ -292,6 +298,13 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   async function load(silent = false) {
     if (!silent) setLoading(true);
     try {
+      try {
+        const businessResult = await api.get('/api/businesses');
+        setBusinesses(businessResult.data.items || []);
+        setActiveBusinessId(businessResult.data.activeBusinessId || session.businessId || session.user.businessId || '');
+      } catch {
+        setBusinesses([]);
+      }
       const [c, p, t, w, a, planResult] = await Promise.all([
         api.get('/api/customers'),
         api.get('/api/payments'),
@@ -331,6 +344,48 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
       if (!silent) setLoading(false);
     }
   }
+  async function switchBusiness(businessId:string) {
+    if (!businessId || businessId === activeBusinessId) return;
+    try {
+      await api.post('/api/businesses/' + encodeURIComponent(businessId) + '/select', {});
+      const raw = sessionStorage.getItem('kb-customer-session');
+      if (raw) {
+        const saved = JSON.parse(raw) as Session;
+        saved.businessId = businessId;
+        saved.user.businessId = businessId;
+        sessionStorage.setItem('kb-customer-session',JSON.stringify(saved));
+      }
+      window.location.reload();
+    } catch (error) {
+      flash(error instanceof Error ? error.message : 'Could not switch business workspace.');
+    }
+  }
+
+  async function createBusiness(e:FormEvent) {
+    e.preventDefault();
+    if (businessBusy || !newBusinessName.trim()) return;
+    setBusinessBusy(true);
+    try {
+      const result = await api.post('/api/businesses',{name:newBusinessName.trim()});
+      const businessId = String(result.data.activeBusinessId || result.data.business?.id || '');
+      const raw = sessionStorage.getItem('kb-customer-session');
+      if (raw && businessId) {
+        const saved = JSON.parse(raw) as Session;
+        saved.businessId = businessId;
+        saved.user.businessId = businessId;
+        sessionStorage.setItem('kb-customer-session',JSON.stringify(saved));
+      }
+      setShowBusinessModal(false);
+      setNewBusinessName('');
+      if (businessId) window.location.reload();
+      else await load(true);
+    } catch (error) {
+      flash(error instanceof Error ? error.message : 'Could not create the business workspace.');
+    } finally {
+      setBusinessBusy(false);
+    }
+  }
+
   useEffect(() => {
     load();
   }, []);
@@ -871,10 +926,13 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
             <X size={18} />
           </button>
         </div>
-        <div className="workspace">
+        <div className="workspace business-workspace-picker">
           <span className="workspace-dot" />
-          <span>Business workspace</span>
-          <ChevronDown size={14} />
+          <select aria-label="Active business workspace" value={activeBusinessId} onChange={event=>void switchBusiness(event.target.value)}>
+            {businesses.map(business=><option key={business.id} value={business.id}>{business.name}</option>)}
+            {!businesses.length && <option value={activeBusinessId || ''}>Business workspace</option>}
+          </select>
+          {isAdmin && <button type="button" className="workspace-add" title="Create another business" aria-label="Create another business" onClick={()=>setShowBusinessModal(true)}>+</button>}
         </div>
         <nav className="nexus-navigation" aria-label="Main navigation">
           {navGroups.map(group => <section className="nav-group" key={group.label}>
@@ -1534,7 +1592,8 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
       {complaintPreview && <Modal title={complaintPreview.name} subtitle="Complaint attachment" onClose={() => setComplaintPreview(null)}><div className="complaint-preview">{complaintPreview.mimeType.startsWith('video/') ? <video src={complaintPreview.dataUrl} controls playsInline /> : <img src={complaintPreview.dataUrl} alt={complaintPreview.name}/>}</div><div className="form-actions"><a className="btn secondary" href={complaintPreview.dataUrl} download={complaintPreview.name}>Download attachment</a><button type="button" className="btn primary" onClick={() => setComplaintPreview(null)}>Close</button></div></Modal>}
       {showStaff && <StaffModal onClose={() => setShowStaff(false)} onSave={createStaff} />}
       {showAdminModal && canManageAdmins && <AdminModal onClose={() => setShowAdminModal(false)} onSave={createAdmin} />}
-      {showAccountSettings && <AccountSettingsModal session={session} theme={theme} onToggleTheme={toggleTheme} onClose={() => setShowAccountSettings(false)} onChangeUserId={async (currentPassword: string, userId: string) => { await ensureNoActiveShiftBeforeCredentialChange(); await changeAppUserId(currentPassword, userId); onLogout(); }} onChangePassword={async (currentPassword: string, newPassword: string) => { await ensureNoActiveShiftBeforeCredentialChange(); await changeAppPassword(currentPassword, newPassword); onLogout(); }} />}
+      {showBusinessModal && <Modal title="Create another business" subtitle="Each business gets its own customers, staff, plans, invoices and records." onClose={()=>{if(!businessBusy)setShowBusinessModal(false);}}><form className="form-grid" onSubmit={createBusiness}><Field label="Business name" wide><input required maxLength={100} value={newBusinessName} onChange={event=>setNewBusinessName(event.target.value)} placeholder="e.g. Retail store, consulting firm, second company"/></Field><div className="form-actions"><button type="button" className="btn secondary" onClick={()=>setShowBusinessModal(false)} disabled={businessBusy}>Cancel</button><button className="btn primary" disabled={businessBusy||!newBusinessName.trim()}>{businessBusy?'Creating…':'Create business'}</button></div></form></Modal>}
+            {showAccountSettings && <AccountSettingsModal session={session} theme={theme} onToggleTheme={toggleTheme} onClose={() => setShowAccountSettings(false)} onChangeUserId={async (currentPassword: string, userId: string) => { await ensureNoActiveShiftBeforeCredentialChange(); await changeAppUserId(currentPassword, userId); onLogout(); }} onChangePassword={async (currentPassword: string, newPassword: string) => { await ensureNoActiveShiftBeforeCredentialChange(); await changeAppPassword(currentPassword, newPassword); onLogout(); }} />}
       {showTask && <TaskModal staff={staff.filter(member => member.active)} onClose={() => setShowTask(false)} onSave={saveTask} />}
       {editStaffUserId && <StaffUsernameModal staff={editStaffUserId} onClose={() => setEditStaffUserId(null)} onSave={(userId: string) => saveStaffUserId(editStaffUserId, userId)} />}
       {resetStaff && <StaffPasswordModal staff={resetStaff} onClose={() => setResetStaff(null)} onSave={(password: string) => saveStaffPassword(resetStaff, password)} />}
@@ -2591,7 +2650,7 @@ function App(){
  const [session,setSession]=useState<Session|null>(null);const [checking,setChecking]=useState(true);const [showWelcome,setShowWelcome]=useState(true);
  useEffect(()=>{const timer=window.setTimeout(()=>setShowWelcome(false),1500);return()=>window.clearTimeout(timer);},[]);
  useEffect(()=>{void client.get('/api/_healthcheck').catch(()=>undefined);},[]);
- useEffect(()=>{let live=true;async function restore(){localStorage.removeItem('kb-customer-session');const raw=sessionStorage.getItem('kb-customer-session');if(!raw){setChecking(false);return;}try{const old=JSON.parse(raw) as Session;const r=await client.get('/api/auth/me?sessionToken='+encodeURIComponent(old.token));if(live)setSession({...old,user:r.data.user});}catch{sessionStorage.removeItem('kb-customer-session');}finally{if(live)setChecking(false);}}restore();return()=>{live=false;};},[]);
+ useEffect(()=>{let live=true;async function restore(){localStorage.removeItem('kb-customer-session');const raw=sessionStorage.getItem('kb-customer-session');if(!raw){setChecking(false);return;}try{const old=JSON.parse(raw) as Session;const r=await client.get('/api/auth/me?sessionToken='+encodeURIComponent(old.token));if(live)setSession({...old,businessId:r.data.user.businessId||r.data.activeBusinessId||old.businessId,user:r.data.user});}catch{sessionStorage.removeItem('kb-customer-session');}finally{if(live)setChecking(false);}}restore();return()=>{live=false;};},[]);
  async function login(userId:string,password:string,expectedRole:'admin'|'staff'){const next=await signInAppUser(userId,password,expectedRole) as Session;if(next.user.role!==expectedRole){await signOutAppUser();throw new Error(expectedRole==='admin'?'This account is not an admin account. Choose Staff Sign In instead.':'This account is not a staff account. Choose Admin Sign In instead.');}sessionStorage.setItem('kb-customer-session',JSON.stringify(next));setSession(next);}
  if(showWelcome)return <><FestivalTheme/><WelcomeIntro/></>;
  if(checking)return <><FestivalTheme/><div className="loading-cover"><div className="loader"/><span>Preparing secure sign-in…</span></div></>;
