@@ -4,6 +4,7 @@ import { Capacitor } from '@capacitor/core';
 import { CapacitorUpdater } from '@capgo/capacitor-updater';
 import App from './App';
 import './index.css';
+import './mobile-overhaul.css';
 
 const UPDATE_CHECK_TIMEOUT_MS = 25000;
 const UPDATE_DOWNLOAD_TIMEOUT_MS = 120000;
