@@ -52,5 +52,5 @@ export function isValidPortalComplaintInput(input: PortalComplaintInput): boolea
   return /^[0-9]{10}$/.test(phone) && !!subject && subject.length <= 150 &&
     !!details && details.length <= 1500 && !!fileName && fileName.length <= 120 &&
     ['image/jpeg', 'image/png', 'image/webp'].includes(mimeType) &&
-    data.length >= 100 && data.length <= 2800000;
+    data.length >= 100 && data.length <= 2800000 && data.length % 4 === 0 && /^[A-Za-z0-9+/]+={0,2}$/.test(data);
 }
