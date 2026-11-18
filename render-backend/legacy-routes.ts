@@ -459,6 +459,7 @@ export const handler = router({
       id: params.id,
       record: { status: 'Rejected', reviewedAt: new Date().toISOString(), reviewedBy: user.id, reviewedByName: user.displayName, reviewNote: cleanText((body || {}).reviewNote, 300) },
     }], { patch: true });
+    if (updated) await writeAudit(user, 'UPDATE', 'portal_plan_change_request', params.id, 'Rejected customer portal plan-change request');
     return updated ? json({ updated: true, status: 'Rejected' }) : error('Could not update the request.', 500);
   }),
 
