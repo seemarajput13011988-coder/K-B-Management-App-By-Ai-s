@@ -1,4 +1,5 @@
 import { router, json, error, db, secrets, firestore, FieldValue } from './firestore-adapter.js';
+import { businessContext } from './firestore-adapter.js';
 import type { RouterMiddleware } from './firestore-adapter.js';
 import { attendanceAbsenceDecision, computeShiftDeadline, isConfirmedGpsLossReason, isFreshLocationTimestamp, isGpsGraceExemptHolidayStatus, isValidDateRange } from './route-path.js';
 import { createHash, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
@@ -66,7 +67,7 @@ type Complaint = {
   resolvedAt?: string;
   resolutionDetails?: string;
 };
-type SessionRecord = { userId: string; expiresAt: number };
+type SessionRecord = { userId: string; businessId?: string; expiresAt: number };
 type TaskRecord = { title: string; details: string; assignedTo: string; assignedToName: string; priority: string; dueDate: string; status: string; createdAt: string; createdBy: string; createdByName: string; updatedAt?: string; updatedBy?: string; updatedByName?: string; completedAt?: string; completedBy?: string; completedByName?: string };
 type PlanRecord = { id?: string; name: string; provider: string; speed: string; data: string; price: number; note: string; details?: string; connectionType: string; featured: boolean; active: boolean };
 const defaultPlans: PlanRecord[] = [
@@ -123,7 +124,23 @@ async function currentUser(ctx: Parameters<RouterMiddleware>[0]): Promise<UserRe
   if (!session || !Number.isFinite(Number(session.expiresAt)) || Number(session.expiresAt) <= Date.now()) return null;
   const [user] = await db.get<UserRecord>('users', [session.userId], { consistent: true });
   if (!user || !user.active) return null;
-  return user;
+  const businessId = cleanText(session.businessId,128) || 'legacy-default';
+  const membershipId = session.userId + '__' + businessId;
+  let [membership] = await db.get<Record<string,unknown>>('business_memberships',[membershipId],{consistent:true});
+  if (!membership && businessId === 'legacy-default') {
+    const createdAt = new Date().toISOString();
+    await firestore.collection('businesses').doc(businessId).set({
+      name:'Primary business',active:true,legacyData:true,createdAt,updatedAt:createdAt,
+    },{merge:true});
+    await firestore.collection('business_memberships').doc(membershipId).set({
+      userId:session.userId,businessId,role:user.role,active:true,createdAt,createdBy:'session-migration',
+    },{merge:true});
+    [membership] = await db.get<Record<string,unknown>>('business_memberships',[membershipId],{consistent:true});
+    await firestore.collection('sessions').doc(tokenId(token)).set({businessId},{merge:true});
+  }
+  if (!membership || membership.active === false) return null;
+  businessContext.enter(businessId);
+  return { ...user, businessId } as UserRecord;
 }
 
 function protectedRoute(roles: Role[], handler: Handler): RouterMiddleware[] {
