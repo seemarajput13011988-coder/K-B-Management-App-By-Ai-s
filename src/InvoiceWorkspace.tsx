@@ -39,7 +39,7 @@ export default function InvoiceWorkspace({customers,plans,profileKey='default',f
     let active=true;
     setProfileLoaded(false);
     api.get('/api/business-profile').then(result=>{
-      if(active && result.data.profile) setBusinessProfile({...emptyBusinessProfile,...result.data.profile});
+      if(active && result.data.profile) { const profile={...emptyBusinessProfile,...result.data.profile}; setBusinessProfile(profile); setPlaceOfSupply(current=>current||profile.state); setSupplyStateCode(current=>current||profile.stateCode); }
     }).catch(()=>undefined).finally(()=>{if(active)setProfileLoaded(true);});
     return()=>{active=false;};
   },[profileKey]);
@@ -119,6 +119,15 @@ export default function InvoiceWorkspace({customers,plans,profileKey='default',f
     e.preventDefault();
     if(!businessProfile.name.trim()||!businessProfile.address.trim()||!customerName.trim()||!customerPhone.trim()||!items.length||items.some(i=>!i.description.trim()||!Number.isFinite(Number(i.quantity))||Number(i.quantity)<=0||!Number.isFinite(Number(i.rate))||Number(i.rate)<0)||extraSummaryFields.some(f=>(f.label.trim()||f.details.trim()||f.amount.trim())&&(!f.label.trim()||!f.amount.trim()||!Number.isFinite(Number(f.amount))||Number(f.amount)<0))){
       flash('Enter your business name and address, customer details, valid service amounts, and a name plus amount for each optional summary field.');
+      return;
+    }
+    const hasGst = items.some(item=>Number(item.gstRate)>0) || extraSummaryFields.some(field=>Number(field.gstRate)>0 && Number(field.amount)>0);
+    if (!businessProfile.gstin.trim() && hasGst) {
+      flash('Add your GSTIN before charging GST, or set every invoice GST rate to 0%.');
+      return;
+    }
+    if (businessProfile.gstin.trim() && (!businessProfile.stateCode.trim() || businessProfile.gstin.slice(0,2)!==businessProfile.stateCode.trim())) {
+      flash('The business state code must match the first two digits of the GSTIN.');
       return;
     }
     setBusy(true);
@@ -235,7 +244,7 @@ export default function InvoiceWorkspace({customers,plans,profileKey='default',f
         <label>Business phone<input value={businessProfile.phone} onChange={e=>setBusinessProfile({...businessProfile,phone:e.target.value})} placeholder="Business contact number"/></label>
         <label>Business email<input type="email" value={businessProfile.email} onChange={e=>setBusinessProfile({...businessProfile,email:e.target.value})} placeholder="accounts@example.com"/></label>
         <label className="wide">Registered business address<input required value={businessProfile.address} onChange={e=>setBusinessProfile({...businessProfile,address:e.target.value})} placeholder="Full business address"/></label>
-        <label>Business state<input value={businessProfile.state} onChange={e=>setBusinessProfile({...businessProfile,state:e.target.value})} placeholder="State / Union Territory"/></label>
+        <label>Business state<input value={businessProfile.state} onChange={e=>{setBusinessProfile({...businessProfile,state:e.target.value});if(!placeOfSupply)setPlaceOfSupply(e.target.value);}} placeholder="State / Union Territory"/></label>
         <label>Business state code<input maxLength={2} pattern="[0-9]{2}" value={businessProfile.stateCode} onChange={e=>setBusinessProfile({...businessProfile,stateCode:e.target.value.replace(/\D/g,'').slice(0,2)})} placeholder="GST state code"/></label>
         <label>IFSC <small>Optional</small><input maxLength={11} value={businessProfile.ifsc} onChange={e=>setBusinessProfile({...businessProfile,ifsc:e.target.value.toUpperCase()})} placeholder="Bank IFSC code"/></label>
         <label>Business UPI ID <small>Optional</small><input value={businessProfile.upi} onChange={e=>setBusinessProfile({...businessProfile,upi:e.target.value})} placeholder="business@upi"/></label>
