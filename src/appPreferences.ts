@@ -35,10 +35,10 @@ function applyTranslations(root: HTMLElement, language: AppLanguage) {
  });
 }
 export function useAppPreferences() {
- const [language,setLanguage]=useState<AppLanguage>(()=>{try{const v=localStorage.getItem('kb-ui-language');return v==='hi'||v==='gu'?v:'en';}catch{return 'en';}});
- const [theme,setTheme]=useState<AppTheme>(()=>{try{return localStorage.getItem('kb-ui-theme')==='dark'?'dark':'light';}catch{return 'light';}});
+ const [language,setLanguage]=useState<AppLanguage>(()=>{try{const v=localStorage.getItem('vypaar-ui-language');return v==='hi'||v==='gu'?v:'en';}catch{return 'en';}});
+ const [theme,setTheme]=useState<AppTheme>(()=>{try{return localStorage.getItem('vypaar-ui-theme')==='dark'?'dark':'light';}catch{return 'light';}});
  useEffect(()=>{
-  try{localStorage.setItem('kb-ui-language',language);}catch{}
+  try{localStorage.setItem('vypaar-ui-language',language);}catch{}
   document.documentElement.lang=language;
   const root=document.querySelector<HTMLElement>('.shell');
   if(!root)return;
@@ -47,6 +47,6 @@ export function useAppPreferences() {
   observer.observe(root,{subtree:true,childList:true,characterData:true,attributes:true,attributeFilter:['placeholder','title','aria-label']});
   return()=>observer.disconnect();
  },[language]);
- useEffect(()=>{try{localStorage.setItem('kb-ui-theme',theme);}catch{}document.documentElement.dataset.theme=theme;},[theme]);
+ useEffect(()=>{try{localStorage.setItem('vypaar-ui-theme',theme);}catch{}document.documentElement.dataset.theme=theme;},[theme]);
  return {language,setLanguage,theme,toggleTheme:()=>setTheme(v=>v==='dark'?'light':'dark')};
 }
