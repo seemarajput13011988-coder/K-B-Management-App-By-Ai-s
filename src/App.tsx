@@ -14,6 +14,7 @@ const InstallationsWorkspace = lazy(() => import('./InstallationsWorkspace'));
 const CalendarWorkspace = lazy(() => import('./CalendarWorkspace'));
 import { useAppPreferences } from './appPreferences';
 import QuickNavigation from './layout/QuickNavigation';
+import { buildNavigationModel } from './navigation/navigationModel';
 import { api as client, changeAppPassword, changeAppUserId, signInAppUser, signOutAppUser, submitStaffRegistrationRequest, getStaffRegistrationStatus, nativeApiPost } from './lib/api';
 import {
   Activity,
@@ -830,35 +831,16 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
     }
   }
 
-  const nav = [
-    { label: 'Overview', icon: LayoutDashboard },
-    { label: 'Calendar', icon: CalendarDays },
-    { label: taskPage, icon: ClipboardList, count: pendingTasks || undefined },
-    ...(isAdmin ? [{ label: 'Salary', icon: IndianRupee }] : [{ label: 'My Day', icon: CalendarDays }]),
-    { label: 'Customers', icon: Users, count: customers.length },
-    { label: 'Subscriptions', icon: CalendarDays },
-    { label: 'Inventory', icon: ClipboardList },
-    { label: 'Installations', icon: MapPin },
-    ...(isAdmin ? [{ label: 'Plans & Pricing', icon: Wifi }] : []),
-    ...(isAdmin ? [{ label: 'Team Operations', icon: Users }] : []),
-    ...(isAdmin ? [{ label: 'GPS Tracking', icon: MapPin }] : []),
-    ...(isAdmin ? [{ label: 'Staff', icon: UserRound, count: staff.length }] : []),
-    ...(canManageAdmins ? [{ label: 'Admin Accounts', icon: ShieldCheck, count: adminAccounts.length || undefined }] : []),
-    ...(isAdmin ? [{ label: 'Invoices', icon: ReceiptText }] : []),
-    ...(isAdmin ? [{ label: 'Finance & Billing', icon: IndianRupee }] : []),
-    { label: 'Payments', icon: CreditCard },
-    {
-      label: 'Complaints',
-      icon: MessageSquare,
-      count: openComplaints || undefined,
-    },
-  ];
-
-  const navGroups = [
-    { label: 'HOME', items: nav.filter(item => ['Overview', 'Calendar', taskPage, 'My Day', 'Salary'].includes(item.label)) },
-    { label: 'CUSTOMERS & FIELD', items: nav.filter(item => ['Customers', 'Subscriptions', 'Inventory', 'Installations', 'Payments', 'Complaints', 'Plans & Pricing'].includes(item.label)) },
-    { label: 'MANAGEMENT', items: nav.filter(item => ['Team Operations', 'GPS Tracking', 'Staff', 'Admin Accounts', 'Invoices', 'Finance & Billing'].includes(item.label)) },
-  ].filter(group => group.items.length);
+  const navGroups = buildNavigationModel({
+    isAdmin,
+    canManageAdmins,
+    taskPage,
+    pendingTasks,
+    customerCount: customers.length,
+    staffCount: staff.length,
+    adminCount: adminAccounts.length,
+    openComplaintCount: openComplaints,
+  });
 
   return (
     <div className="kb-app-shell">
