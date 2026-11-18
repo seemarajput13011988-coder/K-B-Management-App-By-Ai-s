@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import { exportPdfFile } from './lib/file-export';
 
@@ -6,34 +6,46 @@ type Customer = { id:string; name:string; phone:string; address:string; plan:str
 type Plan = { id:string; name:string; provider:string; speed:string; data:string; price:number; note:string; details?:string; connectionType:string; active:boolean };
 type LineItem = { id:number; description:string; details:string; sac:string; quantity:string; rate:string; discount:string; gstRate:string; taxMode:'exclusive'|'inclusive' };
 type ExtraSummaryField = { id:number; label:string; details:string; amount:string; gstRate:string };
-const BUSINESS = { name:'K&B NET SERVICE', gstin:'24AHHPC7437K1ZA', tollFree:'079-29992999', ifsc:'VCOB0000018', address:'B-8/10 Gokul Galaxy Residency, Kathwada, Ahmedabad - 382430', email:'brajrajsinghchauhan3517@gmail.com', state:'Gujarat' };
+type BusinessProfile = { name:string; gstin:string; phone:string; ifsc:string; address:string; email:string; state:string; stateCode:string };
+const emptyBusinessProfile:BusinessProfile = { name:'', gstin:'', phone:'', ifsc:'', address:'', email:'', state:'', stateCode:'' };
+function readBusinessProfile(profileKey:string):BusinessProfile {
+  try {
+    const saved = localStorage.getItem('vypaar-invoice-profile-'+profileKey);
+    if (!saved) return emptyBusinessProfile;
+    const parsed = JSON.parse(saved) as Partial<BusinessProfile>;
+    return { ...emptyBusinessProfile, ...parsed };
+  } catch {
+    return emptyBusinessProfile;
+  }
+}
 const today = () => new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 const money = (n:number) => '₹'+(Number.isFinite(n)?n:0).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});
 const pdfMoney = (n:number) => 'INR '+(Number.isFinite(n)?n:0).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});
 const fmtDate = (s:string) => s ? new Date(s+'T12:00:00').toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}) : '—';
 const newLine = (id:number):LineItem => ({id,description:'',details:'',sac:'',quantity:'1',rate:'',discount:'0',gstRate:'18',taxMode:'exclusive'});
 
-export default function InvoiceWorkspace({customers,plans,flash}:{customers:Customer[];plans:Plan[];flash:(message:string)=>void}) {
+export default function InvoiceWorkspace({customers,plans,profileKey='default',flash}:{customers:Customer[];plans:Plan[];profileKey?:string;flash:(message:string)=>void}) {
   const [customerId,setCustomerId]=useState('');
   const [customerName,setCustomerName]=useState('');
   const [customerPhone,setCustomerPhone]=useState('');
   const [customerEmail,setCustomerEmail]=useState('');
   const [customerAddress,setCustomerAddress]=useState('');
   const [customerGstin,setCustomerGstin]=useState('');
-  const [businessAddress,setBusinessAddress]=useState(BUSINESS.address);
+  const [businessProfile,setBusinessProfile]=useState<BusinessProfile>(()=>readBusinessProfile(profileKey));
+  useEffect(()=>{try{localStorage.setItem('vypaar-invoice-profile-'+profileKey,JSON.stringify(businessProfile));}catch{}},[businessProfile,profileKey]);
   const [manualQty,setManualQty]=useState('1');
   const [manualRate,setManualRate]=useState('');
   const [manualDiscount,setManualDiscount]=useState('0');
   const [manualGst,setManualGst]=useState('18');
   const [businessUpi,setBusinessUpi]=useState('');
-  const [invoiceNo,setInvoiceNo]=useState(()=> 'KB/INV/'+new Date().getFullYear()+'/'+String(Date.now()).slice(-6));
+  const [invoiceNo,setInvoiceNo]=useState(()=> 'INV/'+new Date().getFullYear()+'/'+String(Date.now()).slice(-6));
   const [invoiceDate,setInvoiceDate]=useState(today);
   const [dueDate,setDueDate]=useState(today);
-  const [placeOfSupply,setPlaceOfSupply]=useState('Gujarat');
-  const [supplyStateCode,setSupplyStateCode]=useState('24');
+  const [placeOfSupply,setPlaceOfSupply]=useState('');
+  const [supplyStateCode,setSupplyStateCode]=useState('');
   const [reverseCharge,setReverseCharge]=useState(false);
   const [reference,setReference]=useState('');
-  const [notes,setNotes]=useState('Thank you for choosing K&B Net Service.');
+  const [notes,setNotes]=useState('Thank you for your business.');
   const [terms,setTerms]=useState('Payment is due by the due date mentioned above. Please mention the invoice number while making payment.');
   const [paymentMode,setPaymentMode]=useState('UPI / Bank Transfer');
   const [items,setItems]=useState<LineItem[]>([newLine(1)]);
@@ -54,7 +66,7 @@ export default function InvoiceWorkspace({customers,plans,flash}:{customers:Cust
   const extraTaxTotal = extraSummaryFields.reduce((sum,field)=>sum+Math.max(0,Number(field.amount)||0)*Math.max(0,Number(field.gstRate)||0)/100,0);
   const subtotal = lineSubtotal + extraSubtotal;
   const taxTotal = lineTaxTotal + extraTaxTotal;
-  const isIntraState = supplyStateCode.trim()==='24';
+  const isIntraState = !!businessProfile.stateCode.trim() && supplyStateCode.trim()===businessProfile.stateCode.trim();
   const cgst = isIntraState ? Math.round(taxTotal/2*100)/100 : 0, sgst = isIntraState ? taxTotal-cgst : 0, igst = isIntraState ? 0 : taxTotal;
   const grandTotal = Math.round((subtotal+taxTotal)*100)/100;
   const payable = Math.round(grandTotal);
@@ -66,7 +78,7 @@ export default function InvoiceWorkspace({customers,plans,flash}:{customers:Cust
     if(!c)return;
     setCustomerName(c.name||'');setCustomerPhone(c.phone||'');setCustomerAddress(c.address||'');setCustomerEmail(c.email||'');setCustomerGstin((c.gstin||c.gstNumber||'').toUpperCase());
     const p=selectedPlan(c.plan);
-    setItems([{...newLine(1),description:(c.plan||'Internet service')+' - '+(p?.provider||'K&B Net Service'),details:[p?.speed,p?.data,p?.details,p?.note].filter(Boolean).join(' · '),rate:String(c.monthlyFee||p?.price||'')}]);
+    setItems([{...newLine(1),description:(c.plan||'Internet service')+' - '+(p?.provider||businessProfile.name||'Service provider'),details:[p?.speed,p?.data,p?.details,p?.note].filter(Boolean).join(' · '),rate:String(c.monthlyFee||p?.price||'')}]);
   }
   function updateItem(id:number,patch:Partial<LineItem>){setItems(prev=>prev.map(item=>item.id===id?{...item,...patch}:item));}
   function numberWords(value:number) {
@@ -79,8 +91,8 @@ export default function InvoiceWorkspace({customers,plans,flash}:{customers:Cust
   }
   async function generate(e:FormEvent) {
     e.preventDefault();
-    if(!customerName.trim()||!customerPhone.trim()||!items.length||items.some(i=>!i.description.trim()||!Number.isFinite(Number(i.quantity))||Number(i.quantity)<=0||!Number.isFinite(Number(i.rate))||Number(i.rate)<0)||extraSummaryFields.some(f=>(f.label.trim()||f.details.trim()||f.amount.trim())&&(!f.label.trim()||!f.amount.trim()||!Number.isFinite(Number(f.amount))||Number(f.amount)<0))){
-      flash('Enter customer details, valid service amounts, and a name plus amount for each optional summary field.');
+    if(!businessProfile.name.trim()||!businessProfile.address.trim()||!customerName.trim()||!customerPhone.trim()||!items.length||items.some(i=>!i.description.trim()||!Number.isFinite(Number(i.quantity))||Number(i.quantity)<=0||!Number.isFinite(Number(i.rate))||Number(i.rate)<0)||extraSummaryFields.some(f=>(f.label.trim()||f.details.trim()||f.amount.trim())&&(!f.label.trim()||!f.amount.trim()||!Number.isFinite(Number(f.amount))||Number(f.amount)<0))){
+      flash('Enter your business name and address, customer details, valid service amounts, and a name plus amount for each optional summary field.');
       return;
     }
     setBusy(true);
@@ -99,16 +111,16 @@ export default function InvoiceWorkspace({customers,plans,flash}:{customers:Cust
       };
       doc.setFillColor(20,59,103);doc.rect(0,0,pageWidth,38,'F');
       doc.setFont('helvetica','bold');doc.setFontSize(19);doc.setTextColor(255,255,255);
-      doc.text('K&B NET SERVICE',left,16);
+      doc.text(businessProfile.name.trim() || 'Your Business',left,16);
       doc.setFont('helvetica','normal');doc.setFontSize(8);doc.text('INTERNET  |  NETWORK  |  CONNECTIVITY',left,22);
-      doc.setFont('helvetica','bold');doc.setFontSize(16);doc.text('TAX INVOICE',right,16,{align:'right'});
+      doc.setFont('helvetica','bold');doc.setFontSize(16);doc.text(businessProfile.gstin.trim() ? 'TAX INVOICE' : 'INVOICE',right,16,{align:'right'});
       doc.setFont('helvetica','normal');doc.setFontSize(8);
       doc.text('Invoice: '+invoiceNo,right,22,{align:'right'});
       doc.text('Date: '+fmtDate(invoiceDate)+'   Due: '+fmtDate(dueDate),right,27,{align:'right'});
       y=44;
-      textLine(businessAddress, left, 8, [85,99,116]);
-      textLine('GSTIN: '+BUSINESS.gstin+'  |  Toll Free: '+BUSINESS.tollFree+'  |  IFSC: '+BUSINESS.ifsc,left,8,[85,99,116]);
-      textLine('Email: '+BUSINESS.email+(businessUpi?'  |  UPI: '+businessUpi:''),left,8,[85,99,116]);
+      textLine(businessProfile.address, left, 8, [85,99,116]);
+      textLine([businessProfile.gstin?'GSTIN: '+businessProfile.gstin:'',businessProfile.phone?'Phone: '+businessProfile.phone:'',businessProfile.ifsc?'IFSC: '+businessProfile.ifsc:''].filter(Boolean).join('  |  '),left,8,[85,99,116]);
+      textLine([businessProfile.email?'Email: '+businessProfile.email:'',businessUpi?'UPI: '+businessUpi:''].filter(Boolean).join('  |  '),left,8,[85,99,116]);
       y+=4;
       const cardY=y;
       const billX=left+4, billWidth=91, detailsX=right-69, detailsWidth=65;
@@ -170,30 +182,40 @@ export default function InvoiceWorkspace({customers,plans,flash}:{customers:Cust
       y+=2;textLine('Notes: '+(notes||'—'),left,8,[70,83,100]);
       y+=2;textLine('Terms & Conditions: '+(terms||'—'),left,8,[70,83,100]);
       ensureSpace(15);y+=5;doc.setDrawColor(215,224,234);doc.line(left,y,right,y);y+=7;
-      doc.setFont('helvetica','bold');doc.setFontSize(9);doc.setTextColor(40,52,70);doc.text('For K&B NET SERVICE',left,y);
+      doc.setFont('helvetica','bold');doc.setFontSize(9);doc.setTextColor(40,52,70);doc.text('For '+(businessProfile.name.trim() || 'Your Business'),left,y);
       doc.setFont('helvetica','normal');doc.setFontSize(8);doc.text('Authorised Signatory',right,y,{align:'right'});
       doc.setFontSize(7);doc.setTextColor(120,130,145);doc.text('Computer-generated invoice · Please retain for your records',left,y+5);
       const fileName=invoiceNo.replace(/[^a-z0-9_-]+/gi,'-')+'.pdf';
       await exportPdfFile(fileName,doc.output('datauristring'));
-      flash('Invoice PDF saved in the K&B Management Nexus Documents folder. You can also share or save another copy from the Android share sheet.');
+      flash('Invoice PDF saved to your device. You can also share or save another copy from the Android share sheet.');
       setDialogOpen(false);
-      setInvoiceNo('KB/INV/'+new Date().getFullYear()+'/'+String(Date.now()).slice(-6));
+      setInvoiceNo('INV/'+new Date().getFullYear()+'/'+String(Date.now()).slice(-6));
     } catch(error) {
       flash(error instanceof Error?error.message:'Could not save the invoice PDF.');
     } finally { setBusy(false); }
   }
   return <div className="invoice-workspace">
-    <section className="invoice-intro"><div><span className="eyebrow">CUSTOMER DOCUMENTS</span><h2>Professional GST invoices</h2><p>Create a branded customer invoice with automatic tax calculation and PDF printing.</p></div><div className="invoice-brand-chip"><b>K&amp;B</b><span>NET SERVICE</span></div><button type="button" className="btn primary invoice-open-button" onClick={()=>setDialogOpen(true)}>+ Create invoice</button></section>
+    <section className="invoice-intro"><div><span className="eyebrow">CUSTOMER DOCUMENTS</span><h2>Professional GST invoices</h2><p>Create a branded customer invoice with automatic tax calculation and PDF printing.</p></div><div className="invoice-brand-chip"><b>VYPAAR</b><span>INVOICE STUDIO</span></div><button type="button" className="btn primary invoice-open-button" onClick={()=>setDialogOpen(true)}>+ Create invoice</button></section>
     {dialogOpen && <div className="invoice-modal-backdrop" onMouseDown={event=>{if(event.target===event.currentTarget)setDialogOpen(false);}}><div className="invoice-modal" role="dialog" aria-modal="true" aria-label="Create customer invoice"><div className="invoice-modal-head"><div><h2>Create customer invoice</h2><p>Fill in customer, service and tax details, then generate the PDF.</p></div><button type="button" className="btn secondary compact" onClick={()=>setDialogOpen(false)}>Close</button></div>
     <form className="invoice-form" onSubmit={generate}>
       <section className="invoice-form-section"><h3>Invoice information</h3><div className="invoice-grid">
         <label>Invoice number<input required value={invoiceNo} onChange={e=>setInvoiceNo(e.target.value)}/></label><label>Invoice date<input type="date" required value={invoiceDate} onChange={e=>setInvoiceDate(e.target.value)}/></label><label>Due date<input type="date" required min={invoiceDate} value={dueDate} onChange={e=>setDueDate(e.target.value)}/></label><label>Reference / order number <small>Optional</small><input value={reference} onChange={e=>setReference(e.target.value)} placeholder="PO / service reference"/></label>
       </div></section>
+      <section className="invoice-form-section"><h3>Your business information</h3><p className="invoice-help">These details are saved on this device for the signed-in account and printed as the invoice issuer. Enter the correct legal business details before issuing an invoice.</p><div className="invoice-grid">
+        <label>Business / trade name<input required maxLength={120} value={businessProfile.name} onChange={e=>setBusinessProfile({...businessProfile,name:e.target.value})} placeholder="Your registered business name"/></label>
+        <label>GSTIN <small>Optional if not GST registered</small><input maxLength={15} value={businessProfile.gstin} onChange={e=>setBusinessProfile({...businessProfile,gstin:e.target.value.toUpperCase()})} placeholder="15-character GSTIN"/></label>
+        <label>Business phone<input value={businessProfile.phone} onChange={e=>setBusinessProfile({...businessProfile,phone:e.target.value})} placeholder="Business contact number"/></label>
+        <label>Business email<input type="email" value={businessProfile.email} onChange={e=>setBusinessProfile({...businessProfile,email:e.target.value})} placeholder="accounts@example.com"/></label>
+        <label className="wide">Registered business address<input required value={businessProfile.address} onChange={e=>setBusinessProfile({...businessProfile,address:e.target.value})} placeholder="Full business address"/></label>
+        <label>Business state<input value={businessProfile.state} onChange={e=>setBusinessProfile({...businessProfile,state:e.target.value})} placeholder="State / Union Territory"/></label>
+        <label>Business state code<input maxLength={2} pattern="[0-9]{2}" value={businessProfile.stateCode} onChange={e=>setBusinessProfile({...businessProfile,stateCode:e.target.value.replace(/\D/g,'').slice(0,2)})} placeholder="GST state code"/></label>
+        <label>IFSC <small>Optional</small><input maxLength={11} value={businessProfile.ifsc} onChange={e=>setBusinessProfile({...businessProfile,ifsc:e.target.value.toUpperCase()})} placeholder="Bank IFSC code"/></label>
+        <label>Business UPI ID <small>Optional</small><input value={businessUpi} onChange={e=>setBusinessUpi(e.target.value)} placeholder="business@upi"/></label>
+      </div></section>
       <section className="invoice-form-section"><h3>Customer information</h3><div className="invoice-grid">
         <label>Choose existing customer <small>Optional, or enter details manually</small><select value={customerId} onChange={e=>chooseCustomer(e.target.value)}><option value="">Manual customer entry</option>{customers.map(c=><option key={c.id} value={c.id}>{c.name} · {c.phone}</option>)}</select></label>
         <label>Customer name<input required value={customerName} onChange={e=>setCustomerName(e.target.value)} placeholder="Full customer / business name"/></label><label>Phone number<input required type="tel" value={customerPhone} onChange={e=>setCustomerPhone(e.target.value)} placeholder="Customer mobile number"/></label><label>Email address <small>Optional</small><input type="email" value={customerEmail} onChange={e=>setCustomerEmail(e.target.value)} placeholder="customer@example.com"/></label><label className="wide">Billing address<textarea rows={2} value={customerAddress} onChange={e=>setCustomerAddress(e.target.value)} placeholder="House, street, area, city, state, PIN"/></label><label>Customer GSTIN <small>Optional</small><input maxLength={15} value={customerGstin} onChange={e=>setCustomerGstin(e.target.value.toUpperCase())} placeholder="15-character GSTIN"/></label>
-        <label className="wide">K&amp;B business address<input value={businessAddress} onChange={e=>setBusinessAddress(e.target.value)} /></label>
-        <label>Business UPI ID <small>Optional</small><input value={businessUpi} onChange={e=>setBusinessUpi(e.target.value)} placeholder="business@upi"/></label>
+        
       </div></section>
       <section className="invoice-form-section"><h3>Service / plan charges</h3><p className="invoice-help">Add internet plan, installation, router, maintenance or other billable items. Each line can use its own GST rate.</p>
         {items.map((item,index)=><div className="invoice-line" key={item.id}><div className="invoice-line-title"><b>Item {index+1}</b>{items.length>1&&<button type="button" className="invoice-remove" onClick={()=>setItems(prev=>prev.filter(x=>x.id!==item.id))}>Remove</button>}</div><div className="invoice-grid"><label>Choose plan <small>Optional</small><select value="" onChange={e=>{const p=plans.find(x=>x.id===e.target.value);if(p)updateItem(item.id,{description:p.name,details:[p.provider,p.speed,p.data,p.details,p.note].filter(Boolean).join(' · '),rate:String(p.price)});}}><option value="">Select a plan to fill details</option>{plans.map(p=><option key={p.id} value={p.id}>{p.name} · ₹{p.price}</option>)}</select></label><label>Description<input required value={item.description} onChange={e=>updateItem(item.id,{description:e.target.value})} placeholder="Monthly internet plan"/></label><label>Additional plan details <small>Optional</small><input value={item.details} onChange={e=>updateItem(item.id,{details:e.target.value})} placeholder="Speed, data limit, validity, installation details"/></label><label>SAC / HSN <small>Optional</small><input value={item.sac} onChange={e=>updateItem(item.id,{sac:e.target.value})}/></label><label>Quantity<input type="number" min="0.01" step="0.01" required value={item.quantity} onChange={e=>updateItem(item.id,{quantity:e.target.value})}/></label><label>Rate per unit (₹)<input type="number" min="0" step="0.01" required value={item.rate} onChange={e=>updateItem(item.id,{rate:e.target.value})}/></label><label>Discount (%)<input type="number" min="0" max="100" step="0.01" value={item.discount} onChange={e=>updateItem(item.id,{discount:e.target.value})}/></label><label>GST rate<select value={item.gstRate} onChange={e=>updateItem(item.id,{gstRate:e.target.value})}><option value="0">0%</option><option value="5">5%</option><option value="12">12%</option><option value="18">18% (9% CGST + 9% SGST)</option><option value="28">28%</option></select></label><label>Rate type<select value={item.taxMode} onChange={e=>updateItem(item.id,{taxMode:e.target.value as LineItem['taxMode']})}><option value="exclusive">GST extra (exclusive)</option><option value="inclusive">GST included (inclusive)</option></select></label></div><div className="invoice-line-calculated"><span>Calculated line total (including GST)</span><b>{money((Math.max(0,Number(item.quantity)||0)*Math.max(0,Number(item.rate)||0)*(1-Math.min(100,Math.max(0,Number(item.discount)||0))/100))*(item.taxMode==='inclusive'?1:1+Math.max(0,Number(item.gstRate)||0)/100))}</b></div></div>)}
