@@ -6,7 +6,6 @@ import App from './App';
 import './index.css';
 import './layout/app-shell.css';
 import './dashboard/overview.css';
-import './layout/workspace-design.css';
 
 const UPDATE_CHECK_TIMEOUT_MS = 25_000;
 
