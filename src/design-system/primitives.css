@@ -131,3 +131,25 @@
   .kb-app-shell .complaint-toolbar-search { margin:0 0 12px; }
   .kb-app-shell .complaint-toolbar-search .searchbox { width:100%; }
 }
+
+.kb-app-shell .portal-request-panel { padding:20px; margin-bottom:18px; border:1px solid #cfe0f2; background:linear-gradient(145deg,#fff,#f4f9ff); }
+.kb-app-shell .portal-request-heading { display:flex; align-items:flex-start; justify-content:space-between; gap:14px; margin-bottom:14px; }
+.kb-app-shell .portal-request-heading h2 { margin:5px 0 4px; color:var(--nexus-text); font-size:18px; }
+.kb-app-shell .portal-request-heading p { margin:0; color:var(--nexus-muted); font-size:12px; line-height:1.5; }
+.kb-app-shell .portal-request-count { flex:0 0 auto; padding:7px 11px; border-radius:999px; color:#1e5f9d; background:#e4f1ff; font-size:11px; font-weight:800; }
+.kb-app-shell .portal-request-list { display:grid; gap:10px; }
+.kb-app-shell .portal-request-card { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; padding:15px; border:1px solid var(--nexus-border); border-radius:14px; background:var(--nexus-surface); }
+.kb-app-shell .portal-request-main { display:grid; gap:5px; min-width:0; }
+.kb-app-shell .portal-request-main strong { color:var(--nexus-text); font-size:14px; }
+.kb-app-shell .portal-request-main span { color:var(--nexus-brand-strong); font-size:12px; font-weight:750; }
+.kb-app-shell .portal-request-main small { color:var(--nexus-muted); font-size:11px; overflow-wrap:anywhere; }
+.kb-app-shell .portal-request-main p { margin:3px 0 0; color:var(--nexus-text); font-size:12px; }
+.kb-app-shell .portal-request-actions { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:7px; flex:0 0 auto; max-width:340px; }
+@media(max-width:760px) {
+ .kb-app-shell .portal-request-panel { padding:14px; }
+ .kb-app-shell .portal-request-card { flex-direction:column; }
+ .kb-app-shell .portal-request-actions { width:100%; max-width:none; justify-content:flex-start; }
+ .kb-app-shell .portal-request-actions .btn { flex:1 1 120px; }
+}
+[data-theme="dark"] .kb-app-shell .portal-request-panel { border-color:#34516f; background:linear-gradient(145deg,#17283e,#142238); }
+[data-theme="dark"] .kb-app-shell .portal-request-count { color:#c4e1ff; background:#203b59; }
