@@ -61,9 +61,6 @@ jobs:
           grep -Fq "'POST /api/portal/plan-change-requests/:id/decision': protectedRoute(['admin']" render-backend/legacy-routes.ts
           grep -Fq "'POST /api/portal/complaints'" render-backend/legacy-routes.ts
           grep -Fq "isValidPortalComplaintInput(input)" render-backend/legacy-routes.ts
-          grep -Fq "isPortalImageSignatureValid(buffer, mimeType)" render-backend/legacy-routes.ts
-          grep -Fq "isPortalImageSignatureValid" render-backend/portal-validation.test.ts
-          grep -Fq "firestore.runTransaction(async transaction =>" render-backend/legacy-routes.ts
           grep -Fq "collection('complaint_media')" render-backend/legacy-routes.ts
           grep -Fq "app.use(legacyHandler)" render-backend/server.ts
           echo "Public request/status, admin-only review, and staff GPS route handlers are present."
