@@ -68,6 +68,18 @@ type Customer = {
   assignedTo?: string;
   assignedToName?: string;
 };
+function searchMatches(query:string, values:unknown[]):boolean {
+  const normalizedQuery=query.normalize('NFKD').replace(/[\\u0300-\\u036f]/g,'').toLowerCase().trim();
+  if(!normalizedQuery)return true;
+  const text=values.filter(value=>value!==undefined&&value!==null).map(String).join(' ');
+  const normalizedText=text.normalize('NFKD').replace(/[\\u0300-\\u036f]/g,'').toLowerCase();
+  const tokens=normalizedQuery.split(/[\\s,;|]+/).filter(Boolean);
+  if(tokens.every(token=>normalizedText.includes(token)))return true;
+  const queryDigits=normalizedQuery.replace(/\\D/g,'');
+  const textDigits=text.replace(/\\D/g,'');
+  return queryDigits.length>=3&&textDigits.includes(queryDigits);
+}
+
 type Payment = {
   id: string;
   customerId: string;
@@ -510,31 +522,22 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
   const staffShiftActive = attendanceRecords.some(item => item.userId === session.user.id && isAttendanceShiftActive(item));
   const overdueValue = customers.filter(c => c.status === 'Active' && c.dueDate && c.dueDate <= today).reduce((sum, c) => sum + Math.max(0, Number(c.monthlyFee || 0) - (paidByCustomer.get(c.id) || 0)), 0);
-  const filtered = useMemo(() => {
-    const normalizedQuery = search.normalize('NFKD').replace(/[\\u0300-\\u036f]/g, '').toLowerCase().trim();
-    if (!normalizedQuery) return customers;
-    const tokens = normalizedQuery.split(/[\\s,;|]+/).filter(Boolean);
-    const phoneQuery = normalizedQuery.replace(/\\D/g, '');
-    return customers.filter(customer => {
-      const searchable = [
-        customer.id, customer.name, customer.phone, customer.address, customer.plan,
-        customer.notes, customer.assignedToName, customer.joinedAt, customer.dueDate,
-        customer.monthlyFee, customer.status,
-      ].filter(value => value !== undefined && value !== null).join(' ')
-        .normalize('NFKD').replace(/[\\u0300-\\u036f]/g, '').toLowerCase();
-      const allTokensMatch = tokens.every(token => searchable.includes(token));
-      const phoneMatches = phoneQuery.length >= 3 && String(customer.phone || '').replace(/\\D/g, '').includes(phoneQuery);
-      return allTokensMatch || phoneMatches;
-    });
-  }, [customers, search]);
+  const filtered = useMemo(
+    () => customers.filter(customer => searchMatches(search, [
+      customer.id,customer.name,customer.phone,customer.address,customer.plan,
+      customer.notes,customer.assignedToName,customer.joinedAt,customer.dueDate,
+      customer.monthlyFee,customer.status,
+    ])),
+    [customers,search]
+  );
   const selectedStaffProfile = staff.find(member => member.id === selectedStaffProfileId);
-  const filteredStaff = staff.filter(member => [member.displayName, member.userId].join(' ').toLowerCase().includes(staffSearch.toLowerCase()));
+  const filteredStaff = staff.filter(member => searchMatches(staffSearch,[member.displayName,member.userId,member.phone]));
   const filteredPayments = payments.filter(payment => {
     const paidDate = String(payment.paidAt || '').slice(0, 10);
     const day = Number(paidDate.slice(8, 10));
     const matchesMonth = !paymentMonth || paidDate.slice(0, 7) === paymentMonth;
     const matchesWeek = paymentWeek === 'all' || (day >= 1 && day <= 31 && String(Math.ceil(day / 7)) === paymentWeek);
-    const matchesSearch = [payment.customerName, payment.month, payment.method, payment.paidAt, payment.recordedByName || ''].join(' ').toLowerCase().includes(paymentSearch.toLowerCase());
+    const matchesSearch = searchMatches(paymentSearch,[payment.customerName,payment.month,payment.method,payment.paidAt,payment.recordedByName,payment.amount,payment.id]);
     return matchesMonth && matchesWeek && matchesSearch;
   });
   const selectedStaffPayments = payments.filter(payment => payment.recordedBy === selectedStaffProfileId).sort((a, b) => b.paidAt.localeCompare(a.paidAt));
@@ -550,7 +553,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   const selectedStaffCollected = selectedStaffPayments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
   const visiblePlans = plans.filter(plan => {
     const matchesStatus = planFilter === 'All' || (planFilter === 'Active' ? plan.active : !plan.active);
-    const matchesSearch = [plan.name, plan.provider, plan.speed, plan.connectionType, plan.note].join(' ').toLowerCase().includes(planSearch.toLowerCase());
+    const matchesSearch = searchMatches(planSearch,[plan.name,plan.provider,plan.speed,plan.connectionType,plan.note,plan.price,plan.data]);
     return matchesStatus && matchesSearch;
   });
 
