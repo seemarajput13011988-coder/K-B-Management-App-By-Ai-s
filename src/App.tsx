@@ -23,7 +23,6 @@ import {
   CircleHelp,
   CreditCard,
   IndianRupee,
-  LayoutDashboard,
   Menu,
   MessageSquare,
   Plus,
@@ -41,7 +40,7 @@ import {
   Pencil,
   Trash2,
   Eye,
-  ShieldCheck, KeyRound, BarChart3, LogOut, UserPlus, UserRound, LockKeyhole, ReceiptText,
+  ShieldCheck, KeyRound, BarChart3, LogOut, UserPlus, UserRound, LockKeyhole,
 } from 'lucide-react';
 
 type Session={token:string;expiresAt:number;user:{id:string;userId:string;displayName:string;role:'admin'|'staff';active:boolean;canManageAdmins?:boolean}};
