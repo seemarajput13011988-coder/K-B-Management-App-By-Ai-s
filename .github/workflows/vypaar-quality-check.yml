@@ -19,6 +19,7 @@ on:
       - "capacitor.config.ts"
       - "package.json"
       - "package-lock.json"
+      - ".github/workflows/vypaar-quality-check.yml"
 
 permissions:
   contents: read
