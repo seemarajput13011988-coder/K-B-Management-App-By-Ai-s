@@ -10,7 +10,7 @@ if (credential.project_id !== 'kandb-net-sevice') throw new Error('Firebase serv
 initializeApp({ credential: cert(credential), projectId: 'kandb-net-sevice' });
 const rawFirestore = getFirestore();
 const businessScope = new AsyncLocalStorage<string>();
-const globalCollections = new Set(['users', 'sessions', 'businesses', 'business_memberships']);
+const globalCollections = new Set(['users', 'sessions', 'businesses', 'business_memberships', 'staff_registration_requests']);
 
 function scopedCollection(name:string) {
   const businessId = businessScope.getStore();
