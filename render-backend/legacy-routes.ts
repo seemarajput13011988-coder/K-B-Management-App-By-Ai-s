@@ -1,7 +1,7 @@
 import { router, json, error, db, secrets, firestore, FieldValue } from './firestore-adapter.js';
 import type { RouterMiddleware } from './firestore-adapter.js';
 import { attendanceAbsenceDecision, computeShiftDeadline, isConfirmedGpsLossReason, isFreshLocationTimestamp, isGpsGraceExemptHolidayStatus, isValidDateRange } from './route-path.js';
-import { isValidPortalConnectionRequest, isValidPortalPlanChangeRequest, isValidPortalComplaintInput } from './portal-validation.js';
+import { isValidPortalConnectionRequest, isValidPortalPlanChangeRequest, isValidPortalComplaintInput, isValidPortalImageSignature } from './portal-validation.js';
 import { createHash, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 const notifySubscribers = async (..._args: unknown[]) => undefined; // Live updates are refreshed through the authenticated API.
 
@@ -401,7 +401,8 @@ export const handler = router({
     // A generic response prevents the public endpoint from confirming whether a phone has an account.
     if (!customer) return json({ accepted: true, message: 'If the details match an active K&B connection, your support request will be reviewed by our team.' }, 202);
     const buffer = Buffer.from(dataBase64, 'base64');
-    if (!buffer.length || buffer.length > 2 * 1024 * 1024 || buffer.toString('base64').replace(/=+$/, '') !== dataBase64.replace(/=+$/, '')) {
+    if (!buffer.length || buffer.length > 2 * 1024 * 1024 || buffer.toString('base64').replace(/=+$/, '') !== dataBase64.replace(/=+$/, '') ||
+        !isValidPortalImageSignature(buffer, mimeType)) {
       return error('The router/modem photo is invalid or larger than 2 MB.', 400);
     }
     const complaint: Complaint = {
