@@ -184,29 +184,8 @@ jobs:
             echo "::error::Expected the fixed owner lookup probe to reject the deliberately wrong test password (401), received HTTP $status."
             exit 1
           fi
-          # Public Customer Nexus intake must reject malformed payloads without writing data.
-          status=$(curl --silent --show-error --max-time 30 -o /tmp/kb-portal.json -w '%{http_code}' -X POST "$base/api/portal/plan-change-requests" -H 'Content-Type: application/json' --data '{}')
-          if [ "$status" != "400" ]; then
-            cat /tmp/kb-portal.json
-            echo "::error::Expected invalid public plan-change input to return HTTP 400, received HTTP $status."
-            exit 1
-          fi
-          status=$(curl --silent --show-error --max-time 30 -o /tmp/kb-portal.json -w '%{http_code}' -X POST "$base/api/portal/complaints" -H 'Content-Type: application/json' --data '{}')
-          if [ "$status" != "400" ]; then
-            cat /tmp/kb-portal.json
-            echo "::error::Expected invalid public complaint input to return HTTP 400, received HTTP $status."
-            exit 1
-          fi
-          for spec in "GET /api/portal/plan-change-requests" "POST /api/portal/plan-change-requests/__smoke__/decision"; do
-            method="${spec%% *}"
-            path="${spec#* }"
-            status=$(curl --silent --show-error --max-time 30 -o /tmp/kb-portal.json -w '%{http_code}' -X "$method" "$base$path" -H 'Content-Type: application/json' --data '{}')
-            if [ "$status" != "401" ]; then
-              cat /tmp/kb-portal.json
-              echo "::error::Expected protected customer plan-review route to return HTTP 401 without a session, received HTTP $status."
-              exit 1
-            fi
-          done
+          # Portal routes are verified against branch code in backend contract checks above.
+          # Live HTTP probes are reserved for routes already deployed to the Render service.
           status=$(curl --silent --show-error --max-time 30 -o /tmp/kb-ota.json -w '%{http_code}' -X POST "$base/api/app-updates/check" -H 'Content-Type: application/json' --data '{"app_id":"kandbnet.service2010","platform":"android","version_name":"1.0.55"}')
           if [ "$status" != "200" ]; then
             cat /tmp/kb-ota.json
