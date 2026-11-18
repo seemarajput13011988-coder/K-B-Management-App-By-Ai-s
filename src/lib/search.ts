@@ -1,9 +1,9 @@
 export const normalizeSearchText = (value: unknown): string => String(value ?? '')
   .normalize('NFKD')
-  .replace(/[\\u0300-\\u036f]/g, '')
+  .replace(/[\u0300-\u036f]/g, '')
   .toLocaleLowerCase()
   .trim()
-  .replace(/\\s+/g, ' ');
+  .replace(/\s+/g, ' ');
 
 const compactSearchText = (value: unknown): string => normalizeSearchText(value).replace(/[^a-z0-9]/g, '');
 
@@ -11,7 +11,7 @@ const searchValueVariants = (value: unknown): string[] => {
   if (value === null || value === undefined) return [];
   const raw = String(value);
   const variants = [raw];
-  const isoDate = raw.match(/^(\\d{4})-(\\d{2})-(\\d{2})/);
+  const isoDate = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
   if (isoDate) {
     const date = new Date(Number(isoDate[1]), Number(isoDate[2]) - 1, Number(isoDate[3]), 12);
     if (Number.isFinite(date.getTime())) {
