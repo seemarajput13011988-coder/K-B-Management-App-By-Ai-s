@@ -534,40 +534,67 @@ export const handler = router({
     if (!isValidPortalConnectionRequest(input)) {
       return error('Enter your name, valid mobile number, complete address and choose an available plan.', 400);
     }
-    const [plan] = await db.get<PlanRecord>('plans', [planId], { consistent: true });
-    if (!plan || plan.active === false) return error('This plan is no longer available. Refresh the plan list and choose another.', 409);
-    const [existingCustomers, recentRequests] = await Promise.all([
-      db.list<Customer>('customers', { limit: 1000 }),
-      db.list<Record<string, unknown>>('portal_connection_requests', { limit: 1000 }),
-    ]);
-    const hasExistingCustomer = existingCustomers.items.some(item => item.phone === phone);
-    const hasRecentRequest = recentRequests.items.some(item =>
-      item.phone === phone && item.status === 'Pending' &&
-      Date.now() - Date.parse(String(item.createdAt || '')) < 7 * 24 * 60 * 60 * 1000
-    );
-    if (hasExistingCustomer || hasRecentRequest) {
+
+    // A deterministic phone lock makes duplicate prevention safe under concurrent submits.
+    const lockId = createHash('sha256').update(phone).digest('hex');
+    const lockRef = firestore.collection('portal_connection_request_locks').doc(lockId);
+    const requestRef = firestore.collection('portal_connection_requests').doc();
+    const planRef = firestore.collection('plans').doc(planId);
+    const result = await firestore.runTransaction(async transaction => {
+      const customerQuery = firestore.collection('customers').where('phone', '==', phone).limit(2);
+      const recentQuery = firestore.collection('portal_connection_requests').where('phone', '==', phone).limit(100);
+      const [customerSnapshot, planSnapshot, recentSnapshot, lockSnapshot] = await Promise.all([
+        transaction.get(customerQuery),
+        transaction.get(planRef),
+        transaction.get(recentQuery),
+        transaction.get(lockRef),
+      ]);
+      const selectedPlan = planSnapshot.exists ? { ...(planSnapshot.data() as PlanRecord), id: planSnapshot.id } : undefined;
+      if (!selectedPlan || selectedPlan.active === false) return { kind: 'unavailable' as const };
+      if (!customerSnapshot.empty) return { kind: 'already-known' as const };
+
+      const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+      const recentPending = recentSnapshot.docs.find(doc =>
+        doc.data().status === 'Pending' && Date.parse(String(doc.data().createdAt || '')) >= cutoff
+      );
+      const lockedRequestId = cleanText(lockSnapshot.data()?.pendingRequestId, 128);
+      if (recentPending || (lockSnapshot.exists && lockSnapshot.data()?.status === 'Pending' && lockedRequestId)) {
+        return { kind: 'already-known' as const };
+      }
+
+      const createdAt = new Date().toISOString();
+      const record = {
+        id: requestRef.id,
+        name,
+        phone,
+        state,
+        city,
+        pincode,
+        address,
+        planId,
+        plan: selectedPlan.name,
+        monthlyFee: Number(selectedPlan.price),
+        paymentPreference,
+        status: 'Pending',
+        source: 'customer-portal',
+        notes,
+        createdAt,
+      };
+      transaction.create(requestRef, record);
+      transaction.set(lockRef, {
+        phoneHash: lockId,
+        pendingRequestId: requestRef.id,
+        status: 'Pending',
+        updatedAt: createdAt,
+      }, { merge: true });
+      return { kind: 'created' as const, requestId: requestRef.id };
+    });
+
+    if (result.kind === 'unavailable') return error('This plan is no longer available. Refresh and choose another plan.', 409);
+    if (result.kind !== 'created') {
       return json({ accepted: true, message: 'Your request has been received or is already associated with an existing K&B record. Our team will review it.' }, 202);
     }
-    const record = {
-      name,
-      phone,
-      state,
-      city,
-      pincode,
-      address,
-      planId,
-      plan: plan.name,
-      monthlyFee: Number(plan.price),
-      paymentPreference,
-      status: 'Pending',
-      source: 'customer-portal',
-      notes,
-      createdAt: new Date().toISOString(),
-    };
-    const [id] = await db.add('portal_connection_requests', [record]);
-    return id
-      ? json({ accepted: true, requestId: id, status: 'Pending', message: 'Your connection request has been sent to K&B for review.' }, 201)
-      : error('Your request could not be saved. Please try again.', 503);
+    return json({ accepted: true, requestId: result.requestId, status: 'Pending', message: 'Your connection request has been sent to K&B for review.' }, 201);
   }],
 
   'GET /api/portal/connection-requests': protectedRoute(['admin'], async () => {
