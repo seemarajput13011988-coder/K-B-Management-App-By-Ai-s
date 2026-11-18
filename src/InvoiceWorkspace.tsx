@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import { exportPdfFile } from './lib/file-export';
+import { api } from './lib/api';
 
 type Customer = { id:string; name:string; phone:string; address:string; plan:string; monthlyFee:number; status:string; email?:string; gstin?:string; gstNumber?:string };
 type Plan = { id:string; name:string; provider:string; speed:string; data:string; price:number; note:string; details?:string; connectionType:string; active:boolean };
@@ -32,7 +33,33 @@ export default function InvoiceWorkspace({customers,plans,profileKey='default',f
   const [customerAddress,setCustomerAddress]=useState('');
   const [customerGstin,setCustomerGstin]=useState('');
   const [businessProfile,setBusinessProfile]=useState<BusinessProfile>(()=>readBusinessProfile(profileKey));
+  const [profileLoaded,setProfileLoaded]=useState(false);
+  const [profileSaving,setProfileSaving]=useState(false);
+  useEffect(()=>{
+    let active=true;
+    setProfileLoaded(false);
+    api.get('/api/business-profile').then(result=>{
+      if(active && result.data.profile) setBusinessProfile({...emptyBusinessProfile,...result.data.profile});
+    }).catch(()=>undefined).finally(()=>{if(active)setProfileLoaded(true);});
+    return()=>{active=false;};
+  },[profileKey]);
   useEffect(()=>{try{localStorage.setItem('vypaar-invoice-profile-'+profileKey,JSON.stringify(businessProfile));}catch{}},[businessProfile,profileKey]);
+  async function saveBusinessProfile() {
+    if (!businessProfile.name.trim() || !businessProfile.address.trim()) {
+      flash('Enter the business name and registered address first.');
+      return false;
+    }
+    setProfileSaving(true);
+    try {
+      const result=await api.put('/api/business-profile',{profile:businessProfile});
+      setBusinessProfile({...emptyBusinessProfile,...result.data.profile});
+      flash('Business invoice profile saved for this workspace.');
+      return true;
+    } catch(error) {
+      flash(error instanceof Error?error.message:'Could not save the business invoice profile.');
+      return false;
+    } finally { setProfileSaving(false); }
+  }
   const [manualQty,setManualQty]=useState('1');
   const [manualRate,setManualRate]=useState('');
   const [manualDiscount,setManualDiscount]=useState('0');
@@ -97,6 +124,8 @@ export default function InvoiceWorkspace({customers,plans,profileKey='default',f
     }
     setBusy(true);
     try {
+      const savedProfile=await api.put('/api/business-profile',{profile:businessProfile});
+      setBusinessProfile({...emptyBusinessProfile,...savedProfile.data.profile});
       const { jsPDF } = await import('jspdf');
       const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
       const pageWidth = doc.internal.pageSize.getWidth();
@@ -201,7 +230,7 @@ export default function InvoiceWorkspace({customers,plans,profileKey='default',f
       <section className="invoice-form-section"><h3>Invoice information</h3><div className="invoice-grid">
         <label>Invoice number<input required value={invoiceNo} onChange={e=>setInvoiceNo(e.target.value)}/></label><label>Invoice date<input type="date" required value={invoiceDate} onChange={e=>setInvoiceDate(e.target.value)}/></label><label>Due date<input type="date" required min={invoiceDate} value={dueDate} onChange={e=>setDueDate(e.target.value)}/></label><label>Reference / order number <small>Optional</small><input value={reference} onChange={e=>setReference(e.target.value)} placeholder="PO / service reference"/></label>
       </div></section>
-      <section className="invoice-form-section"><h3>Your business information</h3><p className="invoice-help">These details are saved on this device for the signed-in account and printed as the invoice issuer. Enter the correct legal business details before issuing an invoice.</p><div className="invoice-grid">
+      <section className="invoice-form-section"><h3>Your business information</h3><p className="invoice-help">These details are saved to the active business workspace and shared with its authorised administrators. Check the legal business details before issuing an invoice.</p><div className="invoice-grid">
         <label>Business / trade name<input required maxLength={120} value={businessProfile.name} onChange={e=>setBusinessProfile({...businessProfile,name:e.target.value})} placeholder="Your registered business name"/></label>
         <label>GSTIN <small>Optional if not GST registered</small><input maxLength={15} value={businessProfile.gstin} onChange={e=>setBusinessProfile({...businessProfile,gstin:e.target.value.toUpperCase()})} placeholder="15-character GSTIN"/></label>
         <label>Business phone<input value={businessProfile.phone} onChange={e=>setBusinessProfile({...businessProfile,phone:e.target.value})} placeholder="Business contact number"/></label>
@@ -211,6 +240,7 @@ export default function InvoiceWorkspace({customers,plans,profileKey='default',f
         <label>Business state code<input maxLength={2} pattern="[0-9]{2}" value={businessProfile.stateCode} onChange={e=>setBusinessProfile({...businessProfile,stateCode:e.target.value.replace(/\D/g,'').slice(0,2)})} placeholder="GST state code"/></label>
         <label>IFSC <small>Optional</small><input maxLength={11} value={businessProfile.ifsc} onChange={e=>setBusinessProfile({...businessProfile,ifsc:e.target.value.toUpperCase()})} placeholder="Bank IFSC code"/></label>
         <label>Business UPI ID <small>Optional</small><input value={businessUpi} onChange={e=>setBusinessUpi(e.target.value)} placeholder="business@upi"/></label>
+        <div className="wide"><button type="button" className="btn secondary" disabled={!profileLoaded||profileSaving} onClick={()=>void saveBusinessProfile()}>{profileSaving?'Saving…':'Save business profile'}</button></div>
       </div></section>
       <section className="invoice-form-section"><h3>Customer information</h3><div className="invoice-grid">
         <label>Choose existing customer <small>Optional, or enter details manually</small><select value={customerId} onChange={e=>chooseCustomer(e.target.value)}><option value="">Manual customer entry</option>{customers.map(c=><option key={c.id} value={c.id}>{c.name} · {c.phone}</option>)}</select></label>
