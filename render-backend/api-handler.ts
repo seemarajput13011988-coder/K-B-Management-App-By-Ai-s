@@ -1,10 +1,10 @@
 import { createHash, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
-import { firestore as db, FieldValue } from './firestore-adapter.js';
+import { firestore as db, FieldValue, businessContext } from './firestore-adapter.js';
 import { buildCustomerLedger, hasOverlappingSubscription, hasAdminManagementAccess, isValidDateKey, isValidDateRange, routePath, subscriptionExpiryKind, taskReminderKind, isSixMonthReviewDue, isValidPayrollInput } from './route-path.js';
 
 
 type Role = 'admin' | 'staff';
-type AppUser = { uid: string; id: string; userId: string; displayName: string; role: Role; active: boolean; authTime: number; canManageAdmins?: boolean; salt: string; passwordHash: string };
+type AppUser = { uid: string; id: string; userId: string; displayName: string; role: Role; active: boolean; authTime: number; businessId: string; canManageAdmins?: boolean; salt: string; passwordHash: string };
 type Data = Record<string, any>;
 
 const clean = (value: unknown, max = 300): string =>
@@ -32,16 +32,56 @@ const newPasswordFields = (password: string) => {
   return { salt, passwordHash: hashPassword(password, salt) };
 };
 const sessionTokenId = (token: string) => createHash('sha256').update(token).digest('hex');
+const businessMembershipId = (userId:string,businessId:string) => userId + '__' + businessId;
+
+async function ensureBusinessMembership(user:Data, preferredBusinessId=''):Promise<string> {
+  const memberships = await db.collection('business_memberships').where('userId','==',String(user.id)).get();
+  const activeMemberships = memberships.docs.filter(document => document.data().active !== false);
+  const preferred = activeMemberships.find(document => document.data().businessId === preferredBusinessId);
+  if (preferred) return String(preferred.data().businessId);
+  if (activeMemberships.length) {
+    const legacy = activeMemberships.find(document => document.data().businessId === 'legacy-default');
+    return String((legacy || activeMemberships[0]).data().businessId);
+  }
+
+  const businessId = 'legacy-default';
+  const createdAt = now();
+  await db.collection('businesses').doc(businessId).set({
+    name: 'Primary business', active: true, legacyData: true, createdAt, updatedAt: createdAt,
+  }, { merge: true });
+  await db.collection('business_memberships').doc(businessMembershipId(String(user.id),businessId)).set({
+    userId: String(user.id), businessId, role: String(user.role || 'staff'),
+    active: true, createdAt, createdBy: 'system-migration',
+  }, { merge: true });
+
+  // The first owner login attaches existing accounts to the legacy business so existing
+  // staff and admin access remains intact while newly created businesses get isolated data.
+  if (user.role === 'admin' && hasAdminManagementAccess(user)) {
+    const allUsers = await db.collection('users').get();
+    const batch = db.batch();
+    for (const document of allUsers.docs) {
+      const membershipRef = db.collection('business_memberships').doc(businessMembershipId(document.id,businessId));
+      batch.set(membershipRef, {
+        userId: document.id, businessId, role: String(document.data().role || 'staff'),
+        active: true, createdAt, createdBy: String(user.id),
+      }, { merge: true });
+    }
+    if (!allUsers.empty) await batch.commit();
+  }
+  return businessId;
+}
+
 async function createSession(user: Data) {
   const token = randomBytes(32).toString('hex');
+  const businessId = await ensureBusinessMembership(user, String(user.businessId || ''));
   // Staff shifts can be admin-started after 7 PM and remain active until 7 PM the next day.
   // Keep the staff session valid long enough for that maximum supported shift; admin sessions remain shorter.
   const sessionHours = user.role === 'staff' ? 26 : 8;
   const expiresAt = Date.now() + sessionHours * 60 * 60 * 1000;
   await db.collection('sessions').doc(sessionTokenId(token)).set({
-    userId: user.id, expiresAt, createdAt: now(), authTime: Math.floor(Date.now() / 1000),
+    userId: user.id, businessId, expiresAt, createdAt: now(), authTime: Math.floor(Date.now() / 1000),
   });
-  return { token, expiresAt };
+  return { token, expiresAt, businessId };
 }
 async function revokeUserSessions(userId: string) {
   const baseQuery = db.collection('sessions').where('userId', '==', userId);
@@ -72,9 +112,14 @@ async function requireUser(req: any): Promise<AppUser | null> {
     if (!snap.exists) return null;
     const data = snap.data()!;
     if (data.active !== true || !['admin', 'staff'].includes(data.role)) return null;
+    const businessId = await ensureBusinessMembership({ id:snap.id, role:data.role, canManageAdmins:data.canManageAdmins, isSuperAdmin:data.isSuperAdmin }, String(session.businessId || ''));
+    const membership = await db.collection('business_memberships').doc(businessMembershipId(snap.id,businessId)).get();
+    if (!membership.exists || membership.data()?.active === false) return null;
+    if (session.businessId !== businessId) await sessionSnap.ref.update({ businessId });
+    businessContext.enter(businessId);
     return {
       uid: snap.id, id: snap.id, userId: clean(data.userId, 40),
-      displayName: clean(data.displayName, 80), role: data.role, active: true,
+      displayName: clean(data.displayName, 80), role: data.role, active: true, businessId,
       authTime: Number(session.authTime || 0), salt: clean(data.salt, 128), passwordHash: clean(data.passwordHash, 256),
       canManageAdmins: hasAdminManagementAccess({ role: data.role, canManageAdmins: data.canManageAdmins, isSuperAdmin: data.isSuperAdmin }),
     };
@@ -279,7 +324,7 @@ export async function apiHandler(req: any, res: any) {
       authTrace('success');
       const user = { id: userDoc.id, ...record };
       const session = await createSession(user);
-      send(res, 200, { ...session, user: { id: userDoc.id, userId: clean(record.userId, 40), displayName: clean(record.displayName, 80), role: record.role, active: true, canManageAdmins: hasAdminManagementAccess(record) } }); return;
+      send(res, 200, { ...session, user: { id: userDoc.id, userId: clean(record.userId, 40), displayName: clean(record.displayName, 80), role: record.role, active: true, businessId: session.businessId, canManageAdmins: hasAdminManagementAccess(record) } }); return;
     }
 
     if (method === 'POST' && path === '/api/auth/recover-admin') {
@@ -502,7 +547,7 @@ export async function apiHandler(req: any, res: any) {
         send(res, 200, { changed: true, userId }); return;
       }
       if (method === 'GET' && path === '/api/auth/me') {
-        send(res, 200, { user: { id: user.uid, userId: user.userId, displayName: user.displayName, role: user.role, active: true, canManageAdmins: user.canManageAdmins === true } }); return;
+        send(res, 200, { user: { id: user.uid, userId: user.userId, displayName: user.displayName, role: user.role, active: true, businessId: user.businessId, canManageAdmins: user.canManageAdmins === true } }); return;
       }
       if (method === 'POST' && path === '/api/auth/logout') {
         if (user.role === 'staff' && await staffHasActiveShift(user.uid)) {
