@@ -1,5 +1,6 @@
 import { cert, initializeApp } from 'firebase-admin/app';
 import { AsyncLocalStorage } from 'node:async_hooks';
+import { businessCollectionPath } from './business-namespace.js';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import type { Request, Response, NextFunction } from 'express';
 
@@ -13,14 +14,10 @@ if (!firebaseProjectId || credential.project_id !== firebaseProjectId) {
 initializeApp({ credential: cert(credential), projectId: firebaseProjectId });
 const rawFirestore = getFirestore();
 const businessScope = new AsyncLocalStorage<string>();
-const globalCollections = new Set(['users', 'sessions', 'businesses', 'business_memberships', 'staff_registration_requests']);
-
 function scopedCollection(name:string) {
-  const businessId = businessScope.getStore();
-  if (!businessId || globalCollections.has(name) || businessId === 'legacy-default') {
-    return rawFirestore.collection(name);
-  }
-  return rawFirestore.collection('businesses').doc(businessId).collection(name);
+  const path = businessCollectionPath(name,businessScope.getStore() || '');
+  if (path.length === 1) return rawFirestore.collection(path[0]);
+  return rawFirestore.collection(path[0]).doc(path[1]).collection(path[2]);
 }
 
 const firestore = new Proxy(rawFirestore, {
