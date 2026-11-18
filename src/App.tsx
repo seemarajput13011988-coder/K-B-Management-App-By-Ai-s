@@ -15,7 +15,7 @@ const CalendarWorkspace = lazy(() => import('./CalendarWorkspace'));
 import { useAppPreferences } from './appPreferences';
 import QuickNavigation from './layout/QuickNavigation';
 import { buildNavigationModel } from './navigation/navigationModel';
-import { api as client, changeAppPassword, changeAppUserId, signInAppUser, signOutAppUser, submitStaffRegistrationRequest, getStaffRegistrationStatus, nativeApiPost } from './lib/api';
+import { api as client, changeAppPassword, changeAppUserId, signInAppUser, signOutAppUser, submitStaffRegistrationRequest, getStaffRegistrationStatus, nativeApiPost, recoverAdminPassword } from './lib/api';
 import {
   Activity,
   Bell,
@@ -2526,9 +2526,36 @@ function LoginScreen({onLogin}:{onLogin:(id:string,pw:string,role:'admin'|'staff
  const [registrationError,setRegistrationError]=useState(false);
  const [registrationStatus,setRegistrationStatus]=useState<{status:'pending'|'approved'|'rejected';createdAt:string;reviewedAt?:string|null;reviewedByName?:string|null}|null>(null);
  useEffect(()=>{let stopped=false;let saved:{id:string;trackingCode:string}|null=null;try{const raw=localStorage.getItem('kandb-staff-registration');if(raw)saved=JSON.parse(raw) as {id:string;trackingCode:string};}catch{localStorage.removeItem('kandb-staff-registration');}if(!saved)return;const poll=()=>getStaffRegistrationStatus(saved!.id,saved!.trackingCode).then(result=>{if(!stopped)setRegistrationStatus(result);}).catch(()=>{if(!stopped){localStorage.removeItem('kandb-staff-registration');setRegistrationStatus(null);}});void poll();const timer=window.setInterval(poll,20000);return()=>{stopped=true;window.clearInterval(timer);};},[]);
- function choose(nextRole:'admin'|'staff'){setRole(nextRole);setId('');setPw('');setMsg('');}
+ function choose(nextRole:'admin'|'staff'){setRole(nextRole);setId('');setPw('');setMsg('');setRecoveryOpen(false);setRecoveryMessage('');}
  const [loginBusy,setLoginBusy]=useState(false);
- async function submit(e:FormEvent){e.preventDefault();if(loginBusy)return;setLoginBusy(true);setMsg('');try{if(role)await onLogin(id,pw,role);}catch(err){setMsg(err instanceof Error?err.message:'Sign-in failed.');}finally{setLoginBusy(false);}}
+ const [recoveryOpen,setRecoveryOpen]=useState(false);
+ const [recoveryCode,setRecoveryCode]=useState('');
+ const [recoveryPassword,setRecoveryPassword]=useState('');
+ const [recoveryBusy,setRecoveryBusy]=useState(false);
+ const [recoveryMessage,setRecoveryMessage]=useState('');
+ const [recoveryError,setRecoveryError]=useState(false);
+ async function submitAdminRecovery(){
+  if(recoveryBusy)return;
+  setRecoveryBusy(true);setRecoveryMessage('');setRecoveryError(false);
+  try{
+   await recoverAdminPassword(recoveryCode,recoveryPassword);
+   setRecoveryOpen(false);setRole('admin');setId('Brajraj');setPw('');
+   setRecoveryCode('');setRecoveryPassword('');
+   setRecoveryMessage('The primary admin password was updated. Sign in using the new password.');
+  }catch(err){
+   setRecoveryMessage(err instanceof Error?err.message:'Admin recovery could not be completed.');
+   setRecoveryError(true);
+  }finally{setRecoveryBusy(false);}
+ }
+ async function submit(e:FormEvent){
+  e.preventDefault();
+  if(recoveryOpen){await submitAdminRecovery();return;}
+  if(loginBusy)return;
+  setLoginBusy(true);setMsg('');
+  try{if(role)await onLogin(id,pw,role);}
+  catch(err){setMsg(err instanceof Error?err.message:'Sign-in failed.');}
+  finally{setLoginBusy(false);}
+ }
  async function submitRegistration(){setRegistrationBusy(true);setRegistrationMessage('');setRegistrationError(false);try{const result=await submitStaffRegistrationRequest(registration);localStorage.setItem('kandb-staff-registration',JSON.stringify({id:result.id,trackingCode:result.trackingCode}));setRegistrationStatus({status:'pending',createdAt:new Date().toISOString()});setRegistrationMessage(result.message);setRegistrationOpen(false);setRegistration({userId:'',displayName:'',phone:'',reason:''});}catch(err){setRegistrationMessage(err instanceof Error?err.message:'Could not submit your request.');setRegistrationError(true);}finally{setRegistrationBusy(false);}}
  return <div className="auth-shell"><div className="auth-side"><div className="auth-brand"><div className="brand-mark"><Signal/></div><strong>K&B NET SERVICE</strong></div><div className="auth-promo"><span className="auth-kicker">K&B OPERATIONS</span><h1>Every customer connection, in view.</h1><p>Customer records, staff assignments, collections and service requests in one shared workspace.</p></div></div><div className="auth-main"><FestivalCelebration/><form className="auth-card" onSubmit={submit}><div className="auth-icon">{role==='staff'?<UserRound/>:<ShieldCheck/>}</div><span className="eyebrow">SECURE SIGN IN</span><h2>{role?(role==='admin'?'Admin sign in':'Staff sign in'):'Welcome to K&B'}</h2><p>{role?'Enter your '+role+' account details to continue.':'Choose how you want to sign in. · OTA TEST UPDATE'}</p>
  {!role?<><div className="login-role-options"><button type="button" className="login-role-card admin-choice" onClick={()=>choose('admin')}><span className="login-role-icon"><ShieldCheck size={22}/></span><strong>Admin Sign In</strong><small>Manage customers, staff, plans and reports</small><span className="login-role-arrow">Continue →</span></button><button type="button" className="login-role-card staff-choice" onClick={()=>choose('staff')}><span className="login-role-icon"><UserRound size={22}/></span><strong>Staff Sign In</strong><small>View assigned customers and manage daily work</small><span className="login-role-arrow">Continue →</span></button></div>
@@ -2539,8 +2566,21 @@ function LoginScreen({onLogin}:{onLogin:(id:string,pw:string,role:'admin'|'staff
   {registrationStatus.status==='rejected' && <button type="button" className="auth-link" onClick={()=>{localStorage.removeItem('kandb-staff-registration');setRegistrationStatus(null);setRegistrationOpen(true);}}>Submit a new request</button>}
  </div> : !registrationOpen?<button type="button" className="auth-link" onClick={()=>{setRegistrationOpen(true);setRegistrationMessage('');}}>Request staff access</button>:<div className="staff-registration-form"><strong>Staff registration request</strong><Field label="Preferred staff ID"><input required minLength={3} maxLength={32} pattern="[a-zA-Z0-9_-]{3,32}" value={registration.userId} onChange={e=>setRegistration({...registration,userId:e.target.value})}/></Field><Field label="Full name"><input required maxLength={80} value={registration.displayName} onChange={e=>setRegistration({...registration,displayName:e.target.value})}/></Field><Field label="Phone (optional)"><input type="tel" inputMode="numeric" pattern="[0-9]{10}" maxLength={10} value={registration.phone} onChange={e=>setRegistration({...registration,phone:e.target.value.replace(/\D/g,'').slice(0,10)})} placeholder="10-digit mobile number"/></Field><Field label="Reason / note (optional)"><textarea rows={2} maxLength={300} value={registration.reason} onChange={e=>setRegistration({...registration,reason:e.target.value})}/></Field><div className="form-actions"><button type="button" className="btn secondary" onClick={()=>setRegistrationOpen(false)}>Cancel</button><button type="button" className="btn primary" disabled={registrationBusy} onClick={e=>{const form=e.currentTarget.closest('.staff-registration-form');const fields=form?.querySelectorAll('input');if(fields && Array.from(fields).every(field=>field.reportValidity()))void submitRegistration();}}>{registrationBusy?'Submitting…':'Submit request'}</button></div></div>}
  {registrationMessage&&<div className={registrationError?'auth-message':'form-hint'}>{registrationMessage}</div>}</>:<>
- <label className="auth-field"><span>{role==='admin'?'Admin username':'Staff user ID'}</span><input value={id} onChange={e=>setId(e.target.value)} required autoComplete="username" placeholder={role==='admin'?'Enter your admin username':'Enter your staff ID'}/></label><label className="auth-field"><span>Password</span><input type="password" value={pw} onChange={e=>setPw(e.target.value)} required autoComplete="current-password"/></label>
- {msg&&<div className="auth-message">{msg}</div>}<button className="btn primary auth-submit" disabled={loginBusy}>{loginBusy?'Connecting securely…':'Sign in securely'}</button><button type="button" className="auth-link" onClick={()=>{setRole(null);setId('');setPw('');setMsg('');}}>← Choose another sign-in</button>
+ {recoveryOpen ? <div className="staff-registration-form admin-recovery-form">
+  <strong>Recover primary admin account</strong>
+  <p className="subtle">This requires the recovery code configured by the app owner. The code is sent securely to the server and is never saved on this device.</p>
+  <Field label="Admin recovery code" wide><input type="password" autoComplete="off" required value={recoveryCode} onChange={e=>setRecoveryCode(e.target.value)} /></Field>
+  <Field label="New password (at least 10 characters)" wide><input type="password" autoComplete="new-password" required minLength={10} value={recoveryPassword} onChange={e=>setRecoveryPassword(e.target.value)} /></Field>
+  {recoveryMessage&&<div className={recoveryError?'auth-message':'form-hint'}>{recoveryMessage}</div>}
+  <div className="form-actions"><button type="button" className="btn secondary" onClick={()=>{setRecoveryOpen(false);setRecoveryCode('');setRecoveryPassword('');setRecoveryMessage('');setRecoveryError(false);}}>Back to sign in</button><button className="btn primary" disabled={recoveryBusy}>{recoveryBusy?'Recovering…':'Update admin password'}</button></div>
+ </div> : <>
+  <label className="auth-field"><span>{role==='admin'?'Admin username':'Staff user ID'}</span><input value={id} onChange={e=>setId(e.target.value)} required autoComplete="username" placeholder={role==='admin'?'Enter your admin username':'Enter your staff ID'}/></label><label className="auth-field"><span>Password</span><input type="password" value={pw} onChange={e=>setPw(e.target.value)} required autoComplete="current-password"/></label>
+  {msg&&<div className="auth-message">{msg}</div>}
+  {recoveryMessage&&!recoveryOpen&&<div className={recoveryError?'auth-message':'form-hint'}>{recoveryMessage}</div>}
+  <button className="btn primary auth-submit" disabled={loginBusy}>{loginBusy?'Connecting securely…':'Sign in securely'}</button>
+  {role==='admin'&&<button type="button" className="auth-link" onClick={()=>{setRecoveryOpen(true);setRecoveryCode('');setRecoveryPassword('');setRecoveryMessage('');setRecoveryError(false);setId('Brajraj');setPw('');}}>Recover primary admin account</button>}
+  <button type="button" className="auth-link" onClick={()=>{setRole(null);setId('');setPw('');setMsg('');setRecoveryMessage('');}}>← Choose another sign-in</button>
+ </>}
  </>}
  <div className="auth-security"><KeyRound size={14}/> Keep your password private. Access is based on your account role.</div></form></div></div>;
 }
