@@ -202,10 +202,10 @@ export default function InvoiceWorkspace({customers,plans,profileKey='default',f
         const gross=qty*rate,discount=gross*disc/100,after=gross-discount,taxable=item.taxMode==='inclusive'?after/(1+gst/100):after,tax=item.taxMode==='inclusive'?after-taxable:taxable*gst/100,total=after+(item.taxMode==='exclusive'?tax:0);
         return {item,index,qty,rate,taxable,tax,total,gst,discount};
       });
-      lineRows.forEach(r=>drawTableRow([String(r.index+1),r.item.description+(r.item.details?'\\n'+r.item.details:'')+(r.item.sac?'\\nSAC: '+r.item.sac:''),String(r.qty),pdfMoney(r.rate),pdfMoney(r.taxable),r.gst+'%',pdfMoney(r.tax),pdfMoney(r.total)]));
+      lineRows.forEach(r=>drawTableRow([String(r.index+1),r.item.description+(r.item.details?'\n'+r.item.details:'')+(r.item.sac?'\nSAC: '+r.item.sac:''),String(r.qty),pdfMoney(r.rate),pdfMoney(r.taxable),r.gst+'%',pdfMoney(r.tax),pdfMoney(r.total)]));
       extraSummaryFields.filter(f=>f.label.trim()||f.details.trim()||f.amount.trim()).forEach((f,index)=>{
         const amount=Math.max(0,Number(f.amount)||0),gst=Math.max(0,Number(f.gstRate)||0),tax=amount*gst/100;
-        drawTableRow([String(lineRows.length+index+1),f.label+(f.details?'\\n'+f.details:''),'1',pdfMoney(amount),pdfMoney(amount),gst+'%',pdfMoney(tax),pdfMoney(amount+tax)]);
+        drawTableRow([String(lineRows.length+index+1),f.label+(f.details?'\n'+f.details:''),'1',pdfMoney(amount),pdfMoney(amount),gst+'%',pdfMoney(tax),pdfMoney(amount+tax)]);
       });
       y+=6;ensureSpace(46);
       doc.setFont('helvetica','bold');doc.setFontSize(9);doc.setTextColor(40,94,139);doc.text('TAX SUMMARY',left,y);y+=6;
