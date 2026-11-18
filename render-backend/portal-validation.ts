@@ -31,3 +31,26 @@ export function isValidPortalPlanChangeRequest(input: PortalPlanChangeInput): bo
   const planId = typeof input.planId === 'string' ? input.planId.trim() : '';
   return /^[0-9]{10}$/.test(phone) && !!planId && planId.length <= 128;
 }
+
+
+export type PortalComplaintInput = {
+  phone?: unknown;
+  subject?: unknown;
+  details?: unknown;
+  fileName?: unknown;
+  mimeType?: unknown;
+  dataBase64?: unknown;
+};
+
+export function isValidPortalComplaintInput(input: PortalComplaintInput): boolean {
+  const phone = typeof input.phone === 'string' ? input.phone.trim() : '';
+  const subject = typeof input.subject === 'string' ? input.subject.trim() : '';
+  const details = typeof input.details === 'string' ? input.details.trim() : '';
+  const fileName = typeof input.fileName === 'string' ? input.fileName.trim() : '';
+  const mimeType = typeof input.mimeType === 'string' ? input.mimeType.trim().toLowerCase() : '';
+  const data = typeof input.dataBase64 === 'string' ? input.dataBase64.trim() : '';
+  return /^[0-9]{10}$/.test(phone) && !!subject && subject.length <= 150 &&
+    !!details && details.length <= 1500 && !!fileName && fileName.length <= 120 &&
+    ['image/jpeg', 'image/png', 'image/webp'].includes(mimeType) &&
+    data.length >= 100 && data.length <= 2800000;
+}
