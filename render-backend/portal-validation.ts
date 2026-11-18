@@ -54,3 +54,20 @@ export function isValidPortalComplaintInput(input: PortalComplaintInput): boolea
     ['image/jpeg', 'image/png', 'image/webp'].includes(mimeType) &&
     data.length >= 100 && data.length <= 2800000 && data.length % 4 === 0 && /^[A-Za-z0-9+/]+={0,2}$/.test(data);
 }
+
+export function isValidPortalImageSignature(data: Uint8Array, mimeType: string): boolean {
+  const type = mimeType.trim().toLowerCase();
+  if (type === 'image/jpeg') {
+    return data.length >= 3 && data[0] === 0xff && data[1] === 0xd8 && data[2] === 0xff;
+  }
+  if (type === 'image/png') {
+    const signature = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+    return data.length >= signature.length && signature.every((value, index) => data[index] === value);
+  }
+  if (type === 'image/webp') {
+    return data.length >= 12 &&
+      data[0] === 0x52 && data[1] === 0x49 && data[2] === 0x46 && data[3] === 0x46 &&
+      data[8] === 0x57 && data[9] === 0x45 && data[10] === 0x42 && data[11] === 0x50;
+  }
+  return false;
+}
