@@ -1261,14 +1261,14 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
               </div>
             </section>
           )}
-          {page === 'Customers' && isAdmin && portalPlanChangeRequests.some(request => request.status === 'Pending') && (
+          {page === 'Customers' && isAdmin && portalPlanChangeRequests.length > 0 && (
             <section className="panel portal-request-panel">
               <div className="portal-request-heading">
                 <div><span className="eyebrow">CUSTOMER NEXUS · PLAN MANAGEMENT</span><h2>Customer plan-change requests</h2><p>Approve only after verifying the customer and confirming the requested service plan.</p></div>
                 <span className="portal-request-count">{portalPlanChangeRequests.filter(request => request.status === 'Pending').length} pending</span>
               </div>
               <div className="portal-request-list">
-                {portalPlanChangeRequests.filter(request => request.status === 'Pending').map(request => (
+                {portalPlanChangeRequests.map(request => (
                   <article className="portal-request-card" key={request.id}>
                     <div className="portal-request-main">
                       <strong>{request.customerName}</strong>
@@ -1276,10 +1276,14 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                       <small>{money(Number(request.currentMonthlyFee || 0))}/month → {money(Number(request.requestedMonthlyFee || 0))}/month</small>
                       <small>Received {dateLabel(request.createdAt)} · Customer identity must be verified before approval</small>
                     </div>
-                    <div className="portal-request-actions">
-                      <button className="btn primary compact" onClick={async () => { try { await api.post('/api/portal/plan-change-requests/' + encodeURIComponent(request.id) + '/decision', { decision: 'Approved' }); flash('Customer plan updated successfully.'); await load(true); } catch (error) { flash(error instanceof Error ? error.message : 'Could not approve this plan change.'); } }}>Approve & update plan</button>
-                      <button className="btn danger compact" onClick={async () => { try { await api.post('/api/portal/plan-change-requests/' + encodeURIComponent(request.id) + '/decision', { decision: 'Rejected' }); flash('Plan-change request rejected.'); await load(true); } catch (error) { flash(error instanceof Error ? error.message : 'Could not reject this request.'); } }}>Reject</button>
-                    </div>
+                    {request.status === 'Pending' ? (
+                      <div className="portal-request-actions">
+                        <button className="btn primary compact" onClick={async () => { try { await api.post('/api/portal/plan-change-requests/' + encodeURIComponent(request.id) + '/decision', { decision: 'Approved' }); flash('Customer plan updated successfully.'); await load(true); } catch (error) { flash(error instanceof Error ? error.message : 'Could not approve this plan change.'); } }}>Approve & update plan</button>
+                        <button className="btn danger compact" onClick={async () => { try { await api.post('/api/portal/plan-change-requests/' + encodeURIComponent(request.id) + '/decision', { decision: 'Rejected' }); flash('Plan-change request rejected.'); await load(true); } catch (error) { flash(error instanceof Error ? error.message : 'Could not reject this request.'); } }}>Reject</button>
+                      </div>
+                    ) : (
+                      <span className={'portal-request-status ' + String(request.status || '').toLowerCase()}>{request.status} · Reviewed {dateLabel(request.reviewedAt || request.createdAt)}</span>
+                    )}
                   </article>
                 ))}
               </div>
