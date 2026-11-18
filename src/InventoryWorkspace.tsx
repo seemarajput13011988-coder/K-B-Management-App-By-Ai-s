@@ -83,12 +83,22 @@ export default function InventoryWorkspace({isAdmin,flash}:{isAdmin:boolean;flas
     try { const result=await api.get<{items:Movement[]}>('/api/inventory/'+item.id+'/movements');setHistory(result.data.items||[]); }
     catch(error) { flash(error instanceof Error?error.message:'Could not load stock history.'); }
   }
+  const [search,setSearch]=useState('');
+  const [categoryFilter,setCategoryFilter]=useState('All');
+  const [stockFilter,setStockFilter]=useState<'All'|'Low stock'|'In stock'|'Archived'>('All');
+  const [sortBy,setSortBy]=useState<'name'|'quantity-asc'|'quantity-desc'|'recent'>('name');
+  const categories=[...new Set(items.map(item=>item.category).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
   const lowStock=items.filter(item=>item.active&&item.quantity<=item.minimumQuantity).length;
+  const visibleItems=items
+    .filter(item=>(categoryFilter==='All'||item.category===categoryFilter)
+      &&(stockFilter==='All'||(stockFilter==='Archived'?!item.active:stockFilter==='Low stock'?item.active&&item.quantity<=item.minimumQuantity:item.active&&item.quantity>item.minimumQuantity))
+      &&[item.name,item.sku,item.category,item.supplier||'',item.location||'',item.assignedToName||''].join(' ').toLowerCase().includes(search.trim().toLowerCase()))
+    .sort((a,b)=>sortBy==='quantity-asc'?a.quantity-b.quantity:sortBy==='quantity-desc'?b.quantity-a.quantity:sortBy==='recent'?(b.updatedAt||b.createdAt||'').localeCompare(a.updatedAt||a.createdAt||''):a.name.localeCompare(b.name));
 
   return <section className="panel table-panel">
     <div className="toolbar">
       <div><h2>Inventory & equipment</h2><p className="subtle">Track routers, cables, ONTs, tools and other business stock.</p></div>
-      <div className="inventory-toolbar"><span className="inventory-low-count">{lowStock} low-stock</span><button className="btn secondary" onClick={()=>exportInventory(items,isAdmin)} disabled={!items.length}><Download size={14}/> Export CSV</button><button className="btn secondary" onClick={()=>exportInventoryPdf(items,isAdmin)} disabled={!items.length}><FileText size={14}/> Export PDF</button>{isAdmin&&<button className="btn primary" onClick={openCreate}>+ Add item</button>}</div>
+      <div className="inventory-toolbar"><div className="searchbox"><input aria-label="Search inventory" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search item, SKU, supplier or location"/></div><select aria-label="Filter inventory category" value={categoryFilter} onChange={e=>setCategoryFilter(e.target.value)}><option value="All">All categories</option>{categories.map(category=><option key={category} value={category}>{category}</option>)}</select><select aria-label="Filter stock level" value={stockFilter} onChange={e=>setStockFilter(e.target.value as typeof stockFilter)}><option value="All">All stock</option><option>Low stock</option><option>In stock</option><option>Archived</option></select><select aria-label="Sort inventory" value={sortBy} onChange={e=>setSortBy(e.target.value as typeof sortBy)}><option value="name">Name: A–Z</option><option value="quantity-asc">Quantity: low to high</option><option value="quantity-desc">Quantity: high to low</option><option value="recent">Recently updated</option></select><span className="inventory-low-count">{lowStock} low-stock</span><button className="btn secondary" onClick={()=>exportInventory(visibleItems,isAdmin)} disabled={!visibleItems.length}><Download size={14}/> Export CSV</button><button className="btn secondary" onClick={()=>exportInventoryPdf(visibleItems,isAdmin)} disabled={!visibleItems.length}><FileText size={14}/> Export PDF</button>{isAdmin&&<button className="btn primary" onClick={openCreate}>+ Add item</button>}</div>
     </div>
     {showForm&&isAdmin&&<form className="inventory-form" onSubmit={saveItem}>
       <div className="inventory-form-title"><strong>{editing?'Edit inventory item':'Add inventory item'}</strong><button type="button" className="btn secondary compact" onClick={()=>setShowForm(false)}>Close</button></div>
@@ -117,7 +127,7 @@ export default function InventoryWorkspace({isAdmin,flash}:{isAdmin:boolean;flas
     </form>}
     {loading?<p className="ops-empty">Loading inventory…</p>:<div className="inventory-table-wrap"><table className="inventory-table">
       <thead><tr><th>Item</th><th>Category</th><th>In stock</th><th>Minimum</th>{isAdmin&&<th>Unit cost</th>}<th>Assigned to</th><th>Location</th><th>Actions</th></tr></thead>
-      <tbody>{items.map(item=><tr key={item.id} className={!item.active?'inventory-archived':''}>
+      <tbody>{visibleItems.map(item=><tr key={item.id} className={!item.active?'inventory-archived':''}>
         <td><strong>{item.name}</strong><small>{item.sku} · {item.unit}</small><small>Added {stamp(item.createdAt||'')}{item.updatedAt?' · Updated '+stamp(item.updatedAt):''}</small></td><td>{item.category}</td>
         <td><span className={'inventory-quantity '+(item.quantity<=item.minimumQuantity?'low':'')}>{item.quantity} {item.unit}</span></td>
         <td>{item.minimumQuantity} {item.unit}</td>{isAdmin&&<td>{money(item.unitCost||0)}</td>}<td>{item.assignedToName||'—'}</td><td>{item.location||'—'}</td>
