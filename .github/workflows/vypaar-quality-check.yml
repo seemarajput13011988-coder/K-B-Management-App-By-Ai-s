@@ -1,3 +1,4 @@
+# CI validation branch: run the same Vypaar checks against the current rebuild head.
 name: Vypaar quality checks
 
 on:
