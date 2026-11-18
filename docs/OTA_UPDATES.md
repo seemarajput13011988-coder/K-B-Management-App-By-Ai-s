@@ -10,7 +10,7 @@ On Android startup, Nexus checks the self-hosted endpoint before mounting the us
 
 ## Release publishing
 
-The workflow `.github/workflows/ota-release.yml` runs only for relevant changes pushed to `main`. It builds the Vite app, uses the official Capgo CLI to create a compatible bundle archive, calculates its SHA-256 checksum and publishes `nexus-update.zip` plus `ota-manifest.json` as a GitHub Release tagged `nexus-ota-1.0.<run-number>`.
+The workflow `.github/workflows/ota-release.yml` runs only for relevant changes pushed to `main`. It builds the Vite app, uses the official Capgo CLI to create a compatible bundle archive, calculates its SHA-256 checksum and publishes `nexus-update.zip` plus `ota-manifest.json` as the explicitly marked latest GitHub Release tagged `nexus-ota-1.0.<run-number>`, matching the Render API's `/releases/latest/download` asset URL.
 
 The Render endpoint `POST /api/app-updates/check` reads the newest non-draft `nexus-ota-*` release from this repository and returns the version, bundle URL and checksum. It validates the app ID, platform, semantic version, checksum and HTTPS GitHub download host. The release list is cached for five minutes to reduce unnecessary GitHub API requests.
 

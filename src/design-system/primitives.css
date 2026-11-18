@@ -1,0 +1,155 @@
+/* K&B Nexus shared interaction and control primitives.
+   Feature styles own layout; these rules standardize control ergonomics only. */
+:root {
+  --nexus-brand: #2569a8;
+  --nexus-brand-strong: #1d568e;
+  --nexus-brand-soft: #eaf3fc;
+  --nexus-accent: #e58a35;
+  --nexus-text: #1d2b40;
+  --nexus-muted: #718198;
+  --nexus-border: #dfe7f0;
+  --nexus-surface: #ffffff;
+  --nexus-surface-soft: #f6f9fd;
+  --nexus-focus: #4b91d1;
+  --nexus-radius-control: 11px;
+  --nexus-shadow-soft: 0 8px 26px rgb(29 55 86 / 6%);
+}
+.kb-app-shell :where(button, input, select, textarea) { font: inherit; }
+.kb-app-shell :where(button, [role="button"], input[type="button"], input[type="submit"]) { touch-action: manipulation; }
+.kb-app-shell :where(button:not(.icon-button):not(.row-action):not(.mobile-close):not(.hamburger)) {
+  min-height: 42px;
+  border-radius: var(--nexus-radius-control);
+  transition: background-color .16s ease, border-color .16s ease, color .16s ease, box-shadow .16s ease, transform .16s ease;
+}
+.kb-app-shell :where(button:active:not(:disabled)) { transform: translateY(1px); }
+.kb-app-shell :where(input:not([type="checkbox"]):not([type="radio"]):not([type="file"]), select, textarea) {
+  min-width: 0;
+  max-width: 100%;
+  border: 1px solid var(--nexus-border);
+  border-radius: var(--nexus-radius-control);
+  background: var(--nexus-surface);
+  color: var(--nexus-text);
+  outline: none;
+  transition: border-color .16s ease, box-shadow .16s ease, background-color .16s ease;
+}
+.kb-app-shell :where(input:not([type="checkbox"]):not([type="radio"]):not([type="file"]), select) { min-height: 42px; }
+.kb-app-shell :where(input:not([type="checkbox"]):not([type="radio"]):not([type="file"]), select, textarea)::placeholder { color: #98a5b5; opacity: 1; }
+.kb-app-shell :where(input, select, textarea):focus-visible {
+  border-color: var(--nexus-focus);
+  box-shadow: 0 0 0 3px rgb(75 145 209 / 16%);
+  outline: none;
+}
+.kb-app-shell :where(button, a, input, select, textarea):focus:not(:focus-visible) { outline: none; }
+.kb-app-shell :where(button:disabled, input:disabled, select:disabled, textarea:disabled) { cursor: not-allowed; opacity: .58; }
+.kb-app-shell :where(.icon-button, .row-action, .hamburger, .mobile-close) {
+  display: inline-grid;
+  min-width: 40px;
+  min-height: 40px;
+  place-items: center;
+  flex: 0 0 auto;
+  border-radius: 11px;
+}
+.kb-app-shell :where(.panel, .task-card, .staff-insight, .ops-summary, .plan-card) {
+  border-radius: 16px;
+  box-shadow: var(--nexus-shadow-soft);
+}
+.kb-app-shell :where(table th) { color: var(--nexus-muted); font-weight: 750; }
+.kb-app-shell :where(table td) { overflow-wrap: anywhere; }
+.kb-app-shell :where(.table-wrap, .finance-table-wrap, .inventory-table-wrap, .subscription-table-wrap) {
+  max-width: 100%;
+  overscroll-behavior-inline: contain;
+  -webkit-overflow-scrolling: touch;
+}
+.kb-app-shell :where(.btn.primary) {
+  color: #fff;
+  border-color: transparent;
+  background: linear-gradient(115deg, #2d78b9, #205b98);
+  box-shadow: 0 5px 14px rgb(37 105 168 / 18%);
+}
+.kb-app-shell :where(.btn.primary:hover:not(:disabled)) {
+  background: linear-gradient(115deg, #2569a8, #194f86);
+  box-shadow: 0 7px 18px rgb(37 105 168 / 24%);
+}
+.kb-app-shell :where(.btn.secondary) {
+  color: #40546c;
+  border-color: var(--nexus-border);
+  background: #fff;
+}
+.kb-app-shell :where(.btn.secondary:hover:not(:disabled)) {
+  color: var(--nexus-brand-strong);
+  border-color: #b8cde2;
+  background: var(--nexus-brand-soft);
+}
+[data-theme="dark"] .kb-app-shell {
+  --nexus-text: #e7edf6;
+  --nexus-muted: #9aabc0;
+  --nexus-border: #34465e;
+  --nexus-surface: #17263b;
+  --nexus-surface-soft: #101d2e;
+  --nexus-brand-soft: #203b59;
+  --nexus-focus: #79b5ec;
+  --nexus-shadow-soft: 0 8px 26px rgb(0 0 0 / 15%);
+}
+[data-theme="dark"] .kb-app-shell :where(input:not([type="checkbox"]):not([type="radio"]):not([type="file"]), select, textarea) {
+  color: var(--nexus-text);
+  border-color: var(--nexus-border);
+  background: var(--nexus-surface-soft);
+}
+[data-theme="dark"] .kb-app-shell :where(.btn.secondary) {
+  color: #d6e2f1;
+  border-color: var(--nexus-border);
+  background: #1a2b42;
+}
+[data-theme="dark"] .kb-app-shell :where(.btn.secondary:hover:not(:disabled)) {
+  color: #c6e1ff;
+  border-color: #54779c;
+  background: #203b59;
+}
+@media (prefers-reduced-motion: reduce) {
+  .kb-app-shell :where(button, input, select, textarea) { transition-duration: 0.01ms; }
+}
+@media (max-width: 600px) {
+  .kb-app-shell :where(.finance-actions input, .subscription-toolbar-actions select) { min-height: 44px; }
+}
+
+.kb-app-shell .record-controls { display:flex; align-items:center; justify-content:flex-end; flex-wrap:wrap; gap:8px; min-width:0; }
+.kb-app-shell .record-filter { display:inline-flex; align-items:center; gap:7px; min-width:0; color:var(--nexus-muted); font-size:10px; font-weight:750; }
+.kb-app-shell .record-filter select { min-width:112px; max-width:180px; min-height:40px; padding:0 30px 0 10px; color:var(--nexus-text); font-size:11px; }
+.kb-app-shell .toolbar > .searchbox { flex:1 1 250px; min-width:min(100%,220px); }
+.kb-app-shell .toolbar > .record-controls { flex:1 1 auto; }
+@media(max-width:760px) {
+  .kb-app-shell .toolbar { align-items:stretch; }
+  .kb-app-shell .toolbar > .searchbox { flex-basis:100%; width:100%; }
+  .kb-app-shell .record-controls { justify-content:flex-start; width:100%; }
+  .kb-app-shell .record-filter { flex:1 1 130px; justify-content:space-between; }
+  .kb-app-shell .record-filter select { flex:1; min-width:0; max-width:none; }
+}
+
+.kb-app-shell .complaint-toolbar-search { display:flex; justify-content:flex-end; margin:-4px 0 14px; }
+.kb-app-shell .complaint-toolbar-search .searchbox { width:min(100%,520px); }
+@media(max-width:760px) {
+  .kb-app-shell .complaint-toolbar-search { margin:0 0 12px; }
+  .kb-app-shell .complaint-toolbar-search .searchbox { width:100%; }
+}
+
+.kb-app-shell .portal-request-panel { padding:20px; margin-bottom:18px; border:1px solid #cfe0f2; background:linear-gradient(145deg,#fff,#f4f9ff); }
+.kb-app-shell .portal-request-heading { display:flex; align-items:flex-start; justify-content:space-between; gap:14px; margin-bottom:14px; }
+.kb-app-shell .portal-request-heading h2 { margin:5px 0 4px; color:var(--nexus-text); font-size:18px; }
+.kb-app-shell .portal-request-heading p { margin:0; color:var(--nexus-muted); font-size:12px; line-height:1.5; }
+.kb-app-shell .portal-request-count { flex:0 0 auto; padding:7px 11px; border-radius:999px; color:#1e5f9d; background:#e4f1ff; font-size:11px; font-weight:800; }
+.kb-app-shell .portal-request-list { display:grid; gap:10px; }
+.kb-app-shell .portal-request-card { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; padding:15px; border:1px solid var(--nexus-border); border-radius:14px; background:var(--nexus-surface); }
+.kb-app-shell .portal-request-main { display:grid; gap:5px; min-width:0; }
+.kb-app-shell .portal-request-main strong { color:var(--nexus-text); font-size:14px; }
+.kb-app-shell .portal-request-main span { color:var(--nexus-brand-strong); font-size:12px; font-weight:750; }
+.kb-app-shell .portal-request-main small { color:var(--nexus-muted); font-size:11px; overflow-wrap:anywhere; }
+.kb-app-shell .portal-request-main p { margin:3px 0 0; color:var(--nexus-text); font-size:12px; }
+.kb-app-shell .portal-request-actions { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:7px; flex:0 0 auto; max-width:340px; }
+@media(max-width:760px) {
+ .kb-app-shell .portal-request-panel { padding:14px; }
+ .kb-app-shell .portal-request-card { flex-direction:column; }
+ .kb-app-shell .portal-request-actions { width:100%; max-width:none; justify-content:flex-start; }
+ .kb-app-shell .portal-request-actions .btn { flex:1 1 120px; }
+}
+[data-theme="dark"] .kb-app-shell .portal-request-panel { border-color:#34516f; background:linear-gradient(145deg,#17283e,#142238); }
+[data-theme="dark"] .kb-app-shell .portal-request-count { color:#c4e1ff; background:#203b59; }

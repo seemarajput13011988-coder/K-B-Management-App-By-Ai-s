@@ -2,8 +2,6 @@ import { Component, lazy, Suspense, useEffect, useMemo, useRef, useState } from 
 import type { ErrorInfo, FormEvent, ReactNode } from 'react';
 import { Capacitor, registerPlugin } from '@capacitor/core';
 
-import { Filesystem } from '@capacitor/filesystem';
-import { Camera } from '@capacitor/camera';
 import { Geolocation } from '@capacitor/geolocation';
 import { LocalNotifications } from '@capacitor/local-notifications';
 const StaffOperations = lazy(() => import('./StaffOperations'));
@@ -15,7 +13,9 @@ const GpsTrackingWorkspace = lazy(() => import('./GpsTrackingWorkspace'));
 const InstallationsWorkspace = lazy(() => import('./InstallationsWorkspace'));
 const CalendarWorkspace = lazy(() => import('./CalendarWorkspace'));
 import { useAppPreferences } from './appPreferences';
-import { api as client, changeAppPassword, changeAppUserId, signInAppUser, signOutAppUser, submitStaffRegistrationRequest, getStaffRegistrationStatus, nativeApiPost } from './lib/api';
+import QuickNavigation from './layout/QuickNavigation';
+import { buildNavigationModel } from './navigation/navigationModel';
+import { api as client, changeAppPassword, changeAppUserId, signInAppUser, signOutAppUser, submitStaffRegistrationRequest, getStaffRegistrationStatus, nativeApiPost, recoverAdminPassword } from './lib/api';
 import {
   Activity,
   Bell,
@@ -23,7 +23,6 @@ import {
   CircleHelp,
   CreditCard,
   IndianRupee,
-  LayoutDashboard,
   Menu,
   MessageSquare,
   Plus,
@@ -41,7 +40,7 @@ import {
   Pencil,
   Trash2,
   Eye,
-  ShieldCheck, KeyRound, BarChart3, LogOut, UserPlus, UserRound, LockKeyhole, ReceiptText,
+  ShieldCheck, KeyRound, BarChart3, LogOut, UserPlus, UserRound, LockKeyhole,
 } from 'lucide-react';
 
 type Session={token:string;expiresAt:number;user:{id:string;userId:string;displayName:string;role:'admin'|'staff';active:boolean;canManageAdmins?:boolean}};
@@ -180,24 +179,6 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
     const timer = window.setInterval(() => setLocalHour(new Date().getHours()), 60_000);
     return () => window.clearInterval(timer);
   }, []);
-  useEffect(() => {
-    let active = true;
-    if (session.user.role !== 'staff' || !Capacitor.isNativePlatform()) return;
-    if (localStorage.getItem('kb-staff-permissions-v1') === 'done') return;
-    // A permission already granted in Android settings should be reused silently.
-    Geolocation.checkPermissions().then(permission => {
-      if (!active) return;
-      if (permission.location === 'granted') {
-        localStorage.setItem('kb-staff-permissions-v1', 'done');
-        setPermissionSetupOpen(false);
-      } else {
-        setPermissionSetupOpen(true);
-      }
-    }).catch(() => {
-      if (active) setPermissionSetupOpen(true);
-    });
-    return () => { active = false; };
-  }, [session.user.id, session.user.role]);
   const greeting = localHour < 12
     ? ({ en: 'Good morning', hi: 'सुप्रभात', gu: 'સુપ્રભાત' }[language])
     : localHour < 17
@@ -206,6 +187,8 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   const taskPage = isAdmin ? 'Tasks' : 'My Work';
   const [page, setPage] = useState('Overview');
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [portalRequests, setPortalRequests] = useState<any[]>([]);
+  const [portalPlanChangeRequests, setPortalPlanChangeRequests] = useState<any[]>([]);
   const [plans, setPlans] = useState<Plan[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [complaints, setComplaints] = useState<Complaint[]>([]);
@@ -223,7 +206,6 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   const [selectedStaffProfileId, setSelectedStaffProfileId] = useState('');
   const [attendanceEdit,setAttendanceEdit]=useState<{record:AttendanceRecord;dayType:'Full day'|'Half day'|'Absent';reason:string}|null>(null);
   const [showTask, setShowTask] = useState(false);
-  const [permissionSetupOpen, setPermissionSetupOpen] = useState(false);
   const [completingTask, setCompletingTask] = useState<Task | null>(null);
   const [taskPreview, setTaskPreview] = useState<{name:string;mimeType:string;dataUrl:string}|null>(null);
   const [showStaff, setShowStaff] = useState(false);
@@ -232,6 +214,8 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   const [showAccountSettings, setShowAccountSettings] = useState(false);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [customerStatusFilter, setCustomerStatusFilter] = useState<'All' | Customer['status']>('All');
+  const [customerSort, setCustomerSort] = useState<'recent' | 'name' | 'fee'>('recent');
   const [showCustomer, setShowCustomer] = useState(false);
   const [editing, setEditing] = useState<Customer | null>(null);
   const [showPlan, setShowPlan] = useState(false);
@@ -239,12 +223,20 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   const [preferredPlan, setPreferredPlan] = useState('');
   const [planSearch, setPlanSearch] = useState('');
   const [planFilter, setPlanFilter] = useState<'Active' | 'Archived' | 'All'>('Active');
+  const [planSort, setPlanSort] = useState<'featured' | 'price-low' | 'price-high' | 'name'>('featured');
   const [selected, setSelected] = useState<Customer | null>(null);
   const [showPayment, setShowPayment] = useState(false);
   const [editingPayment, setEditingPayment] = useState<Payment | null>(null);
   const [paymentSearch, setPaymentSearch] = useState('');
+  const [paymentMethodFilter, setPaymentMethodFilter] = useState('All');
+  const [paymentSort, setPaymentSort] = useState<'recent' | 'oldest' | 'amount'>('recent');
   const [staffSearch, setStaffSearch] = useState('');
+  const [staffStatusFilter, setStaffStatusFilter] = useState<'All' | 'Active' | 'Disabled'>('All');
+  const [staffSort, setStaffSort] = useState<'name' | 'recent' | 'active'>('name');
   const [showComplaint, setShowComplaint] = useState(false);
+  const [complaintSearch, setComplaintSearch] = useState('');
+  const [complaintStatusFilter, setComplaintStatusFilter] = useState('All');
+  const [complaintSort, setComplaintSort] = useState<'recent' | 'oldest' | 'priority'>('recent');
   const [complaintPreview, setComplaintPreview] = useState<{name:string;mimeType:string;dataUrl:string}|null>(null);
   const [notice, setNotice] = useState('');
   const [mobileNav, setMobileNav] = useState(false);
@@ -306,13 +298,15 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
       setComplaints((t.data.items || []).map((item: Complaint) => ({ ...item, status: item.status === 'Open' ? 'Pending' : item.status === 'In progress' ? 'In Progress' : item.status === 'Resolved' ? 'Solved' : item.status })));
       setTasks(w.data.items || []);
       if (isAdmin) {
-        const [s, requests, inventoryResult, installationResult, payrollResult, holidayResult] = await Promise.all([api.get('/api/staff'),api.get('/api/staff-registration-requests'),api.get('/api/inventory'),api.get('/api/installations'),api.get('/api/payroll'),api.get('/api/holidays')]);
+        const [s, requests, inventoryResult, installationResult, payrollResult, holidayResult, portalResult, portalPlanResult] = await Promise.all([api.get('/api/staff'),api.get('/api/staff-registration-requests'),api.get('/api/inventory'),api.get('/api/installations'),api.get('/api/payroll'),api.get('/api/holidays'),api.get('/api/portal/connection-requests'),api.get('/api/portal/plan-change-requests')]);
         setStaff(s.data.items || []);
         setStaffRegistrationRequests(requests.data.items || []);
         setStaffHolidayRequests(holidayResult.data.items || []);
         setStaffInventory(inventoryResult.data.items || []);
         setStaffInstallations(installationResult.data.items || []);
         setStaffPayroll(payrollResult.data.items || []);
+        setPortalRequests(portalResult.data.items || []);
+        setPortalPlanChangeRequests(portalPlanResult.data.items || []);
         try {
           const review = await api.get('/api/retention/review');
           setRetentionItems((review.data.items || []) as RetentionReviewItem[]);
@@ -440,19 +434,44 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
   const staffShiftActive = attendanceRecords.some(item => item.userId === session.user.id && isAttendanceShiftActive(item));
   const overdueValue = customers.filter(c => c.status === 'Active' && c.dueDate && c.dueDate <= today).reduce((sum, c) => sum + Math.max(0, Number(c.monthlyFee || 0) - (paidByCustomer.get(c.id) || 0)), 0);
-  const filtered = useMemo(
-    () =>
-      customers.filter(c =>
-        [c.name, c.phone, c.address, c.plan]
-          .join(' ')
-          .toLowerCase()
-          .includes(search.toLowerCase())
-      ),
-    [customers, search]
-  );
+  const filtered = useMemo(() => {
+    const rows = customers.filter(customer => {
+      const matchesSearch = [customer.name, customer.phone, customer.address, customer.plan].join(' ').toLowerCase().includes(search.trim().toLowerCase());
+      return matchesSearch && (customerStatusFilter === 'All' || customer.status === customerStatusFilter);
+    });
+    return rows.sort((a, b) => customerSort === 'name'
+      ? a.name.localeCompare(b.name)
+      : customerSort === 'fee'
+        ? Number(b.monthlyFee || 0) - Number(a.monthlyFee || 0)
+        : String(b.joinedAt || '').localeCompare(String(a.joinedAt || '')));
+  }, [customers, search, customerStatusFilter, customerSort]);
   const selectedStaffProfile = staff.find(member => member.id === selectedStaffProfileId);
-  const filteredStaff = staff.filter(member => [member.displayName, member.userId].join(' ').toLowerCase().includes(staffSearch.toLowerCase()));
-  const filteredPayments = payments.filter(payment => [payment.customerName, payment.month, payment.method, payment.paidAt, payment.recordedByName || ''].join(' ').toLowerCase().includes(paymentSearch.toLowerCase()));
+  const filteredStaff = staff.filter(member => {
+    const matchesSearch = [member.displayName, member.userId].join(' ').toLowerCase().includes(staffSearch.trim().toLowerCase());
+    const matchesStatus = staffStatusFilter === 'All' || (staffStatusFilter === 'Active' ? member.active : !member.active);
+    return matchesSearch && matchesStatus;
+  }).sort((a, b) => staffSort === 'recent'
+    ? String(b.createdAt || '').localeCompare(String(a.createdAt || ''))
+    : staffSort === 'active'
+      ? Number(b.active) - Number(a.active) || a.displayName.localeCompare(b.displayName)
+      : a.displayName.localeCompare(b.displayName));
+  const visibleComplaints = complaints.filter(item => {
+    const matchesSearch = [item.subject, item.details, item.customerName || '', item.staffName || '', item.assignedToName || '', item.createdByName || ''].join(' ').toLowerCase().includes(complaintSearch.trim().toLowerCase());
+    const matchesStatus = complaintStatusFilter === 'All' || item.status === complaintStatusFilter;
+    return matchesSearch && matchesStatus;
+  }).sort((a, b) => complaintSort === 'priority'
+    ? ({High:0,Normal:1,Low:2}[a.priority as 'High'|'Normal'|'Low'] ?? 3) - ({High:0,Normal:1,Low:2}[b.priority as 'High'|'Normal'|'Low'] ?? 3)
+    : complaintSort === 'oldest'
+      ? String(a.createdAt || '').localeCompare(String(b.createdAt || ''))
+      : String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+  const filteredPayments = payments.filter(payment => {
+    const matchesSearch = [payment.customerName, payment.month, payment.method, payment.paidAt, payment.recordedByName || ''].join(' ').toLowerCase().includes(paymentSearch.trim().toLowerCase());
+    return matchesSearch && (paymentMethodFilter === 'All' || payment.method === paymentMethodFilter);
+  }).sort((a, b) => paymentSort === 'amount'
+    ? Number(b.amount || 0) - Number(a.amount || 0)
+    : paymentSort === 'oldest'
+      ? String(a.paidAt || '').localeCompare(String(b.paidAt || ''))
+      : String(b.paidAt || '').localeCompare(String(a.paidAt || '')));
   const selectedStaffPayments = payments.filter(payment => payment.recordedBy === selectedStaffProfileId).sort((a, b) => b.paidAt.localeCompare(a.paidAt));
   const selectedStaffAttendance = attendanceRecords.filter(record => record.userId === selectedStaffProfileId).sort((a, b) => b.workDate.localeCompare(a.workDate));
   const selectedStaffAttendanceEquivalent = selectedStaffAttendance.filter(record => record.dayType !== 'Absent' && String(record.status || '').toLowerCase() !== 'absent').reduce((sum, record) => sum + (record.dayType === 'Half day' ? 0.5 : 1), 0);
@@ -466,9 +485,15 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   const selectedStaffCollected = selectedStaffPayments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
   const visiblePlans = plans.filter(plan => {
     const matchesStatus = planFilter === 'All' || (planFilter === 'Active' ? plan.active : !plan.active);
-    const matchesSearch = [plan.name, plan.provider, plan.speed, plan.connectionType, plan.note].join(' ').toLowerCase().includes(planSearch.toLowerCase());
+    const matchesSearch = [plan.name, plan.provider, plan.speed, plan.connectionType, plan.note].join(' ').toLowerCase().includes(planSearch.trim().toLowerCase());
     return matchesStatus && matchesSearch;
-  });
+  }).sort((a, b) => planSort === 'price-low'
+    ? Number(a.price || 0) - Number(b.price || 0)
+    : planSort === 'price-high'
+      ? Number(b.price || 0) - Number(a.price || 0)
+      : planSort === 'name'
+        ? a.name.localeCompare(b.name)
+        : Number(b.featured && b.active) - Number(a.featured && a.active));
 
   function flash(message: string) {
     setNotice(message);
@@ -809,39 +834,20 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
     }
   }
 
-  const nav = [
-    { label: 'Overview', icon: LayoutDashboard },
-    { label: 'Calendar', icon: CalendarDays },
-    { label: taskPage, icon: ClipboardList, count: pendingTasks || undefined },
-    ...(isAdmin ? [{ label: 'Salary', icon: IndianRupee }] : [{ label: 'My Day', icon: CalendarDays }]),
-    { label: 'Customers', icon: Users, count: customers.length },
-    { label: 'Subscriptions', icon: CalendarDays },
-    { label: 'Inventory', icon: ClipboardList },
-    { label: 'Installations', icon: MapPin },
-    ...(isAdmin ? [{ label: 'Plans & Pricing', icon: Wifi }] : []),
-    ...(isAdmin ? [{ label: 'Team Operations', icon: Users }] : []),
-    ...(isAdmin ? [{ label: 'GPS Tracking', icon: MapPin }] : []),
-    ...(isAdmin ? [{ label: 'Staff', icon: UserRound, count: staff.length }] : []),
-    ...(canManageAdmins ? [{ label: 'Admin Accounts', icon: ShieldCheck, count: adminAccounts.length || undefined }] : []),
-    ...(isAdmin ? [{ label: 'Invoices', icon: ReceiptText }] : []),
-    ...(isAdmin ? [{ label: 'Finance & Billing', icon: IndianRupee }] : []),
-    { label: 'Payments', icon: CreditCard },
-    {
-      label: 'Complaints',
-      icon: MessageSquare,
-      count: openComplaints || undefined,
-    },
-  ];
-
-  const navGroups = [
-    { label: 'HOME', items: nav.filter(item => ['Overview', 'Calendar', taskPage, 'My Day', 'Salary'].includes(item.label)) },
-    { label: 'CUSTOMERS & FIELD', items: nav.filter(item => ['Customers', 'Subscriptions', 'Inventory', 'Installations', 'Payments', 'Complaints', 'Plans & Pricing'].includes(item.label)) },
-    { label: 'MANAGEMENT', items: nav.filter(item => ['Team Operations', 'GPS Tracking', 'Staff', 'Admin Accounts', 'Invoices', 'Finance & Billing'].includes(item.label)) },
-  ].filter(group => group.items.length);
+  const navGroups = buildNavigationModel({
+    isAdmin,
+    canManageAdmins,
+    taskPage,
+    pendingTasks,
+    customerCount: customers.length,
+    staffCount: staff.length,
+    adminCount: adminAccounts.length,
+    openComplaintCount: openComplaints,
+  });
 
   return (
-    <div className="shell">
-      <aside className={'sidebar ' + (mobileNav ? 'mobile-open' : '')}>
+    <div className="kb-app-shell">
+      <aside className={'kb-app-sidebar ' + (mobileNav ? 'is-open' : '')} aria-label="Application navigation">
         <div className="brand">
           <div className="brand-mark">
             <Signal size={21} />
@@ -882,7 +888,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
           </section>)}
         </nav>
         <div className="sidebar-bottom">
-          <button className="btn secondary compact" style={{width:'100%',marginBottom:12}} onClick={async()=>{if(Capacitor.isNativePlatform()){const permission=await LocalNotifications.requestPermissions();flash(permission.display==='granted'?'Notifications enabled. You will receive new messages, assigned work and reminders while the app is running.':'Notifications are blocked. Enable them in Android settings.');return;}if(typeof Notification==='undefined'){flash('This browser does not support desktop notifications.');return;}const permission=await Notification.requestPermission();flash(permission==='granted'?'Notifications enabled. You will receive new messages, assigned work and reminders while the app is open.': 'Notifications are blocked. Enable them in your browser settings.');}}>
+          <button className="btn secondary compact"  onClick={async()=>{if(Capacitor.isNativePlatform()){const permission=await LocalNotifications.requestPermissions();flash(permission.display==='granted'?'Notifications enabled. You will receive new messages, assigned work and reminders while the app is running.':'Notifications are blocked. Enable them in Android settings.');return;}if(typeof Notification==='undefined'){flash('This browser does not support desktop notifications.');return;}const permission=await Notification.requestPermission();flash(permission==='granted'?'Notifications enabled. You will receive new messages, assigned work and reminders while the app is open.': 'Notifications are blocked. Enable them in your browser settings.');}}>
             <Bell size={15}/> Enable notifications
           </button>
           <div className="help-card">
@@ -910,11 +916,11 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
         </div>
       </aside>
       {mobileNav && (
-        <div className="scrim" onClick={() => setMobileNav(false)} />
+        <div className="kb-app-scrim" onClick={() => setMobileNav(false)} />
       )}
-      <main className="main">
-        <header className="topbar">
-          <button className="hamburger" onClick={() => setMobileNav(true)}>
+      <main className="kb-app-main">
+        <header className="kb-app-topbar">
+          <button type="button" className="hamburger" aria-label="Open navigation" aria-expanded={mobileNav} onClick={() => setMobileNav(true)}>
             <Menu />
           </button>
           <div className="crumb">
@@ -939,7 +945,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
             <button type="button" className="icon-button account-trigger" title="Account settings" aria-label="Account settings" onClick={() => { setNotificationsOpen(false); setShowAccountSettings(true); }}><div className="avatar small-avatar">{session.user.displayName.slice(0, 2).toUpperCase()}</div></button>
           </div>
         </header>
-        <div className="content">
+        <div className="content kb-app-content">
           <div className="page-heading">
             <div>
               <div className="eyebrow">
@@ -1033,167 +1039,84 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
           </Suspense>
 
           {page === 'Overview' && (
-            <>
-              <section className="quick-actions" aria-label="Quick actions">
-                <button type="button" onClick={() => setPage('Customers')}><Users size={18}/><span>Customers</span><small>Find and manage</small></button>
-                <button type="button" onClick={() => setPage('Complaints')}><MessageSquare size={18}/><span>Complaints</span><small>Track issues</small></button>
-                {isAdmin && <button type="button" onClick={() => { setEditing(null); setShowCustomer(true); }}><Plus size={18}/><span>Add customer</span><small>Create a record</small></button>}
-                {isAdmin && <button type="button" onClick={() => setPage('Salary')}><IndianRupee size={18}/><span>Salary</span><small>Staff operations</small></button>}
-                {!isAdmin && <button type="button" onClick={() => setPage('My Work')}><ClipboardList size={18}/><span>My work</span><small>See assigned tasks</small></button>}
-              </section>
+            <section className="kb-overview" aria-label="Operations overview">
+              <nav className="kb-overview-actions" aria-label="Overview shortcuts">
+                <button type="button" onClick={() => setPage('Customers')}><Users size={18}/><span>Customers</span><small>Browse records</small></button>
+                <button type="button" onClick={() => setPage('Complaints')}><MessageSquare size={18}/><span>Complaints</span><small>Resolve issues</small></button>
+                {isAdmin && <button type="button" onClick={() => { setEditing(null); setShowCustomer(true); }}><Plus size={18}/><span>Add customer</span><small>Create connection</small></button>}
+                {isAdmin && <button type="button" onClick={() => setPage('Salary')}><IndianRupee size={18}/><span>Salary</span><small>Team payments</small></button>}
+                {!isAdmin && <button type="button" onClick={() => setPage(taskPage)}><ClipboardList size={18}/><span>My work</span><small>Assigned tasks</small></button>}
+              </nav>
 
               {isAdmin && (
-                <section className="panel retention-review-panel">
-                  <div className="panel-head">
-                    <div>
-                      <h2>Six-month record review</h2>
-                      <p>Records saved or created at least six months ago. Nothing is deleted automatically.</p>
-                    </div>
-                    <span className="live-tag">{retentionItems.length} DUE</span>
+                <aside className="kb-overview-review" aria-label="Records due for review">
+                  <div className="kb-overview-review-copy">
+                    <Clock3 size={17}/>
+                    <div><strong>Record review</strong><span>Older records are ready for a six-month review. Nothing is deleted automatically.</span></div>
                   </div>
-                  {retentionItems.length ? (
-                    <div className="retention-review-list">
-                      {retentionItems.map(item => (
-                        <div className="snapshot-row" key={item.collection + ':' + item.id}>
-                          <div className="snapshot-icon orange-bg"><Clock3 /></div>
-                          <div className="retention-review-details">
-                            <strong>{item.recordLabel}</strong>
-                            <small>{item.collectionLabel} · Saved {dateLabel(item.createdAt)}</small>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="retention-review-empty">No records are currently due for review.</p>
-                  )}
-                </section>
+                  <strong className="kb-overview-review-count"><span>{retentionItems.length}</span><em>Due</em></strong>
+                  {retentionItems.length > 0 && <div className="kb-overview-review-list">{retentionItems.slice(0,3).map(item=><span key={item.collection+':'+item.id}>{item.recordLabel} <small>· {dateLabel(item.createdAt)}</small></span>)}</div>}
+                  {retentionItems.length === 0 && <span className="kb-overview-review-clear"><CheckCircle2 size={14}/> No records due right now</span>}
+                </aside>
               )}
 
-              <div className="stats-grid">
-                <Stat
-                  icon={<Users />}
-                  label={isAdmin ? 'Total customers' : 'My assigned customers'}
-                  value={customers.length}
-                  foot={isAdmin ? 'All registered connections' : 'Customers assigned to your account'}
-                  tint="blue"
-                />
-                <Stat
-                  icon={isAdmin ? <Activity /> : <ClipboardList />}
-                  label={isAdmin ? 'Active connections' : 'My pending tasks'}
-                  value={isAdmin ? active : pendingTasks}
-                  foot={isAdmin ? (customers.length ? Math.round((active / customers.length) * 100) + '% of total customers' : 'No customers yet') : 'Assigned work not yet completed'}
-                  tint="green"
-                />
-                <Stat
-                  icon={<IndianRupee />}
-                  label={isAdmin ? 'Payments recorded' : 'My collections'}
-                  value={money(collected)}
-                  foot={isAdmin ? 'Total recorded collections' : 'Payments recorded by you'}
-                  tint="purple"
-                />
-                <Stat
-                  icon={<MessageSquare />}
-                  label="Open complaints"
-                  value={openComplaints}
-                  foot="Awaiting resolution"
-                  tint="orange"
-                />
-              </div>
-              <div className="overview-grid">
-                <section className="panel">
-                  <div className="panel-head">
-                    <div>
-                      <h2>Recent customers</h2>
-                      <p>Latest connections added to your records</p>
-                    </div>
-                    <button
-                      className="text-btn"
-                      onClick={() => setPage('Customers')}
-                    >
-                      View all <span>→</span>
-                    </button>
-                  </div>
-                  <CustomerTable
-                    rows={customers.slice(0, 5)}
-                    onView={setSelected}
-                  />
-                  {!customers.length && (
-                    <Empty
-                      icon={<Users />}
-                      title="No customers yet"
-                      text="Add your first customer to start building your records."
-                      action={isAdmin ? 'Add customer' : undefined}
-                      onClick={() => setShowCustomer(true)}
-                    />
-                  )}
-                </section>
-                <section className="panel activity-panel">
-                  <div className="panel-head">
-                    <div>
-                      <h2>Service snapshot</h2>
-                      <p>Current operational summary</p>
-                    </div>
-                    <span className="live-tag">
-                      <i /> LIVE
-                    </span>
-                  </div>
-                  <div className="snapshot-row">
-                    <div className="snapshot-icon blue-bg">
-                      <Wifi />
-                    </div>
-                    <div>
-                      <strong>Active connections</strong>
-                      <small>Currently marked active</small>
-                    </div>
-                    <b>{active}</b>
-                  </div>
-                  <div className="snapshot-row">
-                    <div className="snapshot-icon orange-bg">
-                      <Clock3 />
-                    </div>
-                    <div>
-                      <strong>Monthly plan value</strong>
-                      <small>Based on active customers</small>
-                    </div>
-                    <b>{money(pending)}</b>
-                  </div>
-                  <div className="snapshot-row">
-                    <div className="snapshot-icon purple-bg">
-                      <MessageSquare />
-                    </div>
-                    <div>
-                      <strong>Pending complaints</strong>
-                      <small>Need attention</small>
-                    </div>
-                    <b>{openComplaints}</b>
-                  </div>
-                  <div className="snapshot-note">
-                    <CheckCircle2 size={16} /> Your customer workspace is ready
-                    to use.
-                  </div>
-                </section>
-              </div>
-              <div className="chart-grid">
-                <MonthlyChart title={isAdmin ? 'Monthly collections' : 'Your recorded collections'} subtitle="Payment totals from the last six months" items={payments} dateKey="paidAt" valueKey="amount" moneyValue />
-                <MonthlyChart title="Customer additions" subtitle={isAdmin ? 'New connections added each month' : 'Your assigned customer base by join date'} items={customers} dateKey="joinedAt" countOnly />
-              </div>
-              {isAdmin && <div className="chart-grid"><StatusChart complaints={complaints} /><OverduePanel value={overdueValue} /></div>}
-              <section className="panel bottom-panel">
-                <div className="panel-head">
-                  <div>
-                    <h2>Recent payments</h2>
-                    <p>Latest recorded customer payments</p>
-                  </div>
-                  <button
-                    className="text-btn"
-                    onClick={() => setPage('Payments')}
-                  >
-                    View payments →
-                  </button>
-                </div>
-                <PaymentTable rows={payments.slice(0, 4)} />
+              <section className="kb-overview-metrics" aria-label="Business snapshot">
+                <article className="kb-overview-metric">
+                  <span className="kb-overview-metric-icon"><Users size={18}/></span>
+                  <div><small>{isAdmin ? 'Total customers' : 'My assigned customers'}</small><strong>{customers.length.toLocaleString('en-IN')}</strong><span>{isAdmin ? 'Registered connections' : 'Currently assigned to you'}</span></div>
+                </article>
+                <article className="kb-overview-metric">
+                  <span className="kb-overview-metric-icon"><Activity size={18}/></span>
+                  <div><small>{isAdmin ? 'Active connections' : 'Pending tasks'}</small><strong>{(isAdmin ? active : pendingTasks).toLocaleString('en-IN')}</strong><span>{isAdmin ? (customers.length ? Math.round(active/customers.length*100)+'% of customer base' : 'No customers yet') : 'Assigned work to complete'}</span></div>
+                </article>
+                <article className="kb-overview-metric">
+                  <span className="kb-overview-metric-icon"><IndianRupee size={18}/></span>
+                  <div><small>{isAdmin ? 'Payments recorded' : 'My collections'}</small><strong>{money(collected)}</strong><span>{isAdmin ? 'Total recorded collections' : 'Payments recorded by you'}</span></div>
+                </article>
+                <article className="kb-overview-metric">
+                  <span className="kb-overview-metric-icon"><MessageSquare size={18}/></span>
+                  <div><small>Open complaints</small><strong>{openComplaints.toLocaleString('en-IN')}</strong><span>Awaiting resolution</span></div>
+                </article>
               </section>
-            </>
+
+              <div className="kb-overview-main">
+                <section className="kb-overview-section kb-overview-customers">
+                  <header className="kb-overview-section-head">
+                    <div><h2>Recent customers</h2><p>Latest connections added to your records</p></div>
+                    <button className="kb-overview-link" type="button" onClick={() => setPage('Customers')}>View all <span>→</span></button>
+                  </header>
+                  <CustomerTable rows={customers.slice(0,5)} onView={setSelected}/>
+                  {!customers.length && <Empty icon={<Users/>} title="No customers yet" text="Add your first customer to start building your records." action={isAdmin ? 'Add customer' : undefined} onClick={() => setShowCustomer(true)}/>}
+                </section>
+
+                <section className="kb-overview-section kb-overview-service">
+                  <header className="kb-overview-section-head">
+                    <div><h2>Service snapshot</h2><p>Current operational summary</p></div>
+                    <span className="kb-overview-live"><i/> Live</span>
+                  </header>
+                  <div className="kb-overview-service-list">
+                    <div className="kb-overview-service-row"><span className="kb-overview-service-icon"><Wifi size={17}/></span><div><strong>Active connections</strong><small>Currently marked active</small></div><b>{active}</b></div>
+                    <div className="kb-overview-service-row"><span className="kb-overview-service-icon"><Clock3 size={17}/></span><div><strong>Monthly plan value</strong><small>Based on active customers</small></div><b>{money(pending)}</b></div>
+                    <div className="kb-overview-service-row"><span className="kb-overview-service-icon"><MessageSquare size={17}/></span><div><strong>Pending complaints</strong><small>Need attention</small></div><b>{openComplaints}</b></div>
+                  </div>
+                  <p className="kb-overview-service-note"><CheckCircle2 size={15}/> Your customer workspace is ready to use.</p>
+                </section>
+              </div>
+
+              <div className="kb-overview-charts">
+                <MonthlyChart title={isAdmin ? 'Monthly collections' : 'Your recorded collections'} subtitle="Payment totals from the last six months" items={payments} dateKey="paidAt" valueKey="amount" moneyValue/>
+                <MonthlyChart title="Customer additions" subtitle={isAdmin ? 'New connections added each month' : 'Your assigned customer base by join date'} items={customers} dateKey="joinedAt" countOnly/>
+              </div>
+              {isAdmin && <div className="kb-overview-charts kb-overview-admin-charts"><StatusChart complaints={complaints}/><OverduePanel value={overdueValue}/></div>}
+
+              <section className="kb-overview-section kb-overview-payments">
+                <header className="kb-overview-section-head">
+                  <div><h2>Recent payments</h2><p>Latest recorded customer payments</p></div>
+                  <button className="kb-overview-link" type="button" onClick={() => setPage('Payments')}>View payments <span>→</span></button>
+                </header>
+                <PaymentTable rows={payments.slice(0,4)}/>
+              </section>
+            </section>
           )}
 
           {page === 'Admin Accounts' && canManageAdmins && (
@@ -1227,7 +1150,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
               </div>
             </section>
             <section className="panel table-panel">
-              <div className="toolbar"><div className="searchbox"><Search size={17}/><input value={staffSearch} onChange={e => setStaffSearch(e.target.value)} placeholder="Search staff name or user ID..."/></div><span className="result-count">{filteredStaff.length} of {staff.length} members</span></div>
+              <div className="toolbar"><div className="searchbox"><Search size={17}/><input value={staffSearch} onChange={e => setStaffSearch(e.target.value)} placeholder="Search staff name or user ID..."/></div><div className="record-controls"><label className="record-filter"><span>Access</span><select aria-label="Filter staff by access" value={staffStatusFilter} onChange={event => setStaffStatusFilter(event.target.value as 'All' | 'Active' | 'Disabled')}><option>All</option><option>Active</option><option>Disabled</option></select></label><label className="record-filter"><span>Sort</span><select aria-label="Sort staff members" value={staffSort} onChange={event => setStaffSort(event.target.value as 'name' | 'recent' | 'active')}><option value="name">Name A–Z</option><option value="recent">Recently added</option><option value="active">Active first</option></select></label><span className="result-count">{filteredStaff.length} of {staff.length} members</span></div></div>
               <div className="table-wrap"><table><thead><tr><th>STAFF MEMBER</th><th>USER ID</th><th>ASSIGNED CUSTOMERS</th><th>COLLECTIONS RECORDED</th><th>ACCESS</th><th>ACTIONS</th></tr></thead><tbody>
                 {filteredStaff.map(member => {
                   const assigned = customers.filter(c => c.assignedTo === member.id).length;
@@ -1312,6 +1235,60 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
             </section>
           )}
 
+          {page === 'Customers' && isAdmin && portalRequests.some(request => request.status === 'Pending') && (
+            <section className="panel portal-request-panel">
+              <div className="portal-request-heading">
+                <div><span className="eyebrow">CUSTOMER NEXUS · LIVE INTAKE</span><h2>New connection requests</h2><p>These requests were submitted through the customer portal and are not active customer accounts yet.</p></div>
+                <span className="portal-request-count">{portalRequests.filter(request => request.status === 'Pending').length} pending</span>
+              </div>
+              <div className="portal-request-list">
+                {portalRequests.filter(request => request.status === 'Pending').map(request => (
+                  <article className="portal-request-card" key={request.id}>
+                    <div className="portal-request-main">
+                      <strong>{request.name}</strong>
+                      <span>{request.phone} · {request.plan} · {money(Number(request.monthlyFee || 0))}/month</span>
+                      <small>{[request.address, request.city, request.state, request.pincode].filter(Boolean).join(', ')}</small>
+                      <small>Received {dateLabel(request.createdAt)}</small>
+                      {request.notes && <p>{request.notes}</p>}
+                    </div>
+                    <div className="portal-request-actions">
+                      <button className="btn primary compact" onClick={async () => { try { await api.post('/api/portal/connection-requests/' + encodeURIComponent(request.id) + '/convert', {}); flash('Request converted to an inactive customer record. Confirm service details before activation.'); await load(true); } catch (error) { flash(error instanceof Error ? error.message : 'Could not convert this request.'); } }}>Convert to customer</button>
+                      <button className="btn secondary compact" onClick={async () => { try { await api.put('/api/portal/connection-requests/' + encodeURIComponent(request.id), { status: 'Contacted' }); flash('Request marked as contacted.'); await load(true); } catch (error) { flash(error instanceof Error ? error.message : 'Could not update this request.'); } }}>Mark contacted</button>
+                      <button className="btn danger compact" onClick={async () => { try { await api.put('/api/portal/connection-requests/' + encodeURIComponent(request.id), { status: 'Rejected' }); flash('Request marked as rejected.'); await load(true); } catch (error) { flash(error instanceof Error ? error.message : 'Could not update this request.'); } }}>Reject</button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </section>
+          )}
+          {page === 'Customers' && isAdmin && portalPlanChangeRequests.length > 0 && (
+            <section className="panel portal-request-panel">
+              <div className="portal-request-heading">
+                <div><span className="eyebrow">CUSTOMER NEXUS · PLAN MANAGEMENT</span><h2>Customer plan-change requests</h2><p>Approve only after verifying the customer and confirming the requested service plan.</p></div>
+                <span className="portal-request-count">{portalPlanChangeRequests.filter(request => request.status === 'Pending').length} pending</span>
+              </div>
+              <div className="portal-request-list">
+                {portalPlanChangeRequests.map(request => (
+                  <article className="portal-request-card" key={request.id}>
+                    <div className="portal-request-main">
+                      <strong>{request.customerName}</strong>
+                      <span>{request.phone} · {request.currentPlan} → {request.requestedPlan}</span>
+                      <small>{money(Number(request.currentMonthlyFee || 0))}/month → {money(Number(request.requestedMonthlyFee || 0))}/month</small>
+                      <small>Received {dateLabel(request.createdAt)} · Customer identity must be verified before approval</small>
+                    </div>
+                    {request.status === 'Pending' ? (
+                      <div className="portal-request-actions">
+                        <button className="btn primary compact" onClick={async () => { try { await api.post('/api/portal/plan-change-requests/' + encodeURIComponent(request.id) + '/decision', { decision: 'Approved' }); flash('Customer plan updated successfully.'); await load(true); } catch (error) { flash(error instanceof Error ? error.message : 'Could not approve this plan change.'); } }}>Approve & update plan</button>
+                        <button className="btn danger compact" onClick={async () => { try { await api.post('/api/portal/plan-change-requests/' + encodeURIComponent(request.id) + '/decision', { decision: 'Rejected' }); flash('Plan-change request rejected.'); await load(true); } catch (error) { flash(error instanceof Error ? error.message : 'Could not reject this request.'); } }}>Reject</button>
+                      </div>
+                    ) : (
+                      <span className={'portal-request-status ' + String(request.status || '').toLowerCase()}>{request.status} · Reviewed {dateLabel(request.reviewedAt || request.createdAt)}</span>
+                    )}
+                  </article>
+                ))}
+              </div>
+            </section>
+          )}
           {page === 'Customers' && (
             <section className="panel table-panel">
               <div className="toolbar">
@@ -1323,9 +1300,11 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                     placeholder="Search name, phone, address or plan..."
                   />
                 </div>
-                <span className="result-count">
-                  {filtered.length} customers
-                </span>
+                <div className="record-controls">
+                  <label className="record-filter"><span>Status</span><select aria-label="Filter customers by status" value={customerStatusFilter} onChange={event => setCustomerStatusFilter(event.target.value as 'All' | Customer['status'])}><option>All</option><option>Active</option><option>Inactive</option><option>Suspended</option></select></label>
+                  <label className="record-filter"><span>Sort</span><select aria-label="Sort customers" value={customerSort} onChange={event => setCustomerSort(event.target.value as 'recent' | 'name' | 'fee')}><option value="recent">Recently added</option><option value="name">Name A–Z</option><option value="fee">Highest fee</option></select></label>
+                  <span className="result-count">{filtered.length} of {customers.length} customers</span>
+                </div>
               </div>
               <CustomerTable
                 rows={filtered}
@@ -1368,6 +1347,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                 <div className="plan-filters">
                   {(['Active', 'Archived', 'All'] as const).map(filter => <button key={filter} className={planFilter === filter ? 'selected' : ''} onClick={() => setPlanFilter(filter)}>{filter}{filter === 'Active' ? ' · ' + plans.filter(plan => plan.active).length : filter === 'Archived' ? ' · ' + plans.filter(plan => !plan.active).length : ''}</button>)}
                 </div>
+                <label className="record-filter"><span>Sort</span><select aria-label="Sort internet plans" value={planSort} onChange={event => setPlanSort(event.target.value as 'featured' | 'price-low' | 'price-high' | 'name')}><option value="featured">Featured first</option><option value="price-low">Price: low to high</option><option value="price-high">Price: high to low</option><option value="name">Name A–Z</option></select></label>
               </div>
               <div className="plans-grid">
                 {visiblePlans.map(p => (
@@ -1404,7 +1384,11 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                   <p className="subtle">All recorded customer collections</p>
                 </div>
                 <div className="searchbox"><Search size={17}/><input value={paymentSearch} onChange={e => setPaymentSearch(e.target.value)} placeholder="Search customer, month, method or date..."/></div>
-                <span className="result-count">{filteredPayments.length} of {payments.length} records</span>
+                <div className="record-controls">
+                  <label className="record-filter"><span>Method</span><select aria-label="Filter payments by method" value={paymentMethodFilter} onChange={event => setPaymentMethodFilter(event.target.value)}><option>All</option>{Array.from(new Set(payments.map(payment => payment.method).filter(Boolean))).sort().map(method => <option key={method}>{method}</option>)}</select></label>
+                  <label className="record-filter"><span>Sort</span><select aria-label="Sort payments" value={paymentSort} onChange={event => setPaymentSort(event.target.value as 'recent' | 'oldest' | 'amount')}><option value="recent">Newest first</option><option value="oldest">Oldest first</option><option value="amount">Highest amount</option></select></label>
+                  <span className="result-count">{filteredPayments.length} of {payments.length} records</span>
+                </div>
               </div>
               <PaymentTable rows={filteredPayments} isAdmin={isAdmin} onEdit={(payment: Payment) => { setEditingPayment(payment); setShowPayment(true); }} onDelete={isAdmin ? deletePayment : undefined} />
               {payments.length > 0 && !filteredPayments.length && <p className="ops-empty">No payments match your search.</p>}
@@ -1425,10 +1409,15 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
               <div className="toolbar">
                 <div><h2>Staff & customer complaints</h2><p className="subtle">Create a complaint, assign an owner and track it until it is solved.</p></div>
                 <div className="complaint-counts"><span><b>{complaints.filter(item => !['Solved','Resolved'].includes(item.status)).length}</b> Pending / active</span><span><b>{complaints.filter(item => item.status === 'Solved' || item.status === 'Resolved').length}</b> Solved</span><span><b>{complaints.filter(item => item.status === 'Not Solved').length}</b> Not solved</span></div>
-                <span className="result-count">{complaints.length} records</span>
+                <div className="record-controls">
+                  <label className="record-filter"><span>Status</span><select aria-label="Filter complaints by status" value={complaintStatusFilter} onChange={event => setComplaintStatusFilter(event.target.value)}><option>All</option><option>Pending</option><option>Assigned</option><option>In Progress</option><option>Solved</option><option>Not Solved</option></select></label>
+                  <label className="record-filter"><span>Sort</span><select aria-label="Sort complaints" value={complaintSort} onChange={event => setComplaintSort(event.target.value as 'recent' | 'oldest' | 'priority')}><option value="recent">Newest first</option><option value="oldest">Oldest first</option><option value="priority">Highest priority</option></select></label>
+                  <span className="result-count">{visibleComplaints.length} of {complaints.length} records</span>
+                </div>
               </div>
+              <div className="complaint-toolbar-search"><div className="searchbox"><Search size={17}/><input value={complaintSearch} onChange={event => setComplaintSearch(event.target.value)} placeholder="Search complaint, customer, staff or details..."/></div></div>
               <div className="complaint-list">
-                {complaints.map(c => {
+                {visibleComplaints.map(c => {
                   const canUpdate = isAdmin;
                   const targetName = c.complaintFor === 'Staff' ? (c.staffName || 'Staff member') : (c.customerName || 'Customer');
                   return <article className="complaint-card" key={c.id}>
@@ -1467,7 +1456,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                   </article>;
                 })}
               </div>
-              {!complaints.length && <Empty icon={<MessageSquare/>} title="No complaints yet" text="Create a customer or staff complaint to start tracking it." action="New complaint" onClick={() => setShowComplaint(true)}/>}
+              {!visibleComplaints.length && <Empty icon={<MessageSquare/>} title={complaints.length ? 'No matching complaints' : 'No complaints yet'} text={complaints.length ? 'Try another search term or change the status filter.' : 'Create a customer or staff complaint to start tracking it.'} action={complaints.length ? 'Clear filters' : 'New complaint'} onClick={() => { if (complaints.length) { setComplaintSearch(''); setComplaintStatusFilter('All'); setComplaintSort('recent'); } else setShowComplaint(true); }}/>} 
             </section>
           )}
           <footer>
@@ -1475,6 +1464,12 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
             Management
           </footer>
         </div>
+        <QuickNavigation
+          page={page}
+          taskPage={taskPage}
+          onNavigate={nextPage => { setPage(nextPage); setNotificationsOpen(false); }}
+          onMore={() => { setMobileNav(true); setNotificationsOpen(false); }}
+        />
       </main>
 
       {showCustomer && (
@@ -1502,7 +1497,6 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
         />
       )}
       {!isAdmin && <StaffLocationResponder activeShift={staffShiftActive} userId={session.user.id} />}
-      {permissionSetupOpen && <StaffPermissionSetup onComplete={(locationGranted = false) => { if (locationGranted) localStorage.setItem('kb-staff-permissions-v1', 'done'); setPermissionSetupOpen(false); }} />}
       {completingTask && <TaskCompletionModal task={completingTask} onClose={() => setCompletingTask(null)} onComplete={(photo: File | null, video: File | null) => completeTaskWithEvidence(completingTask, photo, video)} />}
       {taskPreview && <Modal title={taskPreview.name} subtitle="Task completion evidence" onClose={() => setTaskPreview(null)}><div className="complaint-preview">{taskPreview.mimeType.startsWith('video/') ? <video src={taskPreview.dataUrl} controls playsInline /> : <img src={taskPreview.dataUrl} alt={taskPreview.name}/>}</div><div className="form-actions"><a className="btn secondary" href={taskPreview.dataUrl} download={taskPreview.name}>Download evidence</a><button type="button" className="btn primary" onClick={() => setTaskPreview(null)}>Close</button></div></Modal>}
       {showComplaint && (
@@ -1636,16 +1630,6 @@ function OverduePanel({ value }: { value: number }) {
   return <section className="panel chart-panel"><div className="panel-head"><div><h2>Estimated overdue plan value</h2><p>Active accounts past their due date with no full payment recorded for this month</p></div><span className="chart-mark"><IndianRupee size={17} /></span></div><div className="overdue-value">{money(value)}</div><p className="overdue-note">Estimate only: accounts without a due date are excluded. Partial payments are deducted from the monthly fee.</p></section>;
 }
 
-function Stat({ icon, label, value, foot, tint }: any) {
-  return (
-    <div className="stat-card">
-      <div className={'stat-icon ' + tint}>{icon}</div>
-      <div className="stat-label">{label}</div>
-      <div className="stat-value">{value}</div>
-      <div className="stat-foot">{foot}</div>
-    </div>
-  );
-}
 function Empty({ icon, title, text, action, onClick }: any) {
   return (
     <div className="empty-state">
@@ -2074,50 +2058,6 @@ function StaffLocationResponder({ activeShift, userId }: { activeShift: boolean;
   }, [shiftActive, activeShiftId, scheduledEndAt, scheduleReady]);
   return null;
 }
-function StaffPermissionSetup({ onComplete }: { onComplete:(locationGranted?:boolean)=>void }) {
-  const [busy,setBusy]=useState(false);
-  const [message,setMessage]=useState('');
-  async function requestPermissions() {
-    setBusy(true);
-    setMessage('Checking Android permissions…');
-    try {
-      let location = await Geolocation.checkPermissions();
-      if (location.location !== 'granted') location = await Geolocation.requestPermissions();
-      const locationGranted = location.location === 'granted';
-      const outcomes:string[]=['Location: '+String(location.location||'not granted')];
-      try {
-        const result=await Filesystem.requestPermissions();
-        outcomes.push('Storage/media access: '+String(result.publicStorage||'handled by Android picker'));
-      } catch { outcomes.push('Storage/media: Android will ask when you select a file.'); }
-      try {
-        const camera=await Camera.requestPermissions();
-        outcomes.push('Camera: '+String(camera.camera||'requested'));
-      } catch { outcomes.push('Camera: not granted yet. Allow it when capturing task evidence.'); }
-      try {
-        const notifications = await LocalNotifications.requestPermissions();
-        outcomes.push('Notifications: ' + String(notifications.display || 'checked'));
-      } catch { outcomes.push('Notifications: Android may ask when shift tracking starts.'); }
-      setMessage(outcomes.join('\n'));
-      if (locationGranted) {
-        localStorage.setItem('kb-staff-permissions-v1','done');
-        onComplete(true);
-      } else {
-        localStorage.removeItem('kb-staff-permissions-v1');
-        setMessage(outcomes.join('\n')+'\n\nLocation permission is required for active-shift GPS tracking. You can continue for now, but staff check-in requires permission and a fresh location fix. If an administrator has already started your shift, the app will ask again when you open it.');
-      }
-    } catch(error) {
-      setMessage(error instanceof Error?error.message:'Could not check Android permissions. Please try again.');
-    } finally { setBusy(false); }
-  }
-  return <Modal title="Set up staff app permissions" subtitle="Allow the permissions needed for task evidence, active-shift GPS tracking and notifications." onClose={()=>onComplete(false)}>
-    <div className="form-grid">
-      <div className="form-hint">Your location is shared with authorised K&B administrators only during an active shift. Allow location permission before starting a shift and keep phone location enabled. If GPS is not restored within 15 minutes after an interruption, the shift is automatically cancelled and an administrator must restart it. Camera access is used for task and complaint evidence. Android’s file picker controls access to selected photos and videos.</div>
-      {message&&<p className="form-hint" style={{whiteSpace:'pre-line'}}>{message}</p>}
-      <div className="form-actions"><button className="btn primary" disabled={busy} onClick={()=>void requestPermissions()}>{busy?'Checking…':'Allow required permissions'}</button><button type="button" className="btn secondary" onClick={()=>onComplete(false)}>Continue for now</button></div>
-    </div>
-  </Modal>;
-}
-
 function TaskCompletionModal({ task, onClose, onComplete }: any) {
   const [photo, setPhoto] = useState<File | null>(null);
   const [video, setVideo] = useState<File | null>(null);
@@ -2586,9 +2526,36 @@ function LoginScreen({onLogin}:{onLogin:(id:string,pw:string,role:'admin'|'staff
  const [registrationError,setRegistrationError]=useState(false);
  const [registrationStatus,setRegistrationStatus]=useState<{status:'pending'|'approved'|'rejected';createdAt:string;reviewedAt?:string|null;reviewedByName?:string|null}|null>(null);
  useEffect(()=>{let stopped=false;let saved:{id:string;trackingCode:string}|null=null;try{const raw=localStorage.getItem('kandb-staff-registration');if(raw)saved=JSON.parse(raw) as {id:string;trackingCode:string};}catch{localStorage.removeItem('kandb-staff-registration');}if(!saved)return;const poll=()=>getStaffRegistrationStatus(saved!.id,saved!.trackingCode).then(result=>{if(!stopped)setRegistrationStatus(result);}).catch(()=>{if(!stopped){localStorage.removeItem('kandb-staff-registration');setRegistrationStatus(null);}});void poll();const timer=window.setInterval(poll,20000);return()=>{stopped=true;window.clearInterval(timer);};},[]);
- function choose(nextRole:'admin'|'staff'){setRole(nextRole);setId('');setPw('');setMsg('');}
+ function choose(nextRole:'admin'|'staff'){setRole(nextRole);setId('');setPw('');setMsg('');setRecoveryOpen(false);setRecoveryMessage('');}
  const [loginBusy,setLoginBusy]=useState(false);
- async function submit(e:FormEvent){e.preventDefault();if(loginBusy)return;setLoginBusy(true);setMsg('');try{if(role)await onLogin(id,pw,role);}catch(err){setMsg(err instanceof Error?err.message:'Sign-in failed.');}finally{setLoginBusy(false);}}
+ const [recoveryOpen,setRecoveryOpen]=useState(false);
+ const [recoveryCode,setRecoveryCode]=useState('');
+ const [recoveryPassword,setRecoveryPassword]=useState('');
+ const [recoveryBusy,setRecoveryBusy]=useState(false);
+ const [recoveryMessage,setRecoveryMessage]=useState('');
+ const [recoveryError,setRecoveryError]=useState(false);
+ async function submitAdminRecovery(){
+  if(recoveryBusy)return;
+  setRecoveryBusy(true);setRecoveryMessage('');setRecoveryError(false);
+  try{
+   await recoverAdminPassword(recoveryCode,recoveryPassword);
+   setRecoveryOpen(false);setRole('admin');setId('Brajraj');setPw('');
+   setRecoveryCode('');setRecoveryPassword('');
+   setRecoveryMessage('The primary admin password was updated. Sign in using the new password.');
+  }catch(err){
+   setRecoveryMessage(err instanceof Error?err.message:'Admin recovery could not be completed.');
+   setRecoveryError(true);
+  }finally{setRecoveryBusy(false);}
+ }
+ async function submit(e:FormEvent){
+  e.preventDefault();
+  if(recoveryOpen){await submitAdminRecovery();return;}
+  if(loginBusy)return;
+  setLoginBusy(true);setMsg('');
+  try{if(role)await onLogin(id,pw,role);}
+  catch(err){setMsg(err instanceof Error?err.message:'Sign-in failed.');}
+  finally{setLoginBusy(false);}
+ }
  async function submitRegistration(){setRegistrationBusy(true);setRegistrationMessage('');setRegistrationError(false);try{const result=await submitStaffRegistrationRequest(registration);localStorage.setItem('kandb-staff-registration',JSON.stringify({id:result.id,trackingCode:result.trackingCode}));setRegistrationStatus({status:'pending',createdAt:new Date().toISOString()});setRegistrationMessage(result.message);setRegistrationOpen(false);setRegistration({userId:'',displayName:'',phone:'',reason:''});}catch(err){setRegistrationMessage(err instanceof Error?err.message:'Could not submit your request.');setRegistrationError(true);}finally{setRegistrationBusy(false);}}
  return <div className="auth-shell"><div className="auth-side"><div className="auth-brand"><div className="brand-mark"><Signal/></div><strong>K&B NET SERVICE</strong></div><div className="auth-promo"><span className="auth-kicker">K&B OPERATIONS</span><h1>Every customer connection, in view.</h1><p>Customer records, staff assignments, collections and service requests in one shared workspace.</p></div></div><div className="auth-main"><FestivalCelebration/><form className="auth-card" onSubmit={submit}><div className="auth-icon">{role==='staff'?<UserRound/>:<ShieldCheck/>}</div><span className="eyebrow">SECURE SIGN IN</span><h2>{role?(role==='admin'?'Admin sign in':'Staff sign in'):'Welcome to K&B'}</h2><p>{role?'Enter your '+role+' account details to continue.':'Choose how you want to sign in. · OTA TEST UPDATE'}</p>
  {!role?<><div className="login-role-options"><button type="button" className="login-role-card admin-choice" onClick={()=>choose('admin')}><span className="login-role-icon"><ShieldCheck size={22}/></span><strong>Admin Sign In</strong><small>Manage customers, staff, plans and reports</small><span className="login-role-arrow">Continue →</span></button><button type="button" className="login-role-card staff-choice" onClick={()=>choose('staff')}><span className="login-role-icon"><UserRound size={22}/></span><strong>Staff Sign In</strong><small>View assigned customers and manage daily work</small><span className="login-role-arrow">Continue →</span></button></div>
@@ -2599,8 +2566,21 @@ function LoginScreen({onLogin}:{onLogin:(id:string,pw:string,role:'admin'|'staff
   {registrationStatus.status==='rejected' && <button type="button" className="auth-link" onClick={()=>{localStorage.removeItem('kandb-staff-registration');setRegistrationStatus(null);setRegistrationOpen(true);}}>Submit a new request</button>}
  </div> : !registrationOpen?<button type="button" className="auth-link" onClick={()=>{setRegistrationOpen(true);setRegistrationMessage('');}}>Request staff access</button>:<div className="staff-registration-form"><strong>Staff registration request</strong><Field label="Preferred staff ID"><input required minLength={3} maxLength={32} pattern="[a-zA-Z0-9_-]{3,32}" value={registration.userId} onChange={e=>setRegistration({...registration,userId:e.target.value})}/></Field><Field label="Full name"><input required maxLength={80} value={registration.displayName} onChange={e=>setRegistration({...registration,displayName:e.target.value})}/></Field><Field label="Phone (optional)"><input type="tel" inputMode="numeric" pattern="[0-9]{10}" maxLength={10} value={registration.phone} onChange={e=>setRegistration({...registration,phone:e.target.value.replace(/\D/g,'').slice(0,10)})} placeholder="10-digit mobile number"/></Field><Field label="Reason / note (optional)"><textarea rows={2} maxLength={300} value={registration.reason} onChange={e=>setRegistration({...registration,reason:e.target.value})}/></Field><div className="form-actions"><button type="button" className="btn secondary" onClick={()=>setRegistrationOpen(false)}>Cancel</button><button type="button" className="btn primary" disabled={registrationBusy} onClick={e=>{const form=e.currentTarget.closest('.staff-registration-form');const fields=form?.querySelectorAll('input');if(fields && Array.from(fields).every(field=>field.reportValidity()))void submitRegistration();}}>{registrationBusy?'Submitting…':'Submit request'}</button></div></div>}
  {registrationMessage&&<div className={registrationError?'auth-message':'form-hint'}>{registrationMessage}</div>}</>:<>
- <label className="auth-field"><span>{role==='admin'?'Admin username':'Staff user ID'}</span><input value={id} onChange={e=>setId(e.target.value)} required autoComplete="username" placeholder={role==='admin'?'Enter your admin username':'Enter your staff ID'}/></label><label className="auth-field"><span>Password</span><input type="password" value={pw} onChange={e=>setPw(e.target.value)} required autoComplete="current-password"/></label>
- {msg&&<div className="auth-message">{msg}</div>}<button className="btn primary auth-submit" disabled={loginBusy}>{loginBusy?'Connecting securely…':'Sign in securely'}</button><button type="button" className="auth-link" onClick={()=>{setRole(null);setId('');setPw('');setMsg('');}}>← Choose another sign-in</button>
+ {recoveryOpen ? <div className="staff-registration-form admin-recovery-form">
+  <strong>Recover primary admin account</strong>
+  <p className="subtle">This requires the recovery code configured by the app owner. The code is sent securely to the server and is never saved on this device.</p>
+  <Field label="Admin recovery code" wide><input type="password" autoComplete="off" required value={recoveryCode} onChange={e=>setRecoveryCode(e.target.value)} /></Field>
+  <Field label="New password (at least 10 characters)" wide><input type="password" autoComplete="new-password" required minLength={10} value={recoveryPassword} onChange={e=>setRecoveryPassword(e.target.value)} /></Field>
+  {recoveryMessage&&<div className={recoveryError?'auth-message':'form-hint'}>{recoveryMessage}</div>}
+  <div className="form-actions"><button type="button" className="btn secondary" onClick={()=>{setRecoveryOpen(false);setRecoveryCode('');setRecoveryPassword('');setRecoveryMessage('');setRecoveryError(false);}}>Back to sign in</button><button className="btn primary" disabled={recoveryBusy}>{recoveryBusy?'Recovering…':'Update admin password'}</button></div>
+ </div> : <>
+  <label className="auth-field"><span>{role==='admin'?'Admin username':'Staff user ID'}</span><input value={id} onChange={e=>setId(e.target.value)} required autoComplete="username" placeholder={role==='admin'?'Enter your admin username':'Enter your staff ID'}/></label><label className="auth-field"><span>Password</span><input type="password" value={pw} onChange={e=>setPw(e.target.value)} required autoComplete="current-password"/></label>
+  {msg&&<div className="auth-message">{msg}</div>}
+  {recoveryMessage&&!recoveryOpen&&<div className={recoveryError?'auth-message':'form-hint'}>{recoveryMessage}</div>}
+  <button className="btn primary auth-submit" disabled={loginBusy}>{loginBusy?'Connecting securely…':'Sign in securely'}</button>
+  {role==='admin'&&<button type="button" className="auth-link" onClick={()=>{setRecoveryOpen(true);setRecoveryCode('');setRecoveryPassword('');setRecoveryMessage('');setRecoveryError(false);setId('Brajraj');setPw('');}}>Recover primary admin account</button>}
+  <button type="button" className="auth-link" onClick={()=>{setRole(null);setId('');setPw('');setMsg('');setRecoveryMessage('');}}>← Choose another sign-in</button>
+ </>}
  </>}
  <div className="auth-security"><KeyRound size={14}/> Keep your password private. Access is based on your account role.</div></form></div></div>;
 }

@@ -39,6 +39,9 @@ export default function SubscriptionWorkspace({ customers, plans, isAdmin, flash
   const [paidAt,setPaidAt] = useState(todayKey());
   const [paymentMethod,setPaymentMethod] = useState('UPI');
   const [filter,setFilter] = useState<'All'|'Active'|'Pending'|'Expired'|'Cancelled'>('All');
+  const [paymentFilter,setPaymentFilter] = useState<'All'|'Paid'|'Pending'>('All');
+  const [sortBy,setSortBy] = useState<'recent'|'expiry'|'amount'|'customer'>('recent');
+  const [search,setSearch] = useState('');
 
   async function load() {
     setLoading(true);
@@ -64,7 +67,10 @@ export default function SubscriptionWorkspace({ customers, plans, isAdmin, flash
     if(selectedPlan) setAmount(String(selectedPlan.price));
   },[plan]);
 
-  const visible = useMemo(()=>items.filter(item=>filter==='All'||item.status===filter),[items,filter]);
+  const visible = useMemo(()=>items
+    .filter(item=>(filter==='All'||item.status===filter)&&(paymentFilter==='All'||item.paymentStatus===paymentFilter)&&[item.customerName,item.plan,item.status,item.paymentStatus].join(' ').toLowerCase().includes(search.trim().toLowerCase()))
+    .sort((a,b)=>sortBy==='expiry'?a.endDate.localeCompare(b.endDate):sortBy==='amount'?b.amount-a.amount:sortBy==='customer'?a.customerName.localeCompare(b.customerName):b.createdAt.localeCompare(a.createdAt)),
+    [items,filter,paymentFilter,sortBy,search]);
   async function createRenewal(event: FormEvent) {
     event.preventDefault();
     if(!customerId||!plan||!startDate||!endDate||Number(amount)<=0) { flash('Complete all renewal details.'); return; }
@@ -86,8 +92,15 @@ export default function SubscriptionWorkspace({ customers, plans, isAdmin, flash
     <div className="toolbar">
       <div><h2>Customer renewals</h2><p className="subtle">Track subscription periods, expiry dates and payment status.</p></div>
       <div className="subscription-toolbar-actions">
-        <select aria-label="Filter renewals" value={filter} onChange={event=>setFilter(event.target.value as typeof filter)}>
+        <input aria-label="Search renewals" type="search" value={search} onChange={event=>setSearch(event.target.value)} placeholder="Search customer or plan"/>
+        <select aria-label="Filter renewal status" value={filter} onChange={event=>setFilter(event.target.value as typeof filter)}>
           <option>All</option><option>Active</option><option>Pending</option><option>Expired</option><option>Cancelled</option>
+        </select>
+        <select aria-label="Filter payment status" value={paymentFilter} onChange={event=>setPaymentFilter(event.target.value as typeof paymentFilter)}>
+          <option value="All">All payments</option><option>Paid</option><option>Pending</option>
+        </select>
+        <select aria-label="Sort renewals" value={sortBy} onChange={event=>setSortBy(event.target.value as typeof sortBy)}>
+          <option value="recent">Recently added</option><option value="expiry">Expiry: soonest first</option><option value="amount">Amount: high to low</option><option value="customer">Customer: A–Z</option>
         </select>
         <button className="btn primary" onClick={()=>setShowForm(value=>!value)} disabled={!customers.length}>+ New renewal</button>
       </div>
@@ -115,21 +128,6 @@ export default function SubscriptionWorkspace({ customers, plans, isAdmin, flash
         {isAdmin&&<td><select aria-label={'Change status for '+item.customerName} value={item.status} onChange={event=>void changeStatus(item,event.target.value as Subscription['status'])}><option>Active</option><option>Pending</option><option>Expired</option><option>Cancelled</option></select></td>}
       </tr>)}</tbody>
     </table>{!visible.length&&<p className="ops-empty">{items.length?'No renewals match this filter.':'No renewal records yet. Create the first renewal above.'}</p>}</div>}
-    <style>{`
-      .subscription-toolbar-actions{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
-      .subscription-toolbar-actions select,.subscription-table select,.subscription-form input,.subscription-form select{min-height:40px;padding:8px 10px;border:1px solid var(--border,#dbe2ec);border-radius:9px;background:var(--surface,#fff);color:var(--text,#172033);font:inherit}
-      .subscription-form{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:13px;padding:16px;margin:12px 0 18px;border:1px solid var(--border,#dbe2ec);border-radius:14px;background:var(--surface-soft,#f7f9fc)}
-      .subscription-form label{display:grid;gap:6px;font-size:12px;font-weight:700;color:var(--muted,#526176)}
-      .subscription-form-actions{display:flex;align-items:end;justify-content:flex-end;gap:8px;grid-column:1/-1}
-      .subscription-table-wrap{width:100%;overflow:auto}.subscription-table{width:100%;border-collapse:collapse;min-width:760px;text-align:left}
-      .subscription-table th,.subscription-table td{padding:12px 10px;border-bottom:1px solid var(--border,#e5eaf1);font-size:13px;vertical-align:middle}
-      .subscription-table th{color:var(--muted,#64748b);font-size:11px;text-transform:uppercase;letter-spacing:.04em}
-      .subscription-table td small{display:block;margin-top:4px;color:var(--muted,#64748b);font-size:11px}
-      .subscription-payment,.subscription-status{display:inline-block;padding:5px 8px;border-radius:999px;font-size:11px;font-weight:700;background:var(--surface-soft,#edf2f8)}
-      .subscription-payment.paid{color:#087443;background:#e5f7ee}.subscription-payment.unpaid{color:#965b00;background:#fff4dd}
-      .subscription-status.cancelled,.subscription-status.expired{color:#a33;background:#ffeded}.subscription-status.active{color:#087443;background:#e5f7ee}
-      @media(max-width:760px){.subscription-form{grid-template-columns:1fr 1fr}}
-      @media(max-width:480px){.subscription-form{grid-template-columns:1fr}.subscription-toolbar-actions{width:100%}.subscription-toolbar-actions select,.subscription-toolbar-actions button{flex:1}}
-    `}</style>
+    
   </section>;
 }

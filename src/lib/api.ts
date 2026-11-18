@@ -96,6 +96,17 @@ export const api = {
   put: <T = any>(path: string, payload?: Record<string, unknown>) => request<T>(path, 'PUT', payload),
   delete: <T = any>(path: string) => request<T>(path, 'DELETE'),
 };
+export async function recoverAdminPassword(recoveryCode: string, newPassword: string) {
+  const code = recoveryCode.trim();
+  if (!code) throw new Error('Enter the primary admin recovery code.');
+  if (newPassword.length < 10) throw new Error('Choose a new password with at least 10 characters.');
+  await api.post('/api/auth/recover-admin', {
+    userId: 'Brajraj',
+    recoveryCode: code,
+    newPassword,
+  });
+}
+
 export async function signInAppUser(userId: string, password: string, role: 'admin'|'staff') {
   const url = new URL('/api/auth/login', API_BASE);
   const controller = new AbortController();

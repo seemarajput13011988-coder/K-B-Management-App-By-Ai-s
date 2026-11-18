@@ -91,6 +91,9 @@ app.use((error: any, req: any, res: any, next: any) => {
 });
 
 
+// Scheduled attendance, GPS grace-period and notification jobs run inside this Render process.
+// The GitHub keep-alive workflow only wakes the free-tier service; startup + the 60-second
+// in-process interval execute the work without a second externally-triggered scheduler.
 const port=Number(process.env.PORT||10000);
 startBackgroundJobs();
 app.listen(port,'0.0.0.0',()=>console.log('K&B Management Nexus API listening on '+port));
