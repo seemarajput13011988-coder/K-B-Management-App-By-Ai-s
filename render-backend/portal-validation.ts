@@ -19,3 +19,15 @@ export function isValidPortalConnectionRequest(input: PortalConnectionRequestInp
   return !!name && /^[0-9]{10}$/.test(phone) && !!state && !!city &&
     /^[0-9]{6}$/.test(pincode) && !!address && !!planId;
 }
+
+
+export type PortalPlanChangeInput = {
+  phone?: unknown;
+  planId?: unknown;
+};
+
+export function isValidPortalPlanChangeRequest(input: PortalPlanChangeInput): boolean {
+  const phone = typeof input.phone === 'string' ? input.phone.trim() : '';
+  const planId = typeof input.planId === 'string' ? input.planId.trim() : '';
+  return /^[0-9]{10}$/.test(phone) && !!planId && planId.length <= 128;
+}
