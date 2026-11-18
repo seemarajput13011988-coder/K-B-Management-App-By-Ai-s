@@ -126,11 +126,14 @@ const normalizeSearchText = (value: unknown) => String(value ?? '')
   .toLocaleLowerCase()
   .trim()
   .replace(/\s+/g, ' ');
+const compactSearchText = (value: unknown) => normalizeSearchText(value).replace(/[^a-z0-9]/g, '');
 const matchesSearch = (query: string, ...values: unknown[]) => {
   const terms = normalizeSearchText(query).split(' ').filter(Boolean);
   if (!terms.length) return true;
-  const haystack = normalizeSearchText(values.filter(value => value !== null && value !== undefined).join(' '));
-  return terms.every(term => haystack.includes(term));
+  const searchableValues = values.filter(value => value !== null && value !== undefined);
+  const haystack = normalizeSearchText(searchableValues.join(' '));
+  const compactHaystack = compactSearchText(searchableValues.join(' '));
+  return terms.every(term => haystack.includes(term) || compactHaystack.includes(compactSearchText(term)));
 };
 const customerStatusLabel = (value: unknown): Customer['status'] => { const status = String(value || 'Active').trim().toLowerCase(); return status === 'suspended' ? 'Suspended' : status === 'inactive' ? 'Inactive' : 'Active'; };
 const attendanceDeadlineAt = (item: AttendanceRecord): number => {
