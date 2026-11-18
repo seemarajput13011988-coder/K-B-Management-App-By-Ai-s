@@ -77,18 +77,6 @@ export default function InstallationsWorkspace({customers,staff,isAdmin,flash}:{
       </article>)}
       {!filteredItems.length&&<p className="ops-empty">{items.length?'No installation jobs match your search.':isAdmin?'No installation jobs yet. Schedule a new connection, upgrade or repair.':'No installation jobs are assigned to you yet.'}</p>}
     </div>}
-    <style>{`
-      .installation-toolbar-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.installation-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;padding:16px;margin:12px 0 18px;border:1px solid var(--border,#dbe2ec);border-radius:14px;background:var(--surface-soft,#f7f9fc)}
-      .installation-form label{display:grid;gap:6px;font-size:12px;font-weight:700;color:var(--muted,#526176)}
-      .installation-form input,.installation-form select,.installation-form textarea,.installation-footer select{width:100%;min-height:39px;padding:8px 10px;border:1px solid var(--border,#dbe2ec);border-radius:9px;background:var(--surface,#fff);color:var(--text,#172033);font:inherit}
-      .installation-address{grid-column:1/-1}.installation-form-actions{grid-column:1/-1;display:flex;justify-content:flex-end;gap:8px}
-      .installation-list{display:grid;gap:12px}.installation-card{padding:15px;border:1px solid var(--border,#e1e7ef);border-radius:14px;background:var(--surface,#fff)}
-      .installation-main{display:flex;justify-content:space-between;gap:14px}.installation-main h3{font-size:16px;margin:5px 0}.installation-main p{margin:0;color:var(--muted,#64748b);font-size:13px}.installation-main small,.installation-meta{color:var(--muted,#64748b);font-size:11px}
-      .installation-type{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--accent,#315fbd)}.installation-date{text-align:right;white-space:nowrap}.installation-date b{display:block;font-size:14px}.installation-date small{display:block;margin-top:4px}
-      .installation-meta{display:flex;gap:16px;flex-wrap:wrap;margin-top:12px}.installation-notes{padding:10px;margin:10px 0 0;border-radius:9px;background:var(--surface-soft,#f6f8fb);font-size:12px;color:var(--text,#243044)}
-      .installation-footer{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:12px}.installation-footer label{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--muted,#64748b)}.installation-footer select{width:auto;min-width:130px;min-height:34px}
-      .installation-status{padding:5px 8px;border-radius:99px;background:var(--surface-soft,#eef2f8);font-size:11px;font-weight:800}.installation-status.completed{background:#e5f7ee;color:#087443}.installation-status.cancelled{background:#ffeded;color:#a33}.installation-status.in-progress{background:#eaf1ff;color:#315fbd}
-      @media(max-width:540px){.installation-form{grid-template-columns:1fr}.installation-address{grid-column:auto}.installation-main{display:grid}.installation-date{text-align:left}.installation-footer{align-items:flex-start;flex-direction:column}}
-    `}</style>
+    
   </section>;
 }
