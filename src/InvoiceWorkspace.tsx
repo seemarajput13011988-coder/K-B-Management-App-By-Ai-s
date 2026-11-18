@@ -117,6 +117,7 @@ export default function InvoiceWorkspace({customers,plans,profileKey='default',f
   }
   async function generate(e:FormEvent) {
     e.preventDefault();
+    if(!profileLoaded) { flash('Business invoice profile is still loading. Please wait a moment.'); return; }
     if(!businessProfile.name.trim()||!businessProfile.address.trim()||!customerName.trim()||!customerPhone.trim()||!items.length||items.some(i=>!i.description.trim()||!Number.isFinite(Number(i.quantity))||Number(i.quantity)<=0||!Number.isFinite(Number(i.rate))||Number(i.rate)<0)||extraSummaryFields.some(f=>(f.label.trim()||f.details.trim()||f.amount.trim())&&(!f.label.trim()||!f.amount.trim()||!Number.isFinite(Number(f.amount))||Number(f.amount)<0))){
       flash('Enter your business name and address, customer details, valid service amounts, and a name plus amount for each optional summary field.');
       return;
