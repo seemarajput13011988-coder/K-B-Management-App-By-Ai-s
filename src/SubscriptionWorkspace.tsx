@@ -41,6 +41,7 @@ export default function SubscriptionWorkspace({ customers, plans, isAdmin, flash
   const [filter,setFilter] = useState<'All'|'Active'|'Pending'|'Expired'|'Cancelled'>('All');
   const [paymentFilter,setPaymentFilter] = useState<'All'|'Paid'|'Pending'>('All');
   const [sortBy,setSortBy] = useState<'recent'|'expiry'|'amount'|'customer'>('recent');
+  const [search,setSearch] = useState('');
 
   async function load() {
     setLoading(true);
@@ -67,9 +68,9 @@ export default function SubscriptionWorkspace({ customers, plans, isAdmin, flash
   },[plan]);
 
   const visible = useMemo(()=>items
-    .filter(item=>(filter==='All'||item.status===filter)&&(paymentFilter==='All'||item.paymentStatus===paymentFilter))
+    .filter(item=>(filter==='All'||item.status===filter)&&(paymentFilter==='All'||item.paymentStatus===paymentFilter)&&[item.customerName,item.plan,item.status,item.paymentStatus].join(' ').toLowerCase().includes(search.trim().toLowerCase()))
     .sort((a,b)=>sortBy==='expiry'?a.endDate.localeCompare(b.endDate):sortBy==='amount'?b.amount-a.amount:sortBy==='customer'?a.customerName.localeCompare(b.customerName):b.createdAt.localeCompare(a.createdAt)),
-    [items,filter,paymentFilter,sortBy]);
+    [items,filter,paymentFilter,sortBy,search]);
   async function createRenewal(event: FormEvent) {
     event.preventDefault();
     if(!customerId||!plan||!startDate||!endDate||Number(amount)<=0) { flash('Complete all renewal details.'); return; }
@@ -91,6 +92,7 @@ export default function SubscriptionWorkspace({ customers, plans, isAdmin, flash
     <div className="toolbar">
       <div><h2>Customer renewals</h2><p className="subtle">Track subscription periods, expiry dates and payment status.</p></div>
       <div className="subscription-toolbar-actions">
+        <input aria-label="Search renewals" type="search" value={search} onChange={event=>setSearch(event.target.value)} placeholder="Search customer or plan"/>
         <select aria-label="Filter renewal status" value={filter} onChange={event=>setFilter(event.target.value as typeof filter)}>
           <option>All</option><option>Active</option><option>Pending</option><option>Expired</option><option>Cancelled</option>
         </select>
