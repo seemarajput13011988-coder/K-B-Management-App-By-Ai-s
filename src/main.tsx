@@ -7,7 +7,7 @@ import './index.css';
 import './layout/app-shell.css';
 import './dashboard/overview.css';
 
-const UPDATE_CHECK_TIMEOUT_MS = 12_000;
+const UPDATE_CHECK_TIMEOUT_MS = 25_000;
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
