@@ -212,6 +212,8 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   const [showAccountSettings, setShowAccountSettings] = useState(false);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [customerStatusFilter, setCustomerStatusFilter] = useState<'All' | Customer['status']>('All');
+  const [customerSort, setCustomerSort] = useState<'recent' | 'name' | 'fee'>('recent');
   const [showCustomer, setShowCustomer] = useState(false);
   const [editing, setEditing] = useState<Customer | null>(null);
   const [showPlan, setShowPlan] = useState(false);
@@ -223,6 +225,8 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   const [showPayment, setShowPayment] = useState(false);
   const [editingPayment, setEditingPayment] = useState<Payment | null>(null);
   const [paymentSearch, setPaymentSearch] = useState('');
+  const [paymentMethodFilter, setPaymentMethodFilter] = useState('All');
+  const [paymentSort, setPaymentSort] = useState<'recent' | 'oldest' | 'amount'>('recent');
   const [staffSearch, setStaffSearch] = useState('');
   const [showComplaint, setShowComplaint] = useState(false);
   const [complaintPreview, setComplaintPreview] = useState<{name:string;mimeType:string;dataUrl:string}|null>(null);
@@ -420,19 +424,27 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
   const staffShiftActive = attendanceRecords.some(item => item.userId === session.user.id && isAttendanceShiftActive(item));
   const overdueValue = customers.filter(c => c.status === 'Active' && c.dueDate && c.dueDate <= today).reduce((sum, c) => sum + Math.max(0, Number(c.monthlyFee || 0) - (paidByCustomer.get(c.id) || 0)), 0);
-  const filtered = useMemo(
-    () =>
-      customers.filter(c =>
-        [c.name, c.phone, c.address, c.plan]
-          .join(' ')
-          .toLowerCase()
-          .includes(search.toLowerCase())
-      ),
-    [customers, search]
-  );
+  const filtered = useMemo(() => {
+    const rows = customers.filter(customer => {
+      const matchesSearch = [customer.name, customer.phone, customer.address, customer.plan].join(' ').toLowerCase().includes(search.trim().toLowerCase());
+      return matchesSearch && (customerStatusFilter === 'All' || customer.status === customerStatusFilter);
+    });
+    return rows.sort((a, b) => customerSort === 'name'
+      ? a.name.localeCompare(b.name)
+      : customerSort === 'fee'
+        ? Number(b.monthlyFee || 0) - Number(a.monthlyFee || 0)
+        : String(b.joinedAt || '').localeCompare(String(a.joinedAt || '')));
+  }, [customers, search, customerStatusFilter, customerSort]);
   const selectedStaffProfile = staff.find(member => member.id === selectedStaffProfileId);
   const filteredStaff = staff.filter(member => [member.displayName, member.userId].join(' ').toLowerCase().includes(staffSearch.toLowerCase()));
-  const filteredPayments = payments.filter(payment => [payment.customerName, payment.month, payment.method, payment.paidAt, payment.recordedByName || ''].join(' ').toLowerCase().includes(paymentSearch.toLowerCase()));
+  const filteredPayments = payments.filter(payment => {
+    const matchesSearch = [payment.customerName, payment.month, payment.method, payment.paidAt, payment.recordedByName || ''].join(' ').toLowerCase().includes(paymentSearch.trim().toLowerCase());
+    return matchesSearch && (paymentMethodFilter === 'All' || payment.method === paymentMethodFilter);
+  }).sort((a, b) => paymentSort === 'amount'
+    ? Number(b.amount || 0) - Number(a.amount || 0)
+    : paymentSort === 'oldest'
+      ? String(a.paidAt || '').localeCompare(String(b.paidAt || ''))
+      : String(b.paidAt || '').localeCompare(String(a.paidAt || '')));
   const selectedStaffPayments = payments.filter(payment => payment.recordedBy === selectedStaffProfileId).sort((a, b) => b.paidAt.localeCompare(a.paidAt));
   const selectedStaffAttendance = attendanceRecords.filter(record => record.userId === selectedStaffProfileId).sort((a, b) => b.workDate.localeCompare(a.workDate));
   const selectedStaffAttendanceEquivalent = selectedStaffAttendance.filter(record => record.dayType !== 'Absent' && String(record.status || '').toLowerCase() !== 'absent').reduce((sum, record) => sum + (record.dayType === 'Half day' ? 0.5 : 1), 0);
@@ -1220,9 +1232,11 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                     placeholder="Search name, phone, address or plan..."
                   />
                 </div>
-                <span className="result-count">
-                  {filtered.length} customers
-                </span>
+                <div className="record-controls">
+                  <label className="record-filter"><span>Status</span><select aria-label="Filter customers by status" value={customerStatusFilter} onChange={event => setCustomerStatusFilter(event.target.value as 'All' | Customer['status'])}><option>All</option><option>Active</option><option>Inactive</option><option>Suspended</option></select></label>
+                  <label className="record-filter"><span>Sort</span><select aria-label="Sort customers" value={customerSort} onChange={event => setCustomerSort(event.target.value as 'recent' | 'name' | 'fee')}><option value="recent">Recently added</option><option value="name">Name A–Z</option><option value="fee">Highest fee</option></select></label>
+                  <span className="result-count">{filtered.length} of {customers.length} customers</span>
+                </div>
               </div>
               <CustomerTable
                 rows={filtered}
@@ -1301,7 +1315,11 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                   <p className="subtle">All recorded customer collections</p>
                 </div>
                 <div className="searchbox"><Search size={17}/><input value={paymentSearch} onChange={e => setPaymentSearch(e.target.value)} placeholder="Search customer, month, method or date..."/></div>
-                <span className="result-count">{filteredPayments.length} of {payments.length} records</span>
+                <div className="record-controls">
+                  <label className="record-filter"><span>Method</span><select aria-label="Filter payments by method" value={paymentMethodFilter} onChange={event => setPaymentMethodFilter(event.target.value)}><option>All</option>{Array.from(new Set(payments.map(payment => payment.method).filter(Boolean))).sort().map(method => <option key={method}>{method}</option>)}</select></label>
+                  <label className="record-filter"><span>Sort</span><select aria-label="Sort payments" value={paymentSort} onChange={event => setPaymentSort(event.target.value as 'recent' | 'oldest' | 'amount')}><option value="recent">Newest first</option><option value="oldest">Oldest first</option><option value="amount">Highest amount</option></select></label>
+                  <span className="result-count">{filteredPayments.length} of {payments.length} records</span>
+                </div>
               </div>
               <PaymentTable rows={filteredPayments} isAdmin={isAdmin} onEdit={(payment: Payment) => { setEditingPayment(payment); setShowPayment(true); }} onDelete={isAdmin ? deletePayment : undefined} />
               {payments.length > 0 && !filteredPayments.length && <p className="ops-empty">No payments match your search.</p>}
