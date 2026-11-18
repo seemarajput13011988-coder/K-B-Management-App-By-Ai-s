@@ -154,6 +154,10 @@ async function listUsersInBusiness(businessId:string, role?:Role):Promise<Data[]
   const memberIds = new Set(memberships.docs.filter(document=>document.data().active!==false).map(document=>String(document.data().userId || '')));
   return (await list('users')).filter(item=>memberIds.has(String(item.id)) && (!role || item.role===role));
 }
+async function belongsToBusiness(userId:string,businessId:string):Promise<boolean> {
+  const membership = await db.collection('business_memberships').doc(businessMembershipId(userId,businessId)).get();
+  return membership.exists && membership.data()?.active !== false;
+}
 async function staffHasActiveShift(userId: string): Promise<boolean> {
   const settingsSnapshot = await db.collection('app_settings').doc('workforce').get();
   const configuredEnd = String(settingsSnapshot.data()?.shiftEndTime || '19:00');
@@ -698,7 +702,7 @@ export async function apiHandler(req: any, res: any) {
         const password = typeof body.password === 'string' ? body.password : '';
         if (password.length < 10) { send(res, 400, { error: 'Password must contain at least 10 characters.' }); return; }
         const staff = await getDoc('users', staffId);
-        if (!staff || staff.role !== 'staff') { send(res, 404, { error: 'Staff account not found.' }); return; }
+        if (!staff || staff.role !== 'staff' || !await belongsToBusiness(staffId,user.businessId)) { send(res, 404, { error: 'Staff account not found in this business.' }); return; }
         if (await staffHasActiveShift(staffId)) { send(res,409,{error:'End the staff member’s active shift before resetting their password.'}); return; }
         await db.collection('users').doc(staffId).update(newPasswordFields(password));
         await revokeUserSessions(staffId);
@@ -708,7 +712,7 @@ export async function apiHandler(req: any, res: any) {
       if (path.startsWith('/api/staff/') && method === 'PUT') {
         if (!allow(user, ['admin'], res)) return;
         const staffId = routeId(path, '/api/staff'), staff = await getDoc('users', routeId(path, '/api/staff'));
-        if (!staff || staff.role !== 'staff') { send(res, 404, { error: 'Staff account not found.' }); return; }
+        if (!staff || staff.role !== 'staff' || !await belongsToBusiness(staffId,user.businessId)) { send(res, 404, { error: 'Staff account not found in this business.' }); return; }
         const patch: Data = { updatedAt: now() };
         if (typeof body.displayName === 'string') { const name = clean(body.displayName, 80); if (!name) { send(res, 400, { error: 'Enter a staff name.' }); return; } patch.displayName = name; }
         if (typeof body.userId === 'string') { const nextId = clean(body.userId, 32); if (!/^[a-zA-Z0-9_-]{3,32}$/.test(nextId)) { send(res, 400, { error: 'Use a 3–32 character staff ID.' }); return; } if ((await list('users')).some(item => item.id !== staffId && String(item.userId || '').toLowerCase() === nextId.toLowerCase())) { send(res, 409, { error: 'That user ID is already in use.' }); return; } patch.userId = nextId; patch.userIdLower = nextId.toLowerCase(); }
@@ -732,7 +736,7 @@ export async function apiHandler(req: any, res: any) {
       if (path.startsWith('/api/staff/') && method === 'DELETE') {
         if (!allow(user, ['admin'], res)) return;
         const staffId = routeId(path, '/api/staff'), staff = await getDoc('users', routeId(path, '/api/staff'));
-        if (!staff || staff.role !== 'staff') { send(res, 404, { error: 'Staff account not found.' }); return; }
+        if (!staff || staff.role !== 'staff' || !await belongsToBusiness(staffId,user.businessId)) { send(res, 404, { error: 'Staff account not found in this business.' }); return; }
         if (await staffHasActiveShift(staffId)) { send(res,409,{error:'End the staff member’s active shift before deleting the account.'}); return; }
         const unassignedCounts: Record<string, number> = {};
         // Remove active ownership from every operational queue before deleting the account.
@@ -786,7 +790,7 @@ export async function apiHandler(req: any, res: any) {
         if (!allowSuperAdmin(user, res)) return;
         const adminId = routeId(path, '/api/admins');
         const target = await getDoc('users', adminId);
-        if (!target || target.role !== 'admin') { send(res, 404, { error: 'Admin account not found.' }); return; }
+        if (!target || target.role !== 'admin' || !await belongsToBusiness(adminId,user.businessId)) { send(res, 404, { error: 'Admin account not found in this business.' }); return; }
         const patch: Data = { updatedAt: now() };
         if (typeof body.displayName === 'string') {
           const displayName = clean(body.displayName, 80);
