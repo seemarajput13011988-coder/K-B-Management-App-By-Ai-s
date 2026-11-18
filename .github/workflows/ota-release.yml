@@ -47,7 +47,7 @@ jobs:
           npm run build
       - name: Package and verify OTA bundle
         run: |
-          npx --yes @capgo/cli@7.51.21 bundle zip kandbnet.service2010 --path dist --json > ota-bundle-info.json
+          npx --yes @capgo/cli@latest bundle zip kandbnet.service2010 --path dist --json > ota-bundle-info.json
           ZIP_FILE="$(find . -type f -name '*.zip' -not -path './node_modules/*' -not -path './.git/*' -print -quit)"
           if [ -z "$ZIP_FILE" ]; then
             echo "::error::Capacitor Updater CLI did not create a bundle archive."
