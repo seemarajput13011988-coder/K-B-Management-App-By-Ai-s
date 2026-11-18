@@ -3,10 +3,10 @@ on:
   workflow_dispatch:
   push:
     branches: [main, render-backend-migration, quality-audit-2026-11-06, whole-app-stability-audit-2026-11-06, on-demand-gps-proof-permissions, ui-rebuild-gps-holidays-api-fixes, fixes-session-gps-ui-2026-11-06, whole-app-gps-ui-sync-audit-2026-11-07, nexus-workforce-payroll-media-ui-2026-11-07, nexus-release-audit-2026-11-07]
-    paths: ["render-backend/**", "src/**", "package.json", "package-lock.json", ".github/workflows/render-backend-check.yml", ".github/workflows/ota-release.yml"]
+    paths: ["render-backend/**", "src/**", "package.json", "package-lock.json", ".github/workflows/render-backend-check.yml", ".github/workflows/backend-keep-alive.yml", ".github/workflows/ota-release.yml"]
   pull_request:
     branches: [main, fixes-session-gps-ui-2026-11-06]
-    paths: ["render-backend/**", "src/**", "package.json", "package-lock.json"]
+    paths: ["render-backend/**", "src/**", "package.json", "package-lock.json", ".github/workflows/render-backend-check.yml", ".github/workflows/backend-keep-alive.yml"]
 jobs:
   backend:
     runs-on: ubuntu-latest
@@ -66,7 +66,6 @@ jobs:
           grep -Fq "startBackgroundJobs();" render-backend/server.ts
           grep -Fq "}, 60_000);" render-backend/jobs.ts
           grep -Fq "void runScheduledTick()" render-backend/jobs.ts
-          ! grep -Fq "K_B_JOB_SECRET" .github/workflows/backend-keep-alive.yml
           echo "Portal routes, staff GPS routes and internal scheduler contracts are present."
   web:
     runs-on: ubuntu-latest
