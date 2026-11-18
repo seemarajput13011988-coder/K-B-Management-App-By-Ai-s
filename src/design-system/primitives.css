@@ -124,3 +124,10 @@
   .kb-app-shell .record-filter { flex:1 1 130px; justify-content:space-between; }
   .kb-app-shell .record-filter select { flex:1; min-width:0; max-width:none; }
 }
+
+.kb-app-shell .complaint-toolbar-search { display:flex; justify-content:flex-end; margin:-4px 0 14px; }
+.kb-app-shell .complaint-toolbar-search .searchbox { width:min(100%,520px); }
+@media(max-width:760px) {
+  .kb-app-shell .complaint-toolbar-search { margin:0 0 12px; }
+  .kb-app-shell .complaint-toolbar-search .searchbox { width:100%; }
+}
