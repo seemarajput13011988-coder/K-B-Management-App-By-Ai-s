@@ -333,12 +333,12 @@ export const handler = router({
       db.get<PlanRecord>('plans', [planId], { consistent: true }),
       firestore.collection('portal_plan_change_requests').where('phone', '==', phone).limit(20).get(),
     ]);
+    const selectedPlan = plan[0];
+    if (!selectedPlan || selectedPlan.active === false) return error('This plan is no longer available. Refresh and choose another plan.', 409);
     const matchedCustomers = customerSnapshot.docs.map(doc => ({ ...(doc.data() as Customer), id: doc.id }));
     const customer = matchedCustomers.length === 1 && matchedCustomers[0].status === 'Active' ? matchedCustomers[0] : undefined;
     // Keep the response generic so this public endpoint cannot be used to enumerate customer accounts.
     if (!customer) return genericPlanRequestResponse();
-    const selectedPlan = plan[0];
-    if (!selectedPlan || selectedPlan.active === false) return error('This plan is no longer available. Refresh and choose another plan.', 409);
     if (customer.plan === selectedPlan.name) return genericPlanRequestResponse();
     if (pendingSnapshot.docs.some(doc => doc.data().status === 'Pending')) return genericPlanRequestResponse();
     const record = {
