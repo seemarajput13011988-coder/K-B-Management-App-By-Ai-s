@@ -39,6 +39,8 @@ export default function SubscriptionWorkspace({ customers, plans, isAdmin, flash
   const [paidAt,setPaidAt] = useState(todayKey());
   const [paymentMethod,setPaymentMethod] = useState('UPI');
   const [filter,setFilter] = useState<'All'|'Active'|'Pending'|'Expired'|'Cancelled'>('All');
+  const [paymentFilter,setPaymentFilter] = useState<'All'|'Paid'|'Pending'>('All');
+  const [sortBy,setSortBy] = useState<'recent'|'expiry'|'amount'|'customer'>('recent');
 
   async function load() {
     setLoading(true);
@@ -64,7 +66,10 @@ export default function SubscriptionWorkspace({ customers, plans, isAdmin, flash
     if(selectedPlan) setAmount(String(selectedPlan.price));
   },[plan]);
 
-  const visible = useMemo(()=>items.filter(item=>filter==='All'||item.status===filter),[items,filter]);
+  const visible = useMemo(()=>items
+    .filter(item=>(filter==='All'||item.status===filter)&&(paymentFilter==='All'||item.paymentStatus===paymentFilter))
+    .sort((a,b)=>sortBy==='expiry'?a.endDate.localeCompare(b.endDate):sortBy==='amount'?b.amount-a.amount:sortBy==='customer'?a.customerName.localeCompare(b.customerName):b.createdAt.localeCompare(a.createdAt)),
+    [items,filter,paymentFilter,sortBy]);
   async function createRenewal(event: FormEvent) {
     event.preventDefault();
     if(!customerId||!plan||!startDate||!endDate||Number(amount)<=0) { flash('Complete all renewal details.'); return; }
@@ -86,8 +91,14 @@ export default function SubscriptionWorkspace({ customers, plans, isAdmin, flash
     <div className="toolbar">
       <div><h2>Customer renewals</h2><p className="subtle">Track subscription periods, expiry dates and payment status.</p></div>
       <div className="subscription-toolbar-actions">
-        <select aria-label="Filter renewals" value={filter} onChange={event=>setFilter(event.target.value as typeof filter)}>
+        <select aria-label="Filter renewal status" value={filter} onChange={event=>setFilter(event.target.value as typeof filter)}>
           <option>All</option><option>Active</option><option>Pending</option><option>Expired</option><option>Cancelled</option>
+        </select>
+        <select aria-label="Filter payment status" value={paymentFilter} onChange={event=>setPaymentFilter(event.target.value as typeof paymentFilter)}>
+          <option value="All">All payments</option><option>Paid</option><option>Pending</option>
+        </select>
+        <select aria-label="Sort renewals" value={sortBy} onChange={event=>setSortBy(event.target.value as typeof sortBy)}>
+          <option value="recent">Recently added</option><option value="expiry">Expiry: soonest first</option><option value="amount">Amount: high to low</option><option value="customer">Customer: A–Z</option>
         </select>
         <button className="btn primary" onClick={()=>setShowForm(value=>!value)} disabled={!customers.length}>+ New renewal</button>
       </div>
