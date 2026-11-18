@@ -558,7 +558,13 @@ export const handler = router({
         doc.data().status === 'Pending' && Date.parse(String(doc.data().createdAt || '')) >= cutoff
       );
       const lockedRequestId = cleanText(lockSnapshot.data()?.pendingRequestId, 128);
-      if (recentPending || (lockSnapshot.exists && lockSnapshot.data()?.status === 'Pending' && lockedRequestId)) {
+      const lockedAt = Date.parse(String(lockSnapshot.data()?.updatedAt || ''));
+      const recentLockedRequest = lockSnapshot.exists
+        && lockSnapshot.data()?.status === 'Pending'
+        && !!lockedRequestId
+        && Number.isFinite(lockedAt)
+        && lockedAt >= cutoff;
+      if (recentPending || recentLockedRequest) {
         return { kind: 'already-known' as const };
       }
 
