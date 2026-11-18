@@ -3,6 +3,7 @@ import type { FormEvent } from 'react';
 import { api, subscribeToApiChanges } from './lib/api';
 import { Download, FileText, Trash2 } from 'lucide-react';
 import { exportCsvFile, exportPdfReport } from './lib/file-export';
+import { searchMatches } from './lib/search';
 
 type Customer={id:string;name:string;phone?:string;address:string};
 type Staff={id:string;displayName:string;active:boolean};
@@ -37,7 +38,7 @@ export default function InstallationsWorkspace({customers,staff,isAdmin,flash}:{
   const [address,setAddress]=useState(selectedCustomer?.address||'');
   const [notes,setNotes]=useState('');
   const [search,setSearch]=useState('');
-  const filteredItems=items.filter(item=>[item.customerName,item.phone||'',item.address,item.type,item.assignedToName,item.status].join(' ').toLowerCase().includes(search.toLowerCase()));
+  const filteredItems=items.filter(item=>searchMatches(search,[item.id,item.customerName,item.phone,item.address,item.type,item.assignedToName,item.status,item.scheduledDate,item.notes]));
 
   async function load(){setLoading(true);try{const result=await api.get<{items:Installation[]}>('/api/installations');setItems(result.data.items||[]);}catch(error){flash(error instanceof Error?error.message:'Could not load installation jobs.');}finally{setLoading(false);}}
   useEffect(()=>{void load();},[]);
