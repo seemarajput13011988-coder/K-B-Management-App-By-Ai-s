@@ -202,7 +202,7 @@ export async function deliverPendingPushNotifications() {
     }
     const tokenDocs = tokenSnap.docs;
     const previouslyDelivered = new Set(Array.isArray(notification.pushDeliveredTokenIds) ? notification.pushDeliveredTokenIds.map(String) : []);
-    const eligibleDocs = tokenDocs.filter(doc => !previouslyDelivered.has(doc.id) && String(doc.data().token || '').trim());
+    const eligibleDocs = tokenDocs.filter(doc => !doc.data().invalidAt && !previouslyDelivered.has(doc.id) && String(doc.data().token || '').trim());
     if (!eligibleDocs.length) {
       await notificationRef.update({ pushDeliveredAt: now(), pushSuccessCount: Number(notification.pushSuccessCount || 0), pushFailureCount: 0 });
       continue;
@@ -214,16 +214,21 @@ export async function deliverPendingPushNotifications() {
       : String(notification.message || 'You have a new update.').slice(0, 180);
     const result = await getMessaging().sendEachForMulticast({ tokens, notification: { title, body }, data: { notificationId: String(notification.id), type, relatedId: String(notification.relatedId || '') }, android: { priority: 'high' } });
     const completedTokenIds = [...previouslyDelivered];
-    const invalid: Promise<unknown>[] = [];
+    const invalidTokenIds = new Set<string>();
+    const invalidUpdates: Promise<unknown>[] = [];
     result.responses.forEach((response, index) => {
       const tokenDoc = eligibleDocs[index];
       if (response.success) completedTokenIds.push(tokenDoc.id);
-      else if (['messaging/registration-token-not-registered', 'messaging/invalid-registration-token'].includes(String(response.error?.code || ''))) {
-        invalid.push(tokenDoc.ref.delete());
+      else {
+        const code = String(response.error?.code || '');
+        if (['messaging/registration-token-not-registered', 'messaging/invalid-registration-token'].includes(code)) {
+          invalidTokenIds.add(tokenDoc.id);
+          invalidUpdates.push(tokenDoc.ref.update({ invalidAt: now(), invalidReason: code, updatedAt: now() }));
+        }
       }
     });
-    if (invalid.length) await Promise.all(invalid);
-    const remaining = eligibleDocs.filter(doc => !completedTokenIds.includes(doc.id));
+    if (invalidUpdates.length) await Promise.all(invalidUpdates);
+    const remaining = eligibleDocs.filter(doc => !completedTokenIds.includes(doc.id) && !invalidTokenIds.has(doc.id));
     const attempts = Number(notification.pushAttemptCount || 0) + 1;
     const patch: Record<string, unknown> = {
       pushDeliveredTokenIds: Array.from(new Set(completedTokenIds)),
@@ -232,8 +237,14 @@ export async function deliverPendingPushNotifications() {
       pushFailureCount: result.failureCount,
       pushLastAttemptAt: now(),
     };
-    if (!remaining.length) patch.pushDeliveredAt = now();
-    else if (attempts >= 5) {
+    if (!remaining.length) {
+      if (result.successCount === 0 && previouslyDelivered.size === 0) {
+        patch.pushSkippedAt = now();
+        patch.pushSkipReason = 'no-valid-device-token';
+      } else {
+        patch.pushDeliveredAt = now();
+      }
+    } else if (attempts >= 5) {
       patch.pushSkippedAt = now();
       patch.pushSkipReason = 'retry-limit';
     }
