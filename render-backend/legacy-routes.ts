@@ -330,7 +330,7 @@ export const handler = router({
     const [customerSnapshot, plan, pendingSnapshot] = await Promise.all([
       firestore.collection('customers').where('phone', '==', phone).limit(2).get(),
       db.get<PlanRecord>('plans', [planId], { consistent: true }),
-      firestore.collection('portal_plan_change_requests').where('phone', '==', phone).where('status', '==', 'Pending').limit(1).get(),
+      firestore.collection('portal_plan_change_requests').where('phone', '==', phone).limit(20).get(),
     ]);
     const matchedCustomers = customerSnapshot.docs.map(doc => ({ ...(doc.data() as Customer), id: doc.id }));
     const customer = matchedCustomers.length === 1 && matchedCustomers[0].status === 'Active' ? matchedCustomers[0] : undefined;
@@ -339,7 +339,7 @@ export const handler = router({
     const selectedPlan = plan[0];
     if (!selectedPlan || selectedPlan.active === false) return error('This plan is no longer available. Refresh and choose another plan.', 409);
     if (customer.plan === selectedPlan.name) return error('Your connection is already on this plan.', 409);
-    if (!pendingSnapshot.empty) return json({ accepted: true, message: 'A plan-change request is already awaiting K&B review.' }, 202);
+    if (pendingSnapshot.docs.some(doc => doc.data().status === 'Pending')) return json({ accepted: true, message: 'A plan-change request is already awaiting K&B review.' }, 202);
     const record = {
       customerId: customer.id,
       customerName: customer.name,
