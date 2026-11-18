@@ -9,7 +9,15 @@ const app=express();
 app.disable('x-powered-by');
 // Give every HTTP request its own async business context to prevent tenant scope leaking across requests.
 app.use((req,res,next)=>businessContext.run('',()=>next()));
-app.use(cors({origin:true,methods:['GET','POST','PUT','PATCH','DELETE','OPTIONS'],allowedHeaders:['Content-Type','Authorization']}));
+const allowedOrigins = new Set((process.env.CORS_ORIGINS || 'http://localhost:5173,http://localhost:4173').split(',').map(origin=>origin.trim()).filter(Boolean));
+app.use(cors({
+  origin:(origin,callback)=>{
+    if(!origin || allowedOrigins.has(origin)) return callback(null,true);
+    return callback(new Error('Origin is not allowed by Vypaar API CORS policy.'));
+  },
+  methods:['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
+  allowedHeaders:['Content-Type','Authorization'],
+}));
 app.use(express.json({limit:'16mb'}));
 
 app.get('/api/_readycheck', async (_req, res) => {
