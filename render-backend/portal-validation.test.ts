@@ -30,3 +30,17 @@ test('rejects invalid postal codes and missing booking fields', () => {
     assert.equal(isValidPortalConnectionRequest({ ...valid, [field]: '' }), false);
   }
 });
+
+
+import { isValidPortalPlanChangeRequest } from './portal-validation.js';
+
+test('accepts a valid customer plan-change request', () => {
+  assert.equal(isValidPortalPlanChangeRequest({ phone: '9876543210', planId: 'plan-50' }), true);
+});
+
+test('rejects malformed customer plan-change requests', () => {
+  for (const phone of ['987654321', '+919876543210', '98765A3210', '']) {
+    assert.equal(isValidPortalPlanChangeRequest({ phone, planId: 'plan-50' }), false);
+  }
+  assert.equal(isValidPortalPlanChangeRequest({ phone: '9876543210', planId: '' }), false);
+});
