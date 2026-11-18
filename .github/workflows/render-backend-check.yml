@@ -63,7 +63,11 @@ jobs:
           grep -Fq "isValidPortalComplaintInput(input)" render-backend/legacy-routes.ts
           grep -Fq "collection('complaint_media')" render-backend/legacy-routes.ts
           grep -Fq "app.use(legacyHandler)" render-backend/server.ts
-          echo "Public request/status, admin-only review, and staff GPS route handlers are present."
+          grep -Fq "startBackgroundJobs();" render-backend/server.ts
+          grep -Fq "}, 60_000);" render-backend/jobs.ts
+          grep -Fq "void runScheduledTick()" render-backend/jobs.ts
+          ! grep -Fq "K_B_JOB_SECRET" .github/workflows/backend-keep-alive.yml
+          echo "Portal routes, staff GPS routes and internal scheduler contracts are present."
   web:
     runs-on: ubuntu-latest
     steps:
