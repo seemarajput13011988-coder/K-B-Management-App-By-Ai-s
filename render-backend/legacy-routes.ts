@@ -1,7 +1,7 @@
 import { router, json, error, db, secrets, firestore, FieldValue } from './firestore-adapter.js';
 import type { RouterMiddleware } from './firestore-adapter.js';
 import { attendanceAbsenceDecision, computeShiftDeadline, isConfirmedGpsLossReason, isFreshLocationTimestamp, isGpsGraceExemptHolidayStatus, isValidDateRange } from './route-path.js';
-import { isValidPortalConnectionRequest } from './portal-validation.js';
+import { isValidPortalConnectionRequest, isValidPortalPlanChangeRequest } from './portal-validation.js';
 import { createHash, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 const notifySubscribers = async (..._args: unknown[]) => undefined; // Live updates are refreshed through the authenticated API.
 
@@ -319,6 +319,87 @@ export const handler = router({
     }));
     return json({ items, source: 'management-nexus' });
   }],
+
+  // Customer plan changes are requests only. The customer's phone is matched server-side;
+  // no account data is returned until K&B verifies the request and an administrator approves it.
+  'POST /api/portal/plan-change-requests': [async ({ body }) => {
+    const input = (body || {}) as Record<string, unknown>;
+    const phone = cleanText(input.phone, 10);
+    const planId = cleanText(input.planId, 128);
+    if (!isValidPortalPlanChangeRequest(input)) return error('Enter a valid 10-digit mobile number and choose a plan.', 400);
+    const [customers, plan, requests] = await Promise.all([
+      db.list<Customer>('customers', { limit: 1000 }),
+      db.get<PlanRecord>('plans', [planId], { consistent: true }),
+      db.list<Record<string, unknown>>('portal_plan_change_requests', { limit: 1000 }),
+    ]);
+    const customer = customers.items.find(item => item.phone === phone && item.status === 'Active');
+    // Keep the response generic so this public endpoint cannot be used to enumerate customer accounts.
+    if (!customer) return json({ accepted: true, message: 'If the details match an active K&B connection, the request will be reviewed by our team.' }, 202);
+    const selectedPlan = plan[0];
+    if (!selectedPlan || selectedPlan.active === false) return error('This plan is no longer available. Refresh and choose another plan.', 409);
+    if (customer.plan === selectedPlan.name) return error('Your connection is already on this plan.', 409);
+    const pending = requests.items.find(item => item.customerId === customer.id && item.status === 'Pending');
+    if (pending) return json({ accepted: true, message: 'A plan-change request is already awaiting K&B review.' }, 202);
+    const record = {
+      customerId: customer.id,
+      customerName: customer.name,
+      phone,
+      currentPlan: customer.plan,
+      currentMonthlyFee: Number(customer.monthlyFee),
+      requestedPlanId: planId,
+      requestedPlan: selectedPlan.name,
+      requestedMonthlyFee: Number(selectedPlan.price),
+      status: 'Pending',
+      source: 'customer-portal',
+      createdAt: new Date().toISOString(),
+    };
+    const [id] = await db.add('portal_plan_change_requests', [record]);
+    return id
+      ? json({ accepted: true, status: 'Pending', message: 'Your plan-change request has been sent to K&B for review.' }, 201)
+      : error('Your request could not be saved. Please try again.', 503);
+  }],
+
+  'GET /api/portal/plan-change-requests': protectedRoute(['admin'], async () => {
+    const result = await db.list<Record<string, unknown>>('portal_plan_change_requests', { limit: 500 });
+    return json({ items: result.items.sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || ''))) });
+  }),
+
+  'POST /api/portal/plan-change-requests/:id/decision': protectedRoute(['admin'], async ({ params, body }, user) => {
+    const [request] = await db.get<Record<string, unknown>>('portal_plan_change_requests', [params.id], { consistent: true });
+    if (!request) return error('Plan-change request not found.', 404);
+    if (request.status !== 'Pending') return error('This request has already been reviewed.', 409);
+    const decision = cleanText((body || {}).decision, 20);
+    if (!['Approved', 'Rejected'].includes(decision)) return error('Choose Approved or Rejected.', 400);
+    if (decision === 'Approved') {
+      const customerId = cleanText(request.customerId, 128);
+      const planId = cleanText(request.requestedPlanId, 128);
+      const [customer, plan] = await Promise.all([
+        db.get<Customer>('customers', [customerId], { consistent: true }),
+        db.get<PlanRecord>('plans', [planId], { consistent: true }),
+      ]);
+      const existingCustomer = customer[0];
+      const selectedPlan = plan[0];
+      if (!existingCustomer || existingCustomer.status !== 'Active') return error('The customer is no longer active. Review the customer record before approving.', 409);
+      if (!selectedPlan || selectedPlan.active === false) return error('The requested plan is no longer active. Ask the customer to choose another plan.', 409);
+      const [updatedCustomer] = await db.tx.update('customers', [{
+        id: customerId,
+        record: { plan: selectedPlan.name, monthlyFee: Number(selectedPlan.price) },
+      }], { patch: true });
+      if (!updatedCustomer) return error('Could not update the customer plan.', 500);
+      const [updatedRequest] = await db.tx.update('portal_plan_change_requests', [{
+        id: params.id,
+        record: { status: 'Approved', reviewedAt: new Date().toISOString(), reviewedBy: user.id, reviewedByName: user.displayName, appliedPlan: selectedPlan.name, appliedMonthlyFee: Number(selectedPlan.price) },
+      }], { patch: true });
+      if (!updatedRequest) return error('The customer plan was updated, but the request status could not be saved. Check the customer record before retrying.', 500);
+      await writeAudit(user, 'UPDATE', 'customer', customerId, 'Approved customer portal plan change to ' + selectedPlan.name);
+      return json({ updated: true, status: 'Approved', customerId, plan: selectedPlan.name, monthlyFee: Number(selectedPlan.price) });
+    }
+    const [updated] = await db.tx.update('portal_plan_change_requests', [{
+      id: params.id,
+      record: { status: 'Rejected', reviewedAt: new Date().toISOString(), reviewedBy: user.id, reviewedByName: user.displayName, reviewNote: cleanText((body || {}).reviewNote, 300) },
+    }], { patch: true });
+    return updated ? json({ updated: true, status: 'Rejected' }) : error('Could not update the request.', 500);
+  }),
 
   // Customer-facing connection requests are leads, not active customer accounts.
   // They are reviewed by an administrator before being converted into a customer record.
