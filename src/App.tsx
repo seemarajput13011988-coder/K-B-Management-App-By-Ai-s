@@ -229,6 +229,9 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   const [paymentSort, setPaymentSort] = useState<'recent' | 'oldest' | 'amount'>('recent');
   const [staffSearch, setStaffSearch] = useState('');
   const [showComplaint, setShowComplaint] = useState(false);
+  const [complaintSearch, setComplaintSearch] = useState('');
+  const [complaintStatusFilter, setComplaintStatusFilter] = useState('All');
+  const [complaintSort, setComplaintSort] = useState<'recent' | 'oldest' | 'priority'>('recent');
   const [complaintPreview, setComplaintPreview] = useState<{name:string;mimeType:string;dataUrl:string}|null>(null);
   const [notice, setNotice] = useState('');
   const [mobileNav, setMobileNav] = useState(false);
@@ -437,6 +440,15 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   }, [customers, search, customerStatusFilter, customerSort]);
   const selectedStaffProfile = staff.find(member => member.id === selectedStaffProfileId);
   const filteredStaff = staff.filter(member => [member.displayName, member.userId].join(' ').toLowerCase().includes(staffSearch.toLowerCase()));
+  const visibleComplaints = complaints.filter(item => {
+    const matchesSearch = [item.subject, item.details, item.customerName || '', item.staffName || '', item.assignedToName || '', item.createdByName || ''].join(' ').toLowerCase().includes(complaintSearch.trim().toLowerCase());
+    const matchesStatus = complaintStatusFilter === 'All' || item.status === complaintStatusFilter;
+    return matchesSearch && matchesStatus;
+  }).sort((a, b) => complaintSort === 'priority'
+    ? ({High:0,Normal:1,Low:2}[a.priority as 'High'|'Normal'|'Low'] ?? 3) - ({High:0,Normal:1,Low:2}[b.priority as 'High'|'Normal'|'Low'] ?? 3)
+    : complaintSort === 'oldest'
+      ? String(a.createdAt || '').localeCompare(String(b.createdAt || ''))
+      : String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
   const filteredPayments = payments.filter(payment => {
     const matchesSearch = [payment.customerName, payment.month, payment.method, payment.paidAt, payment.recordedByName || ''].join(' ').toLowerCase().includes(paymentSearch.trim().toLowerCase());
     return matchesSearch && (paymentMethodFilter === 'All' || payment.method === paymentMethodFilter);
@@ -1340,10 +1352,15 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
               <div className="toolbar">
                 <div><h2>Staff & customer complaints</h2><p className="subtle">Create a complaint, assign an owner and track it until it is solved.</p></div>
                 <div className="complaint-counts"><span><b>{complaints.filter(item => !['Solved','Resolved'].includes(item.status)).length}</b> Pending / active</span><span><b>{complaints.filter(item => item.status === 'Solved' || item.status === 'Resolved').length}</b> Solved</span><span><b>{complaints.filter(item => item.status === 'Not Solved').length}</b> Not solved</span></div>
-                <span className="result-count">{complaints.length} records</span>
+                <div className="record-controls">
+                  <label className="record-filter"><span>Status</span><select aria-label="Filter complaints by status" value={complaintStatusFilter} onChange={event => setComplaintStatusFilter(event.target.value)}><option>All</option><option>Pending</option><option>Assigned</option><option>In Progress</option><option>Solved</option><option>Not Solved</option></select></label>
+                  <label className="record-filter"><span>Sort</span><select aria-label="Sort complaints" value={complaintSort} onChange={event => setComplaintSort(event.target.value as 'recent' | 'oldest' | 'priority')}><option value="recent">Newest first</option><option value="oldest">Oldest first</option><option value="priority">Highest priority</option></select></label>
+                  <span className="result-count">{visibleComplaints.length} of {complaints.length} records</span>
+                </div>
               </div>
+              <div className="complaint-toolbar-search"><div className="searchbox"><Search size={17}/><input value={complaintSearch} onChange={event => setComplaintSearch(event.target.value)} placeholder="Search complaint, customer, staff or details..."/></div></div>
               <div className="complaint-list">
-                {complaints.map(c => {
+                {visibleComplaints.map(c => {
                   const canUpdate = isAdmin;
                   const targetName = c.complaintFor === 'Staff' ? (c.staffName || 'Staff member') : (c.customerName || 'Customer');
                   return <article className="complaint-card" key={c.id}>
