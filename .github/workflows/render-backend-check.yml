@@ -56,6 +56,12 @@ jobs:
           grep -Fq "'GET /api/attendance/active'" render-backend/legacy-routes.ts
           grep -Fq "The primary super-admin account cannot be disabled." render-backend/api-handler.ts
           grep -Fq "db.collection('chat_groups').where('memberIds', 'array-contains', staffId)" render-backend/api-handler.ts
+          grep -Fq "'POST /api/portal/plan-change-requests'" render-backend/legacy-routes.ts
+          grep -Fq "'GET /api/portal/plan-change-requests': protectedRoute(['admin']" render-backend/legacy-routes.ts
+          grep -Fq "'POST /api/portal/plan-change-requests/:id/decision': protectedRoute(['admin']" render-backend/legacy-routes.ts
+          grep -Fq "'POST /api/portal/complaints'" render-backend/legacy-routes.ts
+          grep -Fq "isValidPortalComplaintInput(input)" render-backend/legacy-routes.ts
+          grep -Fq "collection('complaint_media')" render-backend/legacy-routes.ts
           grep -Fq "app.use(legacyHandler)" render-backend/server.ts
           echo "Public request/status, admin-only review, and staff GPS route handlers are present."
   web:
