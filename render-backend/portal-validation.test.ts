@@ -44,3 +44,21 @@ test('rejects malformed customer plan-change requests', () => {
   }
   assert.equal(isValidPortalPlanChangeRequest({ phone: '9876543210', planId: '' }), false);
 });
+
+
+import { isValidPortalComplaintInput } from './portal-validation.js';
+
+test('accepts a complete customer portal complaint with a supported image', () => {
+  assert.equal(isValidPortalComplaintInput({
+    phone: '9876543210', subject: 'No internet', details: 'Router has no connection',
+    fileName: 'router.jpg', mimeType: 'image/jpeg', dataBase64: 'A'.repeat(120),
+  }), true);
+});
+
+test('rejects portal complaints without valid identity fields or required photo', () => {
+  const valid = { phone: '9876543210', subject: 'No internet', details: 'Router has no connection', fileName: 'router.jpg', mimeType: 'image/jpeg', dataBase64: 'A'.repeat(120) };
+  assert.equal(isValidPortalComplaintInput({ ...valid, phone: '123' }), false);
+  assert.equal(isValidPortalComplaintInput({ ...valid, mimeType: 'application/pdf' }), false);
+  assert.equal(isValidPortalComplaintInput({ ...valid, dataBase64: '' }), false);
+  assert.equal(isValidPortalComplaintInput({ ...valid, details: '' }), false);
+});
