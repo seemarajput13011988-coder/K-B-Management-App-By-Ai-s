@@ -327,6 +327,7 @@ export const handler = router({
     const phone = cleanText(input.phone, 10);
     const planId = cleanText(input.planId, 128);
     if (!isValidPortalPlanChangeRequest(input)) return error('Enter a valid 10-digit mobile number and choose a plan.', 400);
+    const genericPlanRequestResponse = () => json({ accepted: true, message: 'If the details match an active K&B connection, the request will be reviewed by our team.' }, 202);
     const [customerSnapshot, plan, pendingSnapshot] = await Promise.all([
       firestore.collection('customers').where('phone', '==', phone).limit(2).get(),
       db.get<PlanRecord>('plans', [planId], { consistent: true }),
@@ -335,11 +336,11 @@ export const handler = router({
     const matchedCustomers = customerSnapshot.docs.map(doc => ({ ...(doc.data() as Customer), id: doc.id }));
     const customer = matchedCustomers.length === 1 && matchedCustomers[0].status === 'Active' ? matchedCustomers[0] : undefined;
     // Keep the response generic so this public endpoint cannot be used to enumerate customer accounts.
-    if (!customer) return json({ accepted: true, message: 'If the details match an active K&B connection, the request will be reviewed by our team.' }, 202);
+    if (!customer) return genericPlanRequestResponse();
     const selectedPlan = plan[0];
     if (!selectedPlan || selectedPlan.active === false) return error('This plan is no longer available. Refresh and choose another plan.', 409);
-    if (customer.plan === selectedPlan.name) return error('Your connection is already on this plan.', 409);
-    if (pendingSnapshot.docs.some(doc => doc.data().status === 'Pending')) return json({ accepted: true, message: 'A plan-change request is already awaiting K&B review.' }, 202);
+    if (customer.plan === selectedPlan.name) return genericPlanRequestResponse();
+    if (pendingSnapshot.docs.some(doc => doc.data().status === 'Pending')) return genericPlanRequestResponse();
     const record = {
       customerId: customer.id,
       customerName: customer.name,
@@ -355,7 +356,7 @@ export const handler = router({
     };
     const [id] = await db.add('portal_plan_change_requests', [record]);
     return id
-      ? json({ accepted: true, status: 'Pending', message: 'Your plan-change request has been sent to K&B for review.' }, 201)
+      ? genericPlanRequestResponse()
       : error('Your request could not be saved. Please try again.', 503);
   }],
 
@@ -411,7 +412,7 @@ export const handler = router({
         batch.set(ref, { complaintId, mediaId, chunkIndex: index, data: dataBase64.slice(index * chunkSize, (index + 1) * chunkSize) });
       }
       await batch.commit();
-      return json({ accepted: true, status: 'Pending', message: 'Your support request has been sent to K&B. Our team will verify the connection and review it.' }, 201);
+      return json({ accepted: true, message: 'If the details match an active K&B connection, your support request will be reviewed by our team.' }, 202);
     } catch {
       await db.delete('complaints', [complaintId]);
       return error('The photo could not be saved, so your complaint was not submitted. Please try again.', 503);
