@@ -7,6 +7,15 @@ import './index.css';
 import './layout/app-shell.css';
 import './dashboard/overview.css';
 
+const UPDATE_CHECK_TIMEOUT_MS = 12_000;
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = window.setTimeout(() => reject(new Error(message)), timeoutMs);
+    promise.then(value => { window.clearTimeout(timer); resolve(value); }, error => { window.clearTimeout(timer); reject(error); });
+  });
+}
+
 const rootElement = document.getElementById('root');
 if (!rootElement) throw new Error('Nexus root element is missing.');
 const appRoot: HTMLElement = rootElement;
@@ -48,7 +57,8 @@ function showUpdateRequired(message: string, retry: () => void, retryEnabled = t
   screen.style.cssText = 'min-height:100dvh;display:grid;place-content:center;justify-items:center;gap:14px;padding:28px;background:#f4f7fb;color:#17243a;font-family:system-ui,sans-serif;text-align:center';
   const mark = document.createElement('div');
   mark.textContent = 'K&B';
-  mark.style.cssText = 'font-size:24px;font-weight:800;letter-spacing:.04em;color:#2563eb';
+  mark.setAttribute('aria-label', 'K&B Net Service');
+  mark.style.cssText = 'display:grid;place-items:center;width:76px;height:76px;border-radius:22px;background:linear-gradient(145deg,#ffbd68,#e57b2b);box-shadow:0 12px 40px #f09a4b55;color:#fff;font-size:23px;font-weight:900;letter-spacing:.02em;animation:kbMarkPop .75s cubic-bezier(.2,.8,.2,1) both';
   const title = document.createElement('h1');
   title.textContent = 'Updating K&B Nexus';
   title.style.cssText = 'font-size:21px;margin:0';
@@ -72,7 +82,11 @@ function showUpdateRequired(message: string, retry: () => void, retryEnabled = t
 async function runRequiredUpdate(updateWasPreviouslyRequired = false): Promise<void> {
   let updateWasAdvertised = updateWasPreviouslyRequired;
   try {
-    const latest = await CapacitorUpdater.getLatest();
+    const latest = await withTimeout(
+      CapacitorUpdater.getLatest(),
+      UPDATE_CHECK_TIMEOUT_MS,
+      'The update check timed out. Opening the last working version.',
+    );
     if (!latest?.url || !latest.version) {
       mountApp(true);
       return;
