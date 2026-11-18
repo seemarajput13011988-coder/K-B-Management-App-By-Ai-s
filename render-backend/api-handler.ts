@@ -781,6 +781,7 @@ export async function apiHandler(req: any, res: any) {
         }
         await db.collection('staff_live_locations').doc(staffId).delete().catch(() => undefined);
         await db.collection('active_shift_locks').doc(staffId).delete().catch(() => undefined);
+        await db.collection('business_memberships').doc(businessMembershipId(staffId,user.businessId)).delete().catch(() => undefined);
         await db.collection('users').doc(staffId).delete();
         const totalUnassigned = Object.values(unassignedCounts).reduce((sum, count) => sum + count, 0);
         await audit(user, 'DELETE', 'staff', staffId, 'Removed staff account ' + String(staff.displayName || staff.userId || staffId) + '; unassigned ' + totalUnassigned + ' operational records; historical records preserved');
@@ -811,9 +812,10 @@ export async function apiHandler(req: any, res: any) {
       if (path.startsWith('/api/admins/') && method === 'DELETE') {
         if (!allowSuperAdmin(user, res)) return;
         const adminId = routeId(path, '/api/admins'), target = await getDoc('users', routeId(path, '/api/admins'));
-        if (!target || target.role !== 'admin') { send(res, 404, { error: 'Admin account not found.' }); return; }
+        if (!target || target.role !== 'admin' || !await belongsToBusiness(adminId,user.businessId)) { send(res, 404, { error: 'Admin account not found in this business.' }); return; }
         if (adminId === user.uid || target.canManageAdmins === true || target.isSuperAdmin === true) { send(res, 403, { error: 'The primary super-admin account cannot be removed.' }); return; }
         await revokeUserSessions(adminId);
+        await db.collection('business_memberships').doc(businessMembershipId(adminId,user.businessId)).delete().catch(() => undefined);
         await db.collection('users').doc(adminId).delete();
         await audit(user, 'DELETE', 'admin', adminId, 'Removed administrator account ' + String(target.userId || adminId));
         send(res, 200, { deleted: true }); return;
