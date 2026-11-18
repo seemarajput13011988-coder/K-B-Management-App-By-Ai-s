@@ -1,7 +1,7 @@
 import { router, json, error, db, secrets, firestore, FieldValue } from './firestore-adapter.js';
 import type { RouterMiddleware } from './firestore-adapter.js';
 import { attendanceAbsenceDecision, computeShiftDeadline, isConfirmedGpsLossReason, isFreshLocationTimestamp, isGpsGraceExemptHolidayStatus, isValidDateRange } from './route-path.js';
-import { isValidPortalConnectionRequest, isValidPortalPlanChangeRequest } from './portal-validation.js';
+import { isValidPortalConnectionRequest, isValidPortalPlanChangeRequest, isValidPortalComplaintInput } from './portal-validation.js';
 import { createHash, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 const notifySubscribers = async (..._args: unknown[]) => undefined; // Live updates are refreshed through the authenticated API.
 
@@ -357,6 +357,65 @@ export const handler = router({
     return id
       ? json({ accepted: true, status: 'Pending', message: 'Your plan-change request has been sent to K&B for review.' }, 201)
       : error('Your request could not be saved. Please try again.', 503);
+  }],
+
+  // Public portal complaint intake creates a pending ticket only. It exposes no account data;
+  // administrators must verify the caller before acting on the request.
+  'POST /api/portal/complaints': [async ({ body }) => {
+    const input = (body || {}) as Record<string, unknown>;
+    const phone = cleanText(input.phone, 10);
+    const subject = cleanText(input.subject, 150);
+    const details = cleanText(input.details, 1500);
+    const fileName = cleanText(input.fileName, 120) || 'router-photo';
+    const mimeType = cleanText(input.mimeType, 100).toLowerCase();
+    const dataBase64 = typeof input.dataBase64 === 'string' ? input.dataBase64.trim() : '';
+    if (!isValidPortalComplaintInput(input)) return error('Enter a valid mobile number, describe the issue and attach a JPG, PNG or WEBP router/modem photo (maximum 2 MB).', 400);
+    const [customerSnapshot] = await Promise.all([
+      firestore.collection('customers').where('phone', '==', phone).limit(2).get(),
+    ]);
+    const matches = customerSnapshot.docs.map(doc => ({ ...(doc.data() as Customer), id: doc.id }));
+    const customer = matches.length === 1 && matches[0].status === 'Active' ? matches[0] : undefined;
+    // A generic response prevents the public endpoint from confirming whether a phone has an account.
+    if (!customer) return json({ accepted: true, message: 'If the details match an active K&B connection, your support request will be reviewed by our team.' }, 202);
+    const buffer = Buffer.from(dataBase64, 'base64');
+    if (!buffer.length || buffer.length > 2 * 1024 * 1024 || buffer.toString('base64').replace(/=+$/, '') !== dataBase64.replace(/=+$/, '')) {
+      return error('The router/modem photo is invalid or larger than 2 MB.', 400);
+    }
+    const complaint: Complaint = {
+      complaintFor: 'Customer',
+      customerId: customer.id,
+      customerName: customer.name,
+      subject,
+      details,
+      priority: 'Normal',
+      status: 'Pending',
+      createdAt: new Date().toISOString(),
+      createdBy: 'customer-portal',
+      createdByName: 'Customer portal · identity pending verification',
+      assignedTo: '',
+      assignedToName: '',
+    };
+    const [complaintId] = await db.add('complaints', [complaint as unknown as Record<string, unknown>]);
+    if (!complaintId) return error('Your complaint could not be saved. Please try again.', 503);
+    try {
+      const mediaId = randomBytes(12).toString('hex');
+      const chunkSize = 400000;
+      const chunkCount = Math.ceil(dataBase64.length / chunkSize);
+      const collection = firestore.collection('complaint_media');
+      const batch = firestore.batch();
+      const createdAt = new Date().toISOString();
+      const metadataRef = collection.doc();
+      batch.set(metadataRef, { complaintId, mediaId, chunkIndex: -1, fileName, mimeType, size: buffer.length, chunkCount, createdAt, uploadedBy: 'customer-portal', uploadedByName: 'Customer portal' });
+      for (let index = 0; index < chunkCount; index += 1) {
+        const ref = collection.doc();
+        batch.set(ref, { complaintId, mediaId, chunkIndex: index, data: dataBase64.slice(index * chunkSize, (index + 1) * chunkSize) });
+      }
+      await batch.commit();
+      return json({ accepted: true, status: 'Pending', message: 'Your support request has been sent to K&B. Our team will verify the connection and review it.' }, 201);
+    } catch {
+      await db.delete('complaints', [complaintId]);
+      return error('The photo could not be saved, so your complaint was not submitted. Please try again.', 503);
+    }
   }],
 
   'GET /api/portal/plan-change-requests': protectedRoute(['admin'], async () => {
