@@ -1,6 +1,7 @@
 import { router, json, error, db, secrets, firestore, FieldValue } from './firestore-adapter.js';
 import type { RouterMiddleware } from './firestore-adapter.js';
 import { attendanceAbsenceDecision, computeShiftDeadline, isConfirmedGpsLossReason, isFreshLocationTimestamp, isGpsGraceExemptHolidayStatus, isValidDateRange } from './route-path.js';
+import { isValidPortalConnectionRequest } from './portal-validation.js';
 import { createHash, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 const notifySubscribers = async (..._args: unknown[]) => undefined; // Live updates are refreshed through the authenticated API.
 
@@ -332,7 +333,7 @@ export const handler = router({
     const planId = cleanText(input.planId, 128);
     const notes = cleanText(input.notes, 500);
     const paymentPreference = input.paymentPreference === 'Cash after installation' ? 'Cash after installation' : 'To be discussed with K&B';
-    if (!name || !/^\d{10}$/.test(phone) || !state || !city || !/^\d{6}$/.test(pincode) || !address || !planId) {
+    if (!isValidPortalConnectionRequest(input)) {
       return error('Enter your name, valid mobile number, complete address and choose an available plan.', 400);
     }
     const [plan] = await db.get<PlanRecord>('plans', [planId], { consistent: true });
