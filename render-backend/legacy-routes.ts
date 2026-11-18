@@ -325,36 +325,42 @@ export const handler = router({
     const planId = cleanText(input.planId, 128);
     if (!isValidPortalPlanChangeRequest(input)) return error('Enter a valid 10-digit mobile number and choose a plan.', 400);
     const genericPlanRequestResponse = () => json({ accepted: true, message: 'If the details match an active K&B connection, the request will be reviewed by our team.' }, 202);
-    const [customerSnapshot, plan, pendingSnapshot] = await Promise.all([
-      firestore.collection('customers').where('phone', '==', phone).limit(2).get(),
-      db.get<PlanRecord>('plans', [planId], { consistent: true }),
-      firestore.collection('portal_plan_change_requests').where('phone', '==', phone).limit(20).get(),
-    ]);
-    const selectedPlan = plan[0];
-    if (!selectedPlan || selectedPlan.active === false) return error('This plan is no longer available. Refresh and choose another plan.', 409);
-    const matchedCustomers = customerSnapshot.docs.map(doc => ({ ...(doc.data() as Customer), id: doc.id }));
-    const customer = matchedCustomers.length === 1 && matchedCustomers[0].status === 'Active' ? matchedCustomers[0] : undefined;
-    // Keep the response generic so this public endpoint cannot be used to enumerate customer accounts.
-    if (!customer) return genericPlanRequestResponse();
-    if (customer.plan === selectedPlan.name) return genericPlanRequestResponse();
-    if (pendingSnapshot.docs.some(doc => doc.data().status === 'Pending')) return genericPlanRequestResponse();
-    const record = {
-      customerId: customer.id,
-      customerName: customer.name,
-      phone,
-      currentPlan: customer.plan,
-      currentMonthlyFee: Number(customer.monthlyFee),
-      requestedPlanId: planId,
-      requestedPlan: selectedPlan.name,
-      requestedMonthlyFee: Number(selectedPlan.price),
-      status: 'Pending',
-      source: 'customer-portal',
-      createdAt: new Date().toISOString(),
-    };
-    const [id] = await db.add('portal_plan_change_requests', [record]);
-    return id
-      ? genericPlanRequestResponse()
-      : error('Your request could not be saved. Please try again.', 503);
+    const outcome = await firestore.runTransaction(async transaction => {
+      const customerQuery = firestore.collection('customers').where('phone', '==', phone).limit(2);
+      const planRef = firestore.collection('plans').doc(planId);
+      const pendingQuery = firestore.collection('portal_plan_change_requests').where('phone', '==', phone).limit(20);
+      const [customerSnapshot, planSnapshot, pendingSnapshot] = await Promise.all([
+        transaction.get(customerQuery),
+        transaction.get(planRef),
+        transaction.get(pendingQuery),
+      ]);
+      if (!planSnapshot.exists) return 'unavailable' as const;
+      const selectedPlan = planSnapshot.data() as PlanRecord;
+      if (selectedPlan.active === false) return 'unavailable' as const;
+      const matchedCustomers = customerSnapshot.docs.map(doc => ({ ...(doc.data() as Customer), id: doc.id }));
+      const customer = matchedCustomers.length === 1 && matchedCustomers[0].status === 'Active' ? matchedCustomers[0] : undefined;
+      if (!customer || customer.plan === selectedPlan.name) return 'generic' as const;
+      if (pendingSnapshot.docs.some(doc => doc.data().status === 'Pending')) return 'generic' as const;
+
+      const record = {
+        customerId: customer.id,
+        customerName: customer.name,
+        phone,
+        currentPlan: customer.plan,
+        currentMonthlyFee: Number(customer.monthlyFee),
+        requestedPlanId: planId,
+        requestedPlan: selectedPlan.name,
+        requestedMonthlyFee: Number(selectedPlan.price),
+        status: 'Pending',
+        source: 'customer-portal',
+        createdAt: new Date().toISOString(),
+      };
+      const requestRef = firestore.collection('portal_plan_change_requests').doc();
+      transaction.create(requestRef, { ...record, id: requestRef.id });
+      return 'created' as const;
+    });
+    if (outcome === 'unavailable') return error('This plan is no longer available. Refresh and choose another plan.', 409);
+    return genericPlanRequestResponse();
   }],
 
   // Public portal complaint intake creates a pending ticket only. It exposes no account data;
