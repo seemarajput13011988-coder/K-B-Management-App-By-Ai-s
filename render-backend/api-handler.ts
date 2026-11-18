@@ -451,6 +451,7 @@ export async function apiHandler(req: any, res: any) {
           email:clean(input.email,120).toLowerCase(),
           state:clean(input.state,80),
           stateCode:clean(input.stateCode,2),
+          upi:clean(input.upi,100),
         };
         if (!profile.name || !profile.address) { send(res,400,{error:'Enter the business name and registered address before saving.'}); return; }
         if (profile.gstin && !/^[0-9A-Z]{15}$/.test(profile.gstin)) { send(res,400,{error:'Enter a valid 15-character GSTIN or leave it blank.'}); return; }
