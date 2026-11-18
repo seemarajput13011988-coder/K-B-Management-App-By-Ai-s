@@ -66,4 +66,5 @@ jobs:
           grep -Fq "function searchMatches" src/App.tsx
           grep -Fq "Save business profile" src/InvoiceWorkspace.tsx
           grep -Fq "Active business workspace" src/App.tsx
+          ! grep -Rin "deliverys" src render-backend
           echo "Vypaar build is isolated from the old K&B API and package identity."
