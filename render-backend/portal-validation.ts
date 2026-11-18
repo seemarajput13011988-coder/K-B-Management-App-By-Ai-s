@@ -4,11 +4,13 @@ export type PortalConnectionRequestInput = {
 };
 
 export function isValidPortalConnectionRequest(input: PortalConnectionRequestInput): boolean {
-  const value = (key: keyof PortalConnectionRequestInput, max = 300) =>
-    typeof input[key] === 'string' ? (input[key] as string).trim().slice(0, max) : '';
-  return !!value('name', 80) && /^[0-9]{10}$/.test(value('phone', 20)) &&
-    !!value('state', 80) && !!value('city', 80) && /^[0-9]{6}$/.test(value('pincode', 6)) &&
-    !!value('address', 500) && !!value('planId', 128);
+  const value = (key: keyof PortalConnectionRequestInput) =>
+    typeof input[key] === 'string' ? (input[key] as string).trim() : '';
+  return !!value('name') && value('name').length <= 80 &&
+    /^[0-9]{10}$/.test(value('phone')) && !!value('state') && value('state').length <= 80 &&
+    !!value('city') && value('city').length <= 80 && /^[0-9]{6}$/.test(value('pincode')) &&
+    !!value('address') && value('address').length <= 500 &&
+    !!value('planId') && value('planId').length <= 128;
 }
 
 export type PortalPlanChangeInput = { phone?: unknown; planId?: unknown };
