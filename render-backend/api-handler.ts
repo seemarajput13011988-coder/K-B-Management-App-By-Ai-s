@@ -363,6 +363,11 @@ export async function apiHandler(req: any, res: any) {
       const displayName = clean(input.displayName, 80);
       const phone = clean(input.phone, 30);
       const reason = clean(input.reason, 300);
+      const businessId = clean(input.businessId,128) || 'legacy-default';
+      const targetBusiness = await db.collection('businesses').doc(businessId).get();
+      if (!targetBusiness.exists || targetBusiness.data()?.active === false) {
+        send(res,404,{error:'This staff invitation is no longer available. Ask the business administrator for a new link.'}); return;
+      }
       if (!/^[a-zA-Z0-9_-]{3,32}$/.test(userId) || !displayName || (phone && !/^\d{10}$/.test(phone))) {
         send(res, 400, { error: 'Enter a valid staff ID and your full name.' }); return;
       }
@@ -378,13 +383,13 @@ export async function apiHandler(req: any, res: any) {
       const submitted = await db.runTransaction(async transaction => {
         const previous = await transaction.get(ref);
         if (previous.exists && previous.data()?.status === 'pending') return false;
-        transaction.set(ref, { userId, userIdLower, displayName, phone, reason, businessId:'legacy-default', status: 'pending', createdAt, trackingHash });
+        transaction.set(ref, { userId, userIdLower, displayName, phone, reason, businessId, status: 'pending', createdAt, trackingHash });
         return true;
       });
       if (!submitted) {
         send(res, 409, { error: 'A registration request for this staff ID is already pending. Please wait for the administrator to review it.' }); return;
       }
-      const memberships = await db.collection('business_memberships').where('businessId','==','legacy-default').get();
+      const memberships = await db.collection('business_memberships').where('businessId','==',businessId).get();
       const memberIds = new Set(memberships.docs.filter(document=>document.data().active!==false).map(document=>String(document.data().userId||'')));
       const admins = (await list('users')).filter(member => member.active === true && member.role === 'admin' && memberIds.has(String(member.id)));
       await Promise.all(admins.map(member => db.collection('staff_notifications').doc('staff-registration-' + ref.id + '-' + member.id).set({
