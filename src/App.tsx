@@ -187,6 +187,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   const taskPage = isAdmin ? 'Tasks' : 'My Work';
   const [page, setPage] = useState('Overview');
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [portalRequests, setPortalRequests] = useState<any[]>([]);
   const [plans, setPlans] = useState<Plan[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [complaints, setComplaints] = useState<Complaint[]>([]);
@@ -296,13 +297,14 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
       setComplaints((t.data.items || []).map((item: Complaint) => ({ ...item, status: item.status === 'Open' ? 'Pending' : item.status === 'In progress' ? 'In Progress' : item.status === 'Resolved' ? 'Solved' : item.status })));
       setTasks(w.data.items || []);
       if (isAdmin) {
-        const [s, requests, inventoryResult, installationResult, payrollResult, holidayResult] = await Promise.all([api.get('/api/staff'),api.get('/api/staff-registration-requests'),api.get('/api/inventory'),api.get('/api/installations'),api.get('/api/payroll'),api.get('/api/holidays')]);
+        const [s, requests, inventoryResult, installationResult, payrollResult, holidayResult, portalResult] = await Promise.all([api.get('/api/staff'),api.get('/api/staff-registration-requests'),api.get('/api/inventory'),api.get('/api/installations'),api.get('/api/payroll'),api.get('/api/holidays'),api.get('/api/portal/connection-requests')]);
         setStaff(s.data.items || []);
         setStaffRegistrationRequests(requests.data.items || []);
         setStaffHolidayRequests(holidayResult.data.items || []);
         setStaffInventory(inventoryResult.data.items || []);
         setStaffInstallations(installationResult.data.items || []);
         setStaffPayroll(payrollResult.data.items || []);
+        setPortalRequests(portalResult.data.items || []);
         try {
           const review = await api.get('/api/retention/review');
           setRetentionItems((review.data.items || []) as RetentionReviewItem[]);
@@ -1231,6 +1233,32 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
             </section>
           )}
 
+          {page === 'Customers' && isAdmin && portalRequests.some(request => request.status === 'Pending') && (
+            <section className="panel portal-request-panel">
+              <div className="portal-request-heading">
+                <div><span className="eyebrow">CUSTOMER NEXUS · LIVE INTAKE</span><h2>New connection requests</h2><p>These requests were submitted through the customer portal and are not active customer accounts yet.</p></div>
+                <span className="portal-request-count">{portalRequests.filter(request => request.status === 'Pending').length} pending</span>
+              </div>
+              <div className="portal-request-list">
+                {portalRequests.filter(request => request.status === 'Pending').map(request => (
+                  <article className="portal-request-card" key={request.id}>
+                    <div className="portal-request-main">
+                      <strong>{request.name}</strong>
+                      <span>{request.phone} · {request.plan} · {money(Number(request.monthlyFee || 0))}/month</span>
+                      <small>{[request.address, request.city, request.state, request.pincode].filter(Boolean).join(', ')}</small>
+                      <small>Received {dateLabel(request.createdAt)}</small>
+                      {request.notes && <p>{request.notes}</p>}
+                    </div>
+                    <div className="portal-request-actions">
+                      <button className="btn primary compact" onClick={async () => { try { await api.post('/api/portal/connection-requests/' + encodeURIComponent(request.id) + '/convert', {}); flash('Request converted to an inactive customer record. Confirm service details before activation.'); await load(true); } catch (error) { flash(error instanceof Error ? error.message : 'Could not convert this request.'); } }}>Convert to customer</button>
+                      <button className="btn secondary compact" onClick={async () => { try { await api.put('/api/portal/connection-requests/' + encodeURIComponent(request.id), { status: 'Contacted' }); flash('Request marked as contacted.'); await load(true); } catch (error) { flash(error instanceof Error ? error.message : 'Could not update this request.'); } }}>Mark contacted</button>
+                      <button className="btn danger compact" onClick={async () => { try { await api.put('/api/portal/connection-requests/' + encodeURIComponent(request.id), { status: 'Rejected' }); flash('Request marked as rejected.'); await load(true); } catch (error) { flash(error instanceof Error ? error.message : 'Could not update this request.'); } }}>Reject</button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </section>
+          )}
           {page === 'Customers' && (
             <section className="panel table-panel">
               <div className="toolbar">
