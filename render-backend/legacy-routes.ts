@@ -319,40 +319,73 @@ export const handler = router({
     const planId = cleanText(input.planId, 128);
     if (!isValidPortalPlanChangeRequest(input)) return error('Enter a valid 10-digit mobile number and choose a plan.', 400);
     const genericPlanRequestResponse = () => json({ accepted: true, message: 'If the details match an active K&B connection, the request will be reviewed by our team.' }, 202);
-    const [customerSnapshot, plan, pendingSnapshot] = await Promise.all([
-      firestore.collection('customers').where('phone', '==', phone).limit(2).get(),
-      db.get<PlanRecord>('plans', [planId], { consistent: true }),
-      firestore.collection('portal_plan_change_requests').where('phone', '==', phone).limit(20).get(),
-    ]);
-    const selectedPlan = plan[0];
-    if (!selectedPlan || selectedPlan.active === false) return error('This plan is no longer available. Refresh and choose another plan.', 409);
-    const matchedCustomers = customerSnapshot.docs.map(doc => ({ ...(doc.data() as Customer), id: doc.id }));
-    const customer = matchedCustomers.length === 1 && matchedCustomers[0].status === 'Active' ? matchedCustomers[0] : undefined;
-    // Keep the response generic so this public endpoint cannot be used to enumerate customer accounts.
-    if (!customer) return genericPlanRequestResponse();
-    if (customer.plan === selectedPlan.name) return genericPlanRequestResponse();
-    if (pendingSnapshot.docs.some(doc => doc.data().status === 'Pending')) return genericPlanRequestResponse();
-    const record = {
-      customerId: customer.id,
-      customerName: customer.name,
-      phone,
-      currentPlan: customer.plan,
-      currentMonthlyFee: Number(customer.monthlyFee),
-      requestedPlanId: planId,
-      requestedPlan: selectedPlan.name,
-      requestedMonthlyFee: Number(selectedPlan.price),
-      status: 'Pending',
-      source: 'customer-portal',
-      createdAt: new Date().toISOString(),
-    };
-    const [id] = await db.add('portal_plan_change_requests', [record]);
-    return id
-      ? genericPlanRequestResponse()
-      : error('Your request could not be saved. Please try again.', 503);
+    const lockId = createHash('sha256').update(phone).digest('hex');
+    const lockRef = firestore.collection('portal_plan_change_request_locks').doc(lockId);
+    const requestRef = firestore.collection('portal_plan_change_requests').doc();
+    const result = await firestore.runTransaction(async transaction => {
+      const customerQuery = firestore.collection('customers').where('phone', '==', phone).limit(2);
+      const pendingQuery = firestore.collection('portal_plan_change_requests').where('phone', '==', phone).limit(100);
+      const planRef = firestore.collection('plans').doc(planId);
+      const [customerSnapshot, planSnapshot, pendingSnapshot, lockSnapshot] = await Promise.all([
+        transaction.get(customerQuery),
+        transaction.get(planRef),
+        transaction.get(pendingQuery),
+        transaction.get(lockRef),
+      ]);
+      const selectedPlan = planSnapshot.exists ? { ...(planSnapshot.data() as PlanRecord), id: planSnapshot.id } : undefined;
+      if (!selectedPlan || selectedPlan.active === false) return { kind: 'unavailable' as const };
+      const matchedCustomers = customerSnapshot.docs.map(doc => ({ ...(doc.data() as Customer), id: doc.id }));
+      const customer = matchedCustomers.length === 1 && matchedCustomers[0].status === 'Active' ? matchedCustomers[0] : undefined;
+      if (!customer || customer.plan === selectedPlan.name) return { kind: 'accepted' as const };
+
+      const lockedRequestId = cleanText(lockSnapshot.data()?.pendingRequestId, 128);
+      if (lockedRequestId) {
+        const lockedRequestRef = firestore.collection('portal_plan_change_requests').doc(lockedRequestId);
+        const lockedRequestSnapshot = await transaction.get(lockedRequestRef);
+        if (lockedRequestSnapshot.exists && lockedRequestSnapshot.data()?.status === 'Pending') {
+          return { kind: 'accepted' as const };
+        }
+      }
+      const existingPending = pendingSnapshot.docs.find(doc => doc.data().status === 'Pending');
+      if (existingPending) {
+        transaction.set(lockRef, {
+          phoneHash: lockId,
+          pendingRequestId: existingPending.id,
+          status: 'Pending',
+          updatedAt: new Date().toISOString(),
+        }, { merge: true });
+        return { kind: 'accepted' as const };
+      }
+
+      const createdAt = new Date().toISOString();
+      const record = {
+        id: requestRef.id,
+        customerId: customer.id,
+        customerName: customer.name,
+        phone,
+        currentPlan: customer.plan,
+        currentMonthlyFee: Number(customer.monthlyFee),
+        requestedPlanId: planId,
+        requestedPlan: selectedPlan.name,
+        requestedMonthlyFee: Number(selectedPlan.price),
+        requestLockId: lockId,
+        status: 'Pending',
+        source: 'customer-portal',
+        createdAt,
+      };
+      transaction.create(requestRef, record);
+      transaction.set(lockRef, {
+        phoneHash: lockId,
+        pendingRequestId: requestRef.id,
+        status: 'Pending',
+        updatedAt: createdAt,
+      });
+      return { kind: 'created' as const };
+    });
+    if (result.kind === 'unavailable') return error('This plan is no longer available. Refresh and choose another plan.', 409);
+    return genericPlanRequestResponse();
   }],
 
-  // Public portal complaint intake creates a pending ticket only. It exposes no account data;
-  // administrators must verify the caller before acting on the request.
   'POST /api/portal/complaints': [async ({ body }) => {
     const input = (body || {}) as Record<string, unknown>;
     const phone = cleanText(input.phone, 10);
@@ -362,9 +395,7 @@ export const handler = router({
     const mimeType = cleanText(input.mimeType, 100).toLowerCase();
     const dataBase64 = typeof input.dataBase64 === 'string' ? input.dataBase64.trim() : '';
     if (!isValidPortalComplaintInput(input)) return error('Enter a valid mobile number, describe the issue and attach a JPG, PNG or WEBP router/modem photo (maximum 2 MB).', 400);
-    const [customerSnapshot] = await Promise.all([
-      firestore.collection('customers').where('phone', '==', phone).limit(2).get(),
-    ]);
+    const customerSnapshot = await firestore.collection('customers').where('phone', '==', phone).limit(2).get();
     const matches = customerSnapshot.docs.map(doc => ({ ...(doc.data() as Customer), id: doc.id }));
     const customer = matches.length === 1 && matches[0].status === 'Active' ? matches[0] : undefined;
     // A generic response prevents the public endpoint from confirming whether a phone has an account.
@@ -387,26 +418,27 @@ export const handler = router({
       assignedTo: '',
       assignedToName: '',
     };
-    const [complaintId] = await db.add('complaints', [complaint as unknown as Record<string, unknown>]);
-    if (!complaintId) return error('Your complaint could not be saved. Please try again.', 503);
+    // Save the complaint and its media in one atomic batch. A failed upload leaves
+    // neither a half-created complaint nor a cleanup delete that could remove records.
     try {
+      const complaintRef = firestore.collection('complaints').doc();
       const mediaId = randomBytes(12).toString('hex');
       const chunkSize = 400000;
       const chunkCount = Math.ceil(dataBase64.length / chunkSize);
       const collection = firestore.collection('complaint_media');
       const batch = firestore.batch();
       const createdAt = new Date().toISOString();
+      batch.create(complaintRef, { ...complaint, id: complaintRef.id });
       const metadataRef = collection.doc();
-      batch.set(metadataRef, { complaintId, mediaId, chunkIndex: -1, fileName, mimeType, size: buffer.length, chunkCount, createdAt, uploadedBy: 'customer-portal', uploadedByName: 'Customer portal' });
+      batch.set(metadataRef, { complaintId: complaintRef.id, mediaId, chunkIndex: -1, fileName, mimeType, size: buffer.length, chunkCount, createdAt, uploadedBy: 'customer-portal', uploadedByName: 'Customer portal' });
       for (let index = 0; index < chunkCount; index += 1) {
         const ref = collection.doc();
-        batch.set(ref, { complaintId, mediaId, chunkIndex: index, data: dataBase64.slice(index * chunkSize, (index + 1) * chunkSize) });
+        batch.set(ref, { complaintId: complaintRef.id, mediaId, chunkIndex: index, data: dataBase64.slice(index * chunkSize, (index + 1) * chunkSize) });
       }
       await batch.commit();
       return json({ accepted: true, message: 'If the details match an active K&B connection, your support request will be reviewed by our team.' }, 202);
     } catch {
-      await db.delete('complaints', [complaintId]);
-      return error('The photo could not be saved, so your complaint was not submitted. Please try again.', 503);
+      return error('The photo could not be saved, so no complaint was submitted. Please try again.', 503);
     }
   }],
 
@@ -416,42 +448,70 @@ export const handler = router({
   }),
 
   'POST /api/portal/plan-change-requests/:id/decision': protectedRoute(['admin'], async ({ params, body }, user) => {
-    const [request] = await db.get<Record<string, unknown>>('portal_plan_change_requests', [params.id], { consistent: true });
-    if (!request) return error('Plan-change request not found.', 404);
-    if (request.status !== 'Pending') return error('This request has already been reviewed.', 409);
     const decision = cleanText((body || {}).decision, 20);
     if (!['Approved', 'Rejected'].includes(decision)) return error('Choose Approved or Rejected.', 400);
-    if (decision === 'Approved') {
-      const customerId = cleanText(request.customerId, 128);
-      const planId = cleanText(request.requestedPlanId, 128);
-      const [customer, plan] = await Promise.all([
-        db.get<Customer>('customers', [customerId], { consistent: true }),
-        db.get<PlanRecord>('plans', [planId], { consistent: true }),
-      ]);
-      const existingCustomer = customer[0];
-      const selectedPlan = plan[0];
-      if (!existingCustomer || existingCustomer.status !== 'Active') return error('The customer is no longer active. Review the customer record before approving.', 409);
-      if (existingCustomer.plan !== request.currentPlan) return error('The customer plan changed after this request was submitted. Refresh the customer record and review again.', 409);
-      if (!selectedPlan || selectedPlan.active === false) return error('The requested plan is no longer active. Ask the customer to choose another plan.', 409);
-      const [updatedCustomer] = await db.tx.update('customers', [{
-        id: customerId,
-        record: { plan: selectedPlan.name, monthlyFee: Number(selectedPlan.price) },
-      }], { patch: true });
-      if (!updatedCustomer) return error('Could not update the customer plan.', 500);
-      const [updatedRequest] = await db.tx.update('portal_plan_change_requests', [{
-        id: params.id,
-        record: { status: 'Approved', reviewedAt: new Date().toISOString(), reviewedBy: user.id, reviewedByName: user.displayName, appliedPlan: selectedPlan.name, appliedMonthlyFee: Number(selectedPlan.price) },
-      }], { patch: true });
-      if (!updatedRequest) return error('The customer plan was updated, but the request status could not be saved. Check the customer record before retrying.', 500);
-      await writeAudit(user, 'UPDATE', 'customer', customerId, 'Approved customer portal plan change to ' + selectedPlan.name);
-      return json({ updated: true, status: 'Approved', customerId, plan: selectedPlan.name, monthlyFee: Number(selectedPlan.price) });
+    const requestRef = firestore.collection('portal_plan_change_requests').doc(params.id);
+    const result = await firestore.runTransaction(async transaction => {
+      const requestSnapshot = await transaction.get(requestRef);
+      if (!requestSnapshot.exists) return { ok: false as const, statusCode: 404, message: 'Plan-change request not found.' };
+      const request = requestSnapshot.data() || {};
+      if (request.status !== 'Pending') return { ok: false as const, statusCode: 409, message: 'This request has already been reviewed.' };
+
+      const lockId = cleanText(request.requestLockId, 128);
+      const lockRef = lockId ? firestore.collection('portal_plan_change_request_locks').doc(lockId) : null;
+      const lockSnapshot = lockRef ? await transaction.get(lockRef) : null;
+      let customerSnapshot: FirebaseFirestore.DocumentSnapshot | null = null;
+      let planSnapshot: FirebaseFirestore.DocumentSnapshot | null = null;
+      let customerRef: FirebaseFirestore.DocumentReference | null = null;
+      if (decision === 'Approved') {
+        const customerId = cleanText(request.customerId, 128);
+        const planId = cleanText(request.requestedPlanId, 128);
+        customerRef = firestore.collection('customers').doc(customerId);
+        const planRef = firestore.collection('plans').doc(planId);
+        [customerSnapshot, planSnapshot] = await Promise.all([
+          transaction.get(customerRef),
+          transaction.get(planRef),
+        ]);
+        const existingCustomer = customerSnapshot.data() as Customer | undefined;
+        const selectedPlan = planSnapshot.data() as PlanRecord | undefined;
+        if (!customerSnapshot.exists || !existingCustomer || existingCustomer.status !== 'Active') {
+          return { ok: false as const, statusCode: 409, message: 'The customer is no longer active. Review the customer record before approving.' };
+        }
+        if (existingCustomer.plan !== request.currentPlan) {
+          return { ok: false as const, statusCode: 409, message: 'The customer plan changed after this request was submitted. Refresh the customer record and review again.' };
+        }
+        if (!planSnapshot.exists || !selectedPlan || selectedPlan.active === false) {
+          return { ok: false as const, statusCode: 409, message: 'The requested plan is no longer active. Ask the customer to choose another plan.' };
+        }
+        const reviewedAt = new Date().toISOString();
+        transaction.update(customerRef, { plan: selectedPlan.name, monthlyFee: Number(selectedPlan.price), updatedAt: reviewedAt });
+        transaction.update(requestRef, {
+          status: 'Approved', reviewedAt, reviewedBy: user.id, reviewedByName: user.displayName,
+          appliedPlan: selectedPlan.name, appliedMonthlyFee: Number(selectedPlan.price),
+        });
+        if (lockRef && lockSnapshot?.exists && lockSnapshot.data()?.pendingRequestId === params.id) {
+          transaction.update(lockRef, { status: 'Closed', pendingRequestId: null, reviewedAt, reviewedBy: user.id });
+        }
+        return { ok: true as const, status: 'Approved' as const, customerId: cleanText(request.customerId, 128), plan: selectedPlan.name, monthlyFee: Number(selectedPlan.price) };
+      }
+
+      const reviewedAt = new Date().toISOString();
+      transaction.update(requestRef, {
+        status: 'Rejected', reviewedAt, reviewedBy: user.id, reviewedByName: user.displayName,
+        reviewNote: cleanText((body || {}).reviewNote, 300),
+      });
+      if (lockRef && lockSnapshot?.exists && lockSnapshot.data()?.pendingRequestId === params.id) {
+        transaction.update(lockRef, { status: 'Closed', pendingRequestId: null, reviewedAt, reviewedBy: user.id });
+      }
+      return { ok: true as const, status: 'Rejected' as const, requestId: params.id };
+    });
+    if (!result.ok) return error(result.message, result.statusCode);
+    if (result.status === 'Approved') {
+      await writeAudit(user, 'UPDATE', 'customer', result.customerId, 'Approved customer portal plan change to ' + result.plan);
+      return json({ updated: true, status: 'Approved', customerId: result.customerId, plan: result.plan, monthlyFee: result.monthlyFee });
     }
-    const [updated] = await db.tx.update('portal_plan_change_requests', [{
-      id: params.id,
-      record: { status: 'Rejected', reviewedAt: new Date().toISOString(), reviewedBy: user.id, reviewedByName: user.displayName, reviewNote: cleanText((body || {}).reviewNote, 300) },
-    }], { patch: true });
-    if (updated) await writeAudit(user, 'UPDATE', 'portal_plan_change_request', params.id, 'Rejected customer portal plan-change request');
-    return updated ? json({ updated: true, status: 'Rejected' }) : error('Could not update the request.', 500);
+    await writeAudit(user, 'UPDATE', 'portal_plan_change_request', result.requestId, 'Rejected customer portal plan-change request');
+    return json({ updated: true, status: 'Rejected' });
   }),
 
   // Customer-facing connection requests are leads, not active customer accounts.
