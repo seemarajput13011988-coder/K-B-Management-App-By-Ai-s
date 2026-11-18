@@ -61,6 +61,7 @@ jobs:
           grep -Fq "'POST /api/portal/plan-change-requests/:id/decision': protectedRoute(['admin']" render-backend/legacy-routes.ts
           grep -Fq "'POST /api/portal/complaints'" render-backend/legacy-routes.ts
           grep -Fq "isValidPortalComplaintInput(input)" render-backend/legacy-routes.ts
+          grep -Fq "isValidPortalImageSignature(buffer, mimeType)" render-backend/legacy-routes.ts
           grep -Fq "collection('complaint_media')" render-backend/legacy-routes.ts
           grep -Fq "app.use(legacyHandler)" render-backend/server.ts
           grep -Fq "startBackgroundJobs();" render-backend/server.ts
