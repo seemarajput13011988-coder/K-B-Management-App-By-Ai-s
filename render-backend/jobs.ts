@@ -1,10 +1,24 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { getMessaging } from 'firebase-admin/messaging';
-import { FieldValue, firestore } from './firestore-adapter.js';
+import { FieldValue, firestore, businessContext } from './firestore-adapter.js';
 import { isGpsGraceExemptHolidayStatus, subscriptionExpiryKind, taskReminderKind } from './route-path.js';
 
 type Item = Record<string, any>;
 const now = () => new Date().toISOString();
+const lastDailyRunByBusiness = new Map<string,string>();
+
+async function activeBusinessIds():Promise<string[]> {
+  const snapshot = await firestore.collection('businesses').get();
+  const ids = snapshot.docs.filter(document=>document.data().active!==false).map(document=>document.id);
+  return ids.length ? ids : ['legacy-default'];
+}
+
+async function currentBusinessUsers():Promise<Item[]> {
+  const businessId = businessContext.current();
+  const memberships = await readAllQuery(firestore.collection('business_memberships').where('businessId','==',businessId));
+  const memberIds = new Set(memberships.filter(item=>item.active!==false).map(item=>String(item.userId || '')));
+  return (await readAllQuery(firestore.collection('users'))).filter(user=>memberIds.has(String(user.id || '')));
+}
 async function readAllQuery(query: any, pageSize = 400): Promise<Item[]> {
   const items: Item[] = [];
   let page = await query.limit(pageSize).get();
@@ -25,7 +39,7 @@ function sha(value: string) { return createHash('sha256').update(value).digest('
 export async function runGpsGracePeriod() {
   const records = await readAllQuery(firestore.collection('attendance').where('status', '==', 'Checked in'));
   const requests = await readAllQuery(firestore.collection('holiday_requests'));
-  const users = await readAllQuery(firestore.collection('users'));
+  const users = await currentBusinessUsers();
   const currentTime = Date.now();
 
   for (const item of records) {
@@ -146,7 +160,7 @@ export async function sendSubscriptionExpiryReminders() {
   const { date: today, year, month, day } = indiaDateParts();
   const inThreeDays = new Date(Date.UTC(year, month - 1, day + 3)).toISOString().slice(0, 10);
   const [subscriptions, customers, users] = await Promise.all([
-    readAllQuery(firestore.collection('subscriptions')), readAllQuery(firestore.collection('customers')), readAllQuery(firestore.collection('users')),
+    readAllQuery(firestore.collection('subscriptions')), readAllQuery(firestore.collection('customers')), currentBusinessUsers(),
   ]);
   const admins = users.filter(item => item.role === 'admin' && item.active === true);
   for (const subscription of subscriptions) {
@@ -332,7 +346,12 @@ async function runAutoCheckoutJob() {
   if (autoCheckoutRunning) return { skipped: true };
   autoCheckoutRunning = true;
   try {
-    return { skipped: false, ...(await autoCheckoutAtSevenPm()) };
+    let checkedOut = 0;
+    for (const businessId of await activeBusinessIds()) {
+      const result = await businessContext.run(businessId,()=>autoCheckoutAtSevenPm());
+      checkedOut += Number(result.checkedOut || 0);
+    }
+    return { skipped:false, checkedOut };
   } finally {
     autoCheckoutRunning = false;
   }
@@ -343,15 +362,19 @@ export async function runScheduledTick() {
   running = true;
   try {
     const attendance = await runAutoCheckoutJob();
-    await runGpsGracePeriod();
-    await deliverPendingPushNotifications();
     const parts = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' }).formatToParts(new Date());
     const hour = Number(parts.find(part => part.type === 'hour')?.value || 0);
     const { date } = indiaDateParts();
-    if (hour >= 9 && lastDailyRun !== date) {
-      await sendTaskDueReminders();
-      await sendSubscriptionExpiryReminders();
-      lastDailyRun = date;
+    for (const businessId of await activeBusinessIds()) {
+      await businessContext.run(businessId,async()=>{
+        await runGpsGracePeriod();
+        await deliverPendingPushNotifications();
+        if (hour >= 9 && lastDailyRunByBusiness.get(businessId) !== date) {
+          await sendTaskDueReminders();
+          await sendSubscriptionExpiryReminders();
+          lastDailyRunByBusiness.set(businessId,date);
+        }
+      });
     }
     return { skipped: false, ...attendance };
   } finally { running = false; }
