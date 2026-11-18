@@ -4,9 +4,11 @@ import cors from 'cors';
 import { apiHandler } from './api-handler.js';
 import { handler as legacyHandler } from './legacy-routes.js';
 import { runScheduledTick, startBackgroundJobs } from './jobs.js';
-import { firestore } from './firestore-adapter.js';
+import { firestore, businessContext } from './firestore-adapter.js';
 const app=express();
 app.disable('x-powered-by');
+// Give every HTTP request its own async business context to prevent tenant scope leaking across requests.
+app.use((req,res,next)=>businessContext.run('',()=>next()));
 app.use(cors({origin:true,methods:['GET','POST','PUT','PATCH','DELETE','OPTIONS'],allowedHeaders:['Content-Type','Authorization']}));
 app.use(express.json({limit:'16mb'}));
 
