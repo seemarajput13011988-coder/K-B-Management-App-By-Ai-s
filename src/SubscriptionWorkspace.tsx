@@ -95,9 +95,12 @@ export default function SubscriptionWorkspace({ customers, plans, isAdmin, flash
     <div className="toolbar">
       <div><h2>Customer renewals</h2><p className="subtle">Track subscription periods, expiry dates and payment status.</p></div>
       <div className="subscription-toolbar-actions">
-        <select aria-label="Filter renewals" value={filter} onChange={event=>setFilter(event.target.value as typeof filter)}>
+        <input aria-label="Search renewals" className="subscription-search" placeholder="Search customer, phone, plan or date…" value={search} onChange={event=>setSearch(event.target.value)}/>
+        <select aria-label="Filter renewal status" value={filter} onChange={event=>setFilter(event.target.value as typeof filter)}>
           <option>All</option><option>Active</option><option>Pending</option><option>Expired</option><option>Cancelled</option>
         </select>
+        <select aria-label="Filter payment status" value={paymentFilter} onChange={event=>setPaymentFilter(event.target.value as typeof paymentFilter)}><option>All</option><option>Paid</option><option>Pending</option></select>
+        <select aria-label="Sort renewals" value={sortBy} onChange={event=>setSortBy(event.target.value as typeof sortBy)}><option value="recent">Most recent</option><option value="expiry">Expiry date</option><option value="amount">Amount: high to low</option><option value="customer">Customer name</option></select>
         <button className="btn primary" onClick={()=>setShowForm(value=>!value)} disabled={!customers.length}>+ New renewal</button>
       </div>
     </div>
