@@ -46,7 +46,7 @@ test('rejects malformed customer plan-change requests', () => {
 });
 
 
-import { isValidPortalComplaintInput } from './portal-validation.js';
+import { isValidPortalComplaintInput, isValidPortalImageSignature } from './portal-validation.js';
 
 test('accepts a complete customer portal complaint with a supported image', () => {
   assert.equal(isValidPortalComplaintInput({
@@ -62,4 +62,23 @@ test('rejects portal complaints without valid identity fields or required photo'
   assert.equal(isValidPortalComplaintInput({ ...valid, dataBase64: '' }), false);
   assert.equal(isValidPortalComplaintInput({ ...valid, dataBase64: 'not-base64!!!' }), false);
   assert.equal(isValidPortalComplaintInput({ ...valid, details: '' }), false);
+});
+
+test('accepts JPEG, PNG and WEBP byte signatures only for their declared image types', () => {
+  const jpeg = Uint8Array.from([0xff, 0xd8, 0xff, 0xe0, 0x00]);
+  const png = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  const webp = Uint8Array.from([0x52, 0x49, 0x46, 0x46, 0x00, 0x00, 0x00, 0x00, 0x57, 0x45, 0x42, 0x50]);
+  assert.equal(isValidPortalImageSignature(jpeg, 'image/jpeg'), true);
+  assert.equal(isValidPortalImageSignature(png, 'image/png'), true);
+  assert.equal(isValidPortalImageSignature(webp, 'image/webp'), true);
+  assert.equal(isValidPortalImageSignature(jpeg, 'image/png'), false);
+  assert.equal(isValidPortalImageSignature(png, 'image/webp'), false);
+  assert.equal(isValidPortalImageSignature(webp, 'image/jpeg'), false);
+});
+
+test('rejects truncated, unsupported and empty portal image payloads', () => {
+  assert.equal(isValidPortalImageSignature(new Uint8Array([0xff, 0xd8]), 'image/jpeg'), false);
+  assert.equal(isValidPortalImageSignature(new Uint8Array([0x89, 0x50, 0x4e]), 'image/png'), false);
+  assert.equal(isValidPortalImageSignature(new Uint8Array(0), 'image/webp'), false);
+  assert.equal(isValidPortalImageSignature(new Uint8Array([1, 2, 3, 4]), 'application/pdf'), false);
 });
