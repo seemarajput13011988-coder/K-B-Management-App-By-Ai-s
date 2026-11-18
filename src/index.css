@@ -2250,3 +2250,21 @@ td,th{padding:12px 13px}
 [data-theme="dark"] :focus-visible {
   outline-color: #e99a43;
 }
+/* Neutral action surfaces and invoice workspace follow the selected appearance too. */
+[data-theme="dark"] .icon-button,
+[data-theme="dark"] .btn.secondary,
+[data-theme="dark"] .finance-metrics article,
+[data-theme="dark"] .finance-panel,
+[data-theme="dark"] .invoice-intro,
+[data-theme="dark"] .invoice-modal,
+[data-theme="dark"] .invoice-form-section,
+[data-theme="dark"] .invoice-modal-head,
+[data-theme="dark"] .invoice-preview {
+  background: #162235 !important;
+  border-color: #35455d !important;
+  color: #e5ebf4 !important;
+}
+[data-theme="dark"] .icon-button:hover,
+[data-theme="dark"] .btn.secondary:hover {
+  background: #22334a !important;
+}
