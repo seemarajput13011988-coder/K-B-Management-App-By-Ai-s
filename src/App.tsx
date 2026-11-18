@@ -50,7 +50,7 @@ type AppNotification={id:string;title:string;message:string;createdAt:string;rea
 type RetentionReviewItem={id:string;collection:string;collectionLabel:string;recordLabel:string;createdAt:string};
 type StaffRegistrationRequest={id:string;userId:string;displayName:string;phone?:string;reason?:string;status:'pending'|'approved'|'rejected';createdAt:string;reviewedAt?:string;};
 type StaffHolidayRequest={id:string;userId:string;displayName:string;startDate:string;endDate:string;reason:string;status:'pending'|'approved'|'rejected';createdAt:string;reviewedAt?:string;reviewedByName?:string};
-const getToken=()=>{try{return (JSON.parse(sessionStorage.getItem('kb-customer-session')||'null') as Session|null)?.token||'';}catch{return '';}};
+const getToken=()=>{try{return (JSON.parse(sessionStorage.getItem('vypaar-session')||'null') as Session|null)?.token||'';}catch{return '';}};
 const api={get:(url:string)=>client.get(url+(url.includes('?')?'&':'?')+'sessionToken='+encodeURIComponent(getToken())),post:(url:string,data?:Record<string,unknown>)=>client.post(url,{...(data||{}),sessionToken:getToken()}),put:(url:string,data?:Record<string,unknown>)=>client.put(url,{...(data||{}),sessionToken:getToken()}),delete:(url:string)=>client.delete(url+'?sessionToken='+encodeURIComponent(getToken()))};
 interface WorkLocationTrackingPlugin { startTracking(options: { token: string; apiBaseUrl: string; attendanceId?: string; scheduledEndAt?: string }): Promise<{ started: boolean }>; stopTracking(): Promise<{ stopped: boolean }>; }
 const WorkLocationTracking = registerPlugin<WorkLocationTrackingPlugin>('WorkLocationTracking');
@@ -196,12 +196,12 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   useEffect(() => {
     let active = true;
     if (session.user.role !== 'staff' || !Capacitor.isNativePlatform()) return;
-    if (localStorage.getItem('kb-staff-permissions-v1') === 'done') return;
+    if (localStorage.getItem('vypaar-staff-permissions-v1') === 'done') return;
     // A permission already granted in Android settings should be reused silently.
     Geolocation.checkPermissions().then(permission => {
       if (!active) return;
       if (permission.location === 'granted') {
-        localStorage.setItem('kb-staff-permissions-v1', 'done');
+        localStorage.setItem('vypaar-staff-permissions-v1', 'done');
         setPermissionSetupOpen(false);
       } else {
         setPermissionSetupOpen(true);
@@ -374,12 +374,12 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
     if (!businessId || businessId === activeBusinessId) return;
     try {
       await api.post('/api/businesses/' + encodeURIComponent(businessId) + '/select', {});
-      const raw = sessionStorage.getItem('kb-customer-session');
+      const raw = sessionStorage.getItem('vypaar-session');
       if (raw) {
         const saved = JSON.parse(raw) as Session;
         saved.businessId = businessId;
         saved.user.businessId = businessId;
-        sessionStorage.setItem('kb-customer-session',JSON.stringify(saved));
+        sessionStorage.setItem('vypaar-session',JSON.stringify(saved));
       }
       window.location.reload();
     } catch (error) {
@@ -394,12 +394,12 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
     try {
       const result = await api.post('/api/businesses',{name:newBusinessName.trim()});
       const businessId = String(result.data.activeBusinessId || result.data.business?.id || '');
-      const raw = sessionStorage.getItem('kb-customer-session');
+      const raw = sessionStorage.getItem('vypaar-session');
       if (raw && businessId) {
         const saved = JSON.parse(raw) as Session;
         saved.businessId = businessId;
         saved.user.businessId = businessId;
-        sessionStorage.setItem('kb-customer-session',JSON.stringify(saved));
+        sessionStorage.setItem('vypaar-session',JSON.stringify(saved));
       }
       setShowBusinessModal(false);
       setNewBusinessName('');
@@ -1595,7 +1595,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
         />
       )}
       {!isAdmin && <StaffLocationResponder activeShift={staffShiftActive} userId={session.user.id} />}
-      {permissionSetupOpen && <StaffPermissionSetup onComplete={(locationGranted = false) => { if (locationGranted) localStorage.setItem('kb-staff-permissions-v1', 'done'); setPermissionSetupOpen(false); }} />}
+      {permissionSetupOpen && <StaffPermissionSetup onComplete={(locationGranted = false) => { if (locationGranted) localStorage.setItem('vypaar-staff-permissions-v1', 'done'); setPermissionSetupOpen(false); }} />}
       {completingTask && <TaskCompletionModal task={completingTask} onClose={() => setCompletingTask(null)} onComplete={(photo: File | null, video: File | null) => completeTaskWithEvidence(completingTask, photo, video)} />}
       {taskPreview && <Modal title={taskPreview.name} subtitle="Task completion evidence" onClose={() => setTaskPreview(null)}><div className="complaint-preview">{taskPreview.mimeType.startsWith('video/') ? <video src={taskPreview.dataUrl} controls playsInline /> : <img src={taskPreview.dataUrl} alt={taskPreview.name}/>}</div><div className="form-actions"><a className="btn secondary" href={taskPreview.dataUrl} download={taskPreview.name}>Download evidence</a><button type="button" className="btn primary" onClick={() => setTaskPreview(null)}>Close</button></div></Modal>}
       {showComplaint && (
@@ -2193,10 +2193,10 @@ function StaffPermissionSetup({ onComplete }: { onComplete:(locationGranted?:boo
       } catch { outcomes.push('Notifications: Android may ask when shift tracking starts.'); }
       setMessage(outcomes.join('\n'));
       if (locationGranted) {
-        localStorage.setItem('kb-staff-permissions-v1','done');
+        localStorage.setItem('vypaar-staff-permissions-v1','done');
         onComplete(true);
       } else {
-        localStorage.removeItem('kb-staff-permissions-v1');
+        localStorage.removeItem('vypaar-staff-permissions-v1');
         setMessage(outcomes.join('\n')+'\n\nLocation permission is required for active-shift GPS tracking. You can continue for now, but staff check-in requires permission and a fresh location fix. If an administrator has already started your shift, the app will ask again when you open it.');
       }
     } catch(error) {
@@ -2668,11 +2668,11 @@ function App(){
  const [session,setSession]=useState<Session|null>(null);const [checking,setChecking]=useState(true);const [showWelcome,setShowWelcome]=useState(true);
  useEffect(()=>{const timer=window.setTimeout(()=>setShowWelcome(false),1500);return()=>window.clearTimeout(timer);},[]);
  useEffect(()=>{void client.get('/api/_healthcheck').catch(()=>undefined);},[]);
- useEffect(()=>{let live=true;async function restore(){localStorage.removeItem('kb-customer-session');const raw=sessionStorage.getItem('kb-customer-session');if(!raw){setChecking(false);return;}try{const old=JSON.parse(raw) as Session;const r=await client.get('/api/auth/me?sessionToken='+encodeURIComponent(old.token));if(live)setSession({...old,businessId:r.data.user.businessId||r.data.activeBusinessId||old.businessId,user:r.data.user});}catch{sessionStorage.removeItem('kb-customer-session');}finally{if(live)setChecking(false);}}restore();return()=>{live=false;};},[]);
- async function login(userId:string,password:string,expectedRole:'admin'|'staff'){const next=await signInAppUser(userId,password,expectedRole) as Session;if(next.user.role!==expectedRole){await signOutAppUser();throw new Error(expectedRole==='admin'?'This account is not an admin account. Choose Staff Sign In instead.':'This account is not a staff account. Choose Admin Sign In instead.');}sessionStorage.setItem('kb-customer-session',JSON.stringify(next));setSession(next);}
+ useEffect(()=>{let live=true;async function restore(){localStorage.removeItem('vypaar-session');const raw=sessionStorage.getItem('vypaar-session');if(!raw){setChecking(false);return;}try{const old=JSON.parse(raw) as Session;const r=await client.get('/api/auth/me?sessionToken='+encodeURIComponent(old.token));if(live)setSession({...old,businessId:r.data.user.businessId||r.data.activeBusinessId||old.businessId,user:r.data.user});}catch{sessionStorage.removeItem('vypaar-session');}finally{if(live)setChecking(false);}}restore();return()=>{live=false;};},[]);
+ async function login(userId:string,password:string,expectedRole:'admin'|'staff'){const next=await signInAppUser(userId,password,expectedRole) as Session;if(next.user.role!==expectedRole){await signOutAppUser();throw new Error(expectedRole==='admin'?'This account is not an admin account. Choose Staff Sign In instead.':'This account is not a staff account. Choose Admin Sign In instead.');}sessionStorage.setItem('vypaar-session',JSON.stringify(next));setSession(next);}
  if(showWelcome)return <><FestivalTheme/><WelcomeIntro/></>;
  if(checking)return <><FestivalTheme/><div className="loading-cover"><div className="loader"/><span>Preparing secure sign-in…</span></div></>;
- return <><FestivalTheme/>{session?<WorkspaceErrorBoundary key={session.user.id} onReset={()=>{void (async()=>{let preserveServerSession=false;if(session.user.role==='staff'){try{const attendance=await client.get('/api/attendance?sessionToken='+encodeURIComponent(session.token));preserveServerSession=(attendance.data.items||[]).some((item:AttendanceRecord)=>item.userId===session.user.id&&isAttendanceShiftActive(item));}catch{preserveServerSession=true;}}if(!preserveServerSession)await signOutAppUser();sessionStorage.removeItem('kb-customer-session');localStorage.removeItem('kb-customer-session');setSession(null);})();}}><Workspace session={session} onLogout={()=>{void signOutAppUser().then(()=>{sessionStorage.removeItem('kb-customer-session');localStorage.removeItem('kb-customer-session');setSession(null);}).catch(error=>window.alert(error instanceof Error?error.message:'Sign out was blocked.'));}}/></WorkspaceErrorBoundary>:<LoginScreen onLogin={login}/>}</>;
+ return <><FestivalTheme/>{session?<WorkspaceErrorBoundary key={session.user.id} onReset={()=>{void (async()=>{let preserveServerSession=false;if(session.user.role==='staff'){try{const attendance=await client.get('/api/attendance?sessionToken='+encodeURIComponent(session.token));preserveServerSession=(attendance.data.items||[]).some((item:AttendanceRecord)=>item.userId===session.user.id&&isAttendanceShiftActive(item));}catch{preserveServerSession=true;}}if(!preserveServerSession)await signOutAppUser();sessionStorage.removeItem('vypaar-session');localStorage.removeItem('vypaar-session');setSession(null);})();}}><Workspace session={session} onLogout={()=>{void signOutAppUser().then(()=>{sessionStorage.removeItem('vypaar-session');localStorage.removeItem('vypaar-session');setSession(null);}).catch(error=>window.alert(error instanceof Error?error.message:'Sign out was blocked.'));}}/></WorkspaceErrorBoundary>:<LoginScreen onLogin={login}/>}</>;
 }
 function LoginScreen({onLogin}:{onLogin:(id:string,pw:string,role:'admin'|'staff')=>Promise<void>}){
  const [role,setRole]=useState<'admin'|'staff'|null>(null);
@@ -2683,23 +2683,24 @@ function LoginScreen({onLogin}:{onLogin:(id:string,pw:string,role:'admin'|'staff
  const [registrationMessage,setRegistrationMessage]=useState('');
  const [registrationError,setRegistrationError]=useState(false);
  const [registrationStatus,setRegistrationStatus]=useState<{status:'pending'|'approved'|'rejected';createdAt:string;reviewedAt?:string|null;reviewedByName?:string|null}|null>(null);
- useEffect(()=>{let stopped=false;let saved:{id:string;trackingCode:string}|null=null;try{const raw=localStorage.getItem('kandb-staff-registration');if(raw)saved=JSON.parse(raw) as {id:string;trackingCode:string};}catch{localStorage.removeItem('kandb-staff-registration');}if(!saved)return;const poll=()=>getStaffRegistrationStatus(saved!.id,saved!.trackingCode).then(result=>{if(!stopped)setRegistrationStatus(result);}).catch(()=>{if(!stopped){localStorage.removeItem('kandb-staff-registration');setRegistrationStatus(null);}});void poll();const timer=window.setInterval(poll,20000);return()=>{stopped=true;window.clearInterval(timer);};},[]);
+ useEffect(()=>{let stopped=false;let saved:{id:string;trackingCode:string}|null=null;try{const raw=localStorage.getItem('vypaar-staff-registration');if(raw)saved=JSON.parse(raw) as {id:string;trackingCode:string};}catch{localStorage.removeItem('vypaar-staff-registration');}if(!saved)return;const poll=()=>getStaffRegistrationStatus(saved!.id,saved!.trackingCode).then(result=>{if(!stopped)setRegistrationStatus(result);}).catch(()=>{if(!stopped){localStorage.removeItem('vypaar-staff-registration');setRegistrationStatus(null);}});void poll();const timer=window.setInterval(poll,20000);return()=>{stopped=true;window.clearInterval(timer);};},[]);
  function choose(nextRole:'admin'|'staff'){setRole(nextRole);setId('');setPw('');setMsg('');}
  const [loginBusy,setLoginBusy]=useState(false);
  async function submit(e:FormEvent){e.preventDefault();if(loginBusy)return;setLoginBusy(true);setMsg('');try{if(role)await onLogin(id,pw,role);}catch(err){setMsg(err instanceof Error?err.message:'Sign-in failed.');}finally{setLoginBusy(false);}}
- async function submitRegistration(){setRegistrationBusy(true);setRegistrationMessage('');setRegistrationError(false);try{const invitedBusinessId=new URLSearchParams(window.location.search).get('businessId')||'legacy-default';const result=await submitStaffRegistrationRequest({...registration,businessId:invitedBusinessId});localStorage.setItem('kandb-staff-registration',JSON.stringify({id:result.id,trackingCode:result.trackingCode}));setRegistrationStatus({status:'pending',createdAt:new Date().toISOString()});setRegistrationMessage(result.message);setRegistrationOpen(false);setRegistration({userId:'',displayName:'',phone:'',reason:''});}catch(err){setRegistrationMessage(err instanceof Error?err.message:'Could not submit your request.');setRegistrationError(true);}finally{setRegistrationBusy(false);}}
+ async function submitRegistration(){setRegistrationBusy(true);setRegistrationMessage('');setRegistrationError(false);try{const invitedBusinessId=new URLSearchParams(window.location.search).get('businessId')||'legacy-default';const result=await submitStaffRegistrationRequest({...registration,businessId:invitedBusinessId});localStorage.setItem('vypaar-staff-registration',JSON.stringify({id:result.id,trackingCode:result.trackingCode}));setRegistrationStatus({status:'pending',createdAt:new Date().toISOString()});setRegistrationMessage(result.message);setRegistrationOpen(false);setRegistration({userId:'',displayName:'',phone:'',reason:''});}catch(err){setRegistrationMessage(err instanceof Error?err.message:'Could not submit your request.');setRegistrationError(true);}finally{setRegistrationBusy(false);}}
  return <div className="auth-shell"><div className="auth-side"><div className="auth-brand"><div className="brand-mark"><img className="brand-logo" src="/vypaar-logo.png" alt="Vypaar Management logo" /></div><strong>Vypaar Management</strong></div><div className="auth-promo"><span className="auth-kicker">MANAGEMENT SOFTWARE</span><h1>Every customer connection, in view.</h1><p>Customer records, staff assignments, collections and service requests in one shared workspace.</p></div></div><div className="auth-main"><FestivalCelebration/><form className="auth-card" onSubmit={submit}><div className="auth-icon">{role==='staff'?<UserRound/>:<ShieldCheck/>}</div><span className="eyebrow">SECURE SIGN IN</span><h2>{role?(role==='admin'?'Admin sign in':'Staff sign in'):'Welcome to Vypaar Management'}</h2><p>{role?'Enter your '+role+' account details to continue.':'Choose how you want to sign in.'}</p>
  {!role?<><div className="login-role-options"><button type="button" className="login-role-card admin-choice" onClick={()=>choose('admin')}><span className="login-role-icon"><ShieldCheck size={22}/></span><strong>Admin Sign In</strong><small>Manage customers, staff, plans and reports</small><span className="login-role-arrow">Continue →</span></button><button type="button" className="login-role-card staff-choice" onClick={()=>choose('staff')}><span className="login-role-icon"><UserRound size={22}/></span><strong>Staff Sign In</strong><small>View assigned customers and manage daily work</small><span className="login-role-arrow">Continue →</span></button></div>
  {registrationStatus ? <div className="registration-status">
   <div className="registration-status-steps"><span className="done">Submitted</span><span className={registrationStatus.status==='pending'?'current':'done'}>Admin review</span><span className={registrationStatus.status==='approved'?'done':registrationStatus.status==='rejected'?'rejected':''}>{registrationStatus.status==='rejected'?'Rejected':'Approved'}</span></div>
   <strong>{registrationStatus.status==='pending'?'Your request is awaiting admin approval.':registrationStatus.status==='approved'?'Your staff access is approved.':'Your staff access request was rejected.'}</strong>
   <small>Request submitted {new Date(registrationStatus.createdAt).toLocaleString('en-IN')}{registrationStatus.reviewedAt?' · Reviewed '+new Date(registrationStatus.reviewedAt).toLocaleString('en-IN'):''}</small>
-  {registrationStatus.status==='rejected' && <button type="button" className="auth-link" onClick={()=>{localStorage.removeItem('kandb-staff-registration');setRegistrationStatus(null);setRegistrationOpen(true);}}>Submit a new request</button>}
+  {registrationStatus.status==='rejected' && <button type="button" className="auth-link" onClick={()=>{localStorage.removeItem('vypaar-staff-registration');setRegistrationStatus(null);setRegistrationOpen(true);}}>Submit a new request</button>}
  </div> : !registrationOpen?<button type="button" className="auth-link" onClick={()=>{setRegistrationOpen(true);setRegistrationMessage('');}}>Request staff access</button>:<div className="staff-registration-form"><strong>Staff registration request</strong><Field label="Preferred staff ID"><input required minLength={3} maxLength={32} pattern="[a-zA-Z0-9_-]{3,32}" value={registration.userId} onChange={e=>setRegistration({...registration,userId:e.target.value})}/></Field><Field label="Full name"><input required maxLength={80} value={registration.displayName} onChange={e=>setRegistration({...registration,displayName:e.target.value})}/></Field><Field label="Phone (optional)"><input type="tel" inputMode="numeric" pattern="[0-9]{10}" maxLength={10} value={registration.phone} onChange={e=>setRegistration({...registration,phone:e.target.value.replace(/\D/g,'').slice(0,10)})} placeholder="10-digit mobile number"/></Field><Field label="Reason / note (optional)"><textarea rows={2} maxLength={300} value={registration.reason} onChange={e=>setRegistration({...registration,reason:e.target.value})}/></Field><div className="form-actions"><button type="button" className="btn secondary" onClick={()=>setRegistrationOpen(false)}>Cancel</button><button type="button" className="btn primary" disabled={registrationBusy} onClick={e=>{const form=e.currentTarget.closest('.staff-registration-form');const fields=form?.querySelectorAll('input');if(fields && Array.from(fields).every(field=>field.reportValidity()))void submitRegistration();}}>{registrationBusy?'Submitting…':'Submit request'}</button></div></div>}
  {registrationMessage&&<div className={registrationError?'auth-message':'form-hint'}>{registrationMessage}</div>}</>:<>
  <label className="auth-field"><span>{role==='admin'?'Admin username':'Staff user ID'}</span><input value={id} onChange={e=>setId(e.target.value)} required autoComplete="username" placeholder={role==='admin'?'Enter your admin username':'Enter your staff ID'}/></label><label className="auth-field"><span>Password</span><input type="password" value={pw} onChange={e=>setPw(e.target.value)} required autoComplete="current-password"/></label>
  {msg&&<div className="auth-message">{msg}</div>}<button className="btn primary auth-submit" disabled={loginBusy}>{loginBusy?'Connecting securely…':'Sign in securely'}</button><button type="button" className="auth-link" onClick={()=>{setRole(null);setId('');setPw('');setMsg('');}}>← Choose another sign-in</button>
  </>}
+ <div className="auth-legal">By signing in or using Vypaar, you agree to the <a href="/terms-and-privacy.html" target="_blank" rel="noopener noreferrer">Terms of Service and Privacy Policy</a>.</div>
  <div className="auth-security"><KeyRound size={14}/> Keep your password private. Access is based on your account role.</div></form></div></div>;
 }
 export default App;
