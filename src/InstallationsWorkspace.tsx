@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { api, subscribeToApiChanges } from './lib/api';
+import { matchesSearch } from './lib/search';
 import { Download, FileText, Trash2 } from 'lucide-react';
 import { exportCsvFile, exportPdfReport } from './lib/file-export';
 
@@ -37,7 +38,7 @@ export default function InstallationsWorkspace({customers,staff,isAdmin,flash}:{
   const [address,setAddress]=useState(selectedCustomer?.address||'');
   const [notes,setNotes]=useState('');
   const [search,setSearch]=useState('');
-  const filteredItems=items.filter(item=>[item.customerName,item.phone||'',item.address,item.type,item.assignedToName,item.status].join(' ').toLowerCase().includes(search.toLowerCase()));
+  const filteredItems=items.filter(item=>matchesSearch(search,item.id,item.customerName,item.phone,item.address,item.type,item.scheduledDate,item.assignedToName,item.status,item.notes));
 
   async function load(){setLoading(true);try{const result=await api.get<{items:Installation[]}>('/api/installations');setItems(result.data.items||[]);}catch(error){flash(error instanceof Error?error.message:'Could not load installation jobs.');}finally{setLoading(false);}}
   useEffect(()=>{void load();},[]);
@@ -58,7 +59,7 @@ export default function InstallationsWorkspace({customers,staff,isAdmin,flash}:{
   }
 
   return <section className="panel table-panel">
-    <div className="toolbar"><div><h2>Installation jobs</h2><p className="subtle">Schedule new connections, upgrades, repairs and relocations.</p></div><div className="installation-toolbar-actions"><div className="searchbox"><input aria-label="Search installation jobs" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search customer, staff, address or status..."/></div><button className="btn secondary" disabled={!items.length} onClick={()=>exportInstallations(items)}><Download size={14}/> Export CSV</button><button className="btn secondary" disabled={!items.length} onClick={()=>exportInstallationsPdf(items)}><FileText size={14}/> Export PDF</button>{isAdmin&&<button className="btn primary" onClick={()=>{setEditingJob(null);setShowForm(value=>!value);}}>+ Schedule installation</button>}</div></div>
+    <div className="toolbar"><div><h2>Installation jobs</h2><p className="subtle">Schedule new connections, upgrades, repairs and relocations.</p></div><div className="installation-toolbar-actions"><div className="searchbox"><input aria-label="Search installation jobs" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search customer, staff, address or status..."/></div><button className="btn secondary" disabled={!items.length} onClick={()=>exportInstallations(filteredItems)}><Download size={14}/> Export CSV</button><button className="btn secondary" disabled={!items.length} onClick={()=>exportInstallationsPdf(filteredItems)}><FileText size={14}/> Export PDF</button>{isAdmin&&<button className="btn primary" onClick={()=>{setEditingJob(null);setShowForm(value=>!value);}}>+ Schedule installation</button>}</div></div>
     {showForm&&isAdmin&&<form className="installation-form" onSubmit={createJob}><strong className="installation-form-heading">{editingJob?'Edit installation job':'Schedule installation'}</strong>
       {!editingJob&&<label>Customer<select required value={customerId} onChange={e=>setCustomerId(e.target.value)}>{customers.map(item=><option key={item.id} value={item.id}>{item.name} · {item.phone||'Customer'}</option>)}</select></label>}
       <label>Assigned staff<select required value={assignedTo} onChange={e=>setAssignedTo(e.target.value)}>{staff.filter(item=>item.active).map(item=><option key={item.id} value={item.id}>{item.displayName}</option>)}</select></label>
