@@ -2268,3 +2268,12 @@ td,th{padding:12px 13px}
 [data-theme="dark"] .btn.secondary:hover {
   background: #22334a !important;
 }
+
+
+/* Keep appearance settings reachable on compact Android screens. */
+@media(max-width:420px){
+  .top-actions>.preference-controls{display:flex;align-items:center;gap:4px;min-width:0}
+  .top-actions>.preference-controls .theme-toggle{display:inline-flex;align-items:center;justify-content:center;min-width:34px;width:34px;height:34px;padding:0;flex:0 0 34px}
+  .top-actions>.preference-controls .theme-toggle span{display:none}
+  .top-actions>.preference-controls .language-control{min-width:0}
+}
