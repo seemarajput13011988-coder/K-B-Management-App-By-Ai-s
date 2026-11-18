@@ -7,7 +7,7 @@ import type { Request, Response, NextFunction } from 'express';
 const credentialJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON || '';
 if (!credentialJson) throw new Error('FIREBASE_SERVICE_ACCOUNT_JSON is required.');
 const credential = JSON.parse(credentialJson);
-const firebaseProjectId = String(process.env.FIREBASE_PROJECT_ID || credential.project_id || '').trim();
+const firebaseProjectId = String(process.env.FIREBASE_PROJECT_ID || '').trim();
 if (!firebaseProjectId || credential.project_id !== firebaseProjectId) {
   throw new Error('Firebase service account project does not match FIREBASE_PROJECT_ID.');
 }
