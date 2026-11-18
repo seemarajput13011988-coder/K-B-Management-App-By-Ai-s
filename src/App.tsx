@@ -1399,7 +1399,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                   </article>;
                 })}
               </div>
-              {!complaints.length && <Empty icon={<MessageSquare/>} title="No complaints yet" text="Create a customer or staff complaint to start tracking it." action="New complaint" onClick={() => setShowComplaint(true)}/>}
+              {!visibleComplaints.length && <Empty icon={<MessageSquare/>} title={complaints.length ? 'No matching complaints' : 'No complaints yet'} text={complaints.length ? 'Try another search term or change the status filter.' : 'Create a customer or staff complaint to start tracking it.'} action={complaints.length ? 'Clear filters' : 'New complaint'} onClick={() => { if (complaints.length) { setComplaintSearch(''); setComplaintStatusFilter('All'); setComplaintSort('recent'); } else setShowComplaint(true); }}/>} 
             </section>
           )}
           <footer>
