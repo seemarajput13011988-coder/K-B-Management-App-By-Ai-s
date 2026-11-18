@@ -434,6 +434,34 @@ export async function apiHandler(req: any, res: any) {
         send(res,200,{items,activeBusinessId:user.businessId}); return;
       }
 
+      if (path === '/api/business-profile' && method === 'GET') {
+        const business = await db.collection('businesses').doc(user.businessId).get();
+        send(res,200,{profile:business.data()?.profile || {}}); return;
+      }
+
+      if (path === '/api/business-profile' && method === 'PUT') {
+        if (!allow(user,['admin'],res)) return;
+        const input = body.profile && typeof body.profile === 'object' ? body.profile as Data : {};
+        const profile = {
+          name:clean(input.name,120),
+          gstin:clean(input.gstin,15).toUpperCase(),
+          phone:clean(input.phone,20),
+          ifsc:clean(input.ifsc,11).toUpperCase(),
+          address:clean(input.address,300),
+          email:clean(input.email,120).toLowerCase(),
+          state:clean(input.state,80),
+          stateCode:clean(input.stateCode,2),
+        };
+        if (!profile.name || !profile.address) { send(res,400,{error:'Enter the business name and registered address before saving.'}); return; }
+        if (profile.gstin && !/^[0-9A-Z]{15}$/.test(profile.gstin)) { send(res,400,{error:'Enter a valid 15-character GSTIN or leave it blank.'}); return; }
+        if (profile.stateCode && !/^\\d{2}$/.test(profile.stateCode)) { send(res,400,{error:'Business state code must contain two digits.'}); return; }
+        if (profile.ifsc && !/^[A-Z]{4}0[A-Z0-9]{6}$/.test(profile.ifsc)) { send(res,400,{error:'Enter a valid IFSC code or leave it blank.'}); return; }
+        if (profile.email && !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(profile.email)) { send(res,400,{error:'Enter a valid business email address.'}); return; }
+        await db.collection('businesses').doc(user.businessId).set({profile,updatedAt:now()},{merge:true});
+        await audit(user,'UPDATE','business_profile',user.businessId,'Updated invoice issuer business profile');
+        send(res,200,{saved:true,profile}); return;
+      }
+
       if (path === '/api/businesses' && method === 'POST') {
         if (!allow(user,['admin'],res)) return;
         const name = clean(body.name,100);
