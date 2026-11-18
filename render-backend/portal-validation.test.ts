@@ -60,5 +60,6 @@ test('rejects portal complaints without valid identity fields or required photo'
   assert.equal(isValidPortalComplaintInput({ ...valid, phone: '123' }), false);
   assert.equal(isValidPortalComplaintInput({ ...valid, mimeType: 'application/pdf' }), false);
   assert.equal(isValidPortalComplaintInput({ ...valid, dataBase64: '' }), false);
+  assert.equal(isValidPortalComplaintInput({ ...valid, dataBase64: 'not-base64!!!' }), false);
   assert.equal(isValidPortalComplaintInput({ ...valid, details: '' }), false);
 });
