@@ -24,16 +24,8 @@ jobs:
           set -eu
           curl --fail --silent --show-error --connect-timeout 15 --max-time 90 --retry 1 --retry-delay 5 --retry-all-errors "$HEALTH_URL"
 
-      - name: Run scheduled attendance, GPS and reminder checks
-        env:
-          JOB_URL: https://kandb-management-nexus-api-zv7f.onrender.com/internal/jobs/tick
-          K_B_JOB_SECRET: ${{ secrets.K_B_JOB_SECRET }}
+      - name: Confirm the Render in-process scheduler owns job execution
         run: |
           set -eu
-          if [ -z "${K_B_JOB_SECRET:-}" ]; then
-            echo "::error::K_B_JOB_SECRET is missing. Add it in GitHub Actions and make it match the Render JOB_SECRET."
-            exit 1
-          fi
-          curl --fail --silent --show-error --connect-timeout 15 --max-time 90 \
-            -X POST "$JOB_URL" \
-            -H "x-kb-job-secret: $K_B_JOB_SECRET"
+          echo "Render runs scheduled jobs internally at startup and every 60 seconds."
+          echo "This workflow only wakes the free-tier service; it does not call the protected job endpoint."
