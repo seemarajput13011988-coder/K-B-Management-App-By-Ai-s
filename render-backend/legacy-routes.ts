@@ -291,6 +291,139 @@ async function signIn(userId: string, password: string) {
 export const handler = router({
   'GET /api/_healthcheck': [async () => json({ message: 'Success' })],
 
+  // Public, read-only customer catalogue. Management Nexus remains the source of truth.
+  'GET /api/portal/plans': [async () => {
+    let result = await db.list<PlanRecord>('plans', { limit: 200 });
+    if (!result.items.length) {
+      await db.tx.add('plans', defaultPlans.map((plan, index) => ({ id: 'default-plan-' + (index + 1), ...plan })));
+      result = await db.list<PlanRecord>('plans', { limit: 200 });
+    }
+    const items = result.items.filter(plan => plan.active !== false).map(plan => ({
+      id: String(plan.id || ''),
+      name: plan.name,
+      price: Number(plan.price),
+      speed: plan.speed,
+      data: plan.data,
+      validity: '30 days',
+      tagline: cleanText(plan.note, 100),
+      idealFor: cleanText(plan.details, 140),
+      tag: plan.featured ? 'POPULAR PLAN' : cleanText(plan.provider, 24).toUpperCase(),
+      color: plan.connectionType.toLowerCase().includes('air') ? 'cyan' : plan.featured ? 'blue' : 'purple',
+      features: [cleanText(plan.note, 120), cleanText(plan.details, 140)].filter(Boolean),
+      active: true,
+      featured: plan.featured === true,
+      offerLabel: '',
+      provider: plan.provider,
+      connectionType: plan.connectionType,
+    }));
+    return json({ items, source: 'management-nexus' });
+  }],
+
+  // Customer-facing connection requests are leads, not active customer accounts.
+  // They are reviewed by an administrator before being converted into a customer record.
+  'POST /api/portal/connection-requests': [async ({ body }) => {
+    const input = (body || {}) as Record<string, unknown>;
+    const name = cleanText(input.name, 100);
+    const phone = cleanText(input.phone, 10);
+    const state = cleanText(input.state, 80);
+    const city = cleanText(input.city, 80);
+    const pincode = cleanText(input.pincode, 6);
+    const address = cleanText(input.address, 300);
+    const planId = cleanText(input.planId, 128);
+    const notes = cleanText(input.notes, 500);
+    if (!name || !/^\\d{10}$/.test(phone) || !state || !city || !/^\\d{6}$/.test(pincode) || !address || !planId) {
+      return error('Enter your name, valid mobile number, complete address and choose an available plan.', 400);
+    }
+    const [plan] = await db.get<PlanRecord>('plans', [planId], { consistent: true });
+    if (!plan || plan.active === false) return error('This plan is no longer available. Refresh the plan list and choose another.', 409);
+    const [existingCustomers, recentRequests] = await Promise.all([
+      db.list<Customer>('customers', { limit: 1000 }),
+      db.list<Record<string, unknown>>('portal_connection_requests', { limit: 1000 }),
+    ]);
+    const hasExistingCustomer = existingCustomers.items.some(item => item.phone === phone);
+    const hasRecentRequest = recentRequests.items.some(item =>
+      item.phone === phone && item.status === 'Pending' &&
+      Date.now() - Date.parse(String(item.createdAt || '')) < 7 * 24 * 60 * 60 * 1000
+    );
+    if (hasExistingCustomer || hasRecentRequest) {
+      return json({ accepted: true, message: 'Your request has been received or is already associated with an existing K&B record. Our team will review it.' }, 202);
+    }
+    const record = {
+      name,
+      phone,
+      state,
+      city,
+      pincode,
+      address,
+      planId,
+      plan: plan.name,
+      monthlyFee: Number(plan.price),
+      status: 'Pending',
+      source: 'customer-portal',
+      notes,
+      createdAt: new Date().toISOString(),
+    };
+    const [id] = await db.add('portal_connection_requests', [record]);
+    return id
+      ? json({ accepted: true, requestId: id, status: 'Pending', message: 'Your connection request has been sent to K&B for review.' }, 201)
+      : error('Your request could not be saved. Please try again.', 503);
+  }],
+
+  'GET /api/portal/connection-requests': protectedRoute(['admin'], async () => {
+    const result = await db.list<Record<string, unknown>>('portal_connection_requests', { limit: 500 });
+    const items = result.items.sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+    return json({ items });
+  }),
+
+  'POST /api/portal/connection-requests/:id/convert': protectedRoute(['admin'], async ({ params }, user) => {
+    const [request] = await db.get<Record<string, unknown>>('portal_connection_requests', [params.id], { consistent: true });
+    if (!request) return error('Portal connection request not found.', 404);
+    if (typeof request.customerId === 'string' && request.customerId) return json({ converted: true, customerId: request.customerId });
+    const phone = cleanText(request.phone, 10);
+    const [customers, plan] = await Promise.all([
+      db.list<Customer>('customers', { limit: 1000 }),
+      db.get<PlanRecord>('plans', [cleanText(request.planId, 128)], { consistent: true }),
+    ]);
+    if (customers.items.some(customer => customer.phone === phone)) return error('A customer record already uses this mobile number. Review that record instead of creating a duplicate.', 409);
+    const selectedPlan = plan[0];
+    if (!selectedPlan || selectedPlan.active === false) return error('The requested plan is no longer active. Update the request before converting it.', 409);
+    const record = {
+      name: cleanText(request.name, 100),
+      phone,
+      address: [cleanText(request.address, 300), cleanText(request.city, 80), cleanText(request.state, 80), cleanText(request.pincode, 6)].filter(Boolean).join(', '),
+      plan: selectedPlan.name,
+      monthlyFee: Number(selectedPlan.price),
+      status: 'Inactive',
+      joinedAt: new Date().toISOString().slice(0, 10),
+      dueDate: '',
+      notes: 'Created from Customer Nexus request. Awaiting K&B service confirmation.',
+      assignedTo: '',
+      assignedToName: '',
+      source: 'customer-portal',
+      portalRequestId: params.id,
+    };
+    if (!record.name || !/^\\d{10}$/.test(record.phone) || !record.address || !record.plan || !Number.isFinite(record.monthlyFee)) {
+      return error('The request details are incomplete. Review the request before converting it.', 400);
+    }
+    const [customerId] = await db.add('customers', [record]);
+    if (!customerId) return error('Could not create the customer record.', 500);
+    await db.tx.update('portal_connection_requests', [{ id: params.id, record: { status: 'Converted', customerId, convertedAt: new Date().toISOString(), convertedBy: user.id } }], { patch: true });
+    return json({ converted: true, customerId, customer: { id: customerId, ...record } }, 201);
+  }),
+
+  'PUT /api/portal/connection-requests/:id': protectedRoute(['admin'], async ({ params, body }, user) => {
+    const [existing] = await db.get<Record<string, unknown>>('portal_connection_requests', [params.id], { consistent: true });
+    if (!existing) return error('Portal connection request not found.', 404);
+    const status = cleanText((body || {}).status, 20);
+    if (!['Contacted', 'Rejected'].includes(status)) return error('Choose Contacted or Rejected.', 400);
+    const [updated] = await db.tx.update('portal_connection_requests', [{
+      id: params.id,
+      record: { status, reviewedAt: new Date().toISOString(), reviewedBy: user.id, reviewNote: cleanText((body || {}).reviewNote, 300) },
+    }], { patch: true });
+    return updated ? json({ updated: true, status }) : error('Could not update the request.', 500);
+  }),
+
+
   'POST /api/auth/login': [async ({ body }) => {
     const input = (body || {}) as Record<string, unknown>;
     const userId = cleanText(input.userId, 40);
