@@ -106,7 +106,7 @@
   background: #203b59;
 }
 @media (prefers-reduced-motion: reduce) {
-  .kb-app-shell :where(button, input, select, textarea) { transition: none !important; }
+  .kb-app-shell :where(button, input, select, textarea) { transition-duration: 0.01ms; }
 }
 @media (max-width: 600px) {
   .kb-app-shell :where(.finance-actions input, .subscription-toolbar-actions select) { min-height: 44px; }
