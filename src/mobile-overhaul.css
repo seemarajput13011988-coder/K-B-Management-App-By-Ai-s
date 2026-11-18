@@ -148,3 +148,78 @@
 @keyframes festival-glow { 0%,100% { box-shadow: 0 0 0 0 color-mix(in srgb,var(--festival-color) 0%,transparent); } 50% { box-shadow: 0 0 0 7px color-mix(in srgb,var(--festival-color) 10%,transparent); } }
 @keyframes sparkle-turn { to { transform: rotate(360deg); } }
 @media(prefers-reduced-motion:reduce){.page-transition,.festival-banner,.festival-banner-symbol,.festival-sparkle,.finance-chart-bar,.status-chart-row i{animation:none!important}}
+
+
+/* Customer Nexus intake: clear hierarchy, safe wrapping and thumb-friendly actions. */
+.portal-request-panel {
+  display: grid;
+  gap: 16px;
+  margin: 0 0 18px;
+  padding: clamp(15px,2vw,22px);
+  border: 1px solid #dce6f2;
+  border-radius: 19px;
+  background: linear-gradient(145deg,#fff 0%,#f7faff 100%);
+  box-shadow: 0 10px 28px rgba(28,55,91,.07);
+}
+.portal-request-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+.portal-request-heading h2 { margin: 4px 0 5px; color: #1b2d46; font-size: clamp(16px,2vw,19px); font-weight: 850; letter-spacing: -.35px; }
+.portal-request-heading p { margin: 0; max-width: 64ch; color: #708096; font-size: 11px; line-height: 1.55; }
+.portal-request-count {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  min-height: 29px;
+  padding: 5px 10px;
+  border: 1px solid #f3d9ad;
+  border-radius: 999px;
+  background: #fff7e9;
+  color: #9b5c12;
+  font-size: 10px;
+  font-weight: 850;
+  white-space: nowrap;
+}
+.portal-request-list { display: grid; gap: 10px; }
+.portal-request-card {
+  display: grid;
+  grid-template-columns: minmax(0,1fr) auto;
+  align-items: center;
+  gap: 15px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid #e4ebf4;
+  border-radius: 15px;
+  background: #fff;
+}
+.portal-request-main { display: grid; gap: 5px; min-width: 0; }
+.portal-request-main strong { color: #1d304b; font-size: 13px; font-weight: 850; }
+.portal-request-main span { color: #35516f; font-size: 11px; font-weight: 700; overflow-wrap: anywhere; }
+.portal-request-main small { color: #77869a; font-size: 10px; line-height: 1.45; overflow-wrap: anywhere; }
+.portal-request-main p { margin: 2px 0 0; color: #586a80; font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
+.portal-request-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 7px; max-width: 360px; }
+.portal-request-actions .btn { min-height: 36px; padding: 8px 11px; font-size: 10px; white-space: normal; }
+.portal-request-status { display: inline-flex; align-items: center; gap: 5px; color: #64748b; font-size: 10px; font-weight: 750; }
+.portal-request-status.approved { color: #16754a; }
+.portal-request-status.rejected { color: #b33c43; }
+.portal-request-status.contacted { color: #94610e; }
+[data-theme="dark"] .portal-request-panel { border-color: #2b405b; background: linear-gradient(145deg,#17263a,#142235); }
+[data-theme="dark"] .portal-request-heading h2,[data-theme="dark"] .portal-request-main strong { color: #edf4ff; }
+[data-theme="dark"] .portal-request-heading p,[data-theme="dark"] .portal-request-main small,[data-theme="dark"] .portal-request-main p { color: #a9b9cd; }
+[data-theme="dark"] .portal-request-main span { color: #c6d7ec; }
+[data-theme="dark"] .portal-request-card { border-color: #30445e; background: #1b2c42; }
+[data-theme="dark"] .portal-request-count { border-color: #66502d; background: #352b1d; color: #f3c77d; }
+@media(max-width:700px) {
+  .portal-request-panel { gap: 12px; margin-bottom: 14px; padding: 13px; border-radius: 16px; }
+  .portal-request-heading { align-items: flex-start; }
+  .portal-request-heading h2 { font-size: 15px; }
+  .portal-request-card { grid-template-columns: minmax(0,1fr); gap: 11px; padding: 12px; border-radius: 13px; }
+  .portal-request-actions { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); max-width: none; }
+  .portal-request-actions .btn { width: 100%; min-width: 0; min-height: 39px; }
+}
+@media(prefers-reduced-motion:reduce) {
+  .portal-request-card,.portal-request-panel { transition: none!important; }
+}

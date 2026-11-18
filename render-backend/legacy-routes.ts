@@ -1,6 +1,7 @@
 import { router, json, error, db, secrets, firestore, FieldValue } from './firestore-adapter.js';
 import type { RouterMiddleware } from './firestore-adapter.js';
 import { attendanceAbsenceDecision, computeShiftDeadline, isConfirmedGpsLossReason, isFreshLocationTimestamp, isGpsGraceExemptHolidayStatus, isValidDateRange } from './route-path.js';
+import { isValidPortalConnectionRequest, isValidPortalPlanChangeRequest, isValidPortalComplaintInput, isValidPortalImageSignature } from './portal-validation.js';
 import { createHash, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 const notifySubscribers = async (..._args: unknown[]) => undefined; // Live updates are refreshed through the authenticated API.
 
@@ -290,6 +291,394 @@ async function signIn(userId: string, password: string) {
 
 export const handler = router({
   'GET /api/_healthcheck': [async () => json({ message: 'Success' })],
+
+  // Public, read-only customer catalogue. Management Nexus remains the source of truth.
+  'GET /api/portal/plans': [async () => {
+    // Catalogue reads must never seed or otherwise mutate production Firestore data.
+    const result = await db.list<PlanRecord>('plans', { limit: 200 });
+    const items = result.items.filter(plan => plan.active !== false).map(plan => ({
+      id: String(plan.id || ''),
+      name: plan.name,
+      price: Number(plan.price),
+      speed: plan.speed,
+      data: plan.data,
+      validity: '30 days',
+      tagline: cleanText(plan.note, 100),
+      idealFor: cleanText(plan.details, 140),
+      tag: plan.featured ? 'POPULAR PLAN' : cleanText(plan.provider, 24).toUpperCase(),
+      color: plan.connectionType.toLowerCase().includes('air') ? 'cyan' : plan.featured ? 'blue' : 'purple',
+      features: [cleanText(plan.note, 120), cleanText(plan.details, 140)].filter(Boolean),
+      active: true,
+      featured: plan.featured === true,
+      offerLabel: '',
+      provider: plan.provider,
+      connectionType: plan.connectionType,
+    }));
+    return json({ items, source: 'management-nexus' });
+  }],
+
+  // Customer plan changes are requests only. The customer's phone is matched server-side;
+  // no account data is returned until K&B verifies the request and an administrator approves it.
+  'POST /api/portal/plan-change-requests': [async ({ body }) => {
+    const input = (body || {}) as Record<string, unknown>;
+    const phone = cleanText(input.phone, 10);
+    const planId = cleanText(input.planId, 128);
+    if (!isValidPortalPlanChangeRequest(input)) return error('Enter a valid 10-digit mobile number and choose a plan.', 400);
+    const genericPlanRequestResponse = () => json({ accepted: true, message: 'If the details match an active K&B connection, the request will be reviewed by our team.' }, 202);
+    const lockId = createHash('sha256').update(phone).digest('hex');
+    const lockRef = firestore.collection('portal_plan_change_request_locks').doc(lockId);
+    const requestRef = firestore.collection('portal_plan_change_requests').doc();
+    const result = await firestore.runTransaction(async transaction => {
+      const customerQuery = firestore.collection('customers').where('phone', '==', phone).limit(2);
+      const pendingQuery = firestore.collection('portal_plan_change_requests').where('phone', '==', phone).limit(100);
+      const planRef = firestore.collection('plans').doc(planId);
+      const [customerSnapshot, planSnapshot, pendingSnapshot, lockSnapshot] = await Promise.all([
+        transaction.get(customerQuery),
+        transaction.get(planRef),
+        transaction.get(pendingQuery),
+        transaction.get(lockRef),
+      ]);
+      const selectedPlan = planSnapshot.exists ? { ...(planSnapshot.data() as PlanRecord), id: planSnapshot.id } : undefined;
+      if (!selectedPlan || selectedPlan.active === false) return { kind: 'unavailable' as const };
+      const matchedCustomers = customerSnapshot.docs.map(doc => ({ ...(doc.data() as Customer), id: doc.id }));
+      const customer = matchedCustomers.length === 1 && matchedCustomers[0].status === 'Active' ? matchedCustomers[0] : undefined;
+      if (!customer || customer.plan === selectedPlan.name) return { kind: 'accepted' as const };
+
+      const lockedRequestId = cleanText(lockSnapshot.data()?.pendingRequestId, 128);
+      if (lockedRequestId) {
+        const lockedRequestRef = firestore.collection('portal_plan_change_requests').doc(lockedRequestId);
+        const lockedRequestSnapshot = await transaction.get(lockedRequestRef);
+        if (lockedRequestSnapshot.exists && lockedRequestSnapshot.data()?.status === 'Pending') {
+          return { kind: 'accepted' as const };
+        }
+      }
+      const existingPending = pendingSnapshot.docs.find(doc => doc.data().status === 'Pending');
+      if (existingPending) {
+        transaction.set(lockRef, {
+          phoneHash: lockId,
+          pendingRequestId: existingPending.id,
+          status: 'Pending',
+          updatedAt: new Date().toISOString(),
+        }, { merge: true });
+        return { kind: 'accepted' as const };
+      }
+
+      const createdAt = new Date().toISOString();
+      const record = {
+        id: requestRef.id,
+        customerId: customer.id,
+        customerName: customer.name,
+        phone,
+        currentPlan: customer.plan,
+        currentMonthlyFee: Number(customer.monthlyFee),
+        requestedPlanId: planId,
+        requestedPlan: selectedPlan.name,
+        requestedMonthlyFee: Number(selectedPlan.price),
+        requestLockId: lockId,
+        status: 'Pending',
+        source: 'customer-portal',
+        createdAt,
+      };
+      transaction.create(requestRef, record);
+      transaction.set(lockRef, {
+        phoneHash: lockId,
+        pendingRequestId: requestRef.id,
+        status: 'Pending',
+        updatedAt: createdAt,
+      });
+      return { kind: 'created' as const };
+    });
+    if (result.kind === 'unavailable') return error('This plan is no longer available. Refresh and choose another plan.', 409);
+    return genericPlanRequestResponse();
+  }],
+
+  'POST /api/portal/complaints': [async ({ body }) => {
+    const input = (body || {}) as Record<string, unknown>;
+    const phone = cleanText(input.phone, 10);
+    const subject = cleanText(input.subject, 150);
+    const details = cleanText(input.details, 1500);
+    const fileName = cleanText(input.fileName, 120) || 'router-photo';
+    const mimeType = cleanText(input.mimeType, 100).toLowerCase();
+    const dataBase64 = typeof input.dataBase64 === 'string' ? input.dataBase64.trim() : '';
+    if (!isValidPortalComplaintInput(input)) return error('Enter a valid mobile number, describe the issue and attach a JPG, PNG or WEBP router/modem photo (maximum 2 MB).', 400);
+    const customerSnapshot = await firestore.collection('customers').where('phone', '==', phone).limit(2).get();
+    const matches = customerSnapshot.docs.map(doc => ({ ...(doc.data() as Customer), id: doc.id }));
+    const customer = matches.length === 1 && matches[0].status === 'Active' ? matches[0] : undefined;
+    // A generic response prevents the public endpoint from confirming whether a phone has an account.
+    if (!customer) return json({ accepted: true, message: 'If the details match an active K&B connection, your support request will be reviewed by our team.' }, 202);
+    const buffer = Buffer.from(dataBase64, 'base64');
+    if (!buffer.length || buffer.length > 2 * 1024 * 1024 || buffer.toString('base64').replace(/=+$/, '') !== dataBase64.replace(/=+$/, '') ||
+        !isValidPortalImageSignature(buffer, mimeType)) {
+      return error('The router/modem photo is invalid or larger than 2 MB.', 400);
+    }
+    const complaint: Complaint = {
+      complaintFor: 'Customer',
+      customerId: customer.id,
+      customerName: customer.name,
+      subject,
+      details,
+      priority: 'Normal',
+      status: 'Pending',
+      createdAt: new Date().toISOString(),
+      createdBy: 'customer-portal',
+      createdByName: 'Customer portal · identity pending verification',
+      assignedTo: '',
+      assignedToName: '',
+    };
+    // Save the complaint and its media in one atomic batch. A failed upload leaves
+    // neither a half-created complaint nor a cleanup delete that could remove records.
+    try {
+      const complaintRef = firestore.collection('complaints').doc();
+      const mediaId = randomBytes(12).toString('hex');
+      const chunkSize = 400000;
+      const chunkCount = Math.ceil(dataBase64.length / chunkSize);
+      const collection = firestore.collection('complaint_media');
+      const batch = firestore.batch();
+      const createdAt = new Date().toISOString();
+      batch.create(complaintRef, { ...complaint, id: complaintRef.id });
+      const metadataRef = collection.doc();
+      batch.set(metadataRef, { complaintId: complaintRef.id, mediaId, chunkIndex: -1, fileName, mimeType, size: buffer.length, chunkCount, createdAt, uploadedBy: 'customer-portal', uploadedByName: 'Customer portal' });
+      for (let index = 0; index < chunkCount; index += 1) {
+        const ref = collection.doc();
+        batch.set(ref, { complaintId: complaintRef.id, mediaId, chunkIndex: index, data: dataBase64.slice(index * chunkSize, (index + 1) * chunkSize) });
+      }
+      await batch.commit();
+      return json({ accepted: true, message: 'If the details match an active K&B connection, your support request will be reviewed by our team.' }, 202);
+    } catch {
+      return error('The photo could not be saved, so no complaint was submitted. Please try again.', 503);
+    }
+  }],
+
+  'GET /api/portal/plan-change-requests': protectedRoute(['admin'], async () => {
+    const result = await db.list<Record<string, unknown>>('portal_plan_change_requests', { limit: 500 });
+    return json({ items: result.items.sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || ''))) });
+  }),
+
+  'POST /api/portal/plan-change-requests/:id/decision': protectedRoute(['admin'], async ({ params, body }, user) => {
+    const decision = cleanText((body || {}).decision, 20);
+    if (!['Approved', 'Rejected'].includes(decision)) return error('Choose Approved or Rejected.', 400);
+    const requestRef = firestore.collection('portal_plan_change_requests').doc(params.id);
+    const result = await firestore.runTransaction(async transaction => {
+      const requestSnapshot = await transaction.get(requestRef);
+      if (!requestSnapshot.exists) return { ok: false as const, statusCode: 404, message: 'Plan-change request not found.' };
+      const request = requestSnapshot.data() || {};
+      if (request.status !== 'Pending') return { ok: false as const, statusCode: 409, message: 'This request has already been reviewed.' };
+
+      const lockId = cleanText(request.requestLockId, 128);
+      const lockRef = lockId ? firestore.collection('portal_plan_change_request_locks').doc(lockId) : null;
+      const lockSnapshot = lockRef ? await transaction.get(lockRef) : null;
+      if (decision === 'Approved') {
+        const customerId = cleanText(request.customerId, 128);
+        const planId = cleanText(request.requestedPlanId, 128);
+        const customerRef = firestore.collection('customers').doc(customerId);
+        const planRef = firestore.collection('plans').doc(planId);
+        const [customerSnapshot, planSnapshot] = await Promise.all([
+          transaction.get(customerRef),
+          transaction.get(planRef),
+        ]);
+        const existingCustomer = customerSnapshot.data() as Customer | undefined;
+        const selectedPlan = planSnapshot.data() as PlanRecord | undefined;
+        if (!customerSnapshot.exists || !existingCustomer || existingCustomer.status !== 'Active') {
+          return { ok: false as const, statusCode: 409, message: 'The customer is no longer active. Review the customer record before approving.' };
+        }
+        if (existingCustomer.plan !== request.currentPlan) {
+          return { ok: false as const, statusCode: 409, message: 'The customer plan changed after this request was submitted. Refresh the customer record and review again.' };
+        }
+        if (!planSnapshot.exists || !selectedPlan || selectedPlan.active === false) {
+          return { ok: false as const, statusCode: 409, message: 'The requested plan is no longer active. Ask the customer to choose another plan.' };
+        }
+        const reviewedAt = new Date().toISOString();
+        transaction.update(customerRef, { plan: selectedPlan.name, monthlyFee: Number(selectedPlan.price), updatedAt: reviewedAt });
+        transaction.update(requestRef, {
+          status: 'Approved', reviewedAt, reviewedBy: user.id, reviewedByName: user.displayName,
+          appliedPlan: selectedPlan.name, appliedMonthlyFee: Number(selectedPlan.price),
+        });
+        if (lockRef && lockSnapshot?.exists && lockSnapshot.data()?.pendingRequestId === params.id) {
+          transaction.update(lockRef, { status: 'Closed', pendingRequestId: null, reviewedAt, reviewedBy: user.id });
+        }
+        return { ok: true as const, status: 'Approved' as const, customerId: cleanText(request.customerId, 128), plan: selectedPlan.name, monthlyFee: Number(selectedPlan.price) };
+      }
+
+      const reviewedAt = new Date().toISOString();
+      transaction.update(requestRef, {
+        status: 'Rejected', reviewedAt, reviewedBy: user.id, reviewedByName: user.displayName,
+        reviewNote: cleanText((body || {}).reviewNote, 300),
+      });
+      if (lockRef && lockSnapshot?.exists && lockSnapshot.data()?.pendingRequestId === params.id) {
+        transaction.update(lockRef, { status: 'Closed', pendingRequestId: null, reviewedAt, reviewedBy: user.id });
+      }
+      return { ok: true as const, status: 'Rejected' as const, requestId: params.id };
+    });
+    if (!result.ok) return error(result.message, result.statusCode);
+    if (result.status === 'Approved') {
+      await writeAudit(user, 'UPDATE', 'customer', result.customerId, 'Approved customer portal plan change to ' + result.plan);
+      return json({ updated: true, status: 'Approved', customerId: result.customerId, plan: result.plan, monthlyFee: result.monthlyFee });
+    }
+    await writeAudit(user, 'UPDATE', 'portal_plan_change_request', result.requestId, 'Rejected customer portal plan-change request');
+    return json({ updated: true, status: 'Rejected' });
+  }),
+
+  // Customer-facing connection requests are leads, not active customer accounts.
+  // They are reviewed by an administrator before being converted into a customer record.
+  'POST /api/portal/connection-requests': [async ({ body }) => {
+    const input = (body || {}) as Record<string, unknown>;
+    const name = cleanText(input.name, 100);
+    const phone = cleanText(input.phone, 10);
+    const state = cleanText(input.state, 80);
+    const city = cleanText(input.city, 80);
+    const pincode = cleanText(input.pincode, 6);
+    const address = cleanText(input.address, 300);
+    const planId = cleanText(input.planId, 128);
+    const notes = cleanText(input.notes, 500);
+    const paymentPreference = input.paymentPreference === 'Cash after installation' ? 'Cash after installation' : 'To be discussed with K&B';
+    if (!isValidPortalConnectionRequest(input)) {
+      return error('Enter your name, valid mobile number, complete address and choose an available plan.', 400);
+    }
+
+    // A deterministic phone lock makes duplicate prevention safe under concurrent submits.
+    const lockId = createHash('sha256').update(phone).digest('hex');
+    const lockRef = firestore.collection('portal_connection_request_locks').doc(lockId);
+    const requestRef = firestore.collection('portal_connection_requests').doc();
+    const planRef = firestore.collection('plans').doc(planId);
+    const result = await firestore.runTransaction(async transaction => {
+      const customerQuery = firestore.collection('customers').where('phone', '==', phone).limit(2);
+      const recentQuery = firestore.collection('portal_connection_requests').where('phone', '==', phone).limit(100);
+      const [customerSnapshot, planSnapshot, recentSnapshot, lockSnapshot] = await Promise.all([
+        transaction.get(customerQuery),
+        transaction.get(planRef),
+        transaction.get(recentQuery),
+        transaction.get(lockRef),
+      ]);
+      const selectedPlan = planSnapshot.exists ? { ...(planSnapshot.data() as PlanRecord), id: planSnapshot.id } : undefined;
+      if (!selectedPlan || selectedPlan.active === false) return { kind: 'unavailable' as const };
+      if (!customerSnapshot.empty) return { kind: 'already-known' as const };
+
+      const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+      const recentPending = recentSnapshot.docs.find(doc =>
+        doc.data().status === 'Pending' && Date.parse(String(doc.data().createdAt || '')) >= cutoff
+      );
+      const lockedRequestId = cleanText(lockSnapshot.data()?.pendingRequestId, 128);
+      const lockedAt = Date.parse(String(lockSnapshot.data()?.updatedAt || ''));
+      const recentLockedRequest = lockSnapshot.exists
+        && lockSnapshot.data()?.status === 'Pending'
+        && !!lockedRequestId
+        && Number.isFinite(lockedAt)
+        && lockedAt >= cutoff;
+      if (recentPending || recentLockedRequest) {
+        return { kind: 'already-known' as const };
+      }
+
+      const createdAt = new Date().toISOString();
+      const record = {
+        id: requestRef.id,
+        name,
+        phone,
+        state,
+        city,
+        pincode,
+        address,
+        planId,
+        plan: selectedPlan.name,
+        monthlyFee: Number(selectedPlan.price),
+        paymentPreference,
+        status: 'Pending',
+        source: 'customer-portal',
+        notes,
+        createdAt,
+      };
+      transaction.create(requestRef, record);
+      transaction.set(lockRef, {
+        phoneHash: lockId,
+        pendingRequestId: requestRef.id,
+        status: 'Pending',
+        updatedAt: createdAt,
+      }, { merge: true });
+      return { kind: 'created' as const, requestId: requestRef.id };
+    });
+
+    if (result.kind === 'unavailable') return error('This plan is no longer available. Refresh and choose another plan.', 409);
+    if (result.kind !== 'created') {
+      return json({ accepted: true, message: 'Your request has been received or is already associated with an existing K&B record. Our team will review it.' }, 202);
+    }
+    return json({ accepted: true, requestId: result.requestId, status: 'Pending', message: 'Your connection request has been sent to K&B for review.' }, 201);
+  }],
+
+  'GET /api/portal/connection-requests': protectedRoute(['admin'], async () => {
+    const result = await db.list<Record<string, unknown>>('portal_connection_requests', { limit: 500 });
+    const items = result.items.sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+    return json({ items });
+  }),
+
+  'POST /api/portal/connection-requests/:id/convert': protectedRoute(['admin'], async ({ params }, user) => {
+    const requestRef = firestore.collection('portal_connection_requests').doc(params.id);
+    const customerRef = firestore.collection('customers').doc();
+    const result = await firestore.runTransaction(async transaction => {
+      const requestSnapshot = await transaction.get(requestRef);
+      if (!requestSnapshot.exists) return { kind: 'not-found' as const };
+      const request = requestSnapshot.data() || {};
+      const existingCustomerId = cleanText(request.customerId, 128);
+      if (existingCustomerId) return { kind: 'already-converted' as const, customerId: existingCustomerId };
+      if (request.status !== 'Pending') return { kind: 'not-pending' as const };
+
+      const phone = cleanText(request.phone, 10);
+      const planId = cleanText(request.planId, 128);
+      const planRef = firestore.collection('plans').doc(planId);
+      const customerQuery = firestore.collection('customers').where('phone', '==', phone).limit(2);
+      const lockId = createHash('sha256').update(phone).digest('hex');
+      const lockRef = firestore.collection('portal_connection_request_locks').doc(lockId);
+      const [planSnapshot, customerSnapshot, lockSnapshot] = await Promise.all([
+        transaction.get(planRef),
+        transaction.get(customerQuery),
+        transaction.get(lockRef),
+      ]);
+      if (!customerSnapshot.empty) return { kind: 'duplicate-customer' as const };
+      const selectedPlan = planSnapshot.data() as PlanRecord | undefined;
+      if (!planSnapshot.exists || !selectedPlan || selectedPlan.active === false) return { kind: 'plan-unavailable' as const };
+
+      const record = {
+        id: customerRef.id,
+        name: cleanText(request.name, 100),
+        phone,
+        address: [cleanText(request.address, 300), cleanText(request.city, 80), cleanText(request.state, 80), cleanText(request.pincode, 6)].filter(Boolean).join(', '),
+        plan: selectedPlan.name,
+        monthlyFee: Number(selectedPlan.price),
+        status: 'Inactive',
+        joinedAt: indiaDateKey(),
+        dueDate: '',
+        notes: 'Created from Customer Nexus request. Awaiting K&B service confirmation.',
+        assignedTo: '',
+        assignedToName: '',
+        source: 'customer-portal',
+        portalRequestId: params.id,
+      };
+      if (!record.name || !/^[0-9]{10}$/.test(record.phone) || !record.address || !record.plan || !Number.isFinite(record.monthlyFee)) {
+        return { kind: 'invalid-request' as const };
+      }
+
+      const convertedAt = new Date().toISOString();
+      transaction.create(customerRef, record);
+      transaction.update(requestRef, {
+        status: 'Converted',
+        customerId: customerRef.id,
+        convertedAt,
+        convertedBy: user.id,
+        convertedByName: user.displayName,
+      });
+      if (lockSnapshot.exists && lockSnapshot.data()?.pendingRequestId === params.id) {
+        transaction.set(lockRef, { status: 'Closed', pendingRequestId: null, convertedAt }, { merge: true });
+      }
+      return { kind: 'converted' as const, customerId: customerRef.id, customer: record };
+    });
+
+    if (result.kind === 'not-found') return error('Portal connection request not found.', 404);
+    if (result.kind === 'not-pending') return error('This connection request is no longer pending.', 409);
+    if (result.kind === 'duplicate-customer') return error('A customer record already uses this mobile number. Review that record instead of creating a duplicate.', 409);
+    if (result.kind === 'plan-unavailable') return error('The requested plan is no longer active. Update the request before converting it.', 409);
+    if (result.kind === 'invalid-request') return error('The request details are incomplete. Review the request before converting it.', 400);
+    if (result.kind === 'already-converted') return json({ converted: true, customerId: result.customerId });
+    await writeAudit(user, 'CREATE', 'customer', result.customerId, 'Converted customer portal connection request');
+    return json({ converted: true, customerId: result.customerId, customer: result.customer }, 201);
+  }),
 
   'POST /api/auth/login': [async ({ body }) => {
     const input = (body || {}) as Record<string, unknown>;

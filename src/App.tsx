@@ -36,7 +36,6 @@ import {
   Users,
   Wifi,
   X,
-  Zap,
   CalendarDays,
   Phone,
   MapPin,
@@ -202,6 +201,8 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   const taskPage = isAdmin ? 'Tasks' : 'My Work';
   const [page, setPage] = useState('Overview');
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [portalRequests, setPortalRequests] = useState<any[]>([]);
+  const [portalPlanChangeRequests, setPortalPlanChangeRequests] = useState<any[]>([]);
   const [plans, setPlans] = useState<Plan[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [complaints, setComplaints] = useState<Complaint[]>([]);
@@ -304,13 +305,15 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
       setComplaints((t.data.items || []).map((item: Complaint) => ({ ...item, status: item.status === 'Open' ? 'Pending' : item.status === 'In progress' ? 'In Progress' : item.status === 'Resolved' ? 'Solved' : item.status })));
       setTasks(w.data.items || []);
       if (isAdmin) {
-        const [s, requests, inventoryResult, installationResult, payrollResult, holidayResult] = await Promise.all([api.get('/api/staff'),api.get('/api/staff-registration-requests'),api.get('/api/inventory'),api.get('/api/installations'),api.get('/api/payroll'),api.get('/api/holidays')]);
+        const [s, requests, inventoryResult, installationResult, payrollResult, holidayResult, portalResult, portalPlanResult] = await Promise.all([api.get('/api/staff'),api.get('/api/staff-registration-requests'),api.get('/api/inventory'),api.get('/api/installations'),api.get('/api/payroll'),api.get('/api/holidays'),api.get('/api/portal/connection-requests'),api.get('/api/portal/plan-change-requests')]);
         setStaff(s.data.items || []);
         setStaffRegistrationRequests(requests.data.items || []);
         setStaffHolidayRequests(holidayResult.data.items || []);
         setStaffInventory(inventoryResult.data.items || []);
         setStaffInstallations(installationResult.data.items || []);
         setStaffPayroll(payrollResult.data.items || []);
+        setPortalRequests(portalResult.data.items || []);
+        setPortalPlanChangeRequests(portalPlanResult.data.items || []);
         try {
           const review = await api.get('/api/retention/review');
           setRetentionItems((review.data.items || []) as RetentionReviewItem[]);
@@ -1023,183 +1026,84 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
           </Suspense>
 
           {page === 'Overview' && (
-            <>
-              <div className="welcome-strip">
-                <div className="welcome-symbol">
-                  <Zap size={21} />
-                </div>
-                <div>
-                  <strong>Your network, one clear view.</strong>
-                  <span>
-                    Customer records and service activity in one place.
-                  </span>
-                </div>
-                <div className="strip-right">
-                  <span>LIVE OVERVIEW</span>
-                  <i />
-                </div>
-              </div>
-
-              <section className="quick-actions" aria-label="Quick actions">
-                <button type="button" onClick={() => setPage('Customers')}><Users size={18}/><span>Customers</span><small>Find and manage</small></button>
-                <button type="button" onClick={() => setPage('Complaints')}><MessageSquare size={18}/><span>Complaints</span><small>Track issues</small></button>
-                {isAdmin && <button type="button" onClick={() => { setEditing(null); setShowCustomer(true); }}><Plus size={18}/><span>Add customer</span><small>Create a record</small></button>}
-                {isAdmin && <button type="button" onClick={() => setPage('Salary')}><IndianRupee size={18}/><span>Salary</span><small>Staff operations</small></button>}
-                {!isAdmin && <button type="button" onClick={() => setPage('My Work')}><ClipboardList size={18}/><span>My work</span><small>See assigned tasks</small></button>}
-              </section>
+            <section className="kb-overview" aria-label="Operations overview">
+              <nav className="kb-overview-actions" aria-label="Overview shortcuts">
+                <button type="button" onClick={() => setPage('Customers')}><Users size={18}/><span>Customers</span><small>Browse records</small></button>
+                <button type="button" onClick={() => setPage('Complaints')}><MessageSquare size={18}/><span>Complaints</span><small>Resolve issues</small></button>
+                {isAdmin && <button type="button" onClick={() => { setEditing(null); setShowCustomer(true); }}><Plus size={18}/><span>Add customer</span><small>Create connection</small></button>}
+                {isAdmin && <button type="button" onClick={() => setPage('Salary')}><IndianRupee size={18}/><span>Salary</span><small>Team payments</small></button>}
+                {!isAdmin && <button type="button" onClick={() => setPage('My Work')}><ClipboardList size={18}/><span>My work</span><small>Assigned tasks</small></button>}
+              </nav>
 
               {isAdmin && (
-                <section className="panel retention-review-panel">
-                  <div className="panel-head">
-                    <div>
-                      <h2>Six-month record review</h2>
-                      <p>Records saved or created at least six months ago. Nothing is deleted automatically.</p>
-                    </div>
-                    <span className="live-tag">{retentionItems.length} DUE</span>
+                <aside className="kb-overview-review" aria-label="Records due for review">
+                  <div className="kb-overview-review-copy">
+                    <Clock3 size={17}/>
+                    <div><strong>Record review</strong><span>Older records are ready for a six-month review. Nothing is deleted automatically.</span></div>
                   </div>
-                  {retentionItems.length ? (
-                    <div className="retention-review-list">
-                      {retentionItems.map(item => (
-                        <div className="snapshot-row" key={item.collection + ':' + item.id}>
-                          <div className="snapshot-icon orange-bg"><Clock3 /></div>
-                          <div className="retention-review-details">
-                            <strong>{item.recordLabel}</strong>
-                            <small>{item.collectionLabel} · Saved {dateLabel(item.createdAt)}</small>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="retention-review-empty">No records are currently due for review.</p>
-                  )}
-                </section>
+                  <strong className="kb-overview-review-count"><span>{retentionItems.length}</span><em>Due</em></strong>
+                  {retentionItems.length > 0 && <div className="kb-overview-review-list">{retentionItems.slice(0,3).map(item=><span key={item.collection+':'+item.id}>{item.recordLabel} <small>· {dateLabel(item.createdAt)}</small></span>)}</div>}
+                  {retentionItems.length === 0 && <span className="kb-overview-review-clear"><CheckCircle2 size={14}/> No records due right now</span>}
+                </aside>
               )}
 
-              <div className="stats-grid">
-                <Stat
-                  icon={<Users />}
-                  label={isAdmin ? 'Total customers' : 'My assigned customers'}
-                  value={customers.length}
-                  foot={isAdmin ? 'All registered connections' : 'Customers assigned to your account'}
-                  tint="blue"
-                />
-                <Stat
-                  icon={isAdmin ? <Activity /> : <ClipboardList />}
-                  label={isAdmin ? 'Active connections' : 'My pending tasks'}
-                  value={isAdmin ? active : pendingTasks}
-                  foot={isAdmin ? (customers.length ? Math.round((active / customers.length) * 100) + '% of total customers' : 'No customers yet') : 'Assigned work not yet completed'}
-                  tint="green"
-                />
-                <Stat
-                  icon={<IndianRupee />}
-                  label={isAdmin ? 'Payments recorded' : 'My collections'}
-                  value={money(collected)}
-                  foot={isAdmin ? 'Total recorded collections' : 'Payments recorded by you'}
-                  tint="purple"
-                />
-                <Stat
-                  icon={<MessageSquare />}
-                  label="Open complaints"
-                  value={openComplaints}
-                  foot="Awaiting resolution"
-                  tint="orange"
-                />
-              </div>
-              <div className="overview-grid">
-                <section className="panel">
-                  <div className="panel-head">
-                    <div>
-                      <h2>Recent customers</h2>
-                      <p>Latest connections added to your records</p>
-                    </div>
-                    <button
-                      className="text-btn"
-                      onClick={() => setPage('Customers')}
-                    >
-                      View all <span>→</span>
-                    </button>
-                  </div>
-                  <CustomerTable
-                    rows={customers.slice(0, 5)}
-                    onView={setSelected}
-                  />
-                  {!customers.length && (
-                    <Empty
-                      icon={<Users />}
-                      title="No customers yet"
-                      text="Add your first customer to start building your records."
-                      action={isAdmin ? 'Add customer' : undefined}
-                      onClick={() => setShowCustomer(true)}
-                    />
-                  )}
-                </section>
-                <section className="panel activity-panel">
-                  <div className="panel-head">
-                    <div>
-                      <h2>Service snapshot</h2>
-                      <p>Current operational summary</p>
-                    </div>
-                    <span className="live-tag">
-                      <i /> LIVE
-                    </span>
-                  </div>
-                  <div className="snapshot-row">
-                    <div className="snapshot-icon blue-bg">
-                      <Wifi />
-                    </div>
-                    <div>
-                      <strong>Active connections</strong>
-                      <small>Currently marked active</small>
-                    </div>
-                    <b>{active}</b>
-                  </div>
-                  <div className="snapshot-row">
-                    <div className="snapshot-icon orange-bg">
-                      <Clock3 />
-                    </div>
-                    <div>
-                      <strong>Monthly plan value</strong>
-                      <small>Based on active customers</small>
-                    </div>
-                    <b>{money(pending)}</b>
-                  </div>
-                  <div className="snapshot-row">
-                    <div className="snapshot-icon purple-bg">
-                      <MessageSquare />
-                    </div>
-                    <div>
-                      <strong>Pending complaints</strong>
-                      <small>Need attention</small>
-                    </div>
-                    <b>{openComplaints}</b>
-                  </div>
-                  <div className="snapshot-note">
-                    <CheckCircle2 size={16} /> Your customer workspace is ready
-                    to use.
-                  </div>
-                </section>
-              </div>
-              <div className="chart-grid">
-                <MonthlyChart title={isAdmin ? 'Monthly collections' : 'Your recorded collections'} subtitle="Payment totals from the last six months" items={payments} dateKey="paidAt" valueKey="amount" moneyValue />
-                <MonthlyChart title="Customer additions" subtitle={isAdmin ? 'New connections added each month' : 'Your assigned customer base by join date'} items={customers} dateKey="joinedAt" countOnly />
-              </div>
-              {isAdmin && <div className="chart-grid"><StatusChart complaints={complaints} /><OverduePanel value={overdueValue} /></div>}
-              <section className="panel bottom-panel">
-                <div className="panel-head">
-                  <div>
-                    <h2>Recent payments</h2>
-                    <p>Latest recorded customer payments</p>
-                  </div>
-                  <button
-                    className="text-btn"
-                    onClick={() => setPage('Payments')}
-                  >
-                    View payments →
-                  </button>
-                </div>
-                <PaymentTable rows={payments.slice(0, 4)} />
+              <section className="kb-overview-metrics" aria-label="Business snapshot">
+                <article className="kb-overview-metric">
+                  <span className="kb-overview-metric-icon"><Users size={18}/></span>
+                  <div><small>{isAdmin ? 'Total customers' : 'My assigned customers'}</small><strong>{customers.length.toLocaleString('en-IN')}</strong><span>{isAdmin ? 'Registered connections' : 'Currently assigned to you'}</span></div>
+                </article>
+                <article className="kb-overview-metric">
+                  <span className="kb-overview-metric-icon"><Activity size={18}/></span>
+                  <div><small>{isAdmin ? 'Active connections' : 'Pending tasks'}</small><strong>{(isAdmin ? active : pendingTasks).toLocaleString('en-IN')}</strong><span>{isAdmin ? (customers.length ? Math.round(active/customers.length*100)+'% of customer base' : 'No customers yet') : 'Assigned work to complete'}</span></div>
+                </article>
+                <article className="kb-overview-metric">
+                  <span className="kb-overview-metric-icon"><IndianRupee size={18}/></span>
+                  <div><small>{isAdmin ? 'Payments recorded' : 'My collections'}</small><strong>{money(collected)}</strong><span>{isAdmin ? 'Total recorded collections' : 'Payments recorded by you'}</span></div>
+                </article>
+                <article className="kb-overview-metric">
+                  <span className="kb-overview-metric-icon"><MessageSquare size={18}/></span>
+                  <div><small>Open complaints</small><strong>{openComplaints.toLocaleString('en-IN')}</strong><span>Awaiting resolution</span></div>
+                </article>
               </section>
-            </>
+
+              <div className="kb-overview-main">
+                <section className="kb-overview-section kb-overview-customers">
+                  <header className="kb-overview-section-head">
+                    <div><h2>Recent customers</h2><p>Latest connections added to your records</p></div>
+                    <button className="kb-overview-link" type="button" onClick={() => setPage('Customers')}>View all <span>→</span></button>
+                  </header>
+                  <CustomerTable rows={customers.slice(0,5)} onView={setSelected}/>
+                  {!customers.length && <Empty icon={<Users/>} title="No customers yet" text="Add your first customer to start building your records." action={isAdmin ? 'Add customer' : undefined} onClick={() => setShowCustomer(true)}/>}
+                </section>
+
+                <section className="kb-overview-section kb-overview-service">
+                  <header className="kb-overview-section-head">
+                    <div><h2>Service snapshot</h2><p>Current operational summary</p></div>
+                    <span className="kb-overview-live"><i/> Live</span>
+                  </header>
+                  <div className="kb-overview-service-list">
+                    <div className="kb-overview-service-row"><span className="kb-overview-service-icon"><Wifi size={17}/></span><div><strong>Active connections</strong><small>Currently marked active</small></div><b>{active}</b></div>
+                    <div className="kb-overview-service-row"><span className="kb-overview-service-icon"><Clock3 size={17}/></span><div><strong>Monthly plan value</strong><small>Based on active customers</small></div><b>{money(pending)}</b></div>
+                    <div className="kb-overview-service-row"><span className="kb-overview-service-icon"><MessageSquare size={17}/></span><div><strong>Pending complaints</strong><small>Need attention</small></div><b>{openComplaints}</b></div>
+                  </div>
+                  <p className="kb-overview-service-note"><CheckCircle2 size={15}/> Your customer workspace is ready to use.</p>
+                </section>
+              </div>
+
+              <div className="kb-overview-charts">
+                <MonthlyChart title={isAdmin ? 'Monthly collections' : 'Your recorded collections'} subtitle="Payment totals from the last six months" items={payments} dateKey="paidAt" valueKey="amount" moneyValue/>
+                <MonthlyChart title="Customer additions" subtitle={isAdmin ? 'New connections added each month' : 'Your assigned customer base by join date'} items={customers} dateKey="joinedAt" countOnly/>
+              </div>
+              {isAdmin && <div className="kb-overview-charts kb-overview-admin-charts"><StatusChart complaints={complaints}/><OverduePanel value={overdueValue}/></div>}
+
+              <section className="kb-overview-section kb-overview-payments">
+                <header className="kb-overview-section-head">
+                  <div><h2>Recent payments</h2><p>Latest recorded customer payments</p></div>
+                  <button className="kb-overview-link" type="button" onClick={() => setPage('Payments')}>View payments <span>→</span></button>
+                </header>
+                <PaymentTable rows={payments.slice(0,4)}/>
+              </section>
+            </section>
           )}
 
           {page === 'Admin Accounts' && canManageAdmins && (
@@ -1318,6 +1222,60 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
             </section>
           )}
 
+          {page === 'Customers' && isAdmin && portalRequests.some(request => request.status === 'Pending') && (
+            <section className="panel portal-request-panel">
+              <div className="portal-request-heading">
+                <div><span className="eyebrow">CUSTOMER NEXUS · LIVE INTAKE</span><h2>New connection requests</h2><p>These requests were submitted through the customer portal and are not active customer accounts yet.</p></div>
+                <span className="portal-request-count">{portalRequests.filter(request => request.status === 'Pending').length} pending</span>
+              </div>
+              <div className="portal-request-list">
+                {portalRequests.filter(request => request.status === 'Pending').map(request => (
+                  <article className="portal-request-card" key={request.id}>
+                    <div className="portal-request-main">
+                      <strong>{request.name}</strong>
+                      <span>{request.phone} · {request.plan} · {money(Number(request.monthlyFee || 0))}/month</span>
+                      <small>{[request.address, request.city, request.state, request.pincode].filter(Boolean).join(', ')}</small>
+                      <small>Received {dateLabel(request.createdAt)}</small>
+                      {request.notes && <p>{request.notes}</p>}
+                    </div>
+                    <div className="portal-request-actions">
+                      <button className="btn primary compact" onClick={async () => { try { await api.post('/api/portal/connection-requests/' + encodeURIComponent(request.id) + '/convert', {}); flash('Request converted to an inactive customer record. Confirm service details before activation.'); await load(true); } catch (error) { flash(error instanceof Error ? error.message : 'Could not convert this request.'); } }}>Convert to customer</button>
+                      <button className="btn secondary compact" onClick={async () => { try { await api.put('/api/portal/connection-requests/' + encodeURIComponent(request.id), { status: 'Contacted' }); flash('Request marked as contacted.'); await load(true); } catch (error) { flash(error instanceof Error ? error.message : 'Could not update this request.'); } }}>Mark contacted</button>
+                      <button className="btn danger compact" onClick={async () => { try { await api.put('/api/portal/connection-requests/' + encodeURIComponent(request.id), { status: 'Rejected' }); flash('Request marked as rejected.'); await load(true); } catch (error) { flash(error instanceof Error ? error.message : 'Could not update this request.'); } }}>Reject</button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </section>
+          )}
+          {page === 'Customers' && isAdmin && portalPlanChangeRequests.length > 0 && (
+            <section className="panel portal-request-panel">
+              <div className="portal-request-heading">
+                <div><span className="eyebrow">CUSTOMER NEXUS · PLAN MANAGEMENT</span><h2>Customer plan-change requests</h2><p>Approve only after verifying the customer and confirming the requested service plan.</p></div>
+                <span className="portal-request-count">{portalPlanChangeRequests.filter(request => request.status === 'Pending').length} pending</span>
+              </div>
+              <div className="portal-request-list">
+                {portalPlanChangeRequests.map(request => (
+                  <article className="portal-request-card" key={request.id}>
+                    <div className="portal-request-main">
+                      <strong>{request.customerName}</strong>
+                      <span>{request.phone} · {request.currentPlan} → {request.requestedPlan}</span>
+                      <small>{money(Number(request.currentMonthlyFee || 0))}/month → {money(Number(request.requestedMonthlyFee || 0))}/month</small>
+                      <small>Received {dateLabel(request.createdAt)} · Customer identity must be verified before approval</small>
+                    </div>
+                    {request.status === 'Pending' ? (
+                      <div className="portal-request-actions">
+                        <button className="btn primary compact" onClick={async () => { try { await api.post('/api/portal/plan-change-requests/' + encodeURIComponent(request.id) + '/decision', { decision: 'Approved' }); flash('Customer plan updated successfully.'); await load(true); } catch (error) { flash(error instanceof Error ? error.message : 'Could not approve this plan change.'); } }}>Approve & update plan</button>
+                        <button className="btn danger compact" onClick={async () => { try { await api.post('/api/portal/plan-change-requests/' + encodeURIComponent(request.id) + '/decision', { decision: 'Rejected' }); flash('Plan-change request rejected.'); await load(true); } catch (error) { flash(error instanceof Error ? error.message : 'Could not reject this request.'); } }}>Reject</button>
+                      </div>
+                    ) : (
+                      <span className={'portal-request-status ' + String(request.status || '').toLowerCase()}>{request.status} · Reviewed {dateLabel(request.reviewedAt || request.createdAt)}</span>
+                    )}
+                  </article>
+                ))}
+              </div>
+            </section>
+          )}
           {page === 'Customers' && (
             <section className="panel table-panel">
               <div className="toolbar">
@@ -1655,16 +1613,7 @@ function OverduePanel({ value }: { value: number }) {
   return <section className="panel chart-panel"><div className="panel-head"><div><h2>Estimated overdue plan value</h2><p>Active accounts past their due date with no full payment recorded for this month</p></div><span className="chart-mark"><IndianRupee size={17} /></span></div><div className="overdue-value">{money(value)}</div><p className="overdue-note">Estimate only: accounts without a due date are excluded. Partial payments are deducted from the monthly fee.</p></section>;
 }
 
-function Stat({ icon, label, value, foot, tint }: any) {
-  return (
-    <div className="stat-card">
-      <div className={'stat-icon ' + tint}>{icon}</div>
-      <div className="stat-label">{label}</div>
-      <div className="stat-value">{value}</div>
-      <div className="stat-foot">{foot}</div>
-    </div>
-  );
-}
+
 function Empty({ icon, title, text, action, onClick }: any) {
   return (
     <div className="empty-state">

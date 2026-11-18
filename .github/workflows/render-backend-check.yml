@@ -2,10 +2,10 @@ name: K&B Render backend checks
 on:
   workflow_dispatch:
   push:
-    branches: [render-backend-migration, quality-audit-2026-11-06, whole-app-stability-audit-2026-11-06, on-demand-gps-proof-permissions, ui-rebuild-gps-holidays-api-fixes, fixes-session-gps-ui-2026-11-06, whole-app-gps-ui-sync-audit-2026-11-07, nexus-workforce-payroll-media-ui-2026-11-07, nexus-release-audit-2026-11-07]
+    branches: [production-reconciliation-2026-11-18, render-backend-migration, quality-audit-2026-11-06, whole-app-stability-audit-2026-11-06, on-demand-gps-proof-permissions, ui-rebuild-gps-holidays-api-fixes, fixes-session-gps-ui-2026-11-06, whole-app-gps-ui-sync-audit-2026-11-07, nexus-workforce-payroll-media-ui-2026-11-07, nexus-release-audit-2026-11-07]
     paths: ["render-backend/**", "src/**", "package.json", "package-lock.json", ".github/workflows/render-backend-check.yml", ".github/workflows/ota-release.yml"]
   pull_request:
-    branches: [main, fixes-session-gps-ui-2026-11-06]
+    branches: [main, fixes-session-gps-ui-2026-11-06, render-backend-migration]
     paths: ["render-backend/**", "src/**", "package.json", "package-lock.json"]
 jobs:
   backend:
@@ -58,6 +58,12 @@ jobs:
           grep -Fq "db.collection('chat_groups').where('memberIds', 'array-contains', staffId)" render-backend/api-handler.ts
           grep -Fq "app.use(legacyHandler)" render-backend/server.ts
           echo "Public request/status, admin-only review, and staff GPS route handlers are present."
+          grep -Fq "isValidPortalConnectionRequest" render-backend/portal-validation.ts
+          grep -Fq "isValidPortalPlanChangeRequest" render-backend/portal-validation.ts
+          grep -Fq "isValidPortalComplaintInput" render-backend/portal-validation.ts
+          grep -Fq "isValidPortalImageSignature" render-backend/portal-validation.ts
+          grep -Fq "portal-validation.test.ts" render-backend/package.json
+          echo "Customer portal request and uploaded-image validation contracts are present."
   web:
     runs-on: ubuntu-latest
     steps:
