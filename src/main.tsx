@@ -4,6 +4,7 @@ import { Capacitor } from '@capacitor/core';
 import { CapacitorUpdater } from '@capgo/capacitor-updater';
 import App from './App';
 import './index.css';
+import './design-system/primitives.css';
 import './layout/app-shell.css';
 import './dashboard/overview.css';
 
