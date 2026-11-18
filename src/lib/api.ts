@@ -54,7 +54,7 @@ export async function nativeApiPost<T = any>(path: string, payload: Record<strin
   }
   return { data: data as T };
 }
-export async function submitStaffRegistrationRequest(input: { userId: string; displayName: string; phone?: string; reason?: string; businessId?:string }) {
+export async function submitStaffRegistrationRequest(input: { userId: string; displayName: string; phone?: string; reason?: string; businessId?:string;termsAccepted?:boolean;termsVersion?:string }) {
   const url = new URL('/api/staff-registration-requests', API_BASE);
   const response = await fetch(url.toString(), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input), cache: 'no-store' });
   let data: any = {};
@@ -135,7 +135,7 @@ async function waitForApiReady(): Promise<void> {
   throw new Error('Vypaar server did not become ready within 60 seconds (last HTTP status ' + lastStatus + '). Please wait and try signing in again.');
 }
 
-export async function signInAppUser(userId: string, password: string, role: 'admin'|'staff') {
+export async function signInAppUser(userId: string, password: string, role: 'admin'|'staff', termsVersion:string) {
   // Render's free service can sleep when idle. Wait for its health endpoint
   // before sending credentials so a cold start is not mistaken for bad login.
   await waitForApiReady();
@@ -147,7 +147,7 @@ export async function signInAppUser(userId: string, password: string, role: 'adm
     response = await fetch(url.toString(), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId: userId.trim(), password }),
+      body: JSON.stringify({ userId: userId.trim(), password, termsAccepted:true, termsVersion }),
       cache: 'no-store',
       signal: controller.signal,
     });
