@@ -229,6 +229,8 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   const [paymentMethodFilter, setPaymentMethodFilter] = useState('All');
   const [paymentSort, setPaymentSort] = useState<'recent' | 'oldest' | 'amount'>('recent');
   const [staffSearch, setStaffSearch] = useState('');
+  const [staffStatusFilter, setStaffStatusFilter] = useState<'All' | 'Active' | 'Disabled'>('All');
+  const [staffSort, setStaffSort] = useState<'name' | 'recent' | 'active'>('name');
   const [showComplaint, setShowComplaint] = useState(false);
   const [complaintSearch, setComplaintSearch] = useState('');
   const [complaintStatusFilter, setComplaintStatusFilter] = useState('All');
@@ -440,7 +442,15 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
         : String(b.joinedAt || '').localeCompare(String(a.joinedAt || '')));
   }, [customers, search, customerStatusFilter, customerSort]);
   const selectedStaffProfile = staff.find(member => member.id === selectedStaffProfileId);
-  const filteredStaff = staff.filter(member => [member.displayName, member.userId].join(' ').toLowerCase().includes(staffSearch.toLowerCase()));
+  const filteredStaff = staff.filter(member => {
+    const matchesSearch = [member.displayName, member.userId].join(' ').toLowerCase().includes(staffSearch.trim().toLowerCase());
+    const matchesStatus = staffStatusFilter === 'All' || (staffStatusFilter === 'Active' ? member.active : !member.active);
+    return matchesSearch && matchesStatus;
+  }).sort((a, b) => staffSort === 'recent'
+    ? String(b.createdAt || '').localeCompare(String(a.createdAt || ''))
+    : staffSort === 'active'
+      ? Number(b.active) - Number(a.active) || a.displayName.localeCompare(b.displayName)
+      : a.displayName.localeCompare(b.displayName));
   const visibleComplaints = complaints.filter(item => {
     const matchesSearch = [item.subject, item.details, item.customerName || '', item.staffName || '', item.assignedToName || '', item.createdByName || ''].join(' ').toLowerCase().includes(complaintSearch.trim().toLowerCase());
     const matchesStatus = complaintStatusFilter === 'All' || item.status === complaintStatusFilter;
@@ -1155,7 +1165,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
               </div>
             </section>
             <section className="panel table-panel">
-              <div className="toolbar"><div className="searchbox"><Search size={17}/><input value={staffSearch} onChange={e => setStaffSearch(e.target.value)} placeholder="Search staff name or user ID..."/></div><span className="result-count">{filteredStaff.length} of {staff.length} members</span></div>
+              <div className="toolbar"><div className="searchbox"><Search size={17}/><input value={staffSearch} onChange={e => setStaffSearch(e.target.value)} placeholder="Search staff name or user ID..."/></div><div className="record-controls"><label className="record-filter"><span>Access</span><select aria-label="Filter staff by access" value={staffStatusFilter} onChange={event => setStaffStatusFilter(event.target.value as 'All' | 'Active' | 'Disabled')}><option>All</option><option>Active</option><option>Disabled</option></select></label><label className="record-filter"><span>Sort</span><select aria-label="Sort staff members" value={staffSort} onChange={event => setStaffSort(event.target.value as 'name' | 'recent' | 'active')}><option value="name">Name A–Z</option><option value="recent">Recently added</option><option value="active">Active first</option></select></label><span className="result-count">{filteredStaff.length} of {staff.length} members</span></div></div>
               <div className="table-wrap"><table><thead><tr><th>STAFF MEMBER</th><th>USER ID</th><th>ASSIGNED CUSTOMERS</th><th>COLLECTIONS RECORDED</th><th>ACCESS</th><th>ACTIONS</th></tr></thead><tbody>
                 {filteredStaff.map(member => {
                   const assigned = customers.filter(c => c.assignedTo === member.id).length;
