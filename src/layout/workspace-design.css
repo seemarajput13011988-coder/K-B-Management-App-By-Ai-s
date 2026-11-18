@@ -1,0 +1,135 @@
+/* K&B Nexus workspace design system
+   Shared, feature-scoped primitives for consistent hierarchy and touch behavior.
+   Kept in one layer so module screens do not accumulate unrelated CSS patches. */
+.kb-app-content{
+  --kb-accent:#e88a32;--kb-accent-strong:#c96b1e;--kb-accent-soft:#fff3e5;
+  --kb-blue:#28659c;--kb-blue-soft:#edf5fc;--kb-ink:#1c2d43;--kb-muted:#718198;
+  --kb-line:#e5ebf2;--kb-surface:#fff;--kb-canvas:#f7f9fc;
+  color:var(--kb-ink);
+}
+.kb-app-content :is(.finance-workspace,.calendar-workspace,.gps-workspace,.invoice-workspace,.table-panel,.ops-layout,.team-summary-panel,.workforce-settings-panel){min-width:0}
+.kb-app-content :is(.finance-panel,.calendar-panel,.table-panel,.ops-panel,.team-summary-panel,.workforce-settings-panel,.invoice-modal,.gps-result,.installation-card,.inventory-history,.group-chat-panel){
+  border:1px solid var(--kb-line);border-radius:17px;background:var(--kb-surface);
+  box-shadow:0 8px 28px rgb(27 49 76 / 4%);
+}
+.kb-app-content :is(.finance-head,.toolbar,.calendar-toolbar,.invoice-intro,.gps-result-head,.installation-form-heading,.inventory-form-title,.invoice-modal-head){
+  display:flex;align-items:center;justify-content:space-between;gap:14px;min-width:0;
+}
+.kb-app-content :is(.finance-head h2,.toolbar h2,.calendar-toolbar h2,.invoice-intro h2,.gps-result h2,.ops-panel-head h2){
+  color:var(--kb-ink);font:750 clamp(16px,1.6vw,20px)/1.25 Manrope,'DM Sans',sans-serif;letter-spacing:-.025em;
+}
+.kb-app-content :is(.finance-head p,.toolbar p,.calendar-note,.invoice-help,.subtle,.ops-panel-head p){color:var(--kb-muted);line-height:1.55}
+.kb-app-content :is(.eyebrow,.calendar-eyebrow){color:var(--kb-accent-strong);font-size:9px;font-weight:850;letter-spacing:.13em;text-transform:uppercase}
+.kb-app-content :is(.finance-metrics,.ops-summary-grid,.calendar-summary){gap:0;border:1px solid var(--kb-line);border-radius:16px;background:var(--kb-surface);overflow:hidden}
+.kb-app-content .finance-metrics article,.kb-app-content .ops-summary{
+  min-width:0;padding:17px 18px;border:0;border-radius:0;background:transparent;box-shadow:none;
+}
+.kb-app-content :is(.finance-metrics article,.ops-summary,.calendar-summary)>span{color:var(--kb-muted);font-size:11px;font-weight:650}
+.kb-app-content :is(.finance-metrics strong,.ops-summary strong){color:var(--kb-ink);font:800 clamp(20px,2.1vw,27px)/1.15 Manrope,'DM Sans',sans-serif;letter-spacing:-.04em}
+.kb-app-content :is(.finance-metrics small,.ops-summary small){color:#8795a8;font-size:10px;line-height:1.45}
+.kb-app-content :is(.finance-metrics article+article,.ops-summary+ .ops-summary){border-left:1px solid var(--kb-line)}
+.kb-app-content :is(.finance-panel,.calendar-panel,.table-panel,.ops-panel,.team-summary-panel,.workforce-settings-panel){padding:clamp(16px,2vw,24px)}
+.kb-app-content :is(.finance-table-wrap,.subscription-table-wrap,.inventory-table-wrap,.table-wrap){max-width:100%;overflow:auto;border:1px solid var(--kb-line);border-radius:12px;background:var(--kb-surface);-webkit-overflow-scrolling:touch}
+.kb-app-content :is(.finance-table-wrap table,.subscription-table,.inventory-table,.table-wrap table){width:100%;border-collapse:separate;border-spacing:0}
+.kb-app-content :is(.finance-table-wrap th,.subscription-table th,.inventory-table th,.table-wrap th){
+  position:sticky;top:0;z-index:1;padding:12px 13px;background:#f3f7fb;color:#60738b;
+  border-bottom:1px solid var(--kb-line);font-size:9px;font-weight:850;letter-spacing:.08em;white-space:nowrap;
+}
+.kb-app-content :is(.finance-table-wrap td,.subscription-table td,.inventory-table td,.table-wrap td){
+  padding:12px 13px;border-bottom:1px solid #edf1f6;color:#34465e;font-size:11px;line-height:1.45;vertical-align:middle;
+}
+.kb-app-content :is(.finance-table-wrap tr:last-child td,.subscription-table tr:last-child td,.inventory-table tr:last-child td,.table-wrap tr:last-child td){border-bottom:0}
+.kb-app-content :is(.finance-table-wrap tbody tr:hover,.subscription-table tbody tr:hover,.inventory-table tbody tr:hover,.table-wrap tbody tr:hover){background:#f8fbfe}
+.kb-app-content :is(.finance-table-wrap td b,.subscription-table td b,.inventory-table td b,.table-wrap td b){color:var(--kb-ink);font-weight:750}
+.kb-app-content :is(.finance-table-wrap td small,.subscription-table td small){display:block;margin-top:3px;color:#8493a7;font-size:9px}
+.kb-app-content :is(.finance-actions,.finance-report-actions,.subscription-toolbar-actions,.installation-toolbar-actions,.inventory-toolbar,.gps-tabs,.ops-actions){
+  display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0;
+}
+.kb-app-content :is(.finance-actions input,.finance-actions select,.subscription-toolbar-actions select,.installation-toolbar-actions input,.inventory-toolbar input,.gps-tabs button){
+  min-height:40px;border:1px solid #dce5ef;border-radius:10px;background:#fff;color:#334a63;padding:0 12px;font-size:11px;
+}
+.kb-app-content :is(.finance-expense-form,.subscription-form,.installation-form,.inventory-form,.inventory-movement-form,.ops-form,.ops-visit-form,.group-create-form){
+  gap:13px;padding:16px;border:1px solid var(--kb-line);border-radius:14px;background:#f9fbfd;
+}
+.kb-app-content :is(.finance-expense-form label,.subscription-form label,.installation-form label,.inventory-form label,.inventory-movement-form label,.ops-form label,.ops-visit-form label){
+  display:grid;gap:6px;min-width:0;color:#5c6f86;font-size:10px;font-weight:750;
+}
+.kb-app-content :is(input:not([type=checkbox]):not([type=radio]),select,textarea){
+  max-width:100%;min-width:0;border:1px solid #dce5ef;border-radius:10px;background:#fff;color:#243950;
+  font-size:12px;line-height:1.35;box-shadow:none;transition:border-color .16s,box-shadow .16s;
+}
+.kb-app-content :is(input:not([type=checkbox]):not([type=radio]),select){min-height:40px;padding:0 11px}
+.kb-app-content textarea{min-height:84px;padding:10px 11px;resize:vertical}
+.kb-app-content :is(input,select,textarea):focus{outline:none;border-color:#e8a04e;box-shadow:0 0 0 3px rgb(232 138 50 / 15%)}
+.kb-app-content :is(input,select,textarea):focus-visible{outline:none}
+.kb-app-content :is(.btn,.ops-actions button,.invoice-remove,.row-action){
+  min-height:38px;border-radius:10px;font-size:11px;font-weight:750;transition:transform .16s,box-shadow .16s,background .16s;
+}
+.kb-app-content .btn.primary{border:1px solid #d87827;background:linear-gradient(135deg,#f2a34c,#e27c2d);color:#fff;box-shadow:0 5px 12px rgb(217 120 39 / 17%)}
+.kb-app-content .btn.secondary{border:1px solid #dce5ef;background:#fff;color:#49627d}
+.kb-app-content .btn.danger,.kb-app-content .row-action.danger{border:1px solid #f1d6d4;background:#fff5f4;color:#b94b43}
+.kb-app-content :is(.btn,.ops-actions button):not(:disabled):active{transform:translateY(1px)}
+.kb-app-content :is(button,input,select,textarea,a):focus-visible{outline:2px solid #e99a43;outline-offset:2px}
+.kb-app-content :is(.installation-card,.inventory-history-list article,.ops-feed-item,.ops-location-card,.ops-history-row,.gps-saved-card){
+  border-color:var(--kb-line);border-radius:13px;background:#fff;box-shadow:none;
+}
+.kb-app-content :is(.installation-card,.gps-saved-card){padding:15px}
+.kb-app-content :is(.installation-main,.installation-meta,.installation-footer,.inventory-actions,.gps-row-actions){gap:9px;flex-wrap:wrap}
+.kb-app-content :is(.gps-staff-row,.gps-result,.gps-saved-card,.installation-card,.inventory-history-list article){
+  min-width:0;
+}
+.kb-app-content .gps-staff-row{padding:13px 0;border-bottom:1px solid var(--kb-line)}
+.kb-app-content .gps-avatar{background:#edf5fc;color:#28659c}
+.kb-app-content .gps-map{overflow:hidden;border:1px solid var(--kb-line);border-radius:14px}
+.kb-app-content .gps-coordinates{color:#647891;font-variant-numeric:tabular-nums}
+.kb-app-content .calendar-grid{gap:5px}
+.kb-app-content .calendar-weekday{color:#8493a7;font-size:9px;font-weight:800}
+.kb-app-content .calendar-event{border:1px solid #e4ebf3;border-radius:9px;background:#f7fafd}
+.kb-app-content .attendance-calendar-card{padding:16px;border:1px solid var(--kb-line);border-radius:15px;background:#fff}
+.kb-app-content .attendance-calendar-day{border-radius:9px}
+.kb-app-content .invoice-modal-backdrop{padding:clamp(10px,3vw,28px);backdrop-filter:blur(8px)}
+.kb-app-content .invoice-modal{width:min(100%,1040px);max-height:min(92dvh,980px);overflow:auto}
+.kb-app-content .invoice-form-section{padding:18px 0;border-bottom:1px solid var(--kb-line)}
+.kb-app-content .invoice-form-section h3{color:var(--kb-ink);font:750 14px Manrope,'DM Sans',sans-serif}
+.kb-app-content .invoice-tax-preview{border:1px solid #e8edf3;border-radius:13px;background:#f7fafd}
+.kb-app-content .invoice-submit{position:sticky;bottom:0;z-index:2;padding:14px;border:1px solid var(--kb-line);border-radius:14px;background:rgb(255 255 255 / 96%);backdrop-filter:blur(12px)}
+.kb-app-content .invoice-brand-chip{border-radius:999px;background:var(--kb-accent-soft);color:#a85c1e}
+.kb-app-content :is(.ops-home-shift,.ops-location-card,.ops-feed-item,.ops-history-row){border-radius:13px}
+.kb-app-content .ops-home-shift{border:1px solid #f0dfc9;background:linear-gradient(110deg,#fffaf3,#fff)}
+.kb-app-content .ops-home-shift-action{border-radius:12px}
+.kb-app-content .ops-pill{border-radius:999px;font-weight:750}
+.kb-app-content :is(.ops-empty,.calendar-empty){padding:24px 14px;color:#8493a7;text-align:center}
+.kb-app-content :is(.finance-foot,.invoice-submit){gap:10px;flex-wrap:wrap}
+.kb-app-content :is(.finance-table-wrap,.subscription-table-wrap,.inventory-table-wrap,.table-wrap){scrollbar-width:thin;scrollbar-color:#c5d2e0 transparent}
+@media(max-width:760px){
+ .kb-app-content :is(.finance-head,.toolbar,.calendar-toolbar,.invoice-intro,.gps-result-head){align-items:flex-start;flex-direction:column}
+ .kb-app-content :is(.finance-actions,.finance-report-actions,.subscription-toolbar-actions,.installation-toolbar-actions,.inventory-toolbar){width:100%}
+ .kb-app-content :is(.finance-actions input,.finance-actions select,.subscription-toolbar-actions select,.installation-toolbar-actions input,.inventory-toolbar input){flex:1 1 125px}
+ .kb-app-content :is(.finance-metrics,.ops-summary-grid,.calendar-summary){grid-template-columns:repeat(2,minmax(0,1fr))}
+ .kb-app-content :is(.finance-metrics article:nth-child(odd),.ops-summary:nth-child(odd)){border-left:0}
+ .kb-app-content :is(.finance-metrics article,.ops-summary){padding:13px}
+ .kb-app-content :is(.finance-table-wrap,.subscription-table-wrap,.inventory-table-wrap,.table-wrap){border-radius:11px}
+ .kb-app-content :is(.finance-table-wrap th,.subscription-table th,.inventory-table th,.table-wrap th){padding:10px}
+ .kb-app-content :is(.finance-table-wrap td,.subscription-table td,.inventory-table td,.table-wrap td){padding:10px;font-size:10px}
+ .kb-app-content .invoice-submit{position:sticky;bottom:calc(68px + env(safe-area-inset-bottom))}
+}
+@media(prefers-reduced-motion:reduce){.kb-app-content *{scroll-behavior:auto!important;transition:none!important;animation-duration:.01ms!important}}
+[data-theme="dark"] .kb-app-content{
+ --kb-ink:#e7edf6;--kb-muted:#9aabc0;--kb-line:#2b3c52;--kb-surface:#17263a;--kb-canvas:#101b2b;
+}
+[data-theme="dark"] .kb-app-content :is(.finance-panel,.calendar-panel,.table-panel,.ops-panel,.team-summary-panel,.workforce-settings-panel,.invoice-modal,.gps-result,.installation-card,.inventory-history,.group-chat-panel,.attendance-calendar-card){
+ border-color:var(--kb-line);background:var(--kb-surface);color:#e4edf8;box-shadow:0 8px 28px rgb(0 0 0 / 12%);
+}
+[data-theme="dark"] .kb-app-content :is(.finance-head h2,.toolbar h2,.calendar-toolbar h2,.invoice-intro h2,.gps-result h2,.ops-panel-head h2,.invoice-form-section h3,.finance-metrics strong,.ops-summary strong){color:#edf4fc}
+[data-theme="dark"] .kb-app-content :is(.finance-table-wrap,.subscription-table-wrap,.inventory-table-wrap,.table-wrap){border-color:var(--kb-line);background:#142237}
+[data-theme="dark"] .kb-app-content :is(.finance-table-wrap th,.subscription-table th,.inventory-table th,.table-wrap th){background:#1d3048;color:#b4c5d9;border-color:var(--kb-line)}
+[data-theme="dark"] .kb-app-content :is(.finance-table-wrap td,.subscription-table td,.inventory-table td,.table-wrap td){color:#d5e1ef;border-color:#263950}
+[data-theme="dark"] .kb-app-content :is(.finance-table-wrap td b,.subscription-table td b,.inventory-table td b,.table-wrap td b){color:#edf4fc}
+[data-theme="dark"] .kb-app-content :is(.finance-expense-form,.subscription-form,.installation-form,.inventory-form,.inventory-movement-form,.ops-form,.ops-visit-form,.group-create-form){background:#142237;border-color:var(--kb-line)}
+[data-theme="dark"] .kb-app-content :is(input:not([type=checkbox]):not([type=radio]),select,textarea){background:#101c2d;border-color:#354a63;color:#e6eef8}
+[data-theme="dark"] .kb-app-content :is(.finance-actions input,.finance-actions select,.subscription-toolbar-actions select,.installation-toolbar-actions input,.inventory-toolbar input,.gps-tabs button,.btn.secondary){background:#1a2b40;border-color:#3a4e67;color:#dce8f5}
+[data-theme="dark"] .kb-app-content :is(.installation-card,.gps-saved-card,.ops-feed-item,.ops-location-card,.ops-history-row,.attendance-calendar-card){background:#142237;border-color:var(--kb-line);color:#dce8f5}
+[data-theme="dark"] .kb-app-content .invoice-submit{background:rgb(23 38 58 / 96%);border-color:var(--kb-line)}
+[data-theme="dark"] .kb-app-content .invoice-tax-preview{background:#142237;border-color:var(--kb-line)}
+[data-theme="dark"] .kb-app-content .ops-home-shift{background:linear-gradient(110deg,#2c2a27,#1c2b3e);border-color:#59432e}
+[data-theme="dark"] .kb-app-content .calendar-event{background:#1a2b40;border-color:var(--kb-line)}
