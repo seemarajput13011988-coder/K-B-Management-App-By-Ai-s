@@ -20,7 +20,7 @@ app.get('/api/_readycheck', async (_req, res) => {
     const code = (error as { code?: unknown } | null)?.code;
     console.error('[K&B_READY_CHECK_FAILED]', JSON.stringify({ code: typeof code === 'string' || typeof code === 'number' ? code : 'unknown' }));
     res.setHeader('Cache-Control', 'no-store, max-age=0');
-    res.status(503).json({ status: 'not_ready', error: 'K&B database access is unavailable. Check the Render service account permissions.' });
+    res.status(503).json({ status: 'not_ready', error: 'Vypaar database access is unavailable. Check the Render service account permissions.' });
   }
 });
 
@@ -84,10 +84,10 @@ app.use((error: any, req: any, res: any, next: any) => {
   }));
   if (res.headersSent) return next(error);
   if (code === 7 || code === 'permission-denied') {
-    res.status(503).json({ error: 'K&B database access is unavailable. The administrator must check the Render service account permissions.' });
+    res.status(503).json({ error: 'Vypaar database access is unavailable. The administrator must check the Render service account permissions.' });
     return;
   }
-  res.status(500).json({ error: 'K&B server encountered an error. Please retry.' });
+  res.status(500).json({ error: 'Vypaar server encountered an error. Please retry.' });
 });
 
 
