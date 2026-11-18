@@ -69,10 +69,14 @@ jobs:
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
       - name: Validate required release secrets
         env:
-          ANDROID_GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.ANDROID_GOOGLE_SERVICES_JSON_BASE64 }}
+          VYPAAR_ANDROID_GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.VYPAAR_ANDROID_GOOGLE_SERVICES_JSON_BASE64 }}
+          VYPAAR_API_BASE_URL: ${{ secrets.VYPAAR_API_BASE_URL }}
+          VYPAAR_FIREBASE_PROJECT_ID: ${{ secrets.VYPAAR_FIREBASE_PROJECT_ID }}
         run: |
           missing=()
-          if [ -z "$ANDROID_GOOGLE_SERVICES_JSON_BASE64" ]; then missing+=("ANDROID_GOOGLE_SERVICES_JSON_BASE64"); fi
+          if [ -z "$VYPAAR_ANDROID_GOOGLE_SERVICES_JSON_BASE64" ]; then missing+=("VYPAAR_ANDROID_GOOGLE_SERVICES_JSON_BASE64"); fi
+          if [ -z "$VYPAAR_API_BASE_URL" ]; then missing+=("VYPAAR_API_BASE_URL"); fi
+          if [ -z "$VYPAAR_FIREBASE_PROJECT_ID" ]; then missing+=("VYPAAR_FIREBASE_PROJECT_ID"); fi
           if [ "${#missing[@]}" -gt 0 ]; then
             printf 'Missing required GitHub repository secrets: %s\\n' "${missing[@]}"
             echo "::error::Add the missing release secrets before building the production APK."
@@ -81,15 +85,9 @@ jobs:
           echo "All required release secrets are present."
       - name: Install dependencies and build web app
         env:
-          # Firebase web config is public client configuration, not a private key.
-          # Use the confirmed Web App key for this Firebase project; do not let a stale Actions secret override it.
-          VITE_FIREBASE_API_KEY: 'AIzaSyAuJuFA1I06aSJ1AyHhVA86ws8c_cX1ZC8'
-          VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.VITE_FIREBASE_AUTH_DOMAIN || 'kandb-net-sevice.firebaseapp.com' }}
-          VITE_FIREBASE_PROJECT_ID: kandb-net-sevice
-          VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.VITE_FIREBASE_STORAGE_BUCKET || 'kandb-net-sevice.firebasestorage.app' }}
-          VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID || '847932976304' }}
-          VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID || '1:847932976304:web:87148565df2a329a5f9f75' }}
-          VITE_API_BASE_URL: https://kandb-management-nexus-api-zv7f.onrender.com
+          VITE_API_BASE_URL: ${{ secrets.VYPAAR_API_BASE_URL }}
+          VYPAAR_API_BASE_URL: ${{ secrets.VYPAAR_API_BASE_URL }}
+          VYPAAR_FIREBASE_PROJECT_ID: ${{ secrets.VYPAAR_FIREBASE_PROJECT_ID }}
         run: |
           npm install
           npx tsc --noEmit
@@ -171,10 +169,10 @@ jobs:
           PY
       - name: Add native Android Save As document picker
         run: |
-          PACKAGE_DIR=android/app/src/main/java/kandbnet/service2010
+          PACKAGE_DIR=android/app/src/main/java/com/vypaar/management
           mkdir -p "$PACKAGE_DIR"
           cat > "$PACKAGE_DIR/DocumentSaverPlugin.java" <<'JAVA'
-          package kandbnet.service2010;
+          package com.vypaar.management;
 
           import android.app.Activity;
           import android.content.Intent;
@@ -237,7 +235,7 @@ jobs:
           }
           JAVA
           cat > "$PACKAGE_DIR/MainActivity.java" <<'JAVA'
-          package kandbnet.service2010;
+          package com.vypaar.management;
 
           import android.os.Bundle;
           import com.getcapacitor.BridgeActivity;
@@ -253,13 +251,13 @@ jobs:
           JAVA
           # Capacitor's generated project uses Java MainActivity; remove any
           # generated Kotlin counterpart so the app has a single entry point.
-          rm -f android/app/src/main/java/kandbnet/service2010/MainActivity.kt
+          rm -f android/app/src/main/java/com/vypaar/management/MainActivity.kt
       - name: Install persistent active-shift Android location service
         run: |
-          PACKAGE_DIR=android/app/src/main/java/kandbnet/service2010
+          PACKAGE_DIR=android/app/src/main/java/com/vypaar/management
           mkdir -p "$PACKAGE_DIR"
           cat > "$PACKAGE_DIR/WorkLocationTrackingPlugin.java" <<'JAVA'
-          package kandbnet.service2010;
+          package com.vypaar.management;
 
           import android.content.Intent;
           import android.os.Build;
@@ -280,7 +278,7 @@ jobs:
               if (attendanceId == null) attendanceId = "";
               if (scheduledEndAt == null) scheduledEndAt = "";
               if (token == null || token.trim().isEmpty() || apiBaseUrl == null || !apiBaseUrl.startsWith("https://")) {
-                call.reject("A valid signed-in session and secure K&B API address are required.");
+                call.reject("A valid signed-in session and secure Vypaar API address are required.");
                 return;
               }
               Intent intent = new Intent(getContext(), WorkLocationTrackingService.class);
@@ -316,7 +314,7 @@ jobs:
           }
           JAVA
           cat > "$PACKAGE_DIR/WorkLocationTrackingService.java" <<'JAVA'
-          package kandbnet.service2010;
+          package com.vypaar.management;
 
           import android.Manifest;
           import android.app.Notification;
@@ -360,8 +358,8 @@ jobs:
           import java.util.concurrent.Executors;
 
           public class WorkLocationTrackingService extends Service {
-            public static final String ACTION_START = "kandbnet.service2010.WORK_LOCATION_START";
-            public static final String ACTION_STOP = "kandbnet.service2010.WORK_LOCATION_STOP";
+            public static final String ACTION_START = "com.vypaar.management.WORK_LOCATION_START";
+            public static final String ACTION_STOP = "com.vypaar.management.WORK_LOCATION_STOP";
             public static final String EXTRA_TOKEN = "session_token";
             public static final String EXTRA_API_BASE_URL = "api_base_url";
             public static final String EXTRA_ATTENDANCE_ID = "attendance_id";
@@ -457,8 +455,8 @@ jobs:
 
             private void createNotificationChannel() {
               if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                NotificationChannel channel = new NotificationChannel(CHANNEL_ID, "K&B active-shift location", NotificationManager.IMPORTANCE_LOW);
-                channel.setDescription("Visible notification while your location is shared during an active K&B work shift.");
+                NotificationChannel channel = new NotificationChannel(CHANNEL_ID, "Vypaar active-shift location", NotificationManager.IMPORTANCE_LOW);
+                channel.setDescription("Visible notification while your location is shared during an active Vypaar work shift.");
                 NotificationManager manager = getSystemService(NotificationManager.class);
                 if (manager != null) manager.createNotificationChannel(channel);
               }
@@ -480,8 +478,8 @@ jobs:
             }
 
             private void startVisibleNotification() {
-              Notification notification = buildNotification("K&B work location active",
-                "Your location is shared with authorised K&B administrators during this active shift. It stops at checkout.");
+              Notification notification = buildNotification("Vypaar work location active",
+                "Your location is shared with authorised Vypaar administrators during this active shift. It stops at checkout.");
               if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION);
               } else {
@@ -517,11 +515,11 @@ jobs:
                 locationCallback = null;
                 locationReady = false;
                 if (!permissionGranted) {
-                  markLocationUnavailable("Location permission denied", "K&B location permission needed",
+                  markLocationUnavailable("Location permission denied", "Vypaar location permission needed",
                     "Location sharing is paused. Re-enable location permission to resume during this active shift.");
                 } else {
                   markLocationUnavailable("Phone location services are unavailable", "Phone location is OFF",
-                    "K&B location sharing is paused. Turn on phone location to resume during this active shift.");
+                    "Vypaar location sharing is paused. Turn on phone location to resume during this active shift.");
                 }
                 return;
               }
@@ -747,8 +745,8 @@ jobs:
                     locationUnavailableReported = false;
                     lastUnavailableReason = "";
                     lastGpsLossReportAt = 0L;
-                    updateVisibleNotification("K&B work location active",
-                      "Your location is shared with authorised K&B administrators during this active shift.");
+                    updateVisibleNotification("Vypaar work location active",
+                      "Your location is shared with authorised Vypaar administrators during this active shift.");
                   })
                   .addOnFailureListener(error -> {
                     if (locationCallback == callback) {
@@ -756,13 +754,13 @@ jobs:
                       locationCallback = null;
                     }
                     locationReady = false;
-                    markLocationUnavailable("GPS location unavailable", "K&B location update unavailable",
+                    markLocationUnavailable("GPS location unavailable", "Vypaar location update unavailable",
                       "Location updates are interrupted. Check phone location and permissions; tracking will retry automatically.");
                   });
               } catch (SecurityException error) {
                 if (locationCallback == callback) locationCallback = null;
                 locationReady = false;
-                markLocationUnavailable("Location permission denied", "K&B location permission needed",
+                markLocationUnavailable("Location permission denied", "Vypaar location permission needed",
                   "Location sharing is paused. Re-enable location permission to resume during this active shift.");
               }
             }
@@ -853,7 +851,7 @@ jobs:
           app = root.find("application")
           if app is None:
               raise SystemExit("Android manifest has no application element")
-          service_name = "kandbnet.service2010.WorkLocationTrackingService"
+          service_name = "com.vypaar.management.WorkLocationTrackingService"
           existing = next((node for node in app.findall("service") if node.get("{%s}name" % ns) == service_name), None)
           if existing is None:
               existing = ET.SubElement(app, "service")
@@ -868,7 +866,7 @@ jobs:
           PY
           python3 - <<'PY'
           from pathlib import Path
-          p = Path("android/app/src/main/java/kandbnet/service2010/MainActivity.java")
+          p = Path("android/app/src/main/java/com/vypaar/management/MainActivity.java")
           s = p.read_text()
           if "registerPlugin(WorkLocationTrackingPlugin.class);" not in s:
               s = s.replace("registerPlugin(DocumentSaverPlugin.class);", "registerPlugin(DocumentSaverPlugin.class);\n      registerPlugin(WorkLocationTrackingPlugin.class);")
@@ -880,7 +878,7 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          source = Path("android/app/src/main/java/kandbnet/service2010/WorkLocationTrackingService.java").read_text()
+          source = Path("android/app/src/main/java/com/vypaar/management/WorkLocationTrackingService.java").read_text()
           required = [
               "private volatile boolean shiftServerConfirmed = false;",
               "private boolean hasValidCachedDeadline()",
@@ -899,19 +897,20 @@ jobs:
           PY
       - name: Configure and validate Firebase Cloud Messaging for Android
         env:
-          ANDROID_GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.ANDROID_GOOGLE_SERVICES_JSON_BASE64 }}
+          VYPAAR_ANDROID_GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.VYPAAR_ANDROID_GOOGLE_SERVICES_JSON_BASE64 }}
+          VYPAAR_FIREBASE_PROJECT_ID: ${{ secrets.VYPAAR_FIREBASE_PROJECT_ID }}
         run: |
-          if [ -z "$ANDROID_GOOGLE_SERVICES_JSON_BASE64" ]; then
-            echo "::error::Set ANDROID_GOOGLE_SERVICES_JSON_BASE64 to enable Android Firebase Cloud Messaging. The final app requires remote notifications."
+          if [ -z "$VYPAAR_ANDROID_GOOGLE_SERVICES_JSON_BASE64" ] || [ -z "$VYPAAR_FIREBASE_PROJECT_ID" ]; then
+            echo "::error::Set VYPAAR_ANDROID_GOOGLE_SERVICES_JSON_BASE64 to enable Android Firebase Cloud Messaging. The final app requires remote notifications."
             exit 1
           fi
-          if [ -n "$ANDROID_GOOGLE_SERVICES_JSON_BASE64" ]; then
-            printf '%s' "$ANDROID_GOOGLE_SERVICES_JSON_BASE64" | base64 --decode > android/app/google-services.json
+          if [ -n "$VYPAAR_ANDROID_GOOGLE_SERVICES_JSON_BASE64" ]; then
+            printf '%s' "$VYPAAR_ANDROID_GOOGLE_SERVICES_JSON_BASE64" | base64 --decode > android/app/google-services.json
             node <<'NODE'
           const fs = require('node:fs');
           const config = JSON.parse(fs.readFileSync('android/app/google-services.json', 'utf8'));
-          const expectedProject = 'kandb-net-sevice';
-          const expectedPackage = 'kandbnet.service2010';
+          const expectedProject = process.env.VYPAAR_FIREBASE_PROJECT_ID || '';
+          const expectedPackage = 'com.vypaar.management';
           if (config.project_info?.project_id !== expectedProject) {
             throw new Error('The Android Firebase config belongs to a different Firebase project.');
           }
@@ -922,7 +921,7 @@ jobs:
           if (!matchingClient) {
             throw new Error('The Android Firebase config does not contain package ' + expectedPackage + '.');
           }
-          console.log('Firebase Android config validated for the K&B project and app package.');
+          console.log('Firebase Android config validated for the Vypaar project and app package.');
           NODE
           else
             echo "::error::FCM config missing."
