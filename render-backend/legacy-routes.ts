@@ -552,39 +552,70 @@ export const handler = router({
   }),
 
   'POST /api/portal/connection-requests/:id/convert': protectedRoute(['admin'], async ({ params }, user) => {
-    const [request] = await db.get<Record<string, unknown>>('portal_connection_requests', [params.id], { consistent: true });
-    if (!request) return error('Portal connection request not found.', 404);
-    if (typeof request.customerId === 'string' && request.customerId) return json({ converted: true, customerId: request.customerId });
-    const phone = cleanText(request.phone, 10);
-    const [customers, plan] = await Promise.all([
-      db.list<Customer>('customers', { limit: 1000 }),
-      db.get<PlanRecord>('plans', [cleanText(request.planId, 128)], { consistent: true }),
-    ]);
-    if (customers.items.some(customer => customer.phone === phone)) return error('A customer record already uses this mobile number. Review that record instead of creating a duplicate.', 409);
-    const selectedPlan = plan[0];
-    if (!selectedPlan || selectedPlan.active === false) return error('The requested plan is no longer active. Update the request before converting it.', 409);
-    const record = {
-      name: cleanText(request.name, 100),
-      phone,
-      address: [cleanText(request.address, 300), cleanText(request.city, 80), cleanText(request.state, 80), cleanText(request.pincode, 6)].filter(Boolean).join(', '),
-      plan: selectedPlan.name,
-      monthlyFee: Number(selectedPlan.price),
-      status: 'Inactive',
-      joinedAt: new Date().toISOString().slice(0, 10),
-      dueDate: '',
-      notes: 'Created from Customer Nexus request. Awaiting K&B service confirmation.',
-      assignedTo: '',
-      assignedToName: '',
-      source: 'customer-portal',
-      portalRequestId: params.id,
-    };
-    if (!record.name || !/^\\d{10}$/.test(record.phone) || !record.address || !record.plan || !Number.isFinite(record.monthlyFee)) {
-      return error('The request details are incomplete. Review the request before converting it.', 400);
-    }
-    const [customerId] = await db.add('customers', [record]);
-    if (!customerId) return error('Could not create the customer record.', 500);
-    await db.tx.update('portal_connection_requests', [{ id: params.id, record: { status: 'Converted', customerId, convertedAt: new Date().toISOString(), convertedBy: user.id } }], { patch: true });
-    return json({ converted: true, customerId, customer: { id: customerId, ...record } }, 201);
+    const conversionTime = new Date().toISOString();
+    const outcome = await firestore.runTransaction(async transaction => {
+      const requestRef = firestore.collection('portal_connection_requests').doc(params.id);
+      const requestSnapshot = await transaction.get(requestRef);
+      if (!requestSnapshot.exists) return { kind: 'not-found' as const };
+      const request = requestSnapshot.data() as Record<string, unknown>;
+      if (typeof request.customerId === 'string' && request.customerId) {
+        return { kind: 'already-converted' as const, customerId: request.customerId };
+      }
+      if (!['Pending', 'Contacted'].includes(String(request.status || ''))) return { kind: 'not-convertible' as const };
+
+      const phone = cleanText(request.phone, 10);
+      const planId = cleanText(request.planId, 128);
+      if (!phone || !/^\\d{10}$/.test(phone) || !planId) return { kind: 'invalid-request' as const };
+      const planRef = firestore.collection('plans').doc(planId);
+      const existingCustomerQuery = firestore.collection('customers').where('phone', '==', phone).limit(1);
+      const [planSnapshot, existingCustomers] = await Promise.all([
+        transaction.get(planRef),
+        transaction.get(existingCustomerQuery),
+      ]);
+      if (!existingCustomers.empty) return { kind: 'duplicate-customer' as const };
+      if (!planSnapshot.exists) return { kind: 'plan-unavailable' as const };
+      const selectedPlan = planSnapshot.data() as PlanRecord;
+      if (selectedPlan.active === false) return { kind: 'plan-unavailable' as const };
+
+      const record = {
+        name: cleanText(request.name, 100),
+        phone,
+        address: [cleanText(request.address, 300), cleanText(request.city, 80), cleanText(request.state, 80), cleanText(request.pincode, 6)].filter(Boolean).join(', '),
+        plan: selectedPlan.name,
+        monthlyFee: Number(selectedPlan.price),
+        status: 'Inactive',
+        joinedAt: conversionTime.slice(0, 10),
+        dueDate: '',
+        notes: 'Created from Customer Nexus request. Awaiting K&B service confirmation.',
+        assignedTo: '',
+        assignedToName: '',
+        source: 'customer-portal',
+        portalRequestId: params.id,
+      };
+      if (!record.name || !record.address || !record.plan || !Number.isFinite(record.monthlyFee)) {
+        return { kind: 'invalid-request' as const };
+      }
+
+      const customerRef = firestore.collection('customers').doc();
+      transaction.create(customerRef, { ...record, id: customerRef.id, createdAt: conversionTime });
+      transaction.update(requestRef, {
+        status: 'Converted',
+        customerId: customerRef.id,
+        convertedAt: conversionTime,
+        convertedBy: user.id,
+        convertedByName: user.displayName,
+      });
+      return { kind: 'converted' as const, customerId: customerRef.id, record };
+    });
+
+    if (outcome.kind === 'not-found') return error('Portal connection request not found.', 404);
+    if (outcome.kind === 'not-convertible') return error('Only pending or contacted requests can be converted.', 409);
+    if (outcome.kind === 'invalid-request') return error('The request details are incomplete. Review the request before converting it.', 400);
+    if (outcome.kind === 'duplicate-customer') return error('A customer record already uses this mobile number. Review that record instead of creating a duplicate.', 409);
+    if (outcome.kind === 'plan-unavailable') return error('The requested plan is no longer active. Update the request before converting it.', 409);
+    if (outcome.kind === 'already-converted') return json({ converted: true, customerId: outcome.customerId, alreadyConverted: true });
+    await writeAudit(user, 'CREATE', 'customer', outcome.customerId, 'Converted Customer Nexus connection request into an inactive customer record');
+    return json({ converted: true, customerId: outcome.customerId, customer: { id: outcome.customerId, ...outcome.record } }, 201);
   }),
 
   'PUT /api/portal/connection-requests/:id': protectedRoute(['admin'], async ({ params, body }, user) => {
