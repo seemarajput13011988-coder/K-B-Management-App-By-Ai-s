@@ -70,12 +70,6 @@ type Complaint = {
 type SessionRecord = { userId: string; expiresAt: number };
 type TaskRecord = { title: string; details: string; assignedTo: string; assignedToName: string; priority: string; dueDate: string; status: string; createdAt: string; createdBy: string; createdByName: string; updatedAt?: string; updatedBy?: string; updatedByName?: string; completedAt?: string; completedBy?: string; completedByName?: string };
 type PlanRecord = { id?: string; name: string; provider: string; speed: string; data: string; price: number; note: string; details?: string; connectionType: string; featured: boolean; active: boolean };
-const defaultPlans: PlanRecord[] = [
-  { name: 'RailWire 30 Mbps', provider: 'RailWire', speed: '30 Mbps', data: '1.5 TB', price: 549, note: 'Popular home plan', connectionType: 'Fiber', featured: true, active: true },
-  { name: 'RailWire 50 Mbps', provider: 'RailWire', speed: '50 Mbps', data: '2 TB', price: 699, note: 'For multiple devices', connectionType: 'Fiber', featured: false, active: true },
-  { name: 'RailWire 100 Mbps', provider: 'RailWire', speed: '100 Mbps', data: '3 TB', price: 899, note: 'Heavy usage', connectionType: 'Fiber', featured: false, active: true },
-  { name: 'BSNL / Air Fibre', provider: 'BSNL / Air Fibre', speed: 'As configured', data: 'Plan based', price: 799, note: 'Custom connection', connectionType: 'Air Fibre', featured: false, active: true },
-];
 type Handler = (ctx: Parameters<RouterMiddleware>[0], user: UserRecord) => Promise<ReturnType<typeof json> | ReturnType<typeof error>>;
 
 const cleanText = (value: unknown, max = 300) =>
