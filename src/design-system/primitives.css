@@ -111,3 +111,16 @@
 @media (max-width: 600px) {
   .kb-app-shell :where(.finance-actions input, .subscription-toolbar-actions select) { min-height: 44px; }
 }
+
+.kb-app-shell .record-controls { display:flex; align-items:center; justify-content:flex-end; flex-wrap:wrap; gap:8px; min-width:0; }
+.kb-app-shell .record-filter { display:inline-flex; align-items:center; gap:7px; min-width:0; color:var(--nexus-muted); font-size:10px; font-weight:750; }
+.kb-app-shell .record-filter select { min-width:112px; max-width:180px; min-height:40px; padding:0 30px 0 10px; color:var(--nexus-text); font-size:11px; }
+.kb-app-shell .toolbar > .searchbox { flex:1 1 250px; min-width:min(100%,220px); }
+.kb-app-shell .toolbar > .record-controls { flex:1 1 auto; }
+@media(max-width:760px) {
+  .kb-app-shell .toolbar { align-items:stretch; }
+  .kb-app-shell .toolbar > .searchbox { flex-basis:100%; width:100%; }
+  .kb-app-shell .record-controls { justify-content:flex-start; width:100%; }
+  .kb-app-shell .record-filter { flex:1 1 130px; justify-content:space-between; }
+  .kb-app-shell .record-filter select { flex:1; min-width:0; max-width:none; }
+}
