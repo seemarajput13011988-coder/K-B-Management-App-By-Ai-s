@@ -1027,183 +1027,84 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
           </Suspense>
 
           {page === 'Overview' && (
-            <>
-              <div className="welcome-strip">
-                <div className="welcome-symbol">
-                  <Zap size={21} />
-                </div>
-                <div>
-                  <strong>Your network, one clear view.</strong>
-                  <span>
-                    Customer records and service activity in one place.
-                  </span>
-                </div>
-                <div className="strip-right">
-                  <span>LIVE OVERVIEW</span>
-                  <i />
-                </div>
-              </div>
-
-              <section className="quick-actions" aria-label="Quick actions">
-                <button type="button" onClick={() => setPage('Customers')}><Users size={18}/><span>Customers</span><small>Find and manage</small></button>
-                <button type="button" onClick={() => setPage('Complaints')}><MessageSquare size={18}/><span>Complaints</span><small>Track issues</small></button>
-                {isAdmin && <button type="button" onClick={() => { setEditing(null); setShowCustomer(true); }}><Plus size={18}/><span>Add customer</span><small>Create a record</small></button>}
-                {isAdmin && <button type="button" onClick={() => setPage('Salary')}><IndianRupee size={18}/><span>Salary</span><small>Staff operations</small></button>}
-                {!isAdmin && <button type="button" onClick={() => setPage('My Work')}><ClipboardList size={18}/><span>My work</span><small>See assigned tasks</small></button>}
-              </section>
+            <section className="kb-overview" aria-label="Operations overview">
+              <nav className="kb-overview-actions" aria-label="Overview shortcuts">
+                <button type="button" onClick={() => setPage('Customers')}><Users size={18}/><span>Customers</span><small>Browse records</small></button>
+                <button type="button" onClick={() => setPage('Complaints')}><MessageSquare size={18}/><span>Complaints</span><small>Resolve issues</small></button>
+                {isAdmin && <button type="button" onClick={() => { setEditing(null); setShowCustomer(true); }}><Plus size={18}/><span>Add customer</span><small>Create connection</small></button>}
+                {isAdmin && <button type="button" onClick={() => setPage('Salary')}><IndianRupee size={18}/><span>Salary</span><small>Team payments</small></button>}
+                {!isAdmin && <button type="button" onClick={() => setPage('My Work')}><ClipboardList size={18}/><span>My work</span><small>Assigned tasks</small></button>}
+              </nav>
 
               {isAdmin && (
-                <section className="panel retention-review-panel">
-                  <div className="panel-head">
-                    <div>
-                      <h2>Six-month record review</h2>
-                      <p>Records saved or created at least six months ago. Nothing is deleted automatically.</p>
-                    </div>
-                    <span className="live-tag">{retentionItems.length} DUE</span>
+                <aside className="kb-overview-review" aria-label="Records due for review">
+                  <div className="kb-overview-review-copy">
+                    <Clock3 size={17}/>
+                    <div><strong>Record review</strong><span>Older records are ready for a six-month review. Nothing is deleted automatically.</span></div>
                   </div>
-                  {retentionItems.length ? (
-                    <div className="retention-review-list">
-                      {retentionItems.map(item => (
-                        <div className="snapshot-row" key={item.collection + ':' + item.id}>
-                          <div className="snapshot-icon orange-bg"><Clock3 /></div>
-                          <div className="retention-review-details">
-                            <strong>{item.recordLabel}</strong>
-                            <small>{item.collectionLabel} · Saved {dateLabel(item.createdAt)}</small>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="retention-review-empty">No records are currently due for review.</p>
-                  )}
-                </section>
+                  <strong className="kb-overview-review-count"><span>{retentionItems.length}</span><em>Due</em></strong>
+                  {retentionItems.length > 0 && <div className="kb-overview-review-list">{retentionItems.slice(0,3).map(item=><span key={item.collection+':'+item.id}>{item.recordLabel} <small>· {dateLabel(item.createdAt)}</small></span>)}</div>}
+                  {retentionItems.length === 0 && <span className="kb-overview-review-clear"><CheckCircle2 size={14}/> No records due right now</span>}
+                </aside>
               )}
 
-              <div className="stats-grid">
-                <Stat
-                  icon={<Users />}
-                  label={isAdmin ? 'Total customers' : 'My assigned customers'}
-                  value={customers.length}
-                  foot={isAdmin ? 'All registered connections' : 'Customers assigned to your account'}
-                  tint="blue"
-                />
-                <Stat
-                  icon={isAdmin ? <Activity /> : <ClipboardList />}
-                  label={isAdmin ? 'Active connections' : 'My pending tasks'}
-                  value={isAdmin ? active : pendingTasks}
-                  foot={isAdmin ? (customers.length ? Math.round((active / customers.length) * 100) + '% of total customers' : 'No customers yet') : 'Assigned work not yet completed'}
-                  tint="green"
-                />
-                <Stat
-                  icon={<IndianRupee />}
-                  label={isAdmin ? 'Payments recorded' : 'My collections'}
-                  value={money(collected)}
-                  foot={isAdmin ? 'Total recorded collections' : 'Payments recorded by you'}
-                  tint="purple"
-                />
-                <Stat
-                  icon={<MessageSquare />}
-                  label="Open complaints"
-                  value={openComplaints}
-                  foot="Awaiting resolution"
-                  tint="orange"
-                />
-              </div>
-              <div className="overview-grid">
-                <section className="panel">
-                  <div className="panel-head">
-                    <div>
-                      <h2>Recent customers</h2>
-                      <p>Latest connections added to your records</p>
-                    </div>
-                    <button
-                      className="text-btn"
-                      onClick={() => setPage('Customers')}
-                    >
-                      View all <span>→</span>
-                    </button>
-                  </div>
-                  <CustomerTable
-                    rows={customers.slice(0, 5)}
-                    onView={setSelected}
-                  />
-                  {!customers.length && (
-                    <Empty
-                      icon={<Users />}
-                      title="No customers yet"
-                      text="Add your first customer to start building your records."
-                      action={isAdmin ? 'Add customer' : undefined}
-                      onClick={() => setShowCustomer(true)}
-                    />
-                  )}
-                </section>
-                <section className="panel activity-panel">
-                  <div className="panel-head">
-                    <div>
-                      <h2>Service snapshot</h2>
-                      <p>Current operational summary</p>
-                    </div>
-                    <span className="live-tag">
-                      <i /> LIVE
-                    </span>
-                  </div>
-                  <div className="snapshot-row">
-                    <div className="snapshot-icon blue-bg">
-                      <Wifi />
-                    </div>
-                    <div>
-                      <strong>Active connections</strong>
-                      <small>Currently marked active</small>
-                    </div>
-                    <b>{active}</b>
-                  </div>
-                  <div className="snapshot-row">
-                    <div className="snapshot-icon orange-bg">
-                      <Clock3 />
-                    </div>
-                    <div>
-                      <strong>Monthly plan value</strong>
-                      <small>Based on active customers</small>
-                    </div>
-                    <b>{money(pending)}</b>
-                  </div>
-                  <div className="snapshot-row">
-                    <div className="snapshot-icon purple-bg">
-                      <MessageSquare />
-                    </div>
-                    <div>
-                      <strong>Pending complaints</strong>
-                      <small>Need attention</small>
-                    </div>
-                    <b>{openComplaints}</b>
-                  </div>
-                  <div className="snapshot-note">
-                    <CheckCircle2 size={16} /> Your customer workspace is ready
-                    to use.
-                  </div>
-                </section>
-              </div>
-              <div className="chart-grid">
-                <MonthlyChart title={isAdmin ? 'Monthly collections' : 'Your recorded collections'} subtitle="Payment totals from the last six months" items={payments} dateKey="paidAt" valueKey="amount" moneyValue />
-                <MonthlyChart title="Customer additions" subtitle={isAdmin ? 'New connections added each month' : 'Your assigned customer base by join date'} items={customers} dateKey="joinedAt" countOnly />
-              </div>
-              {isAdmin && <div className="chart-grid"><StatusChart complaints={complaints} /><OverduePanel value={overdueValue} /></div>}
-              <section className="panel bottom-panel">
-                <div className="panel-head">
-                  <div>
-                    <h2>Recent payments</h2>
-                    <p>Latest recorded customer payments</p>
-                  </div>
-                  <button
-                    className="text-btn"
-                    onClick={() => setPage('Payments')}
-                  >
-                    View payments →
-                  </button>
-                </div>
-                <PaymentTable rows={payments.slice(0, 4)} />
+              <section className="kb-overview-metrics" aria-label="Business snapshot">
+                <article className="kb-overview-metric">
+                  <span className="kb-overview-metric-icon"><Users size={18}/></span>
+                  <div><small>{isAdmin ? 'Total customers' : 'My assigned customers'}</small><strong>{customers.length.toLocaleString('en-IN')}</strong><span>{isAdmin ? 'Registered connections' : 'Currently assigned to you'}</span></div>
+                </article>
+                <article className="kb-overview-metric">
+                  <span className="kb-overview-metric-icon"><Activity size={18}/></span>
+                  <div><small>{isAdmin ? 'Active connections' : 'Pending tasks'}</small><strong>{(isAdmin ? active : pendingTasks).toLocaleString('en-IN')}</strong><span>{isAdmin ? (customers.length ? Math.round(active/customers.length*100)+'% of customer base' : 'No customers yet') : 'Assigned work to complete'}</span></div>
+                </article>
+                <article className="kb-overview-metric">
+                  <span className="kb-overview-metric-icon"><IndianRupee size={18}/></span>
+                  <div><small>{isAdmin ? 'Payments recorded' : 'My collections'}</small><strong>{money(collected)}</strong><span>{isAdmin ? 'Total recorded collections' : 'Payments recorded by you'}</span></div>
+                </article>
+                <article className="kb-overview-metric">
+                  <span className="kb-overview-metric-icon"><MessageSquare size={18}/></span>
+                  <div><small>Open complaints</small><strong>{openComplaints.toLocaleString('en-IN')}</strong><span>Awaiting resolution</span></div>
+                </article>
               </section>
-            </>
+
+              <div className="kb-overview-main">
+                <section className="kb-overview-section kb-overview-customers">
+                  <header className="kb-overview-section-head">
+                    <div><h2>Recent customers</h2><p>Latest connections added to your records</p></div>
+                    <button className="kb-overview-link" type="button" onClick={() => setPage('Customers')}>View all <span>→</span></button>
+                  </header>
+                  <CustomerTable rows={customers.slice(0,5)} onView={setSelected}/>
+                  {!customers.length && <Empty icon={<Users/>} title="No customers yet" text="Add your first customer to start building your records." action={isAdmin ? 'Add customer' : undefined} onClick={() => setShowCustomer(true)}/>}
+                </section>
+
+                <section className="kb-overview-section kb-overview-service">
+                  <header className="kb-overview-section-head">
+                    <div><h2>Service snapshot</h2><p>Current operational summary</p></div>
+                    <span className="kb-overview-live"><i/> Live</span>
+                  </header>
+                  <div className="kb-overview-service-list">
+                    <div className="kb-overview-service-row"><span className="kb-overview-service-icon"><Wifi size={17}/></span><div><strong>Active connections</strong><small>Currently marked active</small></div><b>{active}</b></div>
+                    <div className="kb-overview-service-row"><span className="kb-overview-service-icon"><Clock3 size={17}/></span><div><strong>Monthly plan value</strong><small>Based on active customers</small></div><b>{money(pending)}</b></div>
+                    <div className="kb-overview-service-row"><span className="kb-overview-service-icon"><MessageSquare size={17}/></span><div><strong>Pending complaints</strong><small>Need attention</small></div><b>{openComplaints}</b></div>
+                  </div>
+                  <p className="kb-overview-service-note"><CheckCircle2 size={15}/> Your customer workspace is ready to use.</p>
+                </section>
+              </div>
+
+              <div className="kb-overview-charts">
+                <MonthlyChart title={isAdmin ? 'Monthly collections' : 'Your recorded collections'} subtitle="Payment totals from the last six months" items={payments} dateKey="paidAt" valueKey="amount" moneyValue/>
+                <MonthlyChart title="Customer additions" subtitle={isAdmin ? 'New connections added each month' : 'Your assigned customer base by join date'} items={customers} dateKey="joinedAt" countOnly/>
+              </div>
+              {isAdmin && <div className="kb-overview-charts kb-overview-admin-charts"><StatusChart complaints={complaints}/><OverduePanel value={overdueValue}/></div>}
+
+              <section className="kb-overview-section kb-overview-payments">
+                <header className="kb-overview-section-head">
+                  <div><h2>Recent payments</h2><p>Latest recorded customer payments</p></div>
+                  <button className="kb-overview-link" type="button" onClick={() => setPage('Payments')}>View payments <span>→</span></button>
+                </header>
+                <PaymentTable rows={payments.slice(0,4)}/>
+              </section>
+            </section>
           )}
 
           {page === 'Admin Accounts' && canManageAdmins && (
