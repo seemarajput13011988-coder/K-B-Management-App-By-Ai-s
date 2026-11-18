@@ -15,6 +15,7 @@ const validMoney = (value: unknown): boolean =>
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
 const monthPattern = /^\d{4}-\d{2}$/;
 const now = () => new Date().toISOString();
+const TERMS_VERSION = '2026-11-18';
 const send = (res: any, status: number, body: Data) => { res.status(status).json(body); };
 
 
@@ -244,6 +245,9 @@ export async function apiHandler(req: any, res: any) {
       const input: Data = req.body && typeof req.body === 'object' ? req.body : {};
       const userId = clean(input.userId, 40);
       const password = typeof input.password === 'string' ? input.password : '';
+      if (input.termsAccepted !== true || clean(input.termsVersion,32) !== TERMS_VERSION) {
+        send(res,400,{error:'Please review and accept the current Terms of Service and Privacy Policy before signing in.'}); return;
+      }
       if (!userId || !password) { send(res, 400, { error: 'Enter your user ID and password.' }); return; }
       let matches = (await list('users')).filter(item => String(item.userId || '').toLowerCase() === userId.toLowerCase());
       const authPrincipal = userId.toLowerCase() === 'brajraj' ? 'primary-admin' : 'staff-or-secondary-admin';
@@ -333,6 +337,7 @@ export async function apiHandler(req: any, res: any) {
         authTrace('stored-password-hash-mismatch');
         send(res, 401, { error: 'The user ID or password is incorrect, or this account needs an administrator password reset.' }); return;
       }
+      await db.collection('users').doc(userDoc.id).set({termsAcceptedAt:now(),termsVersion:TERMS_VERSION},{merge:true});
       authTrace('success');
       const user = { id: userDoc.id, ...record };
       const session = await createSession(user);
@@ -366,6 +371,9 @@ export async function apiHandler(req: any, res: any) {
       const displayName = clean(input.displayName, 80);
       const phone = clean(input.phone, 30);
       const reason = clean(input.reason, 300);
+      if (input.termsAccepted !== true || clean(input.termsVersion,32) !== TERMS_VERSION) {
+        send(res,400,{error:'Please review and accept the current Terms of Service and Privacy Policy before requesting staff access.'}); return;
+      }
       const businessId = clean(input.businessId,128) || 'legacy-default';
       const targetBusiness = await db.collection('businesses').doc(businessId).get();
       if (!targetBusiness.exists || targetBusiness.data()?.active === false) {
@@ -386,7 +394,7 @@ export async function apiHandler(req: any, res: any) {
       const submitted = await db.runTransaction(async transaction => {
         const previous = await transaction.get(ref);
         if (previous.exists && previous.data()?.status === 'pending') return false;
-        transaction.set(ref, { userId, userIdLower, displayName, phone, reason, businessId, status: 'pending', createdAt, trackingHash });
+        transaction.set(ref, { userId, userIdLower, displayName, phone, reason, businessId, status: 'pending', createdAt, trackingHash, termsAcceptedAt:createdAt, termsVersion:TERMS_VERSION });
         return true;
       });
       if (!submitted) {
