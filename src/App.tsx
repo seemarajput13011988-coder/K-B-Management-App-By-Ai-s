@@ -477,11 +477,11 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                 const notificationId = Array.from(String(item.id)).reduce((hash, character) => (hash * 31 + character.charCodeAt(0)) & 0x7fffffff, 1);
                 await LocalNotifications.schedule({ notifications: [{ id: notificationId, title: item.title || 'Vypaar update', body: item.message || 'You have a new update.', schedule: { at: new Date(Date.now() + 1000) } }] });
               } else setNotice((item.title || 'Vypaar update') + ': ' + (item.message || 'You have a new update.'));
-            } catch { setNotice((item.title || 'K&B update') + ': ' + (item.message || 'You have a new update.')); }
+            } catch { setNotice((item.title || 'Vypaar update') + ': ' + (item.message || 'You have a new update.')); }
           } else if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-            new Notification(item.title || 'K&B update', { body: item.message || 'You have a new update.' });
+            new Notification(item.title || 'Vypaar update', { body: item.message || 'You have a new update.' });
           } else {
-            setNotice((item.title || 'K&B update') + ': ' + (item.message || 'You have a new update.'));
+            setNotice((item.title || 'Vypaar update') + ': ' + (item.message || 'You have a new update.'));
           }
         }
       } catch { /* Notification polling must not interrupt normal app use. */ }
