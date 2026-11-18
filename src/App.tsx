@@ -15,6 +15,7 @@ const GpsTrackingWorkspace = lazy(() => import('./GpsTrackingWorkspace'));
 const InstallationsWorkspace = lazy(() => import('./InstallationsWorkspace'));
 const CalendarWorkspace = lazy(() => import('./CalendarWorkspace'));
 import { useAppPreferences } from './appPreferences';
+import { matchesSearch } from './lib/search';
 import { api as client, changeAppPassword, changeAppUserId, signInAppUser, signOutAppUser, submitStaffRegistrationRequest, getStaffRegistrationStatus, nativeApiPost } from './lib/api';
 import {
   Activity,
@@ -120,38 +121,6 @@ type Plan = {
 };
 
 const money = (n: number) => '₹' + Number(n || 0).toLocaleString('en-IN');
-const normalizeSearchText = (value: unknown) => String(value ?? '')
-  .normalize('NFKD')
-  .replace(/[\u0300-\u036f]/g, '')
-  .toLocaleLowerCase()
-  .trim()
-  .replace(/\s+/g, ' ');
-const compactSearchText = (value: unknown) => normalizeSearchText(value).replace(/[^a-z0-9]/g, '');
-const searchValueVariants = (value: unknown): string[] => {
-  if (value === null || value === undefined) return [];
-  const raw = String(value);
-  const variants = [raw];
-  const isoDate = raw.match(/^(\\d{4})-(\\d{2})-(\\d{2})/);
-  if (isoDate) {
-    const date = new Date(Number(isoDate[1]), Number(isoDate[2]) - 1, Number(isoDate[3]), 12);
-    if (Number.isFinite(date.getTime())) {
-      variants.push(
-        date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
-        date.toLocaleDateString('en-IN'),
-        date.toLocaleDateString('en-US')
-      );
-    }
-  }
-  return variants;
-};
-const matchesSearch = (query: string, ...values: unknown[]) => {
-  const terms = normalizeSearchText(query).split(' ').filter(Boolean);
-  if (!terms.length) return true;
-  const searchableValues = values.flatMap(searchValueVariants);
-  const haystack = normalizeSearchText(searchableValues.join(' '));
-  const compactHaystack = compactSearchText(searchableValues.join(' '));
-  return terms.every(term => haystack.includes(term) || compactHaystack.includes(compactSearchText(term)));
-};
 const customerStatusLabel = (value: unknown): Customer['status'] => { const status = String(value || 'Active').trim().toLowerCase(); return status === 'suspended' ? 'Suspended' : status === 'inactive' ? 'Inactive' : 'Active'; };
 const attendanceDeadlineAt = (item: AttendanceRecord): number => {
   const savedDeadline = Date.parse(item.autoCheckoutAt || item.scheduledEndAt || '');
