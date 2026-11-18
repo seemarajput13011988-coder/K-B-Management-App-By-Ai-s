@@ -402,6 +402,63 @@ export async function apiHandler(req: any, res: any) {
       if (!user) { send(res, 401, { error: 'Please sign in again to continue.' }); return; }
       const body: Data = req.body && typeof req.body === 'object' ? req.body : {};
 
+      if (path === '/api/businesses' && method === 'GET') {
+        const memberships = await db.collection('business_memberships').where('userId','==',user.uid).get();
+        const items = [];
+        for (const membership of memberships.docs) {
+          const value = membership.data();
+          if (value.active === false) continue;
+          const businessId = String(value.businessId || '');
+          if (!businessId) continue;
+          const business = await db.collection('businesses').doc(businessId).get();
+          if (!business.exists || business.data()?.active === false) continue;
+          items.push({ id:businessId, name:clean(business.data()?.name,100) || 'Business workspace', role:String(value.role || user.role), createdAt:String(business.data()?.createdAt || '') });
+        }
+        items.sort((a,b)=>a.name.localeCompare(b.name));
+        send(res,200,{items,activeBusinessId:user.businessId}); return;
+      }
+
+      if (path === '/api/businesses' && method === 'POST') {
+        if (!allow(user,['admin'],res)) return;
+        const name = clean(body.name,100);
+        if (!name) { send(res,400,{error:'Enter a business name.'}); return; }
+        const memberships = await db.collection('business_memberships').where('userId','==',user.uid).get();
+        if (memberships.docs.filter(document=>document.data().active!==false).length >= 50) {
+          send(res,409,{error:'This account has reached the 50-business workspace limit.'}); return;
+        }
+        const businessId = 'biz-' + randomBytes(12).toString('hex');
+        const createdAt = now();
+        await db.collection('businesses').doc(businessId).create({
+          name, active:true, ownerId:user.uid, createdAt, updatedAt:createdAt, legacyData:false,
+        });
+        await db.collection('business_memberships').doc(businessMembershipId(user.uid,businessId)).create({
+          userId:user.uid, businessId, role:'admin', active:true, createdAt, createdBy:user.uid,
+        });
+        const authorization = clean(req.headers.authorization,4096);
+        const token = authorization.startsWith('Bearer ') ? authorization.slice(7) : clean(body.sessionToken,4096);
+        if (!token) { send(res,401,{error:'Your session has expired. Sign in again.'}); return; }
+        await db.collection('sessions').doc(sessionTokenId(token)).update({businessId,updatedAt:createdAt});
+        businessContext.enter(businessId);
+        await audit({...user,businessId},'CREATE','business',businessId,'Created business workspace '+name);
+        send(res,201,{created:true,business:{id:businessId,name,role:'admin',createdAt},activeBusinessId:businessId}); return;
+      }
+
+      if (path.startsWith('/api/businesses/') && path.endsWith('/select') && method === 'POST') {
+        if (!allow(user,['admin'],res)) return;
+        const businessId = decodeURIComponent(path.slice('/api/businesses/'.length,-'/select'.length)).trim();
+        if (!businessId || businessId.length > 128) { send(res,400,{error:'Choose a valid business workspace.'}); return; }
+        const membership = await db.collection('business_memberships').doc(businessMembershipId(user.uid,businessId)).get();
+        const business = await db.collection('businesses').doc(businessId).get();
+        if (!membership.exists || membership.data()?.active === false || !business.exists || business.data()?.active === false) {
+          send(res,403,{error:'This account does not have access to that business workspace.'}); return;
+        }
+        const authorization = clean(req.headers.authorization,4096);
+        const token = authorization.startsWith('Bearer ') ? authorization.slice(7) : clean(body.sessionToken,4096);
+        if (!token) { send(res,401,{error:'Your session has expired. Sign in again.'}); return; }
+        await db.collection('sessions').doc(sessionTokenId(token)).update({businessId,updatedAt:now()});
+        send(res,200,{selected:true,businessId,name:clean(business.data()?.name,100)}); return;
+      }
+
       if (path === '/api/staff-registration-requests' && method === 'GET') {
         if (!allow(user, ['admin'], res)) return;
         const items = (await list('staff_registration_requests'))
