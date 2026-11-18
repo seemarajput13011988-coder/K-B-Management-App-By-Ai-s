@@ -7,8 +7,8 @@ type Customer = { id:string; name:string; phone:string; address:string; plan:str
 type Plan = { id:string; name:string; provider:string; speed:string; data:string; price:number; note:string; details?:string; connectionType:string; active:boolean };
 type LineItem = { id:number; description:string; details:string; sac:string; quantity:string; rate:string; discount:string; gstRate:string; taxMode:'exclusive'|'inclusive' };
 type ExtraSummaryField = { id:number; label:string; details:string; amount:string; gstRate:string };
-type BusinessProfile = { name:string; gstin:string; phone:string; ifsc:string; address:string; email:string; state:string; stateCode:string };
-const emptyBusinessProfile:BusinessProfile = { name:'', gstin:'', phone:'', ifsc:'', address:'', email:'', state:'', stateCode:'' };
+type BusinessProfile = { name:string; gstin:string; phone:string; ifsc:string; address:string; email:string; state:string; stateCode:string; upi:string };
+const emptyBusinessProfile:BusinessProfile = { name:'', gstin:'', phone:'', ifsc:'', address:'', email:'', state:'', stateCode:'', upi:'' };
 function readBusinessProfile(profileKey:string):BusinessProfile {
   try {
     const saved = localStorage.getItem('vypaar-invoice-profile-'+profileKey);
@@ -64,7 +64,6 @@ export default function InvoiceWorkspace({customers,plans,profileKey='default',f
   const [manualRate,setManualRate]=useState('');
   const [manualDiscount,setManualDiscount]=useState('0');
   const [manualGst,setManualGst]=useState('18');
-  const [businessUpi,setBusinessUpi]=useState('');
   const [invoiceNo,setInvoiceNo]=useState(()=> 'INV/'+new Date().getFullYear()+'/'+String(Date.now()).slice(-6));
   const [invoiceDate,setInvoiceDate]=useState(today);
   const [dueDate,setDueDate]=useState(today);
@@ -149,7 +148,7 @@ export default function InvoiceWorkspace({customers,plans,profileKey='default',f
       y=44;
       textLine(businessProfile.address, left, 8, [85,99,116]);
       textLine([businessProfile.gstin?'GSTIN: '+businessProfile.gstin:'',businessProfile.phone?'Phone: '+businessProfile.phone:'',businessProfile.ifsc?'IFSC: '+businessProfile.ifsc:''].filter(Boolean).join('  |  '),left,8,[85,99,116]);
-      textLine([businessProfile.email?'Email: '+businessProfile.email:'',businessUpi?'UPI: '+businessUpi:''].filter(Boolean).join('  |  '),left,8,[85,99,116]);
+      textLine([businessProfile.email?'Email: '+businessProfile.email:'',businessProfile.upi?'UPI: '+businessProfile.upi:''].filter(Boolean).join('  |  '),left,8,[85,99,116]);
       y+=4;
       const cardY=y;
       const billX=left+4, billWidth=91, detailsX=right-69, detailsWidth=65;
@@ -239,7 +238,7 @@ export default function InvoiceWorkspace({customers,plans,profileKey='default',f
         <label>Business state<input value={businessProfile.state} onChange={e=>setBusinessProfile({...businessProfile,state:e.target.value})} placeholder="State / Union Territory"/></label>
         <label>Business state code<input maxLength={2} pattern="[0-9]{2}" value={businessProfile.stateCode} onChange={e=>setBusinessProfile({...businessProfile,stateCode:e.target.value.replace(/\D/g,'').slice(0,2)})} placeholder="GST state code"/></label>
         <label>IFSC <small>Optional</small><input maxLength={11} value={businessProfile.ifsc} onChange={e=>setBusinessProfile({...businessProfile,ifsc:e.target.value.toUpperCase()})} placeholder="Bank IFSC code"/></label>
-        <label>Business UPI ID <small>Optional</small><input value={businessUpi} onChange={e=>setBusinessUpi(e.target.value)} placeholder="business@upi"/></label>
+        <label>Business UPI ID <small>Optional</small><input value={businessProfile.upi} onChange={e=>setBusinessProfile({...businessProfile,upi:e.target.value})} placeholder="business@upi"/></label>
         <div className="wide"><button type="button" className="btn secondary" disabled={!profileLoaded||profileSaving} onClick={()=>void saveBusinessProfile()}>{profileSaving?'Saving…':'Save business profile'}</button></div>
       </div></section>
       <section className="invoice-form-section"><h3>Customer information</h3><div className="invoice-grid">
