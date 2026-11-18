@@ -54,7 +54,7 @@ export async function nativeApiPost<T = any>(path: string, payload: Record<strin
   }
   return { data: data as T };
 }
-export async function submitStaffRegistrationRequest(input: { userId: string; displayName: string; phone?: string; reason?: string }) {
+export async function submitStaffRegistrationRequest(input: { userId: string; displayName: string; phone?: string; reason?: string; businessId?:string }) {
   const url = new URL('/api/staff-registration-requests', API_BASE);
   const response = await fetch(url.toString(), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input), cache: 'no-store' });
   let data: any = {};
