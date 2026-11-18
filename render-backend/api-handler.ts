@@ -58,15 +58,17 @@ async function ensureBusinessMembership(user:Data, preferredBusinessId=''):Promi
   // staff and admin access remains intact while newly created businesses get isolated data.
   if (user.role === 'admin' && hasAdminManagementAccess(user)) {
     const allUsers = await db.collection('users').get();
-    const batch = db.batch();
-    for (const document of allUsers.docs) {
-      const membershipRef = db.collection('business_memberships').doc(businessMembershipId(document.id,businessId));
-      batch.set(membershipRef, {
-        userId: document.id, businessId, role: String(document.data().role || 'staff'),
-        active: true, createdAt, createdBy: String(user.id),
-      }, { merge: true });
+    for (let offset=0;offset<allUsers.docs.length;offset+=400) {
+      const batch = db.batch();
+      for (const document of allUsers.docs.slice(offset,offset+400)) {
+        const membershipRef = db.collection('business_memberships').doc(businessMembershipId(document.id,businessId));
+        batch.set(membershipRef, {
+          userId: document.id, businessId, role: String(document.data().role || 'staff'),
+          active: true, createdAt, createdBy: String(user.id),
+        }, { merge: true });
+      }
+      await batch.commit();
     }
-    if (!allUsers.empty) await batch.commit();
   }
   return businessId;
 }
@@ -467,18 +469,22 @@ export async function apiHandler(req: any, res: any) {
         if (!allow(user,['admin'],res)) return;
         const name = clean(body.name,100);
         if (!name) { send(res,400,{error:'Enter a business name.'}); return; }
-        const memberships = await db.collection('business_memberships').where('userId','==',user.uid).get();
-        if (memberships.docs.filter(document=>document.data().active!==false).length >= 50) {
-          send(res,409,{error:'This account has reached the 50-business workspace limit.'}); return;
-        }
         const businessId = 'biz-' + randomBytes(12).toString('hex');
         const createdAt = now();
-        await db.collection('businesses').doc(businessId).create({
-          name, active:true, ownerId:user.uid, createdAt, updatedAt:createdAt, legacyData:false,
+        const businessRef = db.collection('businesses').doc(businessId);
+        const membershipRef = db.collection('business_memberships').doc(businessMembershipId(user.uid,businessId));
+        const created = await db.runTransaction(async transaction => {
+          const memberships = await transaction.get(db.collection('business_memberships').where('userId','==',user.uid));
+          if (memberships.docs.filter(document=>document.data().active!==false).length >= 50) return false;
+          transaction.create(businessRef,{
+            name, active:true, ownerId:user.uid, createdAt, updatedAt:createdAt, legacyData:false,
+          });
+          transaction.create(membershipRef,{
+            userId:user.uid, businessId, role:'admin', active:true, createdAt, createdBy:user.uid,
+          });
+          return true;
         });
-        await db.collection('business_memberships').doc(businessMembershipId(user.uid,businessId)).create({
-          userId:user.uid, businessId, role:'admin', active:true, createdAt, createdBy:user.uid,
-        });
+        if (!created) { send(res,409,{error:'This account has reached the 50-business workspace limit.'}); return; }
         const authorization = clean(req.headers.authorization,4096);
         const token = authorization.startsWith('Bearer ') ? authorization.slice(7) : clean(body.sessionToken,4096);
         if (!token) { send(res,401,{error:'Your session has expired. Sign in again.'}); return; }
@@ -491,7 +497,7 @@ export async function apiHandler(req: any, res: any) {
       if (path.startsWith('/api/businesses/') && path.endsWith('/select') && method === 'POST') {
         if (!allow(user,['admin'],res)) return;
         const businessId = decodeURIComponent(path.slice('/api/businesses/'.length,-'/select'.length)).trim();
-        if (!businessId || businessId.length > 128) { send(res,400,{error:'Choose a valid business workspace.'}); return; }
+        if (!/^[a-zA-Z0-9_-]{3,128}$/.test(businessId)) { send(res,400,{error:'Choose a valid business workspace.'}); return; }
         const membership = await db.collection('business_memberships').doc(businessMembershipId(user.uid,businessId)).get();
         const business = await db.collection('businesses').doc(businessId).get();
         if (!membership.exists || membership.data()?.active === false || !business.exists || business.data()?.active === false) {
