@@ -1,0 +1,69 @@
+name: Vypaar quality checks
+
+on:
+  push:
+    branches: [desktop-web-2026-11-12]
+    paths:
+      - "src/**"
+      - "render-backend/**"
+      - "capacitor.config.ts"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/vypaar-quality-check.yml"
+  pull_request:
+    branches: [desktop-web-2026-11-12]
+    paths:
+      - "src/**"
+      - "render-backend/**"
+      - "capacitor.config.ts"
+      - "package.json"
+      - "package-lock.json"
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: render-backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install
+      - run: npm run typecheck
+      - run: npm test
+      - name: Verify business isolation contracts
+        working-directory: .
+        run: |
+          set -euo pipefail
+          grep -Fq "businessCollectionPath(name,businessScope.getStore() || '')" render-backend/firestore-adapter.ts
+          grep -Fq "businessContext.enter(businessId)" render-backend/api-handler.ts
+          grep -Fq "listUsersInBusiness(user.businessId" render-backend/api-handler.ts
+          grep -Fq "businessContext.run(businessId" render-backend/jobs.ts
+          grep -Fq "businessId:'legacy-default'" render-backend/api-handler.ts || grep -Fq "businessId, status: 'pending'" render-backend/api-handler.ts
+          grep -Fq "business-profile" render-backend/api-handler.ts
+          echo "Business data scoping and business profile routes are present."
+
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install
+      - run: npx tsc --noEmit
+      - run: npm run build
+      - name: Verify Vypaar does not fall back to K&B services
+        run: |
+          set -euo pipefail
+          ! grep -Fq "kandb-management-nexus-api-zv7f.onrender.com" src/lib/api.ts
+          grep -Fq "com.vypaar.management" capacitor.config.ts
+          grep -Fq "function searchMatches" src/App.tsx
+          grep -Fq "Save business profile" src/InvoiceWorkspace.tsx
+          grep -Fq "Active business workspace" src/App.tsx
+          echo "Vypaar build is isolated from the old K&B API and package identity."
