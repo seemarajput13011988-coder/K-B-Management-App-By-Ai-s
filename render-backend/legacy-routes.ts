@@ -1338,7 +1338,7 @@ export const handler = router({
       if (String(lockSnapshot.data()?.attendanceId || '') === id) transaction.delete(lockRef);
       transaction.create(auditRef, {
         actorId: autoEnded ? 'system' : admin.id,
-        actorName: autoEnded ? 'K&B automatic attendance' : admin.displayName,
+        actorName: autoEnded ? 'Vypaar automatic attendance' : admin.displayName,
         action: autoEnded ? 'AUTO_CHECKOUT' : 'ADMIN_END_SHIFT',
         entityType: 'attendance', entityId: id,
         description: autoEnded
@@ -1775,7 +1775,7 @@ export const handler = router({
     const message = cleanText(input.message, 1500);
     const recipientId = user.role === 'admin' ? cleanText(input.recipientId, 128) : 'admin-primary';
     if (!message) return error('Write a message before sending.', 400);
-    let recipientName = 'K&B Administrator';
+    let recipientName = 'Business administrator';
     if (user.role === 'admin') {
       const [recipient] = await db.get<UserRecord>('users', [recipientId], { consistent: true });
       if (!recipient || recipient.role !== 'staff' || !recipient.active) return error('Choose an active staff member.', 400);
