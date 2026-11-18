@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import { api, subscribeToApiChanges } from './lib/api';
+import { matchesSearch } from './lib/search';
 
 type Customer = { id: string; name: string; phone?: string; plan: string; monthlyFee: number; dueDate: string };
 type Plan = { id: string; name: string; price: number; active: boolean };
@@ -39,6 +40,9 @@ export default function SubscriptionWorkspace({ customers, plans, isAdmin, flash
   const [paidAt,setPaidAt] = useState(todayKey());
   const [paymentMethod,setPaymentMethod] = useState('UPI');
   const [filter,setFilter] = useState<'All'|'Active'|'Pending'|'Expired'|'Cancelled'>('All');
+  const [paymentFilter,setPaymentFilter] = useState<'All'|'Paid'|'Pending'>('All');
+  const [search,setSearch] = useState('');
+  const [sortBy,setSortBy] = useState<'recent'|'expiry'|'amount'|'customer'>('recent');
 
   async function load() {
     setLoading(true);
@@ -64,7 +68,12 @@ export default function SubscriptionWorkspace({ customers, plans, isAdmin, flash
     if(selectedPlan) setAmount(String(selectedPlan.price));
   },[plan]);
 
-  const visible = useMemo(()=>items.filter(item=>filter==='All'||item.status===filter),[items,filter]);
+  const visible = useMemo(()=>items.filter(item=>{
+    const customer=customers.find(candidate=>candidate.id===item.customerId);
+    return (filter==='All'||item.status===filter)
+      &&(paymentFilter==='All'||item.paymentStatus===paymentFilter)
+      &&matchesSearch(search,item.id,item.customerName,customer?.phone,item.plan,item.startDate,item.endDate,item.amount,item.status,item.paymentStatus,item.paymentMethod,item.paidAt,item.notes);
+  }).sort((a,b)=>sortBy==='expiry'?a.endDate.localeCompare(b.endDate):sortBy==='amount'?b.amount-a.amount:sortBy==='customer'?a.customerName.localeCompare(b.customerName):String(b.createdAt||'').localeCompare(String(a.createdAt||''))),[items,customers,filter,paymentFilter,search,sortBy]);
   async function createRenewal(event: FormEvent) {
     event.preventDefault();
     if(!customerId||!plan||!startDate||!endDate||Number(amount)<=0) { flash('Complete all renewal details.'); return; }
@@ -117,7 +126,7 @@ export default function SubscriptionWorkspace({ customers, plans, isAdmin, flash
     </table>{!visible.length&&<p className="ops-empty">{items.length?'No renewals match this filter.':'No renewal records yet. Create the first renewal above.'}</p>}</div>}
     <style>{`
       .subscription-toolbar-actions{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
-      .subscription-toolbar-actions select,.subscription-table select,.subscription-form input,.subscription-form select{min-height:40px;padding:8px 10px;border:1px solid var(--border,#dbe2ec);border-radius:9px;background:var(--surface,#fff);color:var(--text,#172033);font:inherit}
+      .subscription-toolbar-actions select,.subscription-toolbar-actions input,.subscription-table select,.subscription-form input,.subscription-form select{min-height:40px;padding:8px 10px;border:1px solid var(--border,#dbe2ec);border-radius:9px;background:var(--surface,#fff);color:var(--text,#172033);font:inherit}
       .subscription-form{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:13px;padding:16px;margin:12px 0 18px;border:1px solid var(--border,#dbe2ec);border-radius:14px;background:var(--surface-soft,#f7f9fc)}
       .subscription-form label{display:grid;gap:6px;font-size:12px;font-weight:700;color:var(--muted,#526176)}
       .subscription-form-actions{display:flex;align-items:end;justify-content:flex-end;gap:8px;grid-column:1/-1}
