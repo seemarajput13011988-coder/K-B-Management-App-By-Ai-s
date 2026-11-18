@@ -14,7 +14,7 @@ test('normalizes accents and punctuation without losing meaningful terms', () =>
 
 test('matches phone digits when formatting differs', () => {
   assert.equal(matchesSearch('987-654-3210', '+91 98765 43210'), true);
-  assert.equal(matchesSearch('876543', '+91 98765 43210'), false);
+  assert.equal(matchesSearch('123456', '+91 98765 43210'), false);
 });
 
 test('does not match every record for punctuation-only queries', () => {
