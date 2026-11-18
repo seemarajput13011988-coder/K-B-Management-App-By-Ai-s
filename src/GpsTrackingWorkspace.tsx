@@ -181,21 +181,6 @@ export default function GpsTrackingWorkspace({flash}:{flash:(message:string)=>vo
         <a className="btn secondary compact" href={mapsUrl(item.latitude,item.longitude)} target="_blank" rel="noreferrer"><ExternalLink size={14}/> Google Maps</a>
       </article>):<p className="ops-empty">No locations saved yet. Select a staff member and save their latest location.</p>}
     </div>}
-    <style>{`
-      .gps-tabs{display:flex;gap:8px;border-bottom:1px solid var(--border,#e2e8f0);margin:12px 0 16px;flex-wrap:wrap}
-      .gps-tabs button{display:flex;align-items:center;gap:7px;border:0;background:transparent;color:var(--muted,#64748b);padding:11px 13px;border-bottom:2px solid transparent;font:inherit;font-size:13px;font-weight:700;cursor:pointer}
-      .gps-tabs button.active{color:var(--text,#172033);border-bottom-color:var(--accent,#2563eb)}.gps-tabs span{font-size:11px;border-radius:20px;background:var(--surface-soft,#f1f5f9);padding:2px 7px}
-      .gps-notice{display:flex;gap:10px;align-items:flex-start;padding:12px;border-radius:12px;background:var(--surface-soft,#f7f9fc);color:var(--muted,#526176);font-size:13px;line-height:1.5;margin-bottom:14px}
-      .gps-staff-list,.gps-saved-list{display:grid;gap:9px}.gps-staff-row,.gps-saved-card{display:flex;align-items:center;gap:12px;padding:12px;border:1px solid var(--border,#e2e8f0);border-radius:12px}
-      .gps-avatar{width:36px;height:36px;border-radius:10px;background:var(--surface-soft,#eff6ff);display:grid;place-items:center;color:var(--accent,#2563eb)}
-      .gps-staff-name{display:grid;gap:3px;flex:1}.gps-row-actions{display:flex;gap:7px;flex-wrap:wrap}.gps-staff-name small,.gps-result-head small,.gps-address small,.gps-saved-card small{display:block;color:var(--muted,#64748b);font-size:11px;margin-top:3px}
-      .gps-result{margin-top:16px;padding:15px;border:1px solid var(--border,#dbe2ec);border-radius:14px;background:var(--surface,#fff)}
-      .gps-result-head{display:flex;align-items:center;justify-content:space-between;gap:10px}.gps-status{font-size:11px;font-weight:800;border-radius:30px;padding:6px 9px;background:#f1f5f9;color:#475569;text-transform:capitalize}.gps-status.captured{background:#dcfce7;color:#166534}.gps-status.pending{background:#fef3c7;color:#92400e}.gps-status.gps-off,.gps-status.unavailable{background:#fee2e2;color:#991b1b}
-      .gps-error{font-size:13px;color:#b91c1c;display:flex;align-items:center;gap:9px}
-      .gps-address{display:flex;align-items:flex-start;gap:10px;margin:16px 0;color:var(--text,#172033)}.gps-address svg{color:var(--accent,#2563eb);flex:none}
-      .gps-map{width:100%;aspect-ratio:16/9;min-height:220px;margin:12px 0;border:1px solid var(--border,#dbe2ec);border-radius:12px;overflow:hidden;background:var(--surface-soft,#f7f9fc)}.gps-map iframe{display:block;width:100%;height:100%;min-height:220px;border:0}.gps-coordinates{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;padding:12px;border-radius:10px;background:var(--surface-soft,#f7f9fc)}.gps-coordinates small{display:block;color:var(--muted,#64748b);font-size:10px}.gps-coordinates strong{font-size:13px;overflow-wrap:anywhere}
-      .gps-result-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}.gps-saved-card>div{flex:1;min-width:0}.gps-saved-card>div strong{display:block}.gps-saved-card small{overflow-wrap:anywhere}
-      @media(max-width:600px){.gps-coordinates{grid-template-columns:1fr}.gps-saved-card{align-items:flex-start;flex-direction:column}.gps-staff-row{flex-wrap:wrap}}
-    `}</style>
+    
   </section>;
 }
