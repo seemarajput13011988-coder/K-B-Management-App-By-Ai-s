@@ -604,41 +604,75 @@ export const handler = router({
   }),
 
   'POST /api/portal/connection-requests/:id/convert': protectedRoute(['admin'], async ({ params }, user) => {
-    const [request] = await db.get<Record<string, unknown>>('portal_connection_requests', [params.id], { consistent: true });
-    if (!request) return error('Portal connection request not found.', 404);
-    if (typeof request.customerId === 'string' && request.customerId) return json({ converted: true, customerId: request.customerId });
-    const phone = cleanText(request.phone, 10);
-    const [customers, plan] = await Promise.all([
-      db.list<Customer>('customers', { limit: 1000 }),
-      db.get<PlanRecord>('plans', [cleanText(request.planId, 128)], { consistent: true }),
-    ]);
-    if (customers.items.some(customer => customer.phone === phone)) return error('A customer record already uses this mobile number. Review that record instead of creating a duplicate.', 409);
-    const selectedPlan = plan[0];
-    if (!selectedPlan || selectedPlan.active === false) return error('The requested plan is no longer active. Update the request before converting it.', 409);
-    const record = {
-      name: cleanText(request.name, 100),
-      phone,
-      address: [cleanText(request.address, 300), cleanText(request.city, 80), cleanText(request.state, 80), cleanText(request.pincode, 6)].filter(Boolean).join(', '),
-      plan: selectedPlan.name,
-      monthlyFee: Number(selectedPlan.price),
-      status: 'Inactive',
-      joinedAt: new Date().toISOString().slice(0, 10),
-      dueDate: '',
-      notes: 'Created from Customer Nexus request. Awaiting K&B service confirmation.',
-      assignedTo: '',
-      assignedToName: '',
-      source: 'customer-portal',
-      portalRequestId: params.id,
-    };
-    if (!record.name || !/^\\d{10}$/.test(record.phone) || !record.address || !record.plan || !Number.isFinite(record.monthlyFee)) {
-      return error('The request details are incomplete. Review the request before converting it.', 400);
-    }
-    const [customerId] = await db.add('customers', [record]);
-    if (!customerId) return error('Could not create the customer record.', 500);
-    await db.tx.update('portal_connection_requests', [{ id: params.id, record: { status: 'Converted', customerId, convertedAt: new Date().toISOString(), convertedBy: user.id } }], { patch: true });
-    return json({ converted: true, customerId, customer: { id: customerId, ...record } }, 201);
-  }),
+    const requestRef = firestore.collection('portal_connection_requests').doc(params.id);
+    const customerRef = firestore.collection('customers').doc();
+    const result = await firestore.runTransaction(async transaction => {
+      const requestSnapshot = await transaction.get(requestRef);
+      if (!requestSnapshot.exists) return { kind: 'not-found' as const };
+      const request = requestSnapshot.data() || {};
+      const existingCustomerId = cleanText(request.customerId, 128);
+      if (existingCustomerId) return { kind: 'already-converted' as const, customerId: existingCustomerId };
+      if (request.status !== 'Pending') return { kind: 'not-pending' as const };
 
+      const phone = cleanText(request.phone, 10);
+      const planId = cleanText(request.planId, 128);
+      const planRef = firestore.collection('plans').doc(planId);
+      const customerQuery = firestore.collection('customers').where('phone', '==', phone).limit(2);
+      const lockId = createHash('sha256').update(phone).digest('hex');
+      const lockRef = firestore.collection('portal_connection_request_locks').doc(lockId);
+      const [planSnapshot, customerSnapshot, lockSnapshot] = await Promise.all([
+        transaction.get(planRef),
+        transaction.get(customerQuery),
+        transaction.get(lockRef),
+      ]);
+      if (!customerSnapshot.empty) return { kind: 'duplicate-customer' as const };
+      const selectedPlan = planSnapshot.data() as PlanRecord | undefined;
+      if (!planSnapshot.exists || !selectedPlan || selectedPlan.active === false) return { kind: 'plan-unavailable' as const };
+
+      const record = {
+        id: customerRef.id,
+        name: cleanText(request.name, 100),
+        phone,
+        address: [cleanText(request.address, 300), cleanText(request.city, 80), cleanText(request.state, 80), cleanText(request.pincode, 6)].filter(Boolean).join(', '),
+        plan: selectedPlan.name,
+        monthlyFee: Number(selectedPlan.price),
+        status: 'Inactive',
+        joinedAt: indiaDateKey(),
+        dueDate: '',
+        notes: 'Created from Customer Nexus request. Awaiting K&B service confirmation.',
+        assignedTo: '',
+        assignedToName: '',
+        source: 'customer-portal',
+        portalRequestId: params.id,
+      };
+      if (!record.name || !/^[0-9]{10}$/.test(record.phone) || !record.address || !record.plan || !Number.isFinite(record.monthlyFee)) {
+        return { kind: 'invalid-request' as const };
+      }
+
+      const convertedAt = new Date().toISOString();
+      transaction.create(customerRef, record);
+      transaction.update(requestRef, {
+        status: 'Converted',
+        customerId: customerRef.id,
+        convertedAt,
+        convertedBy: user.id,
+        convertedByName: user.displayName,
+      });
+      if (lockSnapshot.exists && lockSnapshot.data()?.pendingRequestId === params.id) {
+        transaction.set(lockRef, { status: 'Closed', pendingRequestId: null, convertedAt }, { merge: true });
+      }
+      return { kind: 'converted' as const, customerId: customerRef.id, customer: record };
+    });
+
+    if (result.kind === 'not-found') return error('Portal connection request not found.', 404);
+    if (result.kind === 'not-pending') return error('This connection request is no longer pending.', 409);
+    if (result.kind === 'duplicate-customer') return error('A customer record already uses this mobile number. Review that record instead of creating a duplicate.', 409);
+    if (result.kind === 'plan-unavailable') return error('The requested plan is no longer active. Update the request before converting it.', 409);
+    if (result.kind === 'invalid-request') return error('The request details are incomplete. Review the request before converting it.', 400);
+    if (result.kind === 'already-converted') return json({ converted: true, customerId: result.customerId });
+    await writeAudit(user, 'CREATE', 'customer', result.customerId, 'Converted customer portal connection request');
+    return json({ converted: true, customerId: result.customerId, customer: result.customer }, 201);
+  }),
 
   'POST /api/auth/login': [async ({ body }) => {
     const input = (body || {}) as Record<string, unknown>;
