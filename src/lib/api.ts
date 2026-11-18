@@ -1,8 +1,8 @@
 import { CapacitorHttp } from '@capacitor/core';
 
-export const API_BASE = import.meta.env.VITE_API_BASE_URL || 'https://kandb-management-nexus-api-zv7f.onrender.com';
+export const API_BASE = import.meta.env.VITE_API_BASE_URL || (typeof window !== 'undefined' ? window.location.origin : '');
 type ApiResult<T = any> = { data: T };
-type LocalSession = { token: string; expiresAt: number; user: { id: string; userId: string; displayName: string; role: 'admin'|'staff'; active: boolean; canManageAdmins?: boolean } };
+type LocalSession = { token: string; expiresAt: number; businessId?:string; user: { id: string; userId: string; displayName: string; role: 'admin'|'staff'; active: boolean; businessId?:string; canManageAdmins?: boolean } };
 function storedToken(): string {
   try { return (JSON.parse(sessionStorage.getItem('kb-customer-session') || 'null') as LocalSession | null)?.token || ''; }
   catch { return ''; }
@@ -26,7 +26,7 @@ async function request<T = any>(path: string, method: string, payload?: Record<s
   try { data = responseText ? JSON.parse(responseText) : {}; } catch { data = {}; }
   if (!response.ok) {
     if (typeof data.error === 'string' && data.error.trim()) throw new Error(data.error);
-    throw new Error(`K&B server returned HTTP ${response.status}. Check that the K&B API service is available.`);
+    throw new Error(`Vypaar server returned HTTP ${response.status}. Check that the Vypaar API service is available.`);
   }
   const isLocationTelemetry = path.startsWith('/api/staff/live-location') || path.startsWith('/api/attendance/gps-lost');
   if (method !== 'GET' && !isLocationTelemetry && typeof window !== 'undefined') {
@@ -113,7 +113,7 @@ async function waitForApiReady(): Promise<void> {
       lastStatus = response.status;
       if (response.ok) return;
       if (response.status === 503) {
-        throw new Error('K&B server is running, but Firestore is not ready. Please try again later.');
+        throw new Error('Vypaar server is running, but Firestore is not ready. Please try again later.');
       }
       if (response.status === 401 || response.status === 404) {
         const legacy = await fetch(new URL('/api/_healthcheck', API_BASE).toString(), {
@@ -125,14 +125,14 @@ async function waitForApiReady(): Promise<void> {
         if (legacy.ok) return;
       }
     } catch (error) {
-      if (error instanceof Error && error.message.startsWith('K&B server is running')) throw error;
+      if (error instanceof Error && error.message.startsWith('Vypaar server is running')) throw error;
       // A sleeping Render service or a temporary network interruption gets another attempt.
     } finally {
       window.clearTimeout(timeout);
     }
     await new Promise(resolve => window.setTimeout(resolve, 2500));
   }
-  throw new Error('K&B server did not become ready within 60 seconds (last HTTP status ' + lastStatus + '). Please wait and try signing in again.');
+  throw new Error('Vypaar server did not become ready within 60 seconds (last HTTP status ' + lastStatus + '). Please wait and try signing in again.');
 }
 
 export async function signInAppUser(userId: string, password: string, role: 'admin'|'staff') {
@@ -155,7 +155,7 @@ export async function signInAppUser(userId: string, password: string, role: 'adm
     if (error instanceof DOMException && error.name === 'AbortError') {
       throw new Error('Sign-in took too long. Please check your internet connection and try again.');
     }
-    throw new Error('Could not reach the K&B server. Check your internet connection and try again.');
+    throw new Error('Could not reach the Vypaar server. Check your internet connection and try again.');
   } finally {
     window.clearTimeout(timeout);
   }
