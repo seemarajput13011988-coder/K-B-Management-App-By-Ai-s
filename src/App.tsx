@@ -36,7 +36,6 @@ import {
   Users,
   Wifi,
   X,
-  Zap,
   CalendarDays,
   Phone,
   MapPin,
@@ -1614,16 +1613,7 @@ function OverduePanel({ value }: { value: number }) {
   return <section className="panel chart-panel"><div className="panel-head"><div><h2>Estimated overdue plan value</h2><p>Active accounts past their due date with no full payment recorded for this month</p></div><span className="chart-mark"><IndianRupee size={17} /></span></div><div className="overdue-value">{money(value)}</div><p className="overdue-note">Estimate only: accounts without a due date are excluded. Partial payments are deducted from the monthly fee.</p></section>;
 }
 
-function Stat({ icon, label, value, foot, tint }: any) {
-  return (
-    <div className="stat-card">
-      <div className={'stat-icon ' + tint}>{icon}</div>
-      <div className="stat-label">{label}</div>
-      <div className="stat-value">{value}</div>
-      <div className="stat-foot">{foot}</div>
-    </div>
-  );
-}
+
 function Empty({ icon, title, text, action, onClick }: any) {
   return (
     <div className="empty-state">
