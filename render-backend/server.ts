@@ -9,7 +9,7 @@ const app=express();
 app.disable('x-powered-by');
 // Give every HTTP request its own async business context to prevent tenant scope leaking across requests.
 app.use((req,res,next)=>businessContext.run('',()=>next()));
-const allowedOrigins = new Set((process.env.CORS_ORIGINS || 'http://localhost:5173,http://localhost:4173').split(',').map(origin=>origin.trim()).filter(Boolean));
+const allowedOrigins = new Set((process.env.CORS_ORIGINS || 'http://localhost:5173,http://localhost:4173,capacitor://localhost').split(',').map(origin=>origin.trim()).filter(Boolean));
 app.use(cors({
   origin:(origin,callback)=>{
     if(!origin || allowedOrigins.has(origin)) return callback(null,true);
