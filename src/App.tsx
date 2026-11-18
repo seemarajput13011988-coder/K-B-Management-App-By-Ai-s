@@ -1110,7 +1110,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
           {page === 'Calendar' && <CalendarWorkspace tasks={tasks} attendance={attendanceRecords} isAdmin={isAdmin} festivals={Object.entries(FESTIVAL_DATES).map(([date, festival]) => ({ date, ...festival }))} />}
           {page === 'Salary' && isAdmin && <FinanceWorkspace salaryOnly session={session} customers={customers} payments={payments} flash={flash} />}
           {page === 'My Day' && !isAdmin && <StaffOperations session={session} customers={customers} flash={flash} onDataChanged={() => { void load(true); }} />}
-          {page === 'Invoices' && isAdmin && <InvoiceWorkspace customers={customers} plans={plans} profileKey={session.user.id} flash={flash} />}
+          {page === 'Invoices' && isAdmin && <InvoiceWorkspace customers={customers} plans={plans} profileKey={activeBusinessId || session.user.id} flash={flash} />}
           {page === 'Finance & Billing' && isAdmin && <FinanceWorkspace session={session} customers={customers} payments={payments} flash={flash} />}
           {page === 'Subscriptions' && <SubscriptionWorkspace customers={customers} plans={plans} isAdmin={isAdmin} flash={flash} />}
           {page === 'Inventory' && <InventoryWorkspace isAdmin={isAdmin} flash={flash} />}
