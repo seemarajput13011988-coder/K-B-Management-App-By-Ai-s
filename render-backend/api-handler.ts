@@ -648,6 +648,9 @@ export async function apiHandler(req: any, res: any) {
           if (error?.code === 6 || error?.code === 'already-exists') { send(res, 409, { error: 'That account ID is already in use.' }); return; }
           throw error;
         }
+        await db.collection('business_memberships').doc(businessMembershipId(accountId,user.businessId)).set({
+          userId:accountId, businessId:user.businessId, role:'admin', active:true, createdAt:now(), createdBy:user.uid,
+        }, { merge:true });
         await audit(user, 'CREATE', 'admin', accountId, 'Created administrator account ' + userId);
         const { passwordHash, salt, ...safe } = record;
         send(res, 201, { user: { id: accountId, ...safe } }); return;
@@ -672,6 +675,9 @@ export async function apiHandler(req: any, res: any) {
           if (error?.code === 6 || error?.code === 'already-exists') { send(res, 409, { error: 'That user ID is already in use.' }); return; }
           throw error;
         }
+        await db.collection('business_memberships').doc(businessMembershipId(accountId,user.businessId)).set({
+          userId:accountId, businessId:user.businessId, role:'staff', active:true, createdAt:now(), createdBy:user.uid,
+        }, { merge:true });
         await audit(user, 'CREATE', 'staff', accountId, 'Created staff account ' + userId);
         const { passwordHash, salt, ...safe } = record;
         send(res, 201, { user: { id: accountId, ...safe } }); return;
