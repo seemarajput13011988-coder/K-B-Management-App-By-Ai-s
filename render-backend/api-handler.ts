@@ -234,7 +234,7 @@ export async function apiHandler(req: any, res: any) {
     const path = routePath(req.path);
     if (method === 'OPTIONS') { res.status(204).send(''); return; }
     if (method === 'GET' && path === '/api/_healthcheck') {
-      send(res, 200, { message: 'Success', service: 'kandb-management-nexus-render-api' }); return;
+      send(res, 200, { message: 'Success', service: 'vypaar-management-api' }); return;
     }
 
     if (method === 'POST' && path === '/api/auth/login') {
