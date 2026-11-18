@@ -1,4 +1,5 @@
 import { cert, initializeApp } from 'firebase-admin/app';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import type { Request, Response, NextFunction } from 'express';
 
@@ -7,7 +8,31 @@ if (!credentialJson) throw new Error('FIREBASE_SERVICE_ACCOUNT_JSON is required.
 const credential = JSON.parse(credentialJson);
 if (credential.project_id !== 'kandb-net-sevice') throw new Error('Firebase service account must belong to project kandb-net-sevice.');
 initializeApp({ credential: cert(credential), projectId: 'kandb-net-sevice' });
-const firestore = getFirestore();
+const rawFirestore = getFirestore();
+const businessScope = new AsyncLocalStorage<string>();
+const globalCollections = new Set(['users', 'sessions', 'businesses', 'business_memberships']);
+
+function scopedCollection(name:string) {
+  const businessId = businessScope.getStore();
+  if (!businessId || globalCollections.has(name) || businessId === 'legacy-default') {
+    return rawFirestore.collection(name);
+  }
+  return rawFirestore.collection('businesses').doc(businessId).collection(name);
+}
+
+const firestore = new Proxy(rawFirestore, {
+  get(target, property) {
+    if (property === 'collection') return scopedCollection;
+    const value = Reflect.get(target, property, target);
+    return typeof value === 'function' ? value.bind(target) : value;
+  },
+}) as typeof rawFirestore;
+
+export const businessContext = {
+  enter(businessId:string) { businessScope.enterWith(businessId); },
+  run<T>(businessId:string, callback:()=>T) { return businessScope.run(businessId, callback); },
+  current() { return businessScope.getStore() || ''; },
+};
 
 export type RouterContext = {
   body: Record<string, any>;
@@ -30,7 +55,7 @@ function withoutId(record: RecordData): RecordData {
 }
 
 async function readRecords<T = RecordData>(collection: string, ids: string[]): Promise<(T | null)[]> {
-  const refs = ids.map(id => firestore.collection(collection).doc(String(id)));
+  const refs = ids.map(id => scopedCollection(collection).doc(String(id)));
   const snapshots = await Promise.all(refs.map(ref => ref.get()));
   return snapshots.map(snapshot => snapshot.exists ? ({ ...(snapshot.data() || {}), id: snapshot.id } as T) : null);
 }
@@ -40,8 +65,8 @@ async function addRecords(collection: string, records: RecordData[]): Promise<st
   const ids: string[] = [];
   for (const record of records) {
     const ref = record.id
-      ? firestore.collection(collection).doc(String(record.id))
-      : firestore.collection(collection).doc();
+      ? scopedCollection(collection).doc(String(record.id))
+      : scopedCollection(collection).doc();
     batch.set(ref, { ...withoutId(record), id: ref.id });
     ids.push(ref.id);
   }
@@ -54,8 +79,8 @@ async function transactionAdd(collection: string, records: RecordData[]): Promis
   // batch.create can race when two requests try to create the same deterministic ID.
   return firestore.runTransaction(async transaction => {
     const refs = records.map(record => record.id
-      ? firestore.collection(collection).doc(String(record.id))
-      : firestore.collection(collection).doc());
+      ? scopedCollection(collection).doc(String(record.id))
+      : scopedCollection(collection).doc());
     const snapshots = await Promise.all(refs.map(ref => transaction.get(ref)));
     const results = snapshots.map(snapshot => !snapshot.exists);
 
@@ -70,7 +95,7 @@ async function transactionAdd(collection: string, records: RecordData[]): Promis
 }
 
 async function updateRecords(collection: string, updates: UpdateData[]): Promise<boolean[]> {
-  const refs = updates.map(item => firestore.collection(collection).doc(String(item.id)));
+  const refs = updates.map(item => scopedCollection(collection).doc(String(item.id)));
   const snapshots = await Promise.all(refs.map(ref => ref.get()));
   const batch = firestore.batch();
   const results = snapshots.map(snapshot => snapshot.exists);
@@ -82,7 +107,7 @@ async function updateRecords(collection: string, updates: UpdateData[]): Promise
 }
 
 async function deleteRecords(collection: string, ids: string[]): Promise<boolean[]> {
-  const refs = ids.map(id => firestore.collection(collection).doc(String(id)));
+  const refs = ids.map(id => scopedCollection(collection).doc(String(id)));
   const snapshots = await Promise.all(refs.map(ref => ref.get()));
   const batch = firestore.batch();
   const results = snapshots.map(snapshot => snapshot.exists);
@@ -96,7 +121,7 @@ export const db = {
     return readRecords<T>(collection, ids);
   },
   async list<T = RecordData>(collection: string, options: { limit?: number } = {}): Promise<{ items: T[] }> {
-    const query = firestore.collection(collection).limit(Math.max(1, Math.min(Number(options.limit || 500), 1000)));
+    const query = scopedCollection(collection).limit(Math.max(1, Math.min(Number(options.limit || 500), 1000)));
     const snapshot = await query.get();
     return { items: snapshot.docs.map(doc => ({ ...(doc.data() || {}), id: doc.id } as T)) };
   },
@@ -117,7 +142,7 @@ export const db = {
       // Preserve the tx.update contract: read all target documents and apply the
       // complete update set atomically, with Firestore retrying on contention.
       return firestore.runTransaction(async transaction => {
-        const refs = updates.map(item => firestore.collection(collection).doc(String(item.id)));
+        const refs = updates.map(item => scopedCollection(collection).doc(String(item.id)));
         const snapshots = await Promise.all(refs.map(ref => transaction.get(ref)));
         const results = snapshots.map(snapshot => snapshot.exists);
 
