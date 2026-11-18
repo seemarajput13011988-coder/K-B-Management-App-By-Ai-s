@@ -395,10 +395,10 @@ export async function apiHandler(req: any, res: any) {
       const memberships = await db.collection('business_memberships').where('businessId','==',businessId).get();
       const memberIds = new Set(memberships.docs.filter(document=>document.data().active!==false).map(document=>String(document.data().userId||'')));
       const admins = (await list('users')).filter(member => member.active === true && member.role === 'admin' && memberIds.has(String(member.id)));
-      await Promise.all(admins.map(member => db.collection('staff_notifications').doc('staff-registration-' + ref.id + '-' + member.id).set({
+      await businessContext.run(businessId,async()=>Promise.all(admins.map(member => db.collection('staff_notifications').doc('staff-registration-' + ref.id + '-' + member.id).set({
         recipientId: member.id, recipientRole: 'admin', type: 'staff-registration', title: 'New staff access request',
         message: displayName + ' requested staff access with ID ' + userId + '.', createdAt, read: false, relatedId: ref.id
-      }, { merge: true })));
+      }, { merge: true }))));
       send(res, 201, { id: ref.id, trackingCode, status: 'pending', message: 'Your request has been submitted. An administrator must approve it before you can sign in.' }); return;
     }
 
