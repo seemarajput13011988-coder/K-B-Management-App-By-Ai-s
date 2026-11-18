@@ -1,3 +1,4 @@
+# Trigger CI against the latest Vypaar workspace implementation.
 name: Vypaar quality checks
 
 on:
