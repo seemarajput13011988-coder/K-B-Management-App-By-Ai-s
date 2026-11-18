@@ -2258,7 +2258,7 @@ function AccountSettingsModal({ session, theme, onToggleTheme, onClose, onChange
     <div className="form-grid">
       <section className="panel" style={{padding:14,display:'flex',alignItems:'center',justifyContent:'space-between',gap:14}}>
         <div><b>Appearance</b><p className="subtle" style={{margin:'4px 0 0'}}>Choose how Vypaar Management looks on this device.</p></div>
-        <button type="button" className="btn secondary" onClick={onToggleTheme} aria-pressed={theme === 'dark'}>{theme === 'dark' ? '☀️ Switch to day' : '🌙 Switch to night'}</button>
+        <button type="button" className="btn secondary" onClick={onToggleTheme} aria-pressed={theme === 'dark'}>{theme === 'dark' ? 'Switch to day mode' : 'Switch to night mode'}</button>
       </section>
       <form className="form-grid" onSubmit={submitUserId}>
         <Field label="Current password"><input type="password" required value={currentPasswordForUserId} onChange={e => setCurrentPasswordForUserId(e.target.value)} autoComplete="current-password" /></Field>
