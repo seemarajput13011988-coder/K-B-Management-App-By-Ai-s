@@ -76,6 +76,7 @@ async function ensureBusinessMembership(user:Data, preferredBusinessId=''):Promi
 async function createSession(user: Data) {
   const token = randomBytes(32).toString('hex');
   const businessId = await ensureBusinessMembership(user, String(user.businessId || ''));
+  businessContext.enter(businessId);
   // Staff shifts can be admin-started after 7 PM and remain active until 7 PM the next day.
   // Keep the staff session valid long enough for that maximum supported shift; admin sessions remain shorter.
   const sessionHours = user.role === 'staff' ? 26 : 8;
