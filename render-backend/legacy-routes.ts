@@ -294,11 +294,8 @@ export const handler = router({
 
   // Public, read-only customer catalogue. Management Nexus remains the source of truth.
   'GET /api/portal/plans': [async () => {
-    let result = await db.list<PlanRecord>('plans', { limit: 200 });
-    if (!result.items.length) {
-      await db.tx.add('plans', defaultPlans.map((plan, index) => ({ id: 'default-plan-' + (index + 1), ...plan })));
-      result = await db.list<PlanRecord>('plans', { limit: 200 });
-    }
+    // Catalogue reads must never seed or otherwise mutate production Firestore data.
+    const result = await db.list<PlanRecord>('plans', { limit: 200 });
     const items = result.items.filter(plan => plan.active !== false).map(plan => ({
       id: String(plan.id || ''),
       name: plan.name,
@@ -755,11 +752,8 @@ export const handler = router({
   }),
 
   'GET /api/plans': protectedRoute(['admin', 'staff'], async (_ctx, user) => {
-    let result = await db.list<PlanRecord>('plans', { limit: 200 });
-    if (!result.items.length) {
-      await db.tx.add('plans', defaultPlans.map((plan, index) => ({ id: 'default-plan-' + (index + 1), ...plan })));
-      result = await db.list<PlanRecord>('plans', { limit: 200 });
-    }
+    // An empty catalogue is a valid empty state; reads must not create default records.
+    const result = await db.list<PlanRecord>('plans', { limit: 200 });
     const items = user.role === 'admin' ? result.items : result.items.filter(plan => plan.active);
     return json({ items });
   }),
