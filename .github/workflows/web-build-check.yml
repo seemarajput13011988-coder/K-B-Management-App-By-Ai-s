@@ -38,6 +38,8 @@ jobs:
         with:
           node-version: 22
       - run: npm install
+      - name: Test accurate record search
+        run: npm run test:search
       - name: Type-check and build against the active Render API
         env:
           VITE_API_BASE_URL: https://kandb-management-nexus-api-zv7f.onrender.com
