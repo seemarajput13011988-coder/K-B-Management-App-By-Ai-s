@@ -28,6 +28,7 @@ import {
   MessageSquare,
   Plus,
   Search,
+  Copy,
   Users,
   Wifi,
   X,
@@ -344,6 +345,19 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
       if (!silent) setLoading(false);
     }
   }
+  async function copyStaffInvite() {
+    if (!activeBusinessId) { flash('Select a business first.'); return; }
+    const inviteUrl = new URL(window.location.href);
+    inviteUrl.searchParams.set('businessId',activeBusinessId);
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('Clipboard unavailable');
+      await navigator.clipboard.writeText(inviteUrl.toString());
+      flash('Staff invitation link copied for this business.');
+    } catch {
+      window.prompt('Copy this staff invitation link',inviteUrl.toString());
+    }
+  }
+
   async function switchBusiness(businessId:string) {
     if (!businessId || businessId === activeBusinessId) return;
     try {
@@ -932,6 +946,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
             {businesses.map(business=><option key={business.id} value={business.id}>{business.name}</option>)}
             {!businesses.length && <option value={activeBusinessId || ''}>Business workspace</option>}
           </select>
+          {isAdmin && <button type="button" className="workspace-copy" title="Copy staff invitation link for this business" aria-label="Copy staff invitation link" onClick={()=>void copyStaffInvite()}><Copy size={13}/></button>}
           {isAdmin && <button type="button" className="workspace-add" title="Create another business" aria-label="Create another business" onClick={()=>setShowBusinessModal(true)}>+</button>}
         </div>
         <nav className="nexus-navigation" aria-label="Main navigation">
@@ -2669,7 +2684,7 @@ function LoginScreen({onLogin}:{onLogin:(id:string,pw:string,role:'admin'|'staff
  function choose(nextRole:'admin'|'staff'){setRole(nextRole);setId('');setPw('');setMsg('');}
  const [loginBusy,setLoginBusy]=useState(false);
  async function submit(e:FormEvent){e.preventDefault();if(loginBusy)return;setLoginBusy(true);setMsg('');try{if(role)await onLogin(id,pw,role);}catch(err){setMsg(err instanceof Error?err.message:'Sign-in failed.');}finally{setLoginBusy(false);}}
- async function submitRegistration(){setRegistrationBusy(true);setRegistrationMessage('');setRegistrationError(false);try{const result=await submitStaffRegistrationRequest(registration);localStorage.setItem('kandb-staff-registration',JSON.stringify({id:result.id,trackingCode:result.trackingCode}));setRegistrationStatus({status:'pending',createdAt:new Date().toISOString()});setRegistrationMessage(result.message);setRegistrationOpen(false);setRegistration({userId:'',displayName:'',phone:'',reason:''});}catch(err){setRegistrationMessage(err instanceof Error?err.message:'Could not submit your request.');setRegistrationError(true);}finally{setRegistrationBusy(false);}}
+ async function submitRegistration(){setRegistrationBusy(true);setRegistrationMessage('');setRegistrationError(false);try{const invitedBusinessId=new URLSearchParams(window.location.search).get('businessId')||'legacy-default';const result=await submitStaffRegistrationRequest({...registration,businessId:invitedBusinessId});localStorage.setItem('kandb-staff-registration',JSON.stringify({id:result.id,trackingCode:result.trackingCode}));setRegistrationStatus({status:'pending',createdAt:new Date().toISOString()});setRegistrationMessage(result.message);setRegistrationOpen(false);setRegistration({userId:'',displayName:'',phone:'',reason:''});}catch(err){setRegistrationMessage(err instanceof Error?err.message:'Could not submit your request.');setRegistrationError(true);}finally{setRegistrationBusy(false);}}
  return <div className="auth-shell"><div className="auth-side"><div className="auth-brand"><div className="brand-mark"><img className="brand-logo" src="/vypaar-logo.png" alt="Vypaar Management logo" /></div><strong>Vypaar Management</strong></div><div className="auth-promo"><span className="auth-kicker">MANAGEMENT SOFTWARE</span><h1>Every customer connection, in view.</h1><p>Customer records, staff assignments, collections and service requests in one shared workspace.</p></div></div><div className="auth-main"><FestivalCelebration/><form className="auth-card" onSubmit={submit}><div className="auth-icon">{role==='staff'?<UserRound/>:<ShieldCheck/>}</div><span className="eyebrow">SECURE SIGN IN</span><h2>{role?(role==='admin'?'Admin sign in':'Staff sign in'):'Welcome to Vypaar Management'}</h2><p>{role?'Enter your '+role+' account details to continue.':'Choose how you want to sign in.'}</p>
  {!role?<><div className="login-role-options"><button type="button" className="login-role-card admin-choice" onClick={()=>choose('admin')}><span className="login-role-icon"><ShieldCheck size={22}/></span><strong>Admin Sign In</strong><small>Manage customers, staff, plans and reports</small><span className="login-role-arrow">Continue →</span></button><button type="button" className="login-role-card staff-choice" onClick={()=>choose('staff')}><span className="login-role-icon"><UserRound size={22}/></span><strong>Staff Sign In</strong><small>View assigned customers and manage daily work</small><span className="login-role-arrow">Continue →</span></button></div>
  {registrationStatus ? <div className="registration-status">
