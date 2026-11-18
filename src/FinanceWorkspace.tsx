@@ -40,7 +40,7 @@ async function printReport(title: string, rows: unknown[][]) {
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(15);
     doc.setTextColor(20, 59, 103);
-    doc.text('K&B NET SERVICE', margin, y);
+    doc.text('Vypaar Management', margin, y);
     y += 7;
     doc.setFontSize(12);
     doc.setTextColor(25, 38, 58);
