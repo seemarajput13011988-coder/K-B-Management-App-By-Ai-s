@@ -394,8 +394,8 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
               const permission = await LocalNotifications.checkPermissions();
               if (permission.display === 'granted') {
                 const notificationId = Array.from(String(item.id)).reduce((hash, character) => (hash * 31 + character.charCodeAt(0)) & 0x7fffffff, 1);
-                await LocalNotifications.schedule({ notifications: [{ id: notificationId, title: item.title || 'K&B update', body: item.message || 'You have a new update.', schedule: { at: new Date(Date.now() + 1000) } }] });
-              } else setNotice((item.title || 'K&B update') + ': ' + (item.message || 'You have a new update.'));
+                await LocalNotifications.schedule({ notifications: [{ id: notificationId, title: item.title || 'Vypaar update', body: item.message || 'You have a new update.', schedule: { at: new Date(Date.now() + 1000) } }] });
+              } else setNotice((item.title || 'Vypaar update') + ': ' + (item.message || 'You have a new update.'));
             } catch { setNotice((item.title || 'K&B update') + ': ' + (item.message || 'You have a new update.')); }
           } else if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
             new Notification(item.title || 'K&B update', { body: item.message || 'You have a new update.' });
@@ -873,7 +873,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
         </div>
         <div className="workspace">
           <span className="workspace-dot" />
-          <span>K&B Operations</span>
+          <span>Business workspace</span>
           <ChevronDown size={14} />
         </div>
         <nav className="nexus-navigation" aria-label="Main navigation">
@@ -908,7 +908,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
             <p>Keep your customer records up to date.</p>
             <button
               onClick={() =>
-                flash('Contact your K&B administrator for assistance.')
+                flash('Contact your workspace administrator for assistance.')
               }
             >
               Help centre <span>↗</span>
@@ -1053,6 +1053,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                 <button type="button" onClick={() => setPage('Customers')}><Users size={18}/><span>Customers</span><small>Find and manage</small></button>
                 <button type="button" onClick={() => setPage('Complaints')}><MessageSquare size={18}/><span>Complaints</span><small>Track issues</small></button>
                 {isAdmin && <button type="button" onClick={() => { setEditing(null); setShowCustomer(true); }}><Plus size={18}/><span>Add customer</span><small>Create a record</small></button>}
+                {isAdmin && <button type="button" onClick={() => setPage('Invoices')}><ReceiptText size={18}/><span>Create invoice</span><small>Generate customer PDF</small></button>}
                 {isAdmin && <button type="button" onClick={() => setPage('Salary')}><IndianRupee size={18}/><span>Salary</span><small>Staff operations</small></button>}
                 {!isAdmin && <button type="button" onClick={() => setPage('My Work')}><ClipboardList size={18}/><span>My work</span><small>See assigned tasks</small></button>}
               </section>
@@ -1487,7 +1488,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
             </section>
           )}
           <footer>
-            © {new Date().getFullYear()} K&B NET SERVICE <span>•</span> Customer
+            © {new Date().getFullYear()} Vypaar Management <span>•</span> Business workspace
             Management
           </footer>
         </div>
@@ -2127,7 +2128,7 @@ function StaffPermissionSetup({ onComplete }: { onComplete:(locationGranted?:boo
   }
   return <Modal title="Set up staff app permissions" subtitle="Allow the permissions needed for task evidence, active-shift GPS tracking and notifications." onClose={()=>onComplete(false)}>
     <div className="form-grid">
-      <div className="form-hint">Your location is shared with authorised K&B administrators only during an active shift. Allow location permission before starting a shift and keep phone location enabled. If GPS is not restored within 15 minutes after an interruption, the shift is automatically cancelled and an administrator must restart it. Camera access is used for task and complaint evidence. Android’s file picker controls access to selected photos and videos.</div>
+      <div className="form-hint">Your location is shared with authorised workspace administrators only during an active shift. Allow location permission before starting a shift and keep phone location enabled. If GPS is not restored within 15 minutes after an interruption, the shift is automatically cancelled and an administrator must restart it. Camera access is used for task and complaint evidence. Android’s file picker controls access to selected photos and videos.</div>
       {message&&<p className="form-hint" style={{whiteSpace:'pre-line'}}>{message}</p>}
       <div className="form-actions"><button className="btn primary" disabled={busy} onClick={()=>void requestPermissions()}>{busy?'Checking…':'Allow required permissions'}</button><button type="button" className="btn secondary" onClick={()=>onComplete(false)}>Continue for now</button></div>
     </div>
@@ -2568,8 +2569,8 @@ function FestivalCelebration(){
   const motifsForDay=motifs[festival.theme]||['✨','🌼','🪷','✨','🌸'];
   return <section className={'kb-festival-hero kb-festival-'+festival.theme} aria-label={festival.name+' celebration'}>
     <div className="kb-festival-art" aria-hidden="true">{festival.theme==='diwali'?<div className="kb-diya-row">{Array.from({length:5},(_,index)=><span key={index} style={{animationDelay:(index*.18)+'s'}}>🪔</span>)}</div>:motifsForDay.map((motif,index)=><span key={index} className={'kb-festival-float kb-festival-float-'+index}>{motif}</span>)}</div>
-    <div className="kb-festival-network" aria-hidden="true"><Wifi size={72}/><span>K&amp;B CONNECTED CELEBRATIONS</span><i/><i/><i/></div>
-    <div className="kb-festival-hero-copy"><span className="kb-festival-kicker">K&amp;B FESTIVE CELEBRATION</span><h2>{festival.name}</h2><p>Wishing our K&amp;B family joy, prosperity and a wonderful celebration.</p></div>
+    <div className="kb-festival-network" aria-hidden="true"><Wifi size={72}/><span>VYPAAR COMMUNITY CELEBRATIONS</span><i/><i/><i/></div>
+    <div className="kb-festival-hero-copy"><span className="kb-festival-kicker">VYPAAR FESTIVE CELEBRATION</span><h2>{festival.name}</h2><p>Wishing our Vypaar community joy, prosperity and a wonderful celebration.</p></div>
     <div className="kb-festival-seal" aria-hidden="true">{motifsForDay[0]}</div>
     <span className="kb-festival-spark kb-festival-spark-one" aria-hidden="true">✦</span><span className="kb-festival-spark kb-festival-spark-two" aria-hidden="true">✧</span>
   </section>;
@@ -2580,7 +2581,7 @@ type WorkspaceErrorBoundaryState={hasError:boolean};
 class WorkspaceErrorBoundary extends Component<WorkspaceErrorBoundaryProps,WorkspaceErrorBoundaryState>{
  state:WorkspaceErrorBoundaryState={hasError:false};
  static getDerivedStateFromError():WorkspaceErrorBoundaryState{return {hasError:true};}
- componentDidCatch(error:Error,info:ErrorInfo){console.error('K&B workspace render failure after sign-in',error,info.componentStack);}
+ componentDidCatch(error:Error,info:ErrorInfo){console.error('Vypaar workspace render failure after sign-in',error,info.componentStack);}
  render(){
   if(this.state.hasError)return <div className="auth-shell"><main className="auth-main"><section className="auth-card" role="alert"><div className="auth-icon"><ShieldCheck/></div><span className="eyebrow">WORKSPACE RECOVERY</span><h2>We couldn't open your workspace</h2><p>Your sign-in screen is still available. Please return to sign in; no business records have been changed by this screen.</p><button type="button" className="btn primary auth-submit" onClick={this.props.onReset}>Return to sign in</button></section></main></div>;
   return this.props.children;
