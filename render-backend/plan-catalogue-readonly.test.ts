@@ -59,8 +59,8 @@ test('customer complaint and photo are committed together without cleanup deleti
     "'POST /api/portal/complaints': [async ({ body }) => {",
     "'GET /api/portal/plan-change-requests':",
   );
-  assert.match(route, /firestore\.batch\(\\)/);
+  assert.match(route, /firestore\.batch\(\)/);
   assert.match(route, /batch\.create\(complaintRef/);
-  assert.match(route, /batch\.commit\(\\)/);
+  assert.match(route, /batch\.commit\(\)/);
   assert.doesNotMatch(route, /db\.delete\('complaints'/);
 });
