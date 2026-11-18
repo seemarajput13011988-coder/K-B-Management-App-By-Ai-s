@@ -111,7 +111,7 @@ export async function runGpsGracePeriod() {
         createdAt: cancelledAt, read: false, attendanceId: String(item.id),
       }, { merge: true });
       transaction.set(cancellationAuditRef, {
-        actorId: 'system', actorName: 'K&B GPS monitor', action: 'GPS_SHIFT_CANCELLED',
+        actorId: 'system', actorName: 'Vypaar GPS monitor', action: 'GPS_SHIFT_CANCELLED',
         entityType: 'attendance', entityId: String(item.id),
         description: 'Automatically cancelled ' + String(item.displayName || 'staff shift') + ' after the 15-minute GPS restoration period.',
         createdAt: cancelledAt, serverCreatedAt: FieldValue.serverTimestamp(),
@@ -222,9 +222,9 @@ export async function deliverPendingPushNotifications() {
       continue;
     }
     const tokens = eligibleDocs.map(doc => String(doc.data().token));
-    const type = String(notification.type || ''), title = String(notification.title || 'K&B Management Nexus').slice(0, 120);
+    const type = String(notification.type || ''), title = String(notification.title || 'Vypaar Management').slice(0, 120);
     const body = ['direct-message', 'group-message'].includes(type)
-      ? 'You have a new message. Open K&B Management Nexus to view it.'
+      ? 'You have a new message. Open Vypaar Management to view it.'
       : String(notification.message || 'You have a new update.').slice(0, 180);
     const result = await getMessaging().sendEachForMulticast({ tokens, notification: { title, body }, data: { notificationId: String(notification.id), type, relatedId: String(notification.relatedId || '') }, android: { priority: 'high' } });
     const completedTokenIds = [...previouslyDelivered];
@@ -325,7 +325,7 @@ export async function autoCheckoutAtSevenPm() {
         createdAt: checkoutIso, read: false, attendanceId: String(item.id),
       }, { merge: true });
       transaction.set(auditRef, {
-        actorId: 'system', actorName: 'K&B automatic attendance',
+        actorId: 'system', actorName: 'Vypaar automatic attendance',
         action: 'AUTO_CHECKOUT', entityType: 'attendance', entityId: String(item.id),
         description: 'Automatically checked out ' + String(item.displayName || 'staff member') + ' at the scheduled shift end time.',
         createdAt: checkoutIso, serverCreatedAt: FieldValue.serverTimestamp(),
@@ -383,14 +383,14 @@ export async function runScheduledTick() {
 export function startBackgroundJobs() {
   // Attendance and GPS deadlines are checked more frequently than non-urgent reminders.
   const attendanceTimer = setInterval(() => {
-    void runAutoCheckoutJob().catch(error => console.error('K&B automatic checkout job failed:', error instanceof Error ? error.message : String(error)));
+    void runAutoCheckoutJob().catch(error => console.error('Vypaar automatic checkout job failed:', error instanceof Error ? error.message : String(error)));
   }, 15_000);
   (attendanceTimer as any).unref?.();
   const timer = setInterval(() => {
-    void runScheduledTick().catch(error => console.error('K&B scheduled task failed:', error instanceof Error ? error.message : String(error)));
+    void runScheduledTick().catch(error => console.error('Vypaar scheduled task failed:', error instanceof Error ? error.message : String(error)));
   }, 60_000);
   (timer as any).unref?.();
   setTimeout(() => {
-    void runScheduledTick().catch(error => console.error('K&B startup job failed:', error instanceof Error ? error.message : String(error)));
+    void runScheduledTick().catch(error => console.error('Vypaar startup job failed:', error instanceof Error ? error.message : String(error)));
   }, 5_000).unref?.();
 }
