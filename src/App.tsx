@@ -188,6 +188,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   const [page, setPage] = useState('Overview');
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [portalRequests, setPortalRequests] = useState<any[]>([]);
+  const [portalPlanChangeRequests, setPortalPlanChangeRequests] = useState<any[]>([]);
   const [plans, setPlans] = useState<Plan[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [complaints, setComplaints] = useState<Complaint[]>([]);
@@ -297,7 +298,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
       setComplaints((t.data.items || []).map((item: Complaint) => ({ ...item, status: item.status === 'Open' ? 'Pending' : item.status === 'In progress' ? 'In Progress' : item.status === 'Resolved' ? 'Solved' : item.status })));
       setTasks(w.data.items || []);
       if (isAdmin) {
-        const [s, requests, inventoryResult, installationResult, payrollResult, holidayResult, portalResult] = await Promise.all([api.get('/api/staff'),api.get('/api/staff-registration-requests'),api.get('/api/inventory'),api.get('/api/installations'),api.get('/api/payroll'),api.get('/api/holidays'),api.get('/api/portal/connection-requests')]);
+        const [s, requests, inventoryResult, installationResult, payrollResult, holidayResult, portalResult, portalPlanResult] = await Promise.all([api.get('/api/staff'),api.get('/api/staff-registration-requests'),api.get('/api/inventory'),api.get('/api/installations'),api.get('/api/payroll'),api.get('/api/holidays'),api.get('/api/portal/connection-requests'),api.get('/api/portal/plan-change-requests')]);
         setStaff(s.data.items || []);
         setStaffRegistrationRequests(requests.data.items || []);
         setStaffHolidayRequests(holidayResult.data.items || []);
@@ -305,6 +306,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
         setStaffInstallations(installationResult.data.items || []);
         setStaffPayroll(payrollResult.data.items || []);
         setPortalRequests(portalResult.data.items || []);
+        setPortalPlanChangeRequests(portalPlanResult.data.items || []);
         try {
           const review = await api.get('/api/retention/review');
           setRetentionItems((review.data.items || []) as RetentionReviewItem[]);
@@ -1253,6 +1255,30 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                       <button className="btn primary compact" onClick={async () => { try { await api.post('/api/portal/connection-requests/' + encodeURIComponent(request.id) + '/convert', {}); flash('Request converted to an inactive customer record. Confirm service details before activation.'); await load(true); } catch (error) { flash(error instanceof Error ? error.message : 'Could not convert this request.'); } }}>Convert to customer</button>
                       <button className="btn secondary compact" onClick={async () => { try { await api.put('/api/portal/connection-requests/' + encodeURIComponent(request.id), { status: 'Contacted' }); flash('Request marked as contacted.'); await load(true); } catch (error) { flash(error instanceof Error ? error.message : 'Could not update this request.'); } }}>Mark contacted</button>
                       <button className="btn danger compact" onClick={async () => { try { await api.put('/api/portal/connection-requests/' + encodeURIComponent(request.id), { status: 'Rejected' }); flash('Request marked as rejected.'); await load(true); } catch (error) { flash(error instanceof Error ? error.message : 'Could not update this request.'); } }}>Reject</button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </section>
+          )}
+          {page === 'Customers' && isAdmin && portalPlanChangeRequests.some(request => request.status === 'Pending') && (
+            <section className="panel portal-request-panel">
+              <div className="portal-request-heading">
+                <div><span className="eyebrow">CUSTOMER NEXUS · PLAN MANAGEMENT</span><h2>Customer plan-change requests</h2><p>Approve only after verifying the customer and confirming the requested service plan.</p></div>
+                <span className="portal-request-count">{portalPlanChangeRequests.filter(request => request.status === 'Pending').length} pending</span>
+              </div>
+              <div className="portal-request-list">
+                {portalPlanChangeRequests.filter(request => request.status === 'Pending').map(request => (
+                  <article className="portal-request-card" key={request.id}>
+                    <div className="portal-request-main">
+                      <strong>{request.customerName}</strong>
+                      <span>{request.phone} · {request.currentPlan} → {request.requestedPlan}</span>
+                      <small>{money(Number(request.currentMonthlyFee || 0))}/month → {money(Number(request.requestedMonthlyFee || 0))}/month</small>
+                      <small>Received {dateLabel(request.createdAt)} · Customer identity must be verified before approval</small>
+                    </div>
+                    <div className="portal-request-actions">
+                      <button className="btn primary compact" onClick={async () => { try { await api.post('/api/portal/plan-change-requests/' + encodeURIComponent(request.id) + '/decision', { decision: 'Approved' }); flash('Customer plan updated successfully.'); await load(true); } catch (error) { flash(error instanceof Error ? error.message : 'Could not approve this plan change.'); } }}>Approve & update plan</button>
+                      <button className="btn danger compact" onClick={async () => { try { await api.post('/api/portal/plan-change-requests/' + encodeURIComponent(request.id) + '/decision', { decision: 'Rejected' }); flash('Plan-change request rejected.'); await load(true); } catch (error) { flash(error instanceof Error ? error.message : 'Could not reject this request.'); } }}>Reject</button>
                     </div>
                   </article>
                 ))}
