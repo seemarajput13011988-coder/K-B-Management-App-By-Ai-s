@@ -332,7 +332,7 @@ export const handler = router({
     const planId = cleanText(input.planId, 128);
     const notes = cleanText(input.notes, 500);
     const paymentPreference = input.paymentPreference === 'Cash after installation' ? 'Cash after installation' : 'To be discussed with K&B';
-    if (!name || !/^\\d{10}$/.test(phone) || !state || !city || !/^\\d{6}$/.test(pincode) || !address || !planId) {
+    if (!name || !/^\d{10}$/.test(phone) || !state || !city || !/^\d{6}$/.test(pincode) || !address || !planId) {
       return error('Enter your name, valid mobile number, complete address and choose an available plan.', 400);
     }
     const [plan] = await db.get<PlanRecord>('plans', [planId], { consistent: true });
