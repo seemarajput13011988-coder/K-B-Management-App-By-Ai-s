@@ -457,6 +457,7 @@ export async function apiHandler(req: any, res: any) {
         };
         if (!profile.name || !profile.address) { send(res,400,{error:'Enter the business name and registered address before saving.'}); return; }
         if (profile.gstin && !/^[0-9A-Z]{15}$/.test(profile.gstin)) { send(res,400,{error:'Enter a valid 15-character GSTIN or leave it blank.'}); return; }
+        if (profile.gstin && (!profile.stateCode || profile.gstin.slice(0,2)!==profile.stateCode)) { send(res,400,{error:'Business state code must match the first two digits of the GSTIN.'}); return; }
         if (profile.stateCode && !/^\d{2}$/.test(profile.stateCode)) { send(res,400,{error:'Business state code must contain two digits.'}); return; }
         if (profile.ifsc && !/^[A-Z]{4}0[A-Z0-9]{6}$/.test(profile.ifsc)) { send(res,400,{error:'Enter a valid IFSC code or leave it blank.'}); return; }
         if (profile.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(profile.email)) { send(res,400,{error:'Enter a valid business email address.'}); return; }
