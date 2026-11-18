@@ -6,8 +6,11 @@ import type { Request, Response, NextFunction } from 'express';
 const credentialJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON || '';
 if (!credentialJson) throw new Error('FIREBASE_SERVICE_ACCOUNT_JSON is required.');
 const credential = JSON.parse(credentialJson);
-if (credential.project_id !== 'kandb-net-sevice') throw new Error('Firebase service account must belong to project kandb-net-sevice.');
-initializeApp({ credential: cert(credential), projectId: 'kandb-net-sevice' });
+const firebaseProjectId = String(process.env.FIREBASE_PROJECT_ID || credential.project_id || '').trim();
+if (!firebaseProjectId || credential.project_id !== firebaseProjectId) {
+  throw new Error('Firebase service account project does not match FIREBASE_PROJECT_ID.');
+}
+initializeApp({ credential: cert(credential), projectId: firebaseProjectId });
 const rawFirestore = getFirestore();
 const businessScope = new AsyncLocalStorage<string>();
 const globalCollections = new Set(['users', 'sessions', 'businesses', 'business_memberships', 'staff_registration_requests']);
