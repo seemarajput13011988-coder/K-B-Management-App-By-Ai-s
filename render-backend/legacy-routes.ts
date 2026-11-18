@@ -460,15 +460,12 @@ export const handler = router({
       const lockId = cleanText(request.requestLockId, 128);
       const lockRef = lockId ? firestore.collection('portal_plan_change_request_locks').doc(lockId) : null;
       const lockSnapshot = lockRef ? await transaction.get(lockRef) : null;
-      let customerSnapshot: FirebaseFirestore.DocumentSnapshot | null = null;
-      let planSnapshot: FirebaseFirestore.DocumentSnapshot | null = null;
-      let customerRef: FirebaseFirestore.DocumentReference | null = null;
       if (decision === 'Approved') {
         const customerId = cleanText(request.customerId, 128);
         const planId = cleanText(request.requestedPlanId, 128);
-        customerRef = firestore.collection('customers').doc(customerId);
+        const customerRef = firestore.collection('customers').doc(customerId);
         const planRef = firestore.collection('plans').doc(planId);
-        [customerSnapshot, planSnapshot] = await Promise.all([
+        const [customerSnapshot, planSnapshot] = await Promise.all([
           transaction.get(customerRef),
           transaction.get(planRef),
         ]);
