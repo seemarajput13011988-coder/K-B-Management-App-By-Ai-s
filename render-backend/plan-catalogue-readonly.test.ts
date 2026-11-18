@@ -39,8 +39,8 @@ test('public plan-change intake serializes pending requests with a Firestore loc
   );
   assert.match(route, /firestore\.runTransaction/);
   assert.match(route, /portal_plan_change_request_locks/);
-  assert.match(route, /transaction\.create\\(requestRef/);
-  assert.doesNotMatch(route, /db\.add\\('portal_plan_change_requests'/);
+  assert.match(route, /transaction\.create\(requestRef/);
+  assert.doesNotMatch(route, /db\.add\('portal_plan_change_requests'/);
 });
 
 test('admin plan-change decisions update customer and request atomically', () => {
@@ -49,8 +49,8 @@ test('admin plan-change decisions update customer and request atomically', () =>
     "// Customer-facing connection requests are leads, not active customer accounts.",
   );
   assert.match(route, /firestore\.runTransaction/);
-  assert.match(route, /transaction\.update\\(customerRef/);
-  assert.match(route, /transaction\.update\\(requestRef/);
+  assert.match(route, /transaction\.update\(customerRef/);
+  assert.match(route, /transaction\.update\(requestRef/);
   assert.doesNotMatch(route, /db\.tx\.update/);
 });
 
@@ -59,8 +59,8 @@ test('customer complaint and photo are committed together without cleanup deleti
     "'POST /api/portal/complaints': [async ({ body }) => {",
     "'GET /api/portal/plan-change-requests':",
   );
-  assert.match(route, /firestore\.batch\\(\\)/);
-  assert.match(route, /batch\.create\\(complaintRef/);
-  assert.match(route, /batch\.commit\\(\\)/);
-  assert.doesNotMatch(route, /db\.delete\\('complaints'/);
+  assert.match(route, /firestore\.batch\(\\)/);
+  assert.match(route, /batch\.create\(complaintRef/);
+  assert.match(route, /batch\.commit\(\\)/);
+  assert.doesNotMatch(route, /db\.delete\('complaints'/);
 });
