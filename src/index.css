@@ -2428,3 +2428,7 @@ td,th{padding:12px 13px}
       .portal-request-main{display:grid;gap:5px;min-width:0}.portal-request-main strong{font-size:14px}.portal-request-main span{font-size:13px;font-weight:700;overflow-wrap:anywhere}.portal-request-main small{color:var(--muted,#64748b);font-size:11px;line-height:1.4}
       .portal-request-actions{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end}.portal-request-actions .btn{white-space:normal}
       @media(max-width:640px){.portal-request-card{align-items:stretch;flex-direction:column}.portal-request-actions{justify-content:flex-start}.portal-request-heading h2{font-size:16px}}
+
+      .portal-request-status{align-self:center;padding:7px 10px;border-radius:999px;background:var(--surface,#fff);border:1px solid var(--border,#dbe2ec);font-size:11px;font-weight:800;color:var(--muted,#64748b)}
+      .portal-request-status.approved{background:#e5f7ee;border-color:#bce8d0;color:#087443}
+      .portal-request-status.rejected{background:#ffeded;border-color:#f4caca;color:#a33}
