@@ -2,8 +2,6 @@ import { Component, lazy, Suspense, useEffect, useMemo, useRef, useState } from 
 import type { ErrorInfo, FormEvent, ReactNode } from 'react';
 import { Capacitor, registerPlugin } from '@capacitor/core';
 
-import { Filesystem } from '@capacitor/filesystem';
-import { Camera } from '@capacitor/camera';
 import { Geolocation } from '@capacitor/geolocation';
 import { LocalNotifications } from '@capacitor/local-notifications';
 const StaffOperations = lazy(() => import('./StaffOperations'));
@@ -181,24 +179,6 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
     const timer = window.setInterval(() => setLocalHour(new Date().getHours()), 60_000);
     return () => window.clearInterval(timer);
   }, []);
-  useEffect(() => {
-    let active = true;
-    if (session.user.role !== 'staff' || !Capacitor.isNativePlatform()) return;
-    if (localStorage.getItem('kb-staff-permissions-v1') === 'done') return;
-    // A permission already granted in Android settings should be reused silently.
-    Geolocation.checkPermissions().then(permission => {
-      if (!active) return;
-      if (permission.location === 'granted') {
-        localStorage.setItem('kb-staff-permissions-v1', 'done');
-        setPermissionSetupOpen(false);
-      } else {
-        setPermissionSetupOpen(true);
-      }
-    }).catch(() => {
-      if (active) setPermissionSetupOpen(true);
-    });
-    return () => { active = false; };
-  }, [session.user.id, session.user.role]);
   const greeting = localHour < 12
     ? ({ en: 'Good morning', hi: 'सुप्रभात', gu: 'સુપ્રભાત' }[language])
     : localHour < 17
@@ -224,7 +204,6 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   const [selectedStaffProfileId, setSelectedStaffProfileId] = useState('');
   const [attendanceEdit,setAttendanceEdit]=useState<{record:AttendanceRecord;dayType:'Full day'|'Half day'|'Absent';reason:string}|null>(null);
   const [showTask, setShowTask] = useState(false);
-  const [permissionSetupOpen, setPermissionSetupOpen] = useState(false);
   const [completingTask, setCompletingTask] = useState<Task | null>(null);
   const [taskPreview, setTaskPreview] = useState<{name:string;mimeType:string;dataUrl:string}|null>(null);
   const [showStaff, setShowStaff] = useState(false);
@@ -1426,7 +1405,6 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
         />
       )}
       {!isAdmin && <StaffLocationResponder activeShift={staffShiftActive} userId={session.user.id} />}
-      {permissionSetupOpen && <StaffPermissionSetup onComplete={(locationGranted = false) => { if (locationGranted) localStorage.setItem('kb-staff-permissions-v1', 'done'); setPermissionSetupOpen(false); }} />}
       {completingTask && <TaskCompletionModal task={completingTask} onClose={() => setCompletingTask(null)} onComplete={(photo: File | null, video: File | null) => completeTaskWithEvidence(completingTask, photo, video)} />}
       {taskPreview && <Modal title={taskPreview.name} subtitle="Task completion evidence" onClose={() => setTaskPreview(null)}><div className="complaint-preview">{taskPreview.mimeType.startsWith('video/') ? <video src={taskPreview.dataUrl} controls playsInline /> : <img src={taskPreview.dataUrl} alt={taskPreview.name}/>}</div><div className="form-actions"><a className="btn secondary" href={taskPreview.dataUrl} download={taskPreview.name}>Download evidence</a><button type="button" className="btn primary" onClick={() => setTaskPreview(null)}>Close</button></div></Modal>}
       {showComplaint && (
@@ -1988,50 +1966,6 @@ function StaffLocationResponder({ activeShift, userId }: { activeShift: boolean;
   }, [shiftActive, activeShiftId, scheduledEndAt, scheduleReady]);
   return null;
 }
-function StaffPermissionSetup({ onComplete }: { onComplete:(locationGranted?:boolean)=>void }) {
-  const [busy,setBusy]=useState(false);
-  const [message,setMessage]=useState('');
-  async function requestPermissions() {
-    setBusy(true);
-    setMessage('Checking Android permissions…');
-    try {
-      let location = await Geolocation.checkPermissions();
-      if (location.location !== 'granted') location = await Geolocation.requestPermissions();
-      const locationGranted = location.location === 'granted';
-      const outcomes:string[]=['Location: '+String(location.location||'not granted')];
-      try {
-        const result=await Filesystem.requestPermissions();
-        outcomes.push('Storage/media access: '+String(result.publicStorage||'handled by Android picker'));
-      } catch { outcomes.push('Storage/media: Android will ask when you select a file.'); }
-      try {
-        const camera=await Camera.requestPermissions();
-        outcomes.push('Camera: '+String(camera.camera||'requested'));
-      } catch { outcomes.push('Camera: not granted yet. Allow it when capturing task evidence.'); }
-      try {
-        const notifications = await LocalNotifications.requestPermissions();
-        outcomes.push('Notifications: ' + String(notifications.display || 'checked'));
-      } catch { outcomes.push('Notifications: Android may ask when shift tracking starts.'); }
-      setMessage(outcomes.join('\n'));
-      if (locationGranted) {
-        localStorage.setItem('kb-staff-permissions-v1','done');
-        onComplete(true);
-      } else {
-        localStorage.removeItem('kb-staff-permissions-v1');
-        setMessage(outcomes.join('\n')+'\n\nLocation permission is required for active-shift GPS tracking. You can continue for now, but staff check-in requires permission and a fresh location fix. If an administrator has already started your shift, the app will ask again when you open it.');
-      }
-    } catch(error) {
-      setMessage(error instanceof Error?error.message:'Could not check Android permissions. Please try again.');
-    } finally { setBusy(false); }
-  }
-  return <Modal title="Set up staff app permissions" subtitle="Allow the permissions needed for task evidence, active-shift GPS tracking and notifications." onClose={()=>onComplete(false)}>
-    <div className="form-grid">
-      <div className="form-hint">Your location is shared with authorised K&B administrators only during an active shift. Allow location permission before starting a shift and keep phone location enabled. If GPS is not restored within 15 minutes after an interruption, the shift is automatically cancelled and an administrator must restart it. Camera access is used for task and complaint evidence. Android’s file picker controls access to selected photos and videos.</div>
-      {message&&<p className="form-hint" style={{whiteSpace:'pre-line'}}>{message}</p>}
-      <div className="form-actions"><button className="btn primary" disabled={busy} onClick={()=>void requestPermissions()}>{busy?'Checking…':'Allow required permissions'}</button><button type="button" className="btn secondary" onClick={()=>onComplete(false)}>Continue for now</button></div>
-    </div>
-  </Modal>;
-}
-
 function TaskCompletionModal({ task, onClose, onComplete }: any) {
   const [photo, setPhoto] = useState<File | null>(null);
   const [video, setVideo] = useState<File | null>(null);
