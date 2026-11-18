@@ -115,21 +115,6 @@ export default function SubscriptionWorkspace({ customers, plans, isAdmin, flash
         {isAdmin&&<td><select aria-label={'Change status for '+item.customerName} value={item.status} onChange={event=>void changeStatus(item,event.target.value as Subscription['status'])}><option>Active</option><option>Pending</option><option>Expired</option><option>Cancelled</option></select></td>}
       </tr>)}</tbody>
     </table>{!visible.length&&<p className="ops-empty">{items.length?'No renewals match this filter.':'No renewal records yet. Create the first renewal above.'}</p>}</div>}
-    <style>{`
-      .subscription-toolbar-actions{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
-      .subscription-toolbar-actions select,.subscription-table select,.subscription-form input,.subscription-form select{min-height:40px;padding:8px 10px;border:1px solid var(--border,#dbe2ec);border-radius:9px;background:var(--surface,#fff);color:var(--text,#172033);font:inherit}
-      .subscription-form{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:13px;padding:16px;margin:12px 0 18px;border:1px solid var(--border,#dbe2ec);border-radius:14px;background:var(--surface-soft,#f7f9fc)}
-      .subscription-form label{display:grid;gap:6px;font-size:12px;font-weight:700;color:var(--muted,#526176)}
-      .subscription-form-actions{display:flex;align-items:end;justify-content:flex-end;gap:8px;grid-column:1/-1}
-      .subscription-table-wrap{width:100%;overflow:auto}.subscription-table{width:100%;border-collapse:collapse;min-width:760px;text-align:left}
-      .subscription-table th,.subscription-table td{padding:12px 10px;border-bottom:1px solid var(--border,#e5eaf1);font-size:13px;vertical-align:middle}
-      .subscription-table th{color:var(--muted,#64748b);font-size:11px;text-transform:uppercase;letter-spacing:.04em}
-      .subscription-table td small{display:block;margin-top:4px;color:var(--muted,#64748b);font-size:11px}
-      .subscription-payment,.subscription-status{display:inline-block;padding:5px 8px;border-radius:999px;font-size:11px;font-weight:700;background:var(--surface-soft,#edf2f8)}
-      .subscription-payment.paid{color:#087443;background:#e5f7ee}.subscription-payment.unpaid{color:#965b00;background:#fff4dd}
-      .subscription-status.cancelled,.subscription-status.expired{color:#a33;background:#ffeded}.subscription-status.active{color:#087443;background:#e5f7ee}
-      @media(max-width:760px){.subscription-form{grid-template-columns:1fr 1fr}}
-      @media(max-width:480px){.subscription-form{grid-template-columns:1fr}.subscription-toolbar-actions{width:100%}.subscription-toolbar-actions select,.subscription-toolbar-actions button{flex:1}}
-    `}</style>
+    
   </section>;
 }
