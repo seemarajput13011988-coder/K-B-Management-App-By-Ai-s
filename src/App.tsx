@@ -441,16 +441,23 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
   const staffShiftActive = attendanceRecords.some(item => item.userId === session.user.id && isAttendanceShiftActive(item));
   const overdueValue = customers.filter(c => c.status === 'Active' && c.dueDate && c.dueDate <= today).reduce((sum, c) => sum + Math.max(0, Number(c.monthlyFee || 0) - (paidByCustomer.get(c.id) || 0)), 0);
-  const filtered = useMemo(
-    () =>
-      customers.filter(c =>
-        [c.name, c.phone, c.address, c.plan]
-          .join(' ')
-          .toLowerCase()
-          .includes(search.toLowerCase())
-      ),
-    [customers, search]
-  );
+  const filtered = useMemo(() => {
+    const normalizedQuery = search.normalize('NFKD').replace(/[\\u0300-\\u036f]/g, '').toLowerCase().trim();
+    if (!normalizedQuery) return customers;
+    const tokens = normalizedQuery.split(/[\\s,;|]+/).filter(Boolean);
+    const phoneQuery = normalizedQuery.replace(/\\D/g, '');
+    return customers.filter(customer => {
+      const searchable = [
+        customer.id, customer.name, customer.phone, customer.address, customer.plan,
+        customer.notes, customer.assignedToName, customer.joinedAt, customer.dueDate,
+        customer.monthlyFee, customer.status,
+      ].filter(value => value !== undefined && value !== null).join(' ')
+        .normalize('NFKD').replace(/[\\u0300-\\u036f]/g, '').toLowerCase();
+      const allTokensMatch = tokens.every(token => searchable.includes(token));
+      const phoneMatches = phoneQuery.length >= 3 && String(customer.phone || '').replace(/\\D/g, '').includes(phoneQuery);
+      return allTokensMatch || phoneMatches;
+    });
+  }, [customers, search]);
   const selectedStaffProfile = staff.find(member => member.id === selectedStaffProfileId);
   const filteredStaff = staff.filter(member => [member.displayName, member.userId].join(' ').toLowerCase().includes(staffSearch.toLowerCase()));
   const filteredPayments = payments.filter(payment => {
@@ -1030,7 +1037,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
           {page === 'Calendar' && <CalendarWorkspace tasks={tasks} attendance={attendanceRecords} isAdmin={isAdmin} festivals={Object.entries(FESTIVAL_DATES).map(([date, festival]) => ({ date, ...festival }))} />}
           {page === 'Salary' && isAdmin && <FinanceWorkspace salaryOnly session={session} customers={customers} payments={payments} flash={flash} />}
           {page === 'My Day' && !isAdmin && <StaffOperations session={session} customers={customers} flash={flash} onDataChanged={() => { void load(true); }} />}
-          {page === 'Invoices' && isAdmin && <InvoiceWorkspace customers={customers} plans={plans} flash={flash} />}
+          {page === 'Invoices' && isAdmin && <InvoiceWorkspace customers={customers} plans={plans} profileKey={session.user.id} flash={flash} />}
           {page === 'Finance & Billing' && isAdmin && <FinanceWorkspace session={session} customers={customers} payments={payments} flash={flash} />}
           {page === 'Subscriptions' && <SubscriptionWorkspace customers={customers} plans={plans} isAdmin={isAdmin} flash={flash} />}
           {page === 'Inventory' && <InventoryWorkspace isAdmin={isAdmin} flash={flash} />}
@@ -1526,7 +1533,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
       {complaintPreview && <Modal title={complaintPreview.name} subtitle="Complaint attachment" onClose={() => setComplaintPreview(null)}><div className="complaint-preview">{complaintPreview.mimeType.startsWith('video/') ? <video src={complaintPreview.dataUrl} controls playsInline /> : <img src={complaintPreview.dataUrl} alt={complaintPreview.name}/>}</div><div className="form-actions"><a className="btn secondary" href={complaintPreview.dataUrl} download={complaintPreview.name}>Download attachment</a><button type="button" className="btn primary" onClick={() => setComplaintPreview(null)}>Close</button></div></Modal>}
       {showStaff && <StaffModal onClose={() => setShowStaff(false)} onSave={createStaff} />}
       {showAdminModal && canManageAdmins && <AdminModal onClose={() => setShowAdminModal(false)} onSave={createAdmin} />}
-      {showAccountSettings && <AccountSettingsModal session={session} onClose={() => setShowAccountSettings(false)} onChangeUserId={async (currentPassword: string, userId: string) => { await ensureNoActiveShiftBeforeCredentialChange(); await changeAppUserId(currentPassword, userId); onLogout(); }} onChangePassword={async (currentPassword: string, newPassword: string) => { await ensureNoActiveShiftBeforeCredentialChange(); await changeAppPassword(currentPassword, newPassword); onLogout(); }} />}
+      {showAccountSettings && <AccountSettingsModal session={session} theme={theme} onToggleTheme={toggleTheme} onClose={() => setShowAccountSettings(false)} onChangeUserId={async (currentPassword: string, userId: string) => { await ensureNoActiveShiftBeforeCredentialChange(); await changeAppUserId(currentPassword, userId); onLogout(); }} onChangePassword={async (currentPassword: string, newPassword: string) => { await ensureNoActiveShiftBeforeCredentialChange(); await changeAppPassword(currentPassword, newPassword); onLogout(); }} />}
       {showTask && <TaskModal staff={staff.filter(member => member.active)} onClose={() => setShowTask(false)} onSave={saveTask} />}
       {editStaffUserId && <StaffUsernameModal staff={editStaffUserId} onClose={() => setEditStaffUserId(null)} onSave={(userId: string) => saveStaffUserId(editStaffUserId, userId)} />}
       {resetStaff && <StaffPasswordModal staff={resetStaff} onClose={() => setResetStaff(null)} onSave={(password: string) => saveStaffPassword(resetStaff, password)} />}
@@ -2162,7 +2169,7 @@ function TaskModal({ staff, onClose, onSave }: any) {
     <div className="form-actions"><button type="button" className="btn secondary" onClick={onClose}>Cancel</button><button className="btn primary" disabled={busy || !staff.length}>{busy ? 'Assigning…' : 'Assign task'}</button></div>
   </form></Modal>;
 }
-function AccountSettingsModal({ session, onClose, onChangeUserId, onChangePassword }: any) {
+function AccountSettingsModal({ session, theme, onToggleTheme, onClose, onChangeUserId, onChangePassword }: any) {
   const [currentPasswordForUserId, setCurrentPasswordForUserId] = useState('');
   const [currentPasswordForPassword, setCurrentPasswordForPassword] = useState('');
   const [newUserId, setNewUserId] = useState(session.user.userId);
@@ -2181,6 +2188,10 @@ function AccountSettingsModal({ session, onClose, onChangeUserId, onChangePasswo
   }
   return <Modal title="My account" subtitle={'Signed in as ' + session.user.displayName + ' · ' + session.user.role} onClose={onClose}>
     <div className="form-grid">
+      <section className="panel" style={{padding:14,display:'flex',alignItems:'center',justifyContent:'space-between',gap:14}}>
+        <div><b>Appearance</b><p className="subtle" style={{margin:'4px 0 0'}}>Choose how Vypaar Management looks on this device.</p></div>
+        <button type="button" className="btn secondary" onClick={onToggleTheme} aria-pressed={theme === 'dark'}>{theme === 'dark' ? '☀️ Switch to day' : '🌙 Switch to night'}</button>
+      </section>
       <form className="form-grid" onSubmit={submitUserId}>
         <Field label="Current password"><input type="password" required value={currentPasswordForUserId} onChange={e => setCurrentPasswordForUserId(e.target.value)} autoComplete="current-password" /></Field>
         <Field label="New user ID"><input required minLength={3} maxLength={32} pattern="[a-zA-Z0-9_-]{3,32}" value={newUserId} onChange={e => setNewUserId(e.target.value)} /></Field>
