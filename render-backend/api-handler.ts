@@ -149,6 +149,11 @@ async function getDoc(collection: string, id: string): Promise<Data | null> {
   const snap = await db.collection(collection).doc(id).get();
   return snap.exists ? { id: snap.id, ...snap.data() } : null;
 }
+async function listUsersInBusiness(businessId:string, role?:Role):Promise<Data[]> {
+  const memberships = await db.collection('business_memberships').where('businessId','==',businessId).get();
+  const memberIds = new Set(memberships.docs.filter(document=>document.data().active!==false).map(document=>String(document.data().userId || '')));
+  return (await list('users')).filter(item=>memberIds.has(String(item.id)) && (!role || item.role===role));
+}
 async function staffHasActiveShift(userId: string): Promise<boolean> {
   const settingsSnapshot = await db.collection('app_settings').doc('workforce').get();
   const configuredEnd = String(settingsSnapshot.data()?.shiftEndTime || '19:00');
@@ -621,7 +626,7 @@ export async function apiHandler(req: any, res: any) {
       // Only the original primary administrator account may manage administrator accounts.
       if (path === '/api/admins' && method === 'GET') {
         if (!allowSuperAdmin(user, res)) return;
-        const admins = (await list('users')).filter(item => item.role === 'admin')
+        const admins = (await listUsersInBusiness(user.businessId,'admin'))
           .map(({ passwordHash, salt, ...safe }) => safe);
         send(res, 200, { items: admins }); return;
       }
@@ -650,7 +655,7 @@ export async function apiHandler(req: any, res: any) {
       // Staff account management routes are handled by the Render/Firestore session API.
       if (path === '/api/staff' && method === 'GET') {
         if (!allow(user, ['admin'], res)) return;
-        const items = (await list('users')).filter(item => item.role === 'staff').map(({ passwordHash, salt, ...safe }) => safe);
+        const items = (await listUsersInBusiness(user.businessId,'staff')).map(({ passwordHash, salt, ...safe }) => safe);
         send(res, 200, { items }); return;
       }
       if (path === '/api/staff' && method === 'POST') {
