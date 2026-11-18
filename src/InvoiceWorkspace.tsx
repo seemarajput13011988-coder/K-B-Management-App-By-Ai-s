@@ -39,7 +39,7 @@ export default function InvoiceWorkspace({customers,plans,profileKey='default',f
     let active=true;
     setProfileLoaded(false);
     api.get('/api/business-profile').then(result=>{
-      if(active && result.data.profile) { const profile={...emptyBusinessProfile,...result.data.profile}; setBusinessProfile(profile); setPlaceOfSupply(current=>current||profile.state); setSupplyStateCode(current=>current||profile.stateCode); }
+      if(active && result.data.profile && Object.keys(result.data.profile).length) { const profile={...emptyBusinessProfile,...result.data.profile}; setBusinessProfile(profile); setPlaceOfSupply(current=>current||profile.state); setSupplyStateCode(current=>current||profile.stateCode); }
     }).catch(()=>undefined).finally(()=>{if(active)setProfileLoaded(true);});
     return()=>{active=false;};
   },[profileKey]);
