@@ -15,7 +15,7 @@ const GpsTrackingWorkspace = lazy(() => import('./GpsTrackingWorkspace'));
 const InstallationsWorkspace = lazy(() => import('./InstallationsWorkspace'));
 const CalendarWorkspace = lazy(() => import('./CalendarWorkspace'));
 import { useAppPreferences } from './appPreferences';
-import { api as client, changeAppPassword, changeAppUserId, signInAppUser, signOutAppUser, submitStaffRegistrationRequest, getStaffRegistrationStatus, nativeApiPost } from './lib/api';
+import { API_BASE, api as client, changeAppPassword, changeAppUserId, signInAppUser, signOutAppUser, submitStaffRegistrationRequest, getStaffRegistrationStatus, nativeApiPost } from './lib/api';
 import {
   Activity,
   Bell,
@@ -2099,7 +2099,7 @@ function StaffLocationResponder({ activeShift, userId }: { activeShift: boolean;
         await Geolocation.getCurrentPosition({ enableHighAccuracy: true, maximumAge: 0, timeout: 15000 });
         const token = getToken();
         if (!token) return;
-        const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'https://kandb-management-nexus-api-zv7f.onrender.com';
+        const apiBaseUrl = API_BASE;
         await WorkLocationTracking.startTracking({ token, apiBaseUrl, attendanceId: activeShiftId, scheduledEndAt });
       } catch {
         reportGpsUnavailable('Phone location services are unavailable');
