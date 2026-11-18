@@ -501,6 +501,7 @@ export async function apiHandler(req: any, res: any) {
         const reviewedAt = now();
         const staffRecordId = 'staff-' + randomBytes(12).toString('hex');
         const staffRef = db.collection('users').doc(staffRecordId);
+        const membershipRef = db.collection('business_memberships').doc(businessMembershipId(staffRecordId,user.businessId));
         const staffRecord: Data = {
           userId: staffUserId,
           userIdLower: staffUserIdLower,
@@ -522,7 +523,13 @@ export async function apiHandler(req: any, res: any) {
           ]);
           if (!latest.exists || latest.data()?.status !== 'pending') return 'not-pending';
           if (status === 'approved' && duplicateUsers && !duplicateUsers.empty) return 'duplicate';
-          if (status === 'approved') transaction.create(staffRef, staffRecord);
+          if (status === 'approved') {
+            transaction.create(staffRef, staffRecord);
+            transaction.create(membershipRef, {
+              userId:staffRecordId, businessId:user.businessId, role:'staff',
+              active:true, createdAt:reviewedAt, createdBy:user.uid,
+            });
+          }
           transaction.update(requestRef, {
             status,
             reviewedAt,
