@@ -8,6 +8,7 @@ import './layout/app-shell.css';
 import './dashboard/overview.css';
 
 const UPDATE_CHECK_TIMEOUT_MS = 25_000;
+const UPDATE_DOWNLOAD_TIMEOUT_MS = 120_000;
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
@@ -98,11 +99,15 @@ async function runRequiredUpdate(updateWasPreviouslyRequired = false): Promise<v
     // Mark the currently running bundle healthy before switching to the new one.
     // The newly installed bundle is acknowledged only after the actual App mounts.
     await CapacitorUpdater.notifyAppReady();
-    const bundle = await CapacitorUpdater.download({
-      url: latest.url,
-      version: latest.version,
-      ...(latest.checksum ? { checksum: latest.checksum } : {}),
-    });
+    const bundle = await withTimeout(
+      CapacitorUpdater.download({
+        url: latest.url,
+        version: latest.version,
+        ...(latest.checksum ? { checksum: latest.checksum } : {}),
+      }),
+      UPDATE_DOWNLOAD_TIMEOUT_MS,
+      'The update download timed out. The previous app version is still available; please retry.',
+    );
     await CapacitorUpdater.set(bundle);
     // set() reloads the WebView. Do not mount the old app after this point.
   } catch (error) {
