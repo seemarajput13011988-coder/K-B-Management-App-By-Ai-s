@@ -546,3 +546,15 @@ input:focus,select:focus,textarea:focus{border-color:#79a9ff;box-shadow:0 0 0 3p
 [data-theme="dark"] .gps-directory-toolbar{background:#101b2b;border-color:#35455d}
 [data-theme="dark"] .gps-directory-toolbar label span,[data-theme="dark"] .gps-directory-toolbar>span{color:#a9bad0}
 [data-theme="dark"] .gps-directory-toolbar input,[data-theme="dark"] .gps-directory-toolbar select{background:#0b1422;border-color:#35455d;color:#e5edf8}
+
+
+/* Main staff directory toolbar */
+.staff-directory-main-toolbar{display:flex;align-items:end;gap:10px;flex-wrap:wrap}
+.staff-directory-main-toolbar .searchbox{flex:2 1 230px;min-width:190px}
+.staff-filter-control{display:grid;gap:5px;min-width:135px}
+.staff-filter-control span{font-size:10px;font-weight:800;color:var(--kb-muted)}
+.staff-filter-control select{width:100%;min-height:39px;padding:7px 10px;border:1px solid var(--kb-line);border-radius:10px;background:#fff;color:var(--kb-ink);font:inherit}
+.staff-directory-main-toolbar .result-count{align-self:center;white-space:nowrap}
+[data-theme="dark"] .staff-filter-control span{color:#a9bad0}
+[data-theme="dark"] .staff-filter-control select{background:#101b2b;border-color:#35455d;color:#e5edf8}
+@media(max-width:560px){.staff-directory-main-toolbar{display:grid;grid-template-columns:1fr 1fr}.staff-directory-main-toolbar .searchbox{grid-column:1/-1;min-width:0}.staff-filter-control{min-width:0}.staff-directory-main-toolbar .result-count{grid-column:1/-1}}
