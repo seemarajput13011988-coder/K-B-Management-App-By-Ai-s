@@ -558,3 +558,13 @@ input:focus,select:focus,textarea:focus{border-color:#79a9ff;box-shadow:0 0 0 3p
 [data-theme="dark"] .staff-filter-control span{color:#a9bad0}
 [data-theme="dark"] .staff-filter-control select{background:#101b2b;border-color:#35455d;color:#e5edf8}
 @media(max-width:560px){.staff-directory-main-toolbar{display:grid;grid-template-columns:1fr 1fr}.staff-directory-main-toolbar .searchbox{grid-column:1/-1;min-width:0}.staff-filter-control{min-width:0}.staff-directory-main-toolbar .result-count{grid-column:1/-1}}
+
+
+/* Calendar agenda search and event filters */
+.calendar-agenda-controls{display:grid;grid-template-columns:minmax(130px,.6fr) minmax(180px,1.4fr);gap:10px;margin:0 0 12px}
+.calendar-agenda-controls label{display:grid;gap:5px}
+.calendar-agenda-controls label span{font-size:10px;font-weight:800;color:var(--kb-muted,#64748b)}
+.calendar-agenda-controls input,.calendar-agenda-controls select{width:100%;min-height:39px;padding:8px 10px;border:1px solid var(--kb-line,#e5eaf3);border-radius:9px;background:var(--kb-surface,#fff);color:var(--kb-ink,#14213d);font:inherit}
+[data-theme="dark"] .calendar-agenda-controls label span{color:#a9bad0}
+[data-theme="dark"] .calendar-agenda-controls input,[data-theme="dark"] .calendar-agenda-controls select{background:#101b2b;border-color:#35455d;color:#e5edf8}
+@media(max-width:460px){.calendar-agenda-controls{grid-template-columns:1fr}.calendar-agenda-controls label{min-width:0}}
