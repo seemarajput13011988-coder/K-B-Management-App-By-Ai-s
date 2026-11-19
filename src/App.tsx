@@ -819,6 +819,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
     { label: 'Inventory', icon: ClipboardList },
     { label: 'Installations', icon: MapPin },
     ...(isAdmin ? [{ label: 'Plans & Pricing', icon: Wifi }] : []),
+    ...(isAdmin ? [{ label: 'Customer Portal Control Center', icon: Signal }] : []),
     ...(isAdmin ? [{ label: 'Team Operations', icon: Users }] : []),
     ...(isAdmin ? [{ label: 'GPS Tracking', icon: MapPin }] : []),
     ...(isAdmin ? [{ label: 'Staff', icon: UserRound, count: staff.length }] : []),
@@ -835,7 +836,8 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
 
   const navGroups = [
     { label: 'HOME', items: nav.filter(item => ['Overview', 'Calendar', taskPage, 'My Day', 'Salary'].includes(item.label)) },
-    { label: 'CUSTOMERS & FIELD', items: nav.filter(item => ['Customers', 'Subscriptions', 'Inventory', 'Installations', 'Payments', 'Complaints', 'Plans & Pricing'].includes(item.label)) },
+    { label: 'CUSTOMER EXPERIENCE', items: nav.filter(item => ['Customer Portal Control Center', 'Customers', 'Subscriptions', 'Installations', 'Payments', 'Complaints', 'Plans & Pricing'].includes(item.label)) },
+    { label: 'FIELD OPERATIONS', items: nav.filter(item => ['Inventory'].includes(item.label)) },
     { label: 'MANAGEMENT', items: nav.filter(item => ['Team Operations', 'GPS Tracking', 'Staff', 'Admin Accounts', 'Invoices', 'Finance & Billing'].includes(item.label)) },
   ].filter(group => group.items.length);
 
@@ -951,6 +953,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                   ? 'Here’s what is happening with your connections today.'
                   : page === 'Customers'
                     ? 'Manage customer details, connections and account status.'
+                    : page === 'Customer Portal Control Center' ? 'Manage the customer-facing experience using your existing shared K&B records.'
                     : page === 'Plans & Pricing'                      ? 'Your available internet packages and monthly pricing.'
                       : page === 'Subscriptions'
                         ? 'Manage customer renewals, subscription periods and expiry dates.'
@@ -1031,6 +1034,51 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
           {page === 'Installations' && <InstallationsWorkspace customers={customers} staff={staff} isAdmin={isAdmin} flash={flash} />}
           {page === 'Overview' && !isAdmin && <StaffOperations session={session} customers={customers} flash={flash} compact onDataChanged={() => { void load(true); }} />}
           </Suspense>
+
+          {page === 'Customer Portal Control Center' && isAdmin && (
+            <section className="portal-control-center">
+              <div className="portal-control-intro">
+                <div>
+                  <span className="portal-kicker">CUSTOMER NEXUS · ADMIN WORKSPACE</span>
+                  <h2>Customer Portal Control Center</h2>
+                  <p>One place to monitor customer-facing records and move directly to the management tools that control them.</p>
+                </div>
+                <a className="btn primary portal-open-link" href="https://k-b-customer-portal-gvzmcs.v2.appdeploy.ai/" target="_blank" rel="noreferrer">Open Customer Portal <span aria-hidden="true">↗</span></a>
+              </div>
+              <div className="portal-metric-grid">
+                <article><span>Portal customer records</span><strong>{customers.length}</strong><small>Shared K&B customer records</small></article>
+                <article><span>Active connections</span><strong>{active}</strong><small>Customer status marked active</small></article>
+                <article><span>Available plans</span><strong>{plans.filter(plan => plan.active).length}</strong><small>Active plans in shared pricing</small></article>
+                <article><span>Open complaints</span><strong>{openComplaints}</strong><small>Requests awaiting resolution</small></article>
+              </div>
+              <div className="portal-control-grid">
+                <article className="portal-control-card">
+                  <div className="portal-card-icon blue"><Users size={20}/></div>
+                  <div><h3>Customer records</h3><p>Review customer details and connection status used by the customer experience.</p></div>
+                  <button type="button" onClick={() => setPage('Customers')}>Manage customers <span>→</span></button>
+                </article>
+                <article className="portal-control-card">
+                  <div className="portal-card-icon violet"><Wifi size={20}/></div>
+                  <div><h3>Plans & pricing</h3><p>Create, update, archive or restore plans through the existing shared plans service.</p></div>
+                  <button type="button" onClick={() => setPage('Plans & Pricing')}>Manage plans <span>→</span></button>
+                </article>
+                <article className="portal-control-card">
+                  <div className="portal-card-icon orange"><MessageSquare size={20}/></div>
+                  <div><h3>Customer complaints</h3><p>Review incoming service issues, update ownership and track resolution.</p></div>
+                  <button type="button" onClick={() => setPage('Complaints')}>Review complaints <span>→</span></button>
+                </article>
+                <article className="portal-control-card">
+                  <div className="portal-card-icon green"><MapPin size={20}/></div>
+                  <div><h3>Connection requests & visits</h3><p>Review installation and field work records associated with customer connections.</p></div>
+                  <button type="button" onClick={() => setPage('Installations')}>Manage installations <span>→</span></button>
+                </article>
+              </div>
+              <div className="portal-integration-panel">
+                <div className="portal-integration-status"><span className="portal-status-dot"/><div><strong>Shared K&B records are loaded</strong><small>Customer and plan data are being read from the existing Management Nexus API in this session.</small></div></div>
+                <p>Portal-specific appearance, announcement, feature-access and booking-approval controls are not exposed by the verified API routes currently connected to this app. They are intentionally not shown as working switches until their backend endpoints are implemented and verified.</p>
+              </div>
+            </section>
+          )}
 
           {page === 'Overview' && (
             <>
