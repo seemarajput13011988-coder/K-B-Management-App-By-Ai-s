@@ -99,3 +99,8 @@ table td{color:#344d50}
 [data-theme="dark"] .mobile-tab.active{background:#244842;color:#aee0d1}
 [data-theme="dark"] .icon-button,[data-theme="dark"] .btn.secondary{background:#1b3034;border-color:#355054;color:#d9e9e3}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition:none!important;animation:none!important}}
+
+
+/* Compact K&B monogram replaces the generic signal glyph in the workspace identity. */
+.brand-monogram{display:grid;place-items:center;color:#173b3b;font-size:13px;font-weight:950;letter-spacing:-.08em;text-shadow:0 1px 0 rgba(255,255,255,.35)}
+@media(max-width:700px){.brand-monogram{font-size:12px}}
