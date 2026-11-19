@@ -468,9 +468,25 @@ export async function runScheduledTick() {
   if (running) return { skipped: true };
   running = true;
   try {
-    const attendance = await runAutoCheckoutJob();
-    await runGpsGracePeriod();
-    await deliverPendingPushNotifications();
+    const jobFailures: string[] = [];
+    let attendance: Awaited<ReturnType<typeof runAutoCheckoutJob>> | null = null;
+    try {
+      attendance = await runAutoCheckoutJob();
+    } catch (error) {
+      jobFailures.push('automatic-checkout');
+      console.error('K&B scheduled job failed (automatic-checkout):', error instanceof Error ? error.message : String(error));
+    }
+    for (const [name, job] of [
+      ['gps-grace-period', runGpsGracePeriod],
+      ['push-delivery', deliverPendingPushNotifications],
+    ] as Array<[string, () => Promise<unknown>]>) {
+      try {
+        await job();
+      } catch (error) {
+        jobFailures.push(name);
+        console.error('K&B scheduled job failed (' + name + '):', error instanceof Error ? error.message : String(error));
+      }
+    }
     const parts = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' }).formatToParts(new Date());
     const hour = Number(parts.find(part => part.type === 'hour')?.value || 0);
     const { date } = indiaDateParts();
@@ -494,7 +510,7 @@ export async function runScheduledTick() {
       // scheduler tick instead of letting one failure block every other workflow.
       if (dailyJobFailures.length === 0) lastDailyRun = date;
     }
-    return { skipped: false, ...attendance, dailyJobFailures };
+    return { skipped: false, ...(attendance || {}), jobFailures, dailyJobFailures };
   } finally { running = false; }
 }
 
