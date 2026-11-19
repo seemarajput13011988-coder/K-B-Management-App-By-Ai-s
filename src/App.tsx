@@ -877,7 +877,8 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
         <div className="nav-label">WORKSPACE</div>
         <nav className="primary-navigation">
           {nav.map(item => (
-            <button key={item.label} className={'nav-item ' + (page === item.label ? 'active' : '')}
+            <button type="button" key={item.label} className={'nav-item ' + (page === item.label ? 'active' : '')}
+              aria-current={page === item.label ? 'page' : undefined}
               onClick={() => { setNotificationsOpen(false); setMobileNav(false); setPage(item.label); }}>
               <item.icon size={19} /><span>{item.label}</span>{item.count ? <em>{item.count}</em> : null}
             </button>
@@ -939,8 +940,8 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
             Workspace <span>/</span> <strong>{page}</strong>
           </div>
           <div className="top-actions">
-            <span className="system-status">
-              <i /> All systems operational
+            <span className="system-status" title="Workspace status">
+              <i /> K&amp;B workspace
             </span>
             <div className="preference-controls">
               <label className="language-control" title="App language"><span>🌐</span><select aria-label="App language" value={language} onChange={event => setLanguage(event.target.value as 'en' | 'hi' | 'gu')}><option value="en">English</option><option value="hi">हिन्दी</option><option value="gu">ગુજરાતી</option></select></label>
