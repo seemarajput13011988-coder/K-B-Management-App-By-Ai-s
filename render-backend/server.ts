@@ -27,8 +27,8 @@ app.get('/api/_readycheck', async (_req, res) => {
 let otaReleaseCache: { expiresAt: number; manifest: unknown; bundleUrl: string | null } | null = null;
 async function getLatestOtaRelease() {
   if (otaReleaseCache && otaReleaseCache.expiresAt > Date.now()) return otaReleaseCache;
-  // Use GitHub's latest-release asset redirect instead of the rate-limited releases API.
-  // The OTA workflow publishes both assets together on every production main push.
+  // Read the manifest through GitHub's latest-release alias, then pin the ZIP URL
+  // to that manifest's immutable version tag so the checksum and archive cannot drift.
   const releaseBase = 'https://github.com/seemarajput13011988-coder/K-B-Management-App-By-Ai-s/releases/latest/download';
   const manifestResponse = await fetch(releaseBase + '/ota-manifest.json', {
     headers: { Accept: 'application/json' },
@@ -39,7 +39,7 @@ async function getLatestOtaRelease() {
   }
   const manifest = await manifestResponse.json();
   if (!isValidOtaManifest(manifest)) throw new Error('The OTA release manifest failed validation.');
-  const bundleUrl = releaseBase + '/nexus-update.zip';
+  const bundleUrl = 'https://github.com/seemarajput13011988-coder/K-B-Management-App-By-Ai-s/releases/download/nexus-ota-' + manifest.version + '/nexus-update.zip';
   otaReleaseCache = { expiresAt: Date.now() + 300000, manifest, bundleUrl };
   return otaReleaseCache;
 }
