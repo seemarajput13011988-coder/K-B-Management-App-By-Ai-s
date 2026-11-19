@@ -1250,14 +1250,14 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
             </section>
           )}
 
-          {page === 'Customers' && isAdmin && portalRequests.some(request => request.status === 'Pending') && (
+          {page === 'Customers' && isAdmin && portalRequests.length > 0 && (
             <section className="panel portal-request-panel">
               <div className="portal-request-heading">
                 <div><span className="eyebrow">CUSTOMER NEXUS · LIVE INTAKE</span><h2>New connection requests</h2><p>These requests were submitted through the customer portal and are not active customer accounts yet.</p></div>
                 <span className="portal-request-count">{portalRequests.filter(request => request.status === 'Pending').length} pending</span>
               </div>
               <div className="portal-request-list">
-                {portalRequests.filter(request => request.status === 'Pending').map(request => (
+                {portalRequests.slice().sort((a, b) => Date.parse(String(b.createdAt || '')) - Date.parse(String(a.createdAt || ''))).map(request => (
                   <article className="portal-request-card" key={request.id}>
                     <div className="portal-request-main">
                       <strong>{request.name}</strong>
@@ -1266,11 +1266,15 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                       <small>Received {dateLabel(request.createdAt)}</small>
                       {request.notes && <p>{request.notes}</p>}
                     </div>
-                    <div className="portal-request-actions">
-                      <button className="btn primary compact" onClick={async () => { try { await api.post('/api/portal/connection-requests/' + encodeURIComponent(request.id) + '/convert', {}); flash('Request converted to an inactive customer record. Confirm service details before activation.'); await load(true); } catch (error) { flash(error instanceof Error ? error.message : 'Could not convert this request.'); } }}>Convert to customer</button>
-                      <button className="btn secondary compact" onClick={async () => { try { await api.put('/api/portal/connection-requests/' + encodeURIComponent(request.id), { status: 'Contacted' }); flash('Request marked as contacted.'); await load(true); } catch (error) { flash(error instanceof Error ? error.message : 'Could not update this request.'); } }}>Mark contacted</button>
-                      <button className="btn danger compact" onClick={async () => { try { await api.put('/api/portal/connection-requests/' + encodeURIComponent(request.id), { status: 'Rejected' }); flash('Request marked as rejected.'); await load(true); } catch (error) { flash(error instanceof Error ? error.message : 'Could not update this request.'); } }}>Reject</button>
-                    </div>
+                    {request.status === 'Pending' ? (
+                      <div className="portal-request-actions">
+                        <button className="btn primary compact" onClick={async () => { try { await api.post('/api/portal/connection-requests/' + encodeURIComponent(request.id) + '/convert', {}); flash('Request converted to an inactive customer record. Confirm service details before activation.'); await load(true); } catch (error) { flash(error instanceof Error ? error.message : 'Could not convert this request.'); } }}>Convert to customer</button>
+                        <button className="btn secondary compact" onClick={async () => { try { await api.put('/api/portal/connection-requests/' + encodeURIComponent(request.id), { status: 'Contacted' }); flash('Request marked as contacted.'); await load(true); } catch (error) { flash(error instanceof Error ? error.message : 'Could not update this request.'); } }}>Mark contacted</button>
+                        <button className="btn danger compact" onClick={async () => { try { await api.put('/api/portal/connection-requests/' + encodeURIComponent(request.id), { status: 'Rejected' }); flash('Request marked as rejected.'); await load(true); } catch (error) { flash(error instanceof Error ? error.message : 'Could not update this request.'); } }}>Reject</button>
+                      </div>
+                    ) : (
+                      <span className={'portal-request-status ' + String(request.status || 'unknown').toLowerCase().replace(/[^a-z0-9-]/g, '-')}>{request.status || 'Status unavailable'} · Reviewed {dateLabel(request.reviewedAt || request.updatedAt || request.createdAt)}</span>
+                    )}
                   </article>
                 ))}
               </div>
