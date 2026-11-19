@@ -1426,7 +1426,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                   <label className="task-status-control"><span>Progress</span><select value={task.status} onChange={e => updateTask(task, e.target.value)}><option>Pending</option><option>In progress</option><option>Completed</option></select></label>
                   {isAdmin && <button type="button" className="btn danger compact" onClick={()=>void deleteTask(task)}><Trash2 size={14}/> Delete task</button>}
                 </article>
-              ))}</div> : <Empty icon={<ClipboardList />} title={isAdmin ? 'No tasks assigned yet' : 'No work assigned yet'} text={isAdmin ? 'Create a task and assign it to an active staff member.' : 'Your administrator will assign work here when it is ready.'} action={isAdmin ? 'Assign first task' : undefined} onClick={() => setShowTask(true)} />}
+              ))}</div> : tasks.length ? <Empty icon={<ClipboardList />} title="No matching tasks" text="Try changing the search or status filter." action="Clear filters" onClick={() => { setTaskSearch(''); setTaskStatusFilter('All'); }} /> : <Empty icon={<ClipboardList />} title={isAdmin ? 'No tasks assigned yet' : 'No work assigned yet'} text={isAdmin ? 'Create a task and assign it to an active staff member.' : 'Your administrator will assign work here when it is ready.'} action={isAdmin ? 'Assign first task' : undefined} onClick={() => setShowTask(true)} />}
             </section>
           )}
 
