@@ -474,14 +474,27 @@ export async function runScheduledTick() {
     const parts = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' }).formatToParts(new Date());
     const hour = Number(parts.find(part => part.type === 'hour')?.value || 0);
     const { date } = indiaDateParts();
+    let dailyJobFailures: string[] = [];
     if (hour >= 9 && lastDailyRun !== date) {
-      await generateMonthlyInvoicesAutomatically();
-      await sendTaskDueReminders();
-      await sendSubscriptionExpiryReminders();
-      await sendInvoiceDueReminders();
-      lastDailyRun = date;
+      const dailyJobs: Array<[string, () => Promise<unknown>]> = [
+        ['monthly-invoices', generateMonthlyInvoicesAutomatically],
+        ['task-reminders', sendTaskDueReminders],
+        ['subscription-reminders', sendSubscriptionExpiryReminders],
+        ['invoice-reminders', sendInvoiceDueReminders],
+      ];
+      for (const [name, job] of dailyJobs) {
+        try {
+          await job();
+        } catch (error) {
+          dailyJobFailures.push(name);
+          console.error('K&B daily job failed (' + name + '):', error instanceof Error ? error.message : String(error));
+        }
+      }
+      // Successful jobs are idempotent; retry only failed work on the next
+      // scheduler tick instead of letting one failure block every other workflow.
+      if (dailyJobFailures.length === 0) lastDailyRun = date;
     }
-    return { skipped: false, ...attendance };
+    return { skipped: false, ...attendance, dailyJobFailures };
   } finally { running = false; }
 }
 
