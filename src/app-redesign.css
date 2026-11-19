@@ -454,3 +454,17 @@ html,body,#root{min-height:100%;background:var(--kb-page)}
  .language-control select{max-width:57px}
  .theme-toggle{padding:0 6px}
 }
+
+
+/* Secondary navigation is grouped by the work people perform. */
+.sidebar .secondary-navigation{display:grid;gap:15px;margin:6px 0 0 7px;padding:0 0 0 10px;border-left:1px solid rgba(155,197,180,.22)}
+.sidebar .navigation-group{display:grid;gap:3px;min-width:0}
+.sidebar .navigation-group-label{padding:0 10px 5px;color:#779d91;font-size:7px;font-weight:900;letter-spacing:.16em;line-height:1.4}
+.sidebar .navigation-group .nav-item{min-height:36px;padding:8px 9px;border-radius:9px;font-size:10px}
+.sidebar .navigation-group .nav-item>svg{width:16px;height:16px;flex-basis:16px}
+.sidebar .navigation-group .nav-item.active{background:rgba(48,112,91,.46);box-shadow:inset 2px 0 #eeb45d}
+@media(max-width:900px){
+ .sidebar .secondary-navigation{gap:13px}
+ .sidebar .navigation-group-label{font-size:8px}
+ .sidebar .navigation-group .nav-item{min-height:39px;font-size:11px}
+}
