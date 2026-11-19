@@ -28,6 +28,8 @@ export default function GpsTrackingWorkspace({flash}:{flash:(message:string)=>vo
   const [section,setSection]=useState<'live'|'saved'>('live');
   const [staffSearch,setStaffSearch]=useState('');
   const [shiftFilter,setShiftFilter]=useState<'all'|'on-shift'|'off-shift'>('all');
+  const [savedSearch,setSavedSearch]=useState('');
+  const [savedSort,setSavedSort]=useState<'newest'|'oldest'|'staff'>('newest');
   const [locationFresh,setLocationFresh]=useState(false);
   const [locationAge,setLocationAge]=useState<number|null>(null);
   const [locationStatus,setLocationStatus]=useState('location-unavailable');
@@ -35,6 +37,7 @@ export default function GpsTrackingWorkspace({flash}:{flash:(message:string)=>vo
   const [gpsCancelled,setGpsCancelled]=useState(false);
 
   const visibleStaff=staff.filter(member=>member.displayName.toLocaleLowerCase().includes(staffSearch.trim().toLocaleLowerCase())&&(shiftFilter==='all'||(shiftFilter==='on-shift'?onShiftIds.includes(member.id):!onShiftIds.includes(member.id))));
+  const visibleSaved=saved.filter(item=>[item.staffName,item.address,item.savedByName].join(' ').toLocaleLowerCase().includes(savedSearch.trim().toLocaleLowerCase())).sort((a,b)=>savedSort==='oldest'?a.savedAt.localeCompare(b.savedAt):savedSort==='staff'?a.staffName.localeCompare(b.staffName):b.savedAt.localeCompare(a.savedAt));
 
   async function load() {
     setLoading(true);
@@ -179,12 +182,12 @@ export default function GpsTrackingWorkspace({flash}:{flash:(message:string)=>vo
           <div className="gps-result-actions"><a className="btn secondary" href={mapsUrl(Number(liveLocation.latitude),Number(liveLocation.longitude))} target="_blank" rel="noreferrer"><ExternalLink size={15}/> Open in Google Maps</a><button className="btn primary" onClick={()=>void saveLocation()}><Save size={15}/> Save Location</button></div>
         </>:<p className="gps-error">{locationStatus==='gps-off'?(gpsCancelled?'GPS is OFF and the 15-minute grace period expired. The shift was automatically cancelled; an administrator must restart it.':'GPS is OFF on this staff phone. The shift GPS grace period is active. '+(gpsDeadline?'Restore GPS before '+stamp(gpsDeadline)+'.':'')):locationStatus==='shift-not-active'?'This staff member is not currently on an active shift.': 'No location has been received yet. Check device connectivity and location permission.'}</p>}
       </div>}
-    </>:<div className="gps-saved-list">
-      {loading?<p className="ops-empty">Loading saved locations…</p>:saved.length?saved.map(item=><article className="gps-saved-card" key={item.id}>
+    </>:<><div className="gps-directory-toolbar"><label><span>Search saved locations</span><input type="search" value={savedSearch} onChange={event=>setSavedSearch(event.target.value)} placeholder="Staff name, address or saved by"/></label><label><span>Sort by</span><select value={savedSort} onChange={event=>setSavedSort(event.target.value as typeof savedSort)}><option value="newest">Recently saved</option><option value="oldest">Oldest saved</option><option value="staff">Staff name A–Z</option></select></label><span>{visibleSaved.length} of {saved.length} locations</span></div><div className="gps-saved-list">
+      {loading?<p className="ops-empty">Loading saved locations…</p>:visibleSaved.length?visibleSaved.map(item=><article className="gps-saved-card" key={item.id}>
         <div><strong>{item.staffName}</strong><small>{item.address||'Coordinates available in Google Maps'}</small><small>Captured {stamp(item.capturedAt)} · Saved {stamp(item.savedAt)} by {item.savedByName||'Admin'}</small><small>{Number(item.latitude).toFixed(6)}, {Number(item.longitude).toFixed(6)} · ±{Math.round(item.accuracy||0)} m</small></div>
         <a className="btn secondary compact" href={mapsUrl(item.latitude,item.longitude)} target="_blank" rel="noreferrer"><ExternalLink size={14}/> Google Maps</a>
-      </article>):<p className="ops-empty">No locations saved yet. Select a staff member and save their latest location.</p>}
-    </div>}
+      </article>):<p className="ops-empty">{saved.length?'No saved locations match your search.':'No locations saved yet. Select a staff member and save their latest location.'}</p>}
+    </div></>}
     <style>{`
       .gps-tabs{display:flex;gap:8px;border-bottom:1px solid var(--border,#e2e8f0);margin:12px 0 16px;flex-wrap:wrap}
       .gps-tabs button{display:flex;align-items:center;gap:7px;border:0;background:transparent;color:var(--muted,#64748b);padding:11px 13px;border-bottom:2px solid transparent;font:inherit;font-size:13px;font-weight:700;cursor:pointer}
