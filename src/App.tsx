@@ -441,6 +441,8 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
   const staffShiftActive = attendanceRecords.some(item => item.userId === session.user.id && isAttendanceShiftActive(item));
   const overdueValue = customers.filter(c => c.status === 'Active' && c.dueDate && c.dueDate <= today).reduce((sum, c) => sum + Math.max(0, Number(c.monthlyFee || 0) - (paidByCustomer.get(c.id) || 0)), 0);
+  const overdueCustomersCount = customers.filter(c => c.status === 'Active' && c.dueDate && c.dueDate <= today && Number(c.monthlyFee || 0) > (paidByCustomer.get(c.id) || 0)).length;
+  const pendingStaffRequestsCount = staffRegistrationRequests.filter(item => item.status === 'pending').length;
   const filtered = useMemo(
     () =>
       customers.filter(c =>
@@ -1099,6 +1101,31 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                 {isAdmin && <button type="button" onClick={() => { setEditing(null); setShowCustomer(true); }}><Plus size={18}/><span>Add customer</span><small>Create a record</small></button>}
                 {isAdmin && <button type="button" onClick={() => setPage('Salary')}><IndianRupee size={18}/><span>Salary</span><small>Staff operations</small></button>}
                 {!isAdmin && <button type="button" onClick={() => setPage('My Work')}><ClipboardList size={18}/><span>My work</span><small>See assigned tasks</small></button>}
+              </section>
+
+              <section className="attention-center" aria-label="Items needing attention">
+                <div className="attention-center-heading">
+                  <div><span className="eyebrow">DAILY PRIORITIES</span><h2>Needs your attention</h2></div>
+                  <span className="attention-caption">Live operational queue</span>
+                </div>
+                <div className="attention-center-grid">
+                  <button type="button" className="attention-item" onClick={() => setPage('Complaints')}>
+                    <span className="attention-icon coral"><MessageSquare size={18}/></span>
+                    <span className="attention-copy"><strong>{openComplaints}</strong><b>Open complaints</b><small>Review customer and staff issues</small></span><span className="attention-arrow">→</span>
+                  </button>
+                  {isAdmin && <button type="button" className="attention-item" onClick={() => setPage('Payments')}>
+                    <span className="attention-icon amber"><IndianRupee size={18}/></span>
+                    <span className="attention-copy"><strong>{overdueCustomersCount}</strong><b>Customers with dues</b><small>{money(overdueValue)} outstanding based on recorded payments</small></span><span className="attention-arrow">→</span>
+                  </button>}
+                  <button type="button" className="attention-item" onClick={() => setPage(taskPage)}>
+                    <span className="attention-icon blue"><ClipboardList size={18}/></span>
+                    <span className="attention-copy"><strong>{pendingTasks}</strong><b>{isAdmin ? 'Pending team tasks' : 'Your pending tasks'}</b><small>{isAdmin ? 'Check assignments and progress' : 'Review your assigned work'}</small></span><span className="attention-arrow">→</span>
+                  </button>
+                  {isAdmin && <button type="button" className="attention-item" onClick={() => setPage('Staff')}>
+                    <span className="attention-icon violet"><UserPlus size={18}/></span>
+                    <span className="attention-copy"><strong>{pendingStaffRequestsCount}</strong><b>Staff access requests</b><small>Approve or decline new requests</small></span><span className="attention-arrow">→</span>
+                  </button>}
+                </div>
               </section>
 
               {isAdmin && (
