@@ -530,3 +530,15 @@ input:focus,select:focus,textarea:focus{border-color:#79a9ff;box-shadow:0 0 0 3p
 .plan-sort-control select{min-height:38px;min-width:0;flex:1;padding:7px 10px;border:1px solid var(--kb-line);border-radius:10px;background:var(--kb-surface);color:var(--kb-ink);font:inherit}
 .plan-results-count{margin:0 0 12px;color:var(--kb-muted);font-size:12px;font-weight:700}
 @media(max-width:650px){.plan-controls{align-items:stretch;flex-direction:column}.plan-sort-control{width:100%;min-width:0}.plan-sort-control select{flex:1}.plan-filters{width:100%;overflow-x:auto;flex-wrap:nowrap}.plan-filters button{white-space:nowrap}}
+
+
+/* Dark-mode parity for the newly unified data toolbars */
+[data-theme="dark"] .staff-directory-toolbar,[data-theme="dark"] .finance-record-toolbar,[data-theme="dark"] .inventory-filter-bar,[data-theme="dark"] .subscription-filter-bar{background:#101b2b;border-color:#35455d}
+[data-theme="dark"] .staff-directory-toolbar label span,[data-theme="dark"] .finance-record-toolbar label span,[data-theme="dark"] .inventory-filter-bar label span,[data-theme="dark"] .subscription-filter-bar label span{color:#a9bad0}
+[data-theme="dark"] .staff-directory-toolbar input,[data-theme="dark"] .staff-directory-toolbar select,[data-theme="dark"] .finance-record-toolbar input,[data-theme="dark"] .finance-record-toolbar select,[data-theme="dark"] .inventory-filter-bar input,[data-theme="dark"] .inventory-filter-bar select,[data-theme="dark"] .subscription-filter-bar input,[data-theme="dark"] .subscription-filter-bar select{background:#0b1422;border-color:#35455d;color:#e5edf8}
+[data-theme="dark"] .staff-directory-count,[data-theme="dark"] .finance-record-count,[data-theme="dark"] .inventory-result-count,[data-theme="dark"] .subscription-result-count{color:#a9bad0}
+[data-theme="dark"] .plan-sort-control{color:#a9bad0}
+[data-theme="dark"] .plan-sort-control select{background:#101b2b;border-color:#35455d;color:#e5edf8}
+[data-theme="dark"] .plan-results-count{color:#a9bad0}
+[data-theme="dark"] .installation-filter-select span,[data-theme="dark"] .installation-result-count{color:#a9bad0}
+[data-theme="dark"] .installation-filter-select select{background:#101b2b;border-color:#35455d;color:#e5edf8}
