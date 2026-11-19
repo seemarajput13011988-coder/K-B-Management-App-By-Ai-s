@@ -121,6 +121,9 @@ export default function FinanceWorkspace({ session, customers, payments, flash, 
   const [invoiceSearch, setInvoiceSearch] = useState('');
   const [invoiceStatusFilter, setInvoiceStatusFilter] = useState<'all'|'unpaid'|'paid'>('all');
   const [invoiceSort, setInvoiceSort] = useState<'due-soon'|'due-late'|'highest'>('due-soon');
+  const [payrollSearch, setPayrollSearch] = useState('');
+  const [payrollMethodFilter, setPayrollMethodFilter] = useState('all');
+  const [payrollSort, setPayrollSort] = useState<'newest'|'oldest'|'highest'>('newest');
   const tokenQuery = '?sessionToken=' + encodeURIComponent(session.token);
   const load = async () => {
     const [e, i, a, st, pr] = await Promise.all([
@@ -178,6 +181,12 @@ export default function FinanceWorkspace({ session, customers, payments, flash, 
   const monthExpenses = expenses.filter(item => item.spentAt?.slice(0, 7) === period);
   const collected = monthPayments.reduce((sum, item) => sum + Number(item.amount || 0), 0);
   const selectedPayroll = payroll.filter(item => String(item.period || '') === period);
+  const payrollMethods = Array.from(new Set(selectedPayroll.map(item=>item.method).filter(Boolean))).sort((a,b)=>a.localeCompare(b));
+  const visiblePayroll = [...selectedPayroll].filter(item=>{
+    const query=payrollSearch.trim().toLocaleLowerCase();
+    const matchesSearch=!query||[item.staffName,item.staffUserId,item.method,item.notes,item.recordedByName,item.paidAt].some(value=>String(value||'').toLocaleLowerCase().includes(query));
+    return matchesSearch&&(payrollMethodFilter==='all'||item.method===payrollMethodFilter);
+  }).sort((a,b)=>payrollSort==='oldest'?a.paidAt.localeCompare(b.paidAt):payrollSort==='highest'?Number(b.amount)-Number(a.amount):b.paidAt.localeCompare(a.paidAt));
   const payrollTotal = selectedPayroll.reduce((sum, item) => sum + Number(item.amount || 0), 0);
   const spent = monthExpenses.reduce((sum, item) => sum + Number(item.amount || 0), 0) + payrollTotal;
   const outstanding = invoices.reduce((sum, item) => sum + Math.max(0, Number(item.amount || 0) - Number(item.paidAmount || 0)), 0);
@@ -301,9 +310,9 @@ export default function FinanceWorkspace({ session, customers, payments, flash, 
         <label className="wide">Notes<input maxLength={300} value={salaryNotes} onChange={e => setSalaryNotes(e.target.value)} placeholder="Optional salary reference"/></label>
         <button className="btn primary" disabled={busy || !staff.length || !salaryStaffId || !salaryAmount}>{busy ? 'Saving…' : 'Record salary'}</button>
       </form>
-      <div className="finance-table-wrap"><table><thead><tr><th>STAFF MEMBER</th><th>MONTH</th><th>PAID DATE</th><th>RECORDED AT</th><th>METHOD</th><th>AMOUNT</th>{session.user.role==='admin'&&<th>ACTIONS</th>}</tr></thead><tbody>
-        {selectedPayroll.map(item => <tr key={item.id}><td><b>{item.staffName}</b></td><td>{monthName(item.period)}</td><td>{item.paidAt}</td><td>{item.createdAt?new Date(item.createdAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'}):'—'}</td><td>{item.method}</td><td className="amount">{money(item.amount)}</td>{session.user.role==='admin'&&<td><button className="row-action danger" title="Delete salary record" disabled={busy} onClick={()=>void deleteSalary(item)}><Trash2 size={14}/></button></td>}</tr>)}
-        {!payroll.length && <tr><td colSpan={session.user.role==='admin'?7:6}>No salary payments recorded for this month.</td></tr>}
+      <div className="finance-record-toolbar"><label className="finance-record-search"><span>Search salary records</span><input type="search" value={payrollSearch} onChange={event=>setPayrollSearch(event.target.value)} placeholder="Staff, ID, date, notes or method"/></label><label><span>Method</span><select value={payrollMethodFilter} onChange={event=>setPayrollMethodFilter(event.target.value)}><option value="all">All methods</option>{payrollMethods.map(value=><option key={value} value={value}>{value}</option>)}</select></label><label><span>Sort by</span><select value={payrollSort} onChange={event=>setPayrollSort(event.target.value as typeof payrollSort)}><option value="newest">Newest first</option><option value="oldest">Oldest first</option><option value="highest">Highest amount</option></select></label><span className="finance-record-count">{visiblePayroll.length} of {selectedPayroll.length} records</span></div>\n      <div className="finance-table-wrap"><table><thead><tr><th>STAFF MEMBER</th><th>MONTH</th><th>PAID DATE</th><th>RECORDED AT</th><th>METHOD</th><th>AMOUNT</th>{session.user.role==='admin'&&<th>ACTIONS</th>}</tr></thead><tbody>
+        {visiblePayroll.map(item => <tr key={item.id}><td><b>{item.staffName}</b></td><td>{monthName(item.period)}</td><td>{item.paidAt}</td><td>{item.createdAt?new Date(item.createdAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'}):'—'}</td><td>{item.method}</td><td className="amount">{money(item.amount)}</td>{session.user.role==='admin'&&<td><button className="row-action danger" title="Delete salary record" disabled={busy} onClick={()=>void deleteSalary(item)}><Trash2 size={14}/></button></td>}</tr>)}
+        {!visiblePayroll.length && <tr><td colSpan={session.user.role==='admin'?7:6}>{selectedPayroll.length?'No salary records match these filters.':'No salary payments recorded for this month.'}</td></tr>}
       </tbody></table></div>
       <div className="finance-foot"><span>{selectedPayroll.length} staff payments · Total salary paid: <b>{money(payrollTotal)}</b></span><button className="btn secondary compact" disabled={!selectedPayroll.length} onClick={() => downloadCsv('kb-payroll-' + period + '.csv', [['Staff member','Staff ID','Month','Paid date','Method','Amount','Notes'], ...selectedPayroll.map(item => [item.staffName, item.staffUserId, monthName(item.period), item.paidAt, item.method, item.amount, item.notes || ''])])}><Download size={14}/> Export payroll</button><button className="btn secondary compact" disabled={!selectedPayroll.length} onClick={() => printReport('Payroll · ' + monthName(period), [['Staff member','Staff ID','Month','Paid date','Method','Amount','Notes'], ...selectedPayroll.map(item => [item.staffName, item.staffUserId, monthName(item.period), item.paidAt, item.method, money(item.amount), item.notes || ''])])}><ReceiptText size={14}/> Export payroll PDF</button></div>
     </section>
