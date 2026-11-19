@@ -248,6 +248,9 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   const [complaintPreview, setComplaintPreview] = useState<{name:string;mimeType:string;dataUrl:string}|null>(null);
   const [notice, setNotice] = useState('');
   const [mobileNav, setMobileNav] = useState(false);
+  const [showMoreNav, setShowMoreNav] = useState(false);
+
+
   const [retentionItems, setRetentionItems] = useState<RetentionReviewItem[]>([]);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
@@ -278,13 +281,18 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
 
   useEffect(() => {
     if (!mobileNav) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setMobileNav(false);
+    };
     const previousBodyOverflow = document.body.style.overflow;
     const previousRootOverflow = document.documentElement.style.overflow;
     document.body.style.overflow = 'hidden';
     document.documentElement.style.overflow = 'hidden';
+    window.addEventListener('keydown', closeOnEscape);
     return () => {
       document.body.style.overflow = previousBodyOverflow;
       document.documentElement.style.overflow = previousRootOverflow;
+      window.removeEventListener('keydown', closeOnEscape);
     };
   }, [mobileNav]);
 
@@ -798,28 +806,52 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
     }
   }
 
+  const openCustomerPortalControl = () => {
+    if (!isAdmin) return;
+    const token = getToken();
+    if (!token) { flash('Your admin session has expired. Please sign in again.'); return; }
+    const url = 'https://k-b-customer-portal-gvzmcs.v2.appdeploy.ai/#admin-sso=' + encodeURIComponent(token);
+    const opened = window.open(url, '_blank', 'noopener,noreferrer');
+    if (!opened) window.location.assign(url);
+  };
+
   const nav = [
     { label: 'Overview', icon: LayoutDashboard },
-    { label: 'Calendar', icon: CalendarDays },
-    { label: taskPage, icon: ClipboardList, count: pendingTasks || undefined },
-    ...(isAdmin ? [{ label: 'Salary', icon: IndianRupee }] : [{ label: 'My Day', icon: CalendarDays }]),
     { label: 'Customers', icon: Users, count: customers.length },
-    { label: 'Subscriptions', icon: CalendarDays },
-    { label: 'Inventory', icon: ClipboardList },
-    { label: 'Installations', icon: MapPin },
-    ...(isAdmin ? [{ label: 'Plans & Pricing', icon: Wifi }] : []),
-    ...(isAdmin ? [{ label: 'GPS Tracking', icon: MapPin }] : []),
-    ...(isAdmin ? [{ label: 'Staff', icon: UserRound, count: staff.length }] : []),
-    ...(canManageAdmins ? [{ label: 'Admin Accounts', icon: ShieldCheck, count: adminAccounts.length || undefined }] : []),
-    ...(isAdmin ? [{ label: 'Invoices', icon: ReceiptText }] : []),
-    ...(isAdmin ? [{ label: 'Finance & Billing', icon: IndianRupee }] : []),
-    { label: 'Payments', icon: CreditCard },
+    ...(isAdmin ? [{ label: 'Finance & Billing', icon: IndianRupee }] : [{ label: 'My Day', icon: CalendarDays }]),
+    { label: 'Complaints', icon: MessageSquare, count: openComplaints || undefined },
+  ];
+  const moreNavGroups = [
     {
-      label: 'Complaints',
-      icon: MessageSquare,
-      count: openComplaints || undefined,
+      label: 'SERVICE OPERATIONS',
+      items: [
+        { label: 'Calendar', icon: CalendarDays },
+        { label: taskPage, icon: ClipboardList, count: pendingTasks || undefined },
+        { label: 'Installations', icon: MapPin },
+        { label: 'Subscriptions', icon: CalendarDays },
+      ],
+    },
+    {
+      label: 'BUSINESS & FINANCE',
+      items: [
+        { label: 'Payments', icon: CreditCard },
+        ...(isAdmin ? [{ label: 'Salary', icon: IndianRupee }] : []),
+        ...(isAdmin ? [{ label: 'Invoices', icon: ReceiptText }] : []),
+        ...(isAdmin ? [{ label: 'Plans & Pricing', icon: Wifi }] : []),
+        { label: 'Inventory', icon: ClipboardList },
+      ],
+    },
+    {
+      label: 'TEAM & ADMINISTRATION',
+      items: [
+        ...(isAdmin ? [{ label: 'GPS Tracking', icon: MapPin }] : []),
+        ...(isAdmin ? [{ label: 'Staff', icon: UserRound, count: staff.length }] : []),
+        ...(canManageAdmins ? [{ label: 'Admin Accounts', icon: ShieldCheck, count: adminAccounts.length || undefined }] : []),
+        ...(isAdmin ? [{ label: 'Customer Portal Control', icon: Globe }] : []),
+      ],
     },
   ];
+  const moreNav = moreNavGroups.flatMap(group => group.items);
   const mobileTabs = [
     { label: 'Overview', icon: Home },
     ...(isAdmin
@@ -831,18 +863,16 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
 
   return (
     <div className="shell">
-      <aside className={'sidebar ' + (mobileNav ? 'mobile-open' : '')}>
+      <aside id="kb-primary-navigation" className={'sidebar ' + (mobileNav ? 'mobile-open' : '')} aria-label="K&B workspace navigation">
         <div className="brand">
-          <div className="brand-mark">
-            <Signal size={21} />
-          </div>
+          <div className="brand-mark brand-monogram" aria-label="K&B">K&amp;B</div>
           <div>
             <strong>
               K&B <span>NET SERVICE</span>
             </strong>
-            <small>Customer management</small>
+            <small>Operations workspace</small>
           </div>
-          <button className="mobile-close" onClick={() => setMobileNav(false)}>
+          <button type="button" className="mobile-close" aria-label="Close navigation" onClick={() => setMobileNav(false)}>
             <X size={18} />
           </button>
         </div>
@@ -852,22 +882,30 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
           <ChevronDown size={14} />
         </div>
         <div className="nav-label">WORKSPACE</div>
-        <nav>
+        <nav className="primary-navigation">
           {nav.map(item => (
-            <button
-              key={item.label}
-              className={'nav-item ' + (page === item.label ? 'active' : '')}
-              onClick={() => {
-                setPage(item.label);
-                setNotificationsOpen(false);
-                setMobileNav(false);
-              }}
-            >
-              <item.icon size={18} />
-              <span>{item.label}</span>
-              {item.count ? <em>{item.count}</em> : null}
+            <button type="button" key={item.label} className={'nav-item ' + (page === item.label ? 'active' : '')}
+              aria-current={page === item.label ? 'page' : undefined}
+              onClick={() => { setNotificationsOpen(false); setMobileNav(false); setPage(item.label); }}>
+              <item.icon size={19} /><span>{item.label}</span>{item.count ? <em>{item.count}</em> : null}
             </button>
           ))}
+          <button type="button" className={'nav-item more-navigation-toggle ' + (showMoreNav || moreNav.some(item => item.label === page) ? 'active' : '')}
+            aria-expanded={showMoreNav} onClick={() => setShowMoreNav(value => !value)}>
+            <MoreHorizontal size={19}/><span>More tools</span><ChevronDown size={15} className={showMoreNav ? 'more-chevron expanded' : 'more-chevron'}/>
+          </button>
+          {showMoreNav && <div className="secondary-navigation" aria-label="Additional workspace tools">
+            {moreNavGroups.map(group => (
+              <section className="navigation-group" key={group.label} aria-label={group.label}>
+                <div className="navigation-group-label">{group.label}</div>
+                {group.items.map(item => <button key={item.label} type="button" className={'nav-item ' + (page === item.label ? 'active' : '')}
+                  aria-current={page === item.label ? 'page' : undefined}
+                  onClick={() => { setNotificationsOpen(false); setMobileNav(false); setShowMoreNav(true); if(item.label === 'Customer Portal Control'){openCustomerPortalControl();return;} setPage(item.label); }}>
+                  <item.icon size={17}/><span>{item.label}</span>{item.count ? <em>{item.count}</em> : null}
+                </button>)}
+              </section>
+            ))}
+          </div>}
         </nav>
         <div className="sidebar-bottom">
           <button className="btn secondary compact" style={{width:'100%',marginBottom:12}} onClick={async()=>{if(Capacitor.isNativePlatform()){const permission=await LocalNotifications.requestPermissions();flash(permission.display==='granted'?'Notifications enabled. You will receive new messages, assigned work and reminders while the app is running.':'Notifications are blocked. Enable them in Android settings.');return;}if(typeof Notification==='undefined'){flash('This browser does not support desktop notifications.');return;}const permission=await Notification.requestPermission();flash(permission==='granted'?'Notifications enabled. You will receive new messages, assigned work and reminders while the app is open.': 'Notifications are blocked. Enable them in your browser settings.');}}>
@@ -878,7 +916,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
               <CircleHelp size={18} />
             </div>
             <strong>Need help?</strong>
-            <p>Keep your customer records up to date.</p>
+            <p>Manage service, finance and team work from one place.</p>
             <button
               onClick={() =>
                 flash('Contact your K&B administrator for assistance.')
@@ -898,19 +936,19 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
         </div>
       </aside>
       {mobileNav && (
-        <div className="scrim" onClick={() => setMobileNav(false)} />
+        <button type="button" className="scrim" aria-label="Close navigation menu" onClick={() => setMobileNav(false)} />
       )}
       <main className="main">
         <header className="topbar">
-          <button className="hamburger" onClick={() => setMobileNav(true)}>
+          <button type="button" className="hamburger" aria-label="Open navigation menu" aria-controls="kb-primary-navigation" aria-expanded={mobileNav} onClick={() => setMobileNav(true)}>
             <Menu />
           </button>
           <div className="crumb">
             Workspace <span>/</span> <strong>{page}</strong>
           </div>
           <div className="top-actions">
-            <span className="system-status">
-              <i /> All systems operational
+            <span className="system-status" title="Workspace status">
+              <i /> K&amp;B workspace
             </span>
             <div className="preference-controls">
               <label className="language-control" title="App language"><span>🌐</span><select aria-label="App language" value={language} onChange={event => setLanguage(event.target.value as 'en' | 'hi' | 'gu')}><option value="en">English</option><option value="hi">हिन्दी</option><option value="gu">ગુજરાતી</option></select></label>
@@ -926,7 +964,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                 {!notifications.length && <p className="notification-empty">You’re all caught up.</p>}
               </div>}
             </div>
-            {isAdmin && <button type="button" className="icon-button portal-control-trigger" title="Open Customer Portal Control" aria-label="Open Customer Portal Control" onClick={() => { const token = getToken(); if (!token) { flash('Your admin session has expired. Please sign in again.'); return; } const url = 'https://k-b-customer-portal-gvzmcs.v2.appdeploy.ai/#admin-sso=' + encodeURIComponent(token); const opened = window.open(url, '_blank'); if (opened) opened.opener = null; else window.location.assign(url); }}><Globe size={18}/></button>}
+            
             <button type="button" className="icon-button account-trigger" title="Account settings" aria-label="Account settings" onClick={() => { setNotificationsOpen(false); setShowAccountSettings(true); }}><div className="avatar small-avatar">{session.user.displayName.slice(0, 2).toUpperCase()}</div></button>
           </div>
         </header>
@@ -1029,6 +1067,24 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
 
           {page === 'Overview' && (
             <section className="kb-overview" aria-label="Operations overview">
+              <section className="kb-command-hero" aria-label="Workspace summary">
+                <div className="kb-command-hero-copy">
+                  <span className="kb-command-kicker"><span className="kb-command-live-dot"/> K&amp;B OPERATIONS DESK</span>
+                  <h2>{isAdmin ? 'Your business, clearly in view.' : 'Your workday, organised.'}</h2>
+                  <p>{isAdmin ? 'A single place to oversee customer connections, service requests, collections and your team.' : 'See your assigned work, customer visits and service updates in one organised workspace.'}</p>
+                  <div className="kb-command-actions">
+                    {isAdmin && <button type="button" className="kb-command-primary" onClick={() => { setEditing(null); setShowCustomer(true); }}><Plus size={16}/> Add a customer</button>}
+                    <button type="button" className="kb-command-secondary" onClick={() => setPage('Complaints')}><MessageSquare size={16}/> Review complaints</button>
+                  </div>
+                </div>
+                <div className="kb-command-hero-aside">
+                  <span className="kb-command-aside-label">TODAY AT A GLANCE</span>
+                  <strong>{new Date().toLocaleDateString('en-IN',{weekday:'long'})}</strong>
+                  <span>{new Date().toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'})}</span>
+                  <div className="kb-command-aside-divider"/>
+                  <small>{isAdmin ? 'Keep every connection and follow-up moving.' : 'Focus on the next task and keep updates current.'}</small>
+                </div>
+              </section>
               <nav className="kb-overview-actions" aria-label="Overview shortcuts">
                 <button type="button" onClick={() => setPage('Customers')}><Users size={18}/><span>Customers</span><small>Browse records</small></button>
                 <button type="button" onClick={() => setPage('Complaints')}><MessageSquare size={18}/><span>Complaints</span><small>Resolve issues</small></button>
@@ -1074,7 +1130,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                     <div><h2>Recent customers</h2><p>Latest connections added to your records</p></div>
                     <button className="kb-overview-link" type="button" onClick={() => setPage('Customers')}>View all <span>→</span></button>
                   </header>
-                  <CustomerTable rows={customers.slice(0,5)} onView={setSelected}/>
+                  <CustomerTable rows={customers.slice().sort((left, right) => Date.parse(String(right.joinedAt || '')) - Date.parse(String(left.joinedAt || ''))).slice(0,5)} onView={setSelected}/>
                   {!customers.length && <Empty icon={<Users/>} title="No customers yet" text="Add your first customer to start building your records." action={isAdmin ? 'Add customer' : undefined} onClick={() => setShowCustomer(true)}/>}
                 </section>
 
@@ -1103,7 +1159,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                   <div><h2>Recent payments</h2><p>Latest recorded customer payments</p></div>
                   <button className="kb-overview-link" type="button" onClick={() => setPage('Payments')}>View payments <span>→</span></button>
                 </header>
-                <PaymentTable rows={payments.slice(0,4)}/>
+                <PaymentTable rows={payments.slice().sort((left, right) => Date.parse(String(right.paidAt || '')) - Date.parse(String(left.paidAt || ''))).slice(0,4)}/>
               </section>
             </section>
           )}
@@ -1224,14 +1280,14 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
             </section>
           )}
 
-          {page === 'Customers' && isAdmin && portalRequests.some(request => request.status === 'Pending') && (
+          {page === 'Customers' && isAdmin && portalRequests.length > 0 && (
             <section className="panel portal-request-panel">
               <div className="portal-request-heading">
                 <div><span className="eyebrow">CUSTOMER NEXUS · LIVE INTAKE</span><h2>New connection requests</h2><p>These requests were submitted through the customer portal and are not active customer accounts yet.</p></div>
                 <span className="portal-request-count">{portalRequests.filter(request => request.status === 'Pending').length} pending</span>
               </div>
               <div className="portal-request-list">
-                {portalRequests.filter(request => request.status === 'Pending').map(request => (
+                {portalRequests.slice().sort((a, b) => Date.parse(String(b.createdAt || '')) - Date.parse(String(a.createdAt || ''))).map(request => (
                   <article className="portal-request-card" key={request.id}>
                     <div className="portal-request-main">
                       <strong>{request.name}</strong>
@@ -1240,11 +1296,15 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                       <small>Received {dateLabel(request.createdAt)}</small>
                       {request.notes && <p>{request.notes}</p>}
                     </div>
-                    <div className="portal-request-actions">
-                      <button className="btn primary compact" onClick={async () => { try { await api.post('/api/portal/connection-requests/' + encodeURIComponent(request.id) + '/convert', {}); flash('Request converted to an inactive customer record. Confirm service details before activation.'); await load(true); } catch (error) { flash(error instanceof Error ? error.message : 'Could not convert this request.'); } }}>Convert to customer</button>
-                      <button className="btn secondary compact" onClick={async () => { try { await api.put('/api/portal/connection-requests/' + encodeURIComponent(request.id), { status: 'Contacted' }); flash('Request marked as contacted.'); await load(true); } catch (error) { flash(error instanceof Error ? error.message : 'Could not update this request.'); } }}>Mark contacted</button>
-                      <button className="btn danger compact" onClick={async () => { try { await api.put('/api/portal/connection-requests/' + encodeURIComponent(request.id), { status: 'Rejected' }); flash('Request marked as rejected.'); await load(true); } catch (error) { flash(error instanceof Error ? error.message : 'Could not update this request.'); } }}>Reject</button>
-                    </div>
+                    {['Pending', 'Contacted'].includes(String(request.status || '')) ? (
+                      <div className="portal-request-actions">
+                        <button className="btn primary compact" onClick={async () => { const confirmed = window.confirm('Create an inactive customer record for ' + String(request.name || 'this applicant') + '?\\n\\nMobile: ' + String(request.phone || 'Not provided') + '\\nRequested plan: ' + String(request.planName || request.plan || 'Not specified') + '\\n\\nThis does not activate service. Review the address and plan details before proceeding.'); if (!confirmed) return; try { await api.post('/api/portal/connection-requests/' + encodeURIComponent(request.id) + '/convert', {}); flash('Request converted to an inactive customer record. Confirm service details before activation.'); await load(true); } catch (error) { flash(error instanceof Error ? error.message : 'Could not convert this request.'); } }}>Convert to customer</button>
+                        {request.status === 'Pending' && <button className="btn secondary compact" onClick={async () => { try { await api.put('/api/portal/connection-requests/' + encodeURIComponent(request.id), { status: 'Contacted' }); flash('Request marked as contacted.'); await load(true); } catch (error) { flash(error instanceof Error ? error.message : 'Could not update this request.'); } }}>Mark contacted</button>}
+                        <button className="btn danger compact" onClick={async () => { try { await api.put('/api/portal/connection-requests/' + encodeURIComponent(request.id), { status: 'Rejected' }); flash('Request marked as rejected.'); await load(true); } catch (error) { flash(error instanceof Error ? error.message : 'Could not update this request.'); } }}>Reject</button>
+                      </div>
+                    ) : (
+                      <span className={'portal-request-status ' + String(request.status || 'unknown').toLowerCase().replace(/[^a-z0-9-]/g, '-')}>{request.status || 'Status unavailable'} · Reviewed {dateLabel(request.reviewedAt || request.updatedAt || request.createdAt)}</span>
+                    )}
                   </article>
                 ))}
               </div>
@@ -1267,8 +1327,8 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                     </div>
                     {request.status === 'Pending' ? (
                       <div className="portal-request-actions">
-                        <button className="btn primary compact" onClick={async () => { try { await api.post('/api/portal/plan-change-requests/' + encodeURIComponent(request.id) + '/decision', { decision: 'Approved' }); flash('Customer plan updated successfully.'); await load(true); } catch (error) { flash(error instanceof Error ? error.message : 'Could not approve this plan change.'); } }}>Approve & update plan</button>
-                        <button className="btn danger compact" onClick={async () => { try { await api.post('/api/portal/plan-change-requests/' + encodeURIComponent(request.id) + '/decision', { decision: 'Rejected' }); flash('Plan-change request rejected.'); await load(true); } catch (error) { flash(error instanceof Error ? error.message : 'Could not reject this request.'); } }}>Reject</button>
+                        <button className="btn primary compact" onClick={async () => { const confirmed = window.confirm('Confirm plan change for ' + String(request.customerName || 'this customer') + '?\\n\\nCurrent plan: ' + String(request.currentPlan || 'Unknown') + '\\nNew plan: ' + String(request.requestedPlan || 'Unknown') + '\\nNew monthly fee: ' + money(Number(request.requestedMonthlyFee || 0)) + '\\n\\nApproving immediately updates the customer record and monthly fee.'); if (!confirmed) return; try { await api.post('/api/portal/plan-change-requests/' + encodeURIComponent(request.id) + '/decision', { decision: 'Approved' }); flash('Customer plan updated successfully.'); await load(true); } catch (error) { flash(error instanceof Error ? error.message : 'Could not approve this plan change.'); } }}>Approve & update plan</button>
+                        <button className="btn danger compact" onClick={async () => { const reviewNote = window.prompt('Optional reason for rejecting this plan-change request:'); if (reviewNote === null) return; const confirmed = window.confirm('Reject the plan-change request from ' + String(request.customerName || 'this customer') + '?'); if (!confirmed) return; try { await api.post('/api/portal/plan-change-requests/' + encodeURIComponent(request.id) + '/decision', { decision: 'Rejected', reviewNote: reviewNote.trim().slice(0, 300) }); flash('Plan-change request rejected.'); await load(true); } catch (error) { flash(error instanceof Error ? error.message : 'Could not reject this request.'); } }}>Reject</button>
                       </div>
                     ) : (
                       <span className={'portal-request-status ' + String(request.status || '').toLowerCase()}>{request.status} · Reviewed {dateLabel(request.reviewedAt || request.createdAt)}</span>
@@ -1438,15 +1498,14 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
             </section>
           )}
           <footer>
-            © {new Date().getFullYear()} K&B NET SERVICE <span>•</span> Customer
-            Management
+            © {new Date().getFullYear()} K&amp;B NET SERVICE <span>•</span> Operations workspace
           </footer>
         </div>
       </main>
 
       <nav className="mobile-tab-bar" aria-label="Main navigation">
         {mobileTabs.map(item => item.label === 'More' ? (
-          <button key={item.label} type="button" className={'mobile-tab ' + (mobileNav ? 'active' : '')} onClick={() => setMobileNav(open => !open)} aria-expanded={mobileNav}>
+          <button key={item.label} type="button" className={'mobile-tab ' + (mobileNav || moreNav.some(tool => tool.label === page) ? 'active' : '')} onClick={() => setMobileNav(open => !open)} aria-expanded={mobileNav}>
             <item.icon size={20}/><span>{item.label}</span>
           </button>
         ) : (
@@ -2378,7 +2437,7 @@ function App(){
  const [session,setSession]=useState<Session|null>(null);const [checking,setChecking]=useState(true);
  useEffect(()=>{let live=true;async function restore(){const raw=sessionStorage.getItem('kb-customer-session')||localStorage.getItem('kb-customer-session');if(!raw){setChecking(false);return;}try{const old=JSON.parse(raw) as Session;const r=await client.get('/api/auth/me?sessionToken='+encodeURIComponent(old.token));if(live){const restored={...old,user:r.data.user};sessionStorage.setItem('kb-customer-session',JSON.stringify(restored));localStorage.removeItem('kb-customer-session');setSession(restored);}}catch{sessionStorage.removeItem('kb-customer-session');localStorage.removeItem('kb-customer-session');}finally{if(live)setChecking(false);}}restore();return()=>{live=false;};},[]);
  async function login(userId:string,password:string,expectedRole:'admin'|'staff'){const next=await signInAppUser(userId,password,expectedRole) as Session;if(next.user.role!==expectedRole){await signOutAppUser();throw new Error(expectedRole==='admin'?'This account is not an admin account. Choose Staff Sign In instead.':'This account is not a staff account. Choose Admin Sign In instead.');}sessionStorage.setItem('kb-customer-session',JSON.stringify(next));localStorage.removeItem('kb-customer-session');setSession(next);}
- if(checking)return <div className="loading-cover"><div className="loader"/><span>Preparing secure sign-in…</span></div>;
+ if(checking)return <div className="loading-cover"><div className="loading-brand-mark" aria-label="K&B NET SERVICE">K&amp;B</div><strong className="loading-brand-name">K&amp;B NET SERVICE</strong><div className="loader"/><span>Preparing your secure workspace…</span></div>;
  return session?<Workspace session={session} onLogout={()=>{signOutAppUser().catch(()=>undefined);sessionStorage.removeItem('kb-customer-session');localStorage.removeItem('kb-customer-session');setSession(null);}}/>:<LoginScreen onLogin={login}/>;
 }
 function LoginScreen({onLogin}:{onLogin:(id:string,pw:string,role:'admin'|'staff')=>Promise<void>}){

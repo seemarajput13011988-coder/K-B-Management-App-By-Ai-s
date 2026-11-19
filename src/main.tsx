@@ -6,6 +6,7 @@ import App from './App';
 import './index.css';
 import './mobile-overhaul.css';
 import './dashboard/overview.css';
+import './app-redesign.css';
 
 const UPDATE_CHECK_TIMEOUT_MS = 25000;
 const UPDATE_DOWNLOAD_TIMEOUT_MS = 120000;
@@ -48,11 +49,11 @@ function showUpdateScreen(message: string, retry: () => void) {
   screen.setAttribute('role', 'status');
   screen.style.cssText = 'min-height:100dvh;display:grid;place-content:center;justify-items:center;gap:14px;padding:28px;background:#f4f7fb;color:#17243a;font-family:system-ui,sans-serif;text-align:center';
   const mark = document.createElement('div');
-  mark.textContent = 'K&B';
   mark.setAttribute('aria-label', 'K&B NET SERVICE');
-  mark.style.cssText = 'display:grid;place-items:center;width:76px;height:76px;border-radius:22px;background:linear-gradient(145deg,#ffbd68,#e57b2b);box-shadow:0 12px 40px #f09a4b55;color:#fff;font-size:23px;font-weight:900';
+  mark.style.cssText = 'display:grid;place-items:center;width:82px;height:82px;border-radius:25px;background:linear-gradient(145deg,#ffc15e,#ed842c);box-shadow:0 14px 34px rgba(237,132,44,.24);color:#fff;font-size:23px;font-weight:900;letter-spacing:-1.5px;border:1px solid rgba(255,255,255,.65)';
+  mark.textContent = 'K&B';
   const title = document.createElement('h1');
-  title.textContent = 'Checking for K&B updates';
+  title.textContent = 'K&B NET SERVICE';
   title.style.cssText = 'font-size:21px;margin:0';
   const detail = document.createElement('p');
   detail.textContent = message;
@@ -60,7 +61,7 @@ function showUpdateScreen(message: string, retry: () => void) {
   const button = document.createElement('button');
   button.type = 'button';
   button.textContent = 'Retry';
-  button.style.cssText = 'border:0;border-radius:10px;background:#1d4ed8;color:white;padding:12px 22px;font-weight:700;font-size:14px';
+  button.style.cssText = 'border:0;border-radius:12px;background:linear-gradient(135deg,#347cdb,#2258ad);color:white;padding:12px 22px;font-weight:750;font-size:14px';
   button.addEventListener('click', () => {
     button.disabled = true;
     button.textContent = 'Checking…';
@@ -99,9 +100,13 @@ async function runUpdateCheck(): Promise<void> {
     );
     await CapacitorUpdater.set(bundle);
   } catch (error) {
-    // An unavailable update service must never lock staff out of the last working app.
-    console.error('K&B Nexus OTA check/install failed; opening the last working app:', error);
-    mountApp(true);
+    // Updates are mandatory when a newer bundle is advertised. Never silently bypass a failed download.
+    console.error('K&B Nexus mandatory OTA update failed:', error);
+    const message = error instanceof Error ? error.message : 'The update could not be installed.';
+    showUpdateScreen(
+      'A required update could not be downloaded. Check your internet connection and retry. The app will open only after the update is installed. ' + message,
+      () => { void runUpdateCheck(); },
+    );
   }
 }
 

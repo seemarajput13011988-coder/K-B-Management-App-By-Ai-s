@@ -162,7 +162,8 @@ export default function FinanceWorkspace({ session, customers, payments, flash, 
     const key=date.getFullYear()+'-'+String(date.getMonth()+1).padStart(2,'0');
     const label=date.toLocaleString('en-IN',{month:'short'});
     const income=payments.filter(item=>String(item.paidAt||'').slice(0,7)===key).reduce((sum,item)=>sum+Number(item.amount||0),0);
-    const cost=expenses.filter(item=>String(item.spentAt||'').slice(0,7)===key).reduce((sum,item)=>sum+Number(item.amount||0),0)+(key===period?payrollTotal:0);
+    const monthPayroll=payroll.filter(item=>String(item.period||'').slice(0,7)===key).reduce((sum,item)=>sum+Number(item.amount||0),0);
+    const cost=expenses.filter(item=>String(item.spentAt||'').slice(0,7)===key).reduce((sum,item)=>sum+Number(item.amount||0),0)+monthPayroll;
     return {key,label,income,cost};
   });
   const trendMax=Math.max(1,...monthlyTrend.flatMap(item=>[item.income,item.cost]));

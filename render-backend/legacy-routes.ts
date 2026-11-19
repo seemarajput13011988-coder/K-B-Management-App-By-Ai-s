@@ -104,6 +104,31 @@ const newPasswordFields = (password: string) => {
   return { salt, passwordHash: hashPassword(password, salt) };
 };
 const tokenId = (token: string) => createHash('sha256').update(token).digest('hex');
+async function notifyActiveAdmins(type: string, title: string, message: string, relatedId: string) {
+  try {
+    const admins = await firestore.collection('users').where('role', '==', 'admin').get();
+    const createdAt = new Date().toISOString();
+    const writes = admins.docs
+      .filter(document => document.data().active === true)
+      .map(document => {
+        const notificationId = 'portal-' + type + '-' + relatedId + '-' + document.id;
+        return firestore.collection('staff_notifications').doc(notificationId).set({
+          recipientId: document.id,
+          recipientRole: 'admin',
+          type: 'portal-' + type,
+          title,
+          message,
+          relatedId,
+          createdAt,
+          read: false,
+        }, { merge: true });
+      });
+    await Promise.all(writes);
+  } catch (cause) {
+    console.error('[K&B_PORTAL_NOTIFICATION_FAILED]', cause instanceof Error ? cause.message : String(cause));
+  }
+}
+
 
 async function createSession(user: UserRecord) {
   const token = randomBytes(32).toString('hex');
@@ -389,6 +414,9 @@ export const handler = router({
       return { kind: 'created' as const };
     });
     if (result.kind === 'unavailable') return error('This plan is no longer available. Refresh and choose another plan.', 409);
+    if (result.kind === 'created') {
+      await notifyActiveAdmins('plan-change-request', 'Customer plan change requested', 'A Customer Nexus plan-change request is waiting for admin review.', requestRef.id);
+    }
     return genericPlanRequestResponse();
   }],
 
@@ -443,6 +471,7 @@ export const handler = router({
         batch.set(ref, { complaintId: complaintRef.id, mediaId, chunkIndex: index, data: dataBase64.slice(index * chunkSize, (index + 1) * chunkSize) });
       }
       await batch.commit();
+      await notifyActiveAdmins('customer-complaint', 'New customer complaint', customer.name + ' submitted a support request: ' + subject + '.', complaintRef.id);
       return json({ accepted: true, message: 'If the details match an active K&B connection, your support request will be reviewed by our team.' }, 202);
     } catch {
       return error('The photo could not be saved, so no complaint was submitted. Please try again.', 503);
@@ -600,6 +629,7 @@ export const handler = router({
     if (result.kind !== 'created') {
       return json({ accepted: true, message: 'Your request has been received or is already associated with an existing K&B record. Our team will review it.' }, 202);
     }
+    await notifyActiveAdmins('connection-request', 'New connection request', 'A new Customer Nexus connection request from ' + name + ' is waiting for review.', result.requestId);
     return json({ accepted: true, requestId: result.requestId, status: 'Pending', message: 'Your connection request has been sent to K&B for review.' }, 201);
   }],
 
@@ -607,6 +637,55 @@ export const handler = router({
     const result = await db.list<Record<string, unknown>>('portal_connection_requests', { limit: 500 });
     const items = result.items.sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
     return json({ items });
+  }),
+
+  'PUT /api/portal/connection-requests/:id': protectedRoute(['admin'], async ({ params, body }, user) => {
+    const status = cleanText((body || {}).status, 24);
+    if (!['Contacted', 'Rejected'].includes(status)) return error('Choose Contacted or Rejected.', 400);
+    const requestRef = firestore.collection('portal_connection_requests').doc(params.id);
+    const result = await firestore.runTransaction(async transaction => {
+      const requestSnapshot = await transaction.get(requestRef);
+      if (!requestSnapshot.exists) return { kind: 'not-found' as const };
+      const request = requestSnapshot.data() || {};
+      if (!['Pending', 'Contacted'].includes(String(request.status || ''))) {
+        return { kind: 'not-actionable' as const, status: cleanText(request.status, 24) };
+      }
+      if (request.status === status) return { kind: 'unchanged' as const };
+      const reviewedAt = new Date().toISOString();
+      let lockToClose = '';
+      if (status === 'Rejected') {
+        const phone = cleanText(request.phone, 10);
+        const lockId = phone ? createHash('sha256').update(phone).digest('hex') : '';
+        if (lockId) {
+          const lockRef = firestore.collection('portal_connection_request_locks').doc(lockId);
+          const lockSnapshot = await transaction.get(lockRef);
+          if (lockSnapshot.exists && lockSnapshot.data()?.pendingRequestId === params.id) lockToClose = lockId;
+        }
+      }
+      transaction.update(requestRef, {
+        status,
+        updatedAt: reviewedAt,
+        ...(status === 'Rejected' ? {
+          reviewedAt,
+          reviewedBy: user.id,
+          reviewedByName: user.displayName,
+        } : {
+          contactedAt: reviewedAt,
+          contactedBy: user.id,
+          contactedByName: user.displayName,
+        }),
+      });
+      if (lockToClose) {
+        const lockRef = firestore.collection('portal_connection_request_locks').doc(lockToClose);
+        transaction.set(lockRef, { status: 'Closed', pendingRequestId: null, reviewedAt, reviewedBy: user.id }, { merge: true });
+      }
+      return { kind: 'updated' as const };
+    });
+    if (result.kind === 'not-found') return error('Portal connection request not found.', 404);
+    if (result.kind === 'not-actionable') return error('This request is already ' + (result.status || 'closed') + '.', 409);
+    if (result.kind === 'unchanged') return json({ updated: true, status });
+    await writeAudit(user, 'UPDATE', 'portal_connection_request', params.id, 'Marked customer portal connection request as ' + status);
+    return json({ updated: true, status });
   }),
 
   'POST /api/portal/connection-requests/:id/convert': protectedRoute(['admin'], async ({ params }, user) => {
@@ -618,7 +697,7 @@ export const handler = router({
       const request = requestSnapshot.data() || {};
       const existingCustomerId = cleanText(request.customerId, 128);
       if (existingCustomerId) return { kind: 'already-converted' as const, customerId: existingCustomerId };
-      if (request.status !== 'Pending') return { kind: 'not-pending' as const };
+      if (!['Pending', 'Contacted'].includes(String(request.status || ''))) return { kind: 'not-pending' as const };
 
       const phone = cleanText(request.phone, 10);
       const planId = cleanText(request.planId, 128);

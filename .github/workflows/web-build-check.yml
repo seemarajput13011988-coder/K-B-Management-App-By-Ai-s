@@ -9,6 +9,7 @@ on:
       - safe-firebase-migration-copilot-review
       - on-demand-gps-proof-permissions
       - ui-rebuild-gps-holidays-api-fixes
+      - nexus-native-redesign-2026-11-19
     paths:
       - "src/**"
       - "package.json"
