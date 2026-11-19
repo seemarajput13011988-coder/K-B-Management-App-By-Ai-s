@@ -91,7 +91,7 @@ export default function InstallationsWorkspace({customers,staff,isAdmin,flash}:{
       .installation-meta{display:flex;gap:16px;flex-wrap:wrap;margin-top:12px}.installation-notes{padding:10px;margin:10px 0 0;border-radius:9px;background:var(--surface-soft,#f6f8fb);font-size:12px;color:var(--text,#243044)}
       .installation-footer{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:12px}.installation-footer label{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--muted,#64748b)}.installation-footer select{width:auto;min-width:130px;min-height:34px}
       .installation-status{padding:5px 8px;border-radius:99px;background:var(--surface-soft,#eef2f8);font-size:11px;font-weight:800}.installation-status.completed{background:#e5f7ee;color:#087443}.installation-status.cancelled{background:#ffeded;color:#a33}.installation-status.in-progress{background:#eaf1ff;color:#315fbd}
-      @media(max-width:540px){.installation-form{grid-template-columns:1fr}.installation-address{grid-column:auto}.installation-main{display:grid}.installation-date{text-align:left}.installation-footer{align-items:flex-start;flex-direction:column}}
+      @media(max-width:720px){.installation-toolbar-actions{width:100%}.installation-toolbar-actions .searchbox{flex:1 1 100%;min-width:100%}.installation-filter-select{flex:1;min-width:0}.installation-result-count{flex-basis:100%}}\n      @media(max-width:540px){.installation-form{grid-template-columns:1fr}.installation-address{grid-column:auto}.installation-main{display:grid}.installation-date{text-align:left}.installation-footer{align-items:flex-start;flex-direction:column}}
     `}</style>
   </section>;
 }
