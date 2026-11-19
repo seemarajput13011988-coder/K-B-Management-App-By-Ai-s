@@ -250,19 +250,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   const [mobileNav, setMobileNav] = useState(false);
   const [showMoreNav, setShowMoreNav] = useState(false);
 
-  useEffect(() => {
-    if (!mobileNav) return;
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setMobileNav(false);
-    };
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    window.addEventListener('keydown', closeOnEscape);
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      window.removeEventListener('keydown', closeOnEscape);
-    };
-  }, [mobileNav]);
+
   const [retentionItems, setRetentionItems] = useState<RetentionReviewItem[]>([]);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
@@ -293,13 +281,18 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
 
   useEffect(() => {
     if (!mobileNav) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setMobileNav(false);
+    };
     const previousBodyOverflow = document.body.style.overflow;
     const previousRootOverflow = document.documentElement.style.overflow;
     document.body.style.overflow = 'hidden';
     document.documentElement.style.overflow = 'hidden';
+    window.addEventListener('keydown', closeOnEscape);
     return () => {
       document.body.style.overflow = previousBodyOverflow;
       document.documentElement.style.overflow = previousRootOverflow;
+      window.removeEventListener('keydown', closeOnEscape);
     };
   }, [mobileNav]);
 
