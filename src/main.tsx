@@ -100,9 +100,13 @@ async function runUpdateCheck(): Promise<void> {
     );
     await CapacitorUpdater.set(bundle);
   } catch (error) {
-    // An unavailable update service must never lock staff out of the last working app.
-    console.error('K&B Nexus OTA check/install failed; opening the last working app:', error);
-    mountApp(true);
+    // Updates are mandatory when a newer bundle is advertised. Never silently bypass a failed download.
+    console.error('K&B Nexus mandatory OTA update failed:', error);
+    const message = error instanceof Error ? error.message : 'The update could not be installed.';
+    showUpdateScreen(
+      'A required update could not be downloaded. Check your internet connection and retry. The app will open only after the update is installed. ' + message,
+      () => { void runUpdateCheck(); },
+    );
   }
 }
 
