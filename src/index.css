@@ -1825,7 +1825,7 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
 /* Android cutout and system navigation safe areas. */
 html{min-height:100%;height:100%;overscroll-behavior-y:none}
 body,#root{min-height:100%;height:100%}
-.shell{min-height:100dvh;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+.shell{min-height:100dvh;padding-top:0;padding-bottom:env(safe-area-inset-bottom,0px)}
 .sidebar{top:env(safe-area-inset-top,0px);bottom:env(safe-area-inset-bottom,0px);height:auto;max-height:none}
 .topbar{scroll-margin-top:env(safe-area-inset-top,0px)}
 .content{padding-bottom:calc(28px + env(safe-area-inset-bottom,0px))}
