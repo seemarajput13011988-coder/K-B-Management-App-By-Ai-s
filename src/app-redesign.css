@@ -526,3 +526,57 @@ html,body,#root{min-height:100%;background:var(--kb-page)}
 @media(prefers-reduced-motion:reduce){
   .sidebar,.nav-item,.mobile-tab,.page-transition{transition:none!important;animation:none!important;scroll-behavior:auto!important}
 }
+
+
+/* K&B visual refresh: cobalt + amber, consistent scroll, clean controls. */
+:root{
+  --kb-primary:#2769c5!important;
+  --kb-primary-deep:#174b9b!important;
+  --kb-accent:#ffad38!important;
+  --kb-success:#2769c5!important;
+  --kb-canvas:#f4f7fc;
+  --kb-line:#e1e8f2;
+  --kb-focus:#f0a12e;
+}
+body{background:var(--kb-canvas);color:#192b45;overflow-y:auto!important;overscroll-behavior-y:auto}
+html,body,#root{height:auto!important;min-height:100%;overflow-x:hidden}
+.shell{min-height:100dvh;height:auto!important;overflow:visible!important}
+.main{min-height:100dvh;height:auto!important;overflow:visible!important}
+.content{height:auto!important;min-height:calc(100dvh - 68px);overflow:visible!important;padding-bottom:calc(34px + env(safe-area-inset-bottom,0px))!important}
+.sidebar{overflow-y:auto!important;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+@media(max-width:900px){
+  .main{margin-left:0}
+  .content{min-height:calc(100dvh - 58px);padding-bottom:calc(100px + env(safe-area-inset-bottom,0px))!important}
+  .mobile-tab-bar{z-index:30}
+  .sidebar{overflow-y:auto!important;max-height:calc(100dvh - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px))!important}
+}
+/* Replace green primary/success accents with the new blue + amber system. */
+.workspace-dot,.system-status i,.live-tag i,.strip-right i{background:#4f8fe8!important;box-shadow:0 0 0 3px rgba(79,143,232,.14)!important}
+.status.active,.snapshot-note,.finance-positive,.success,.status.approved{background:#edf4ff!important;color:#245da9!important}
+.status.active{border-color:#d8e7fb!important}
+.stat-icon.green{background:#eaf2ff!important;color:#3979c9!important}
+.green-bg,.success-bg{background:#eaf2ff!important;color:#3979c9!important}
+.snapshot-note{background:#eef4ff!important;color:#315f9f!important}
+.btn.primary{background:linear-gradient(135deg,#347cdb,#2258ad)!important;box-shadow:0 4px 12px rgba(39,105,197,.16)!important}
+.btn.primary:hover{background:linear-gradient(135deg,#286cc9,#1b4e9c)!important}
+.nav-item.active{background:#29496d!important;box-shadow:inset 3px 0 #ffad38!important}
+.nav-item.active svg{color:#ffbd62!important}
+.brand-mark{background:linear-gradient(145deg,#ffc15e,#ed842c)!important}
+[data-festival-theme]:not([data-festival-theme="normal"]) .btn.primary{background:linear-gradient(135deg,#347cdb,#2258ad)!important}
+/* No blue tap flash or persistent mouse-focus rectangles; keep visible keyboard focus. */
+*{-webkit-tap-highlight-color:transparent}
+button:focus:not(:focus-visible),a:focus:not(:focus-visible),[role="button"]:focus:not(:focus-visible){outline:none!important;box-shadow:none!important}
+button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid #f0a12e!important;outline-offset:2px!important;box-shadow:none!important}
+/* Search should have exactly one border: the outer search control. */
+.searchbox{border:1px solid #dce5f0!important;background:#fff!important;box-shadow:none!important;outline:0!important;padding:0 12px!important}
+.searchbox input{border:0!important;outline:0!important;box-shadow:none!important;background:transparent!important;min-width:0!important}
+.searchbox:focus-within{border-color:#8db4e9!important;box-shadow:0 0 0 3px rgba(39,105,197,.08)!important}
+.searchbox input:focus,.searchbox input:focus-visible{outline:0!important;box-shadow:none!important}
+.finance-head .searchbox,.toolbar .searchbox{box-shadow:none!important}
+.finance-head input[type="search"],.finance-head input:not([type]),.finance-actions input[type="search"]{border:1px solid #dce5f0;border-radius:10px;box-shadow:none;outline:0}
+.finance-head input:focus,.finance-actions input:focus{outline:0;box-shadow:0 0 0 3px rgba(39,105,197,.08)}
+/* Reduce perceived lag: short, restrained transitions; disable nonessential entrance animations. */
+.panel,.ops-panel,.finance-panel,.ops-summary,.task-card,.plan-card,.quick-actions button,.btn,.nav-item,.icon-button{transition-duration:110ms!important}
+.page-transition{animation:page-arrive 120ms ease-out both!important}
+.finance-chart-bar,.status-chart-row i{animation:none!important}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
