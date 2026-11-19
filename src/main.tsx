@@ -113,7 +113,7 @@ async function runUpdateCheck(): Promise<void> {
       return;
     }
 
-    const updateScreen = showUpdateScreen('A new version is available. Preparing secure download…', () => {
+    const updateScreen = showUpdateScreen('A small OTA progress test update is available. Preparing download…', () => {
       void runUpdateCheck();
     });
 
