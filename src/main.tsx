@@ -73,14 +73,33 @@ function showUpdateScreen(message: string, retry: () => void) {
 
 async function runUpdateCheck(): Promise<void> {
   try {
-    const latest = await withTimeout(
-      CapacitorUpdater.getLatest(),
+    // Call the K&B self-hosted endpoint explicitly. Do not rely on the
+    // Capgo native getLatest request contract for our custom API.
+    const builtinVersion = await CapacitorUpdater.getBuiltinVersion();
+    const response = await withTimeout(
+      fetch('https://kandb-management-nexus-api-zv7f.onrender.com/api/app-updates/check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        cache: 'no-store',
+        body: JSON.stringify({
+          app_id: 'kandbnet.service2010',
+          platform: 'android',
+          version_name: builtinVersion || '1.0.0',
+        }),
+      }),
       UPDATE_CHECK_TIMEOUT_MS,
-      'The update check timed out. Opening the last working version.',
+      'The K&B update server did not respond in time.',
     );
+    if (!response.ok) {
+      throw new Error('K&B update server returned HTTP ' + response.status + '.');
+    }
+    const latest = await response.json() as { version?: string; url?: string; checksum?: string; message?: string };
     if (!latest?.url || !latest.version) {
-      mountApp(true);
-      return;
+      if (latest?.message === 'No update is available.' || latest?.message === 'No OTA update is currently published.') {
+        mountApp(true);
+        return;
+      }
+      throw new Error(latest?.message || 'The update server returned an invalid update response.');
     }
 
     showUpdateScreen('A new version is available. Installing it now…', () => {
