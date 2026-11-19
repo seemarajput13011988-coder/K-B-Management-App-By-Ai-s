@@ -126,6 +126,126 @@ export async function runGpsGracePeriod() {
   }
 }
 
+function billingPeriodParts(date = new Date()) {
+  const { year, month } = indiaDateParts();
+  const period = year + '-' + String(month).padStart(2, '0');
+  const label = new Date(period + '-01T12:00:00').toLocaleString('en-IN', { month: 'long', year: 'numeric' });
+  const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  return { period, label, year, month, lastDay };
+}
+
+export async function generateMonthlyInvoicesAutomatically() {
+  const { period, year, month, lastDay } = billingPeriodParts();
+  const [customers, invoices] = await Promise.all([
+    readAllQuery(firestore.collection('customers')),
+    readAllQuery(firestore.collection('invoices')),
+  ]);
+  const existing = new Set(invoices.map(item => String(item.customerId) + '|' + String(item.period)));
+  const active = customers.filter(customer => customer.status === 'Active' && customer.id && Number.isFinite(Number(customer.monthlyFee)) && Number(customer.monthlyFee) >= 0);
+  let created = 0;
+  for (const customer of active) {
+    const key = String(customer.id) + '|' + period;
+    if (existing.has(key)) continue;
+    const configuredDueDate = String(customer.dueDate || '');
+    const dueDay = /^\\d{4}-\\d{2}-\\d{2}$/.test(configuredDueDate) ? Number(configuredDueDate.slice(-2)) : 10;
+    const dueDate = period + '-' + String(Math.min(Math.max(dueDay, 1), lastDay)).padStart(2, '0');
+    const invoiceId = 'inv-' + Buffer.from(key).toString('base64url').slice(0, 32);
+    const invoiceRef = firestore.collection('invoices').doc(invoiceId);
+    const didCreate = await firestore.runTransaction(async transaction => {
+      const current = await transaction.get(invoiceRef);
+      if (current.exists) return false;
+      transaction.create(invoiceRef, {
+        customerId: String(customer.id),
+        customerName: String(customer.name || 'Customer'),
+        period,
+        dueDate,
+        amount: Number(customer.monthlyFee),
+        createdAt: now(),
+        createdBy: 'system',
+        generatedAutomatically: true,
+      });
+      return true;
+    });
+    if (didCreate) created += 1;
+  }
+  if (created) {
+    const auditRef = firestore.collection('audit_logs').doc('auto-invoice-batch-' + period);
+    await auditRef.set({
+      actorId: 'system',
+      actorName: 'K&B automatic billing',
+      action: 'GENERATE',
+      entityType: 'invoice_batch',
+      entityId: period,
+      description: 'Automatically generated ' + created + ' monthly invoices for ' + period + '.',
+      createdAt: now(),
+      serverCreatedAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
+  }
+  return { period, created, activeCustomers: active.length };
+}
+
+export async function sendInvoiceDueReminders() {
+  const { date: today, year, month, day } = indiaDateParts();
+  const [invoices, payments, customers, users] = await Promise.all([
+    readAllQuery(firestore.collection('invoices')),
+    readAllQuery(firestore.collection('payments')),
+    readAllQuery(firestore.collection('customers')),
+    readAllQuery(firestore.collection('users')),
+  ]);
+  const admins = users.filter(user => user.role === 'admin' && user.active === true);
+  let notified = 0;
+  for (const invoice of invoices) {
+    if (!invoice.id || invoice.voidedAt || !/^\\d{4}-\\d{2}-\\d{2}$/.test(String(invoice.dueDate || ''))) continue;
+    const dueDate = String(invoice.dueDate);
+    const dueTime = Date.parse(dueDate + 'T00:00:00Z');
+    const todayTime = Date.parse(today + 'T00:00:00Z');
+    const daysFromDue = Math.round((todayTime - dueTime) / 86400000);
+    if (![ -3, 0, 3, 7 ].includes(daysFromDue)) continue;
+    const period = String(invoice.period || '');
+    const monthLabel = period ? new Date(period + '-01T12:00:00').toLocaleString('en-IN', { month: 'long', year: 'numeric' }) : '';
+    const paidAmount = payments
+      .filter(payment => payment.customerId === invoice.customerId &&
+        (payment.month === monthLabel || String(payment.paidAt || '').slice(0, 7) === period))
+      .reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+    const amount = Number(invoice.amount || 0);
+    const balance = Math.max(0, amount - paidAmount);
+    if (!(balance > 0)) continue;
+    const customer = customers.find(item => item.id === invoice.customerId);
+    const assignedStaff = customer?.assignedTo
+      ? users.find(user => user.id === customer.assignedTo && user.role === 'staff' && user.active === true)
+      : null;
+    const recipients = Array.from(new Map([...admins, ...(assignedStaff ? [assignedStaff] : [])].map(user => [String(user.id), user])).values());
+    const kind = daysFromDue < 0 ? 'upcoming' : daysFromDue === 0 ? 'due-today' : 'overdue-' + daysFromDue;
+    const message = String(invoice.customerName || customer?.name || 'Customer') +
+      (daysFromDue < 0 ? ' has an invoice due in 3 days (' + dueDate + ').' :
+        daysFromDue === 0 ? ' has an invoice due today (' + dueDate + ').' :
+          ' has an unpaid invoice ' + daysFromDue + ' days overdue (due ' + dueDate + ').') +
+      ' Outstanding balance: ₹' + balance.toLocaleString('en-IN') + '.';
+    for (const recipient of recipients) {
+      const notificationRef = firestore.collection('staff_notifications').doc(
+        'invoice-' + String(invoice.id) + '-' + kind + '-' + today + '-' + String(recipient.id)
+      );
+      const didCreate = await firestore.runTransaction(async transaction => {
+        const existing = await transaction.get(notificationRef);
+        if (existing.exists) return false;
+        transaction.create(notificationRef, {
+          recipientId: String(recipient.id),
+          recipientRole: String(recipient.role),
+          type: 'invoice-' + kind,
+          title: daysFromDue < 0 ? 'Invoice due soon' : daysFromDue === 0 ? 'Invoice due today' : 'Overdue customer invoice',
+          message,
+          createdAt: now(),
+          read: false,
+          relatedId: String(invoice.id),
+        });
+        return true;
+      });
+      if (didCreate) notified += 1;
+    }
+  }
+  return { notified };
+}
+
 export async function sendTaskDueReminders() {
   const { date: today, year, month, day } = indiaDateParts();
   const tomorrow = new Date(Date.UTC(year, month - 1, day + 1)).toISOString().slice(0, 10);
@@ -356,8 +476,10 @@ export async function runScheduledTick() {
     const hour = Number(parts.find(part => part.type === 'hour')?.value || 0);
     const { date } = indiaDateParts();
     if (hour >= 9 && lastDailyRun !== date) {
+      await generateMonthlyInvoicesAutomatically();
       await sendTaskDueReminders();
       await sendSubscriptionExpiryReminders();
+      await sendInvoiceDueReminders();
       lastDailyRun = date;
     }
     return { skipped: false, ...attendance };
