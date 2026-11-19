@@ -232,6 +232,8 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   const [showAccountSettings, setShowAccountSettings] = useState(false);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [customerStatusFilter, setCustomerStatusFilter] = useState<'All' | Customer['status']>('All');
+  const [customerSort, setCustomerSort] = useState<'recent' | 'name' | 'due'>('recent');
   const [showCustomer, setShowCustomer] = useState(false);
   const [editing, setEditing] = useState<Customer | null>(null);
   const [showPlan, setShowPlan] = useState(false);
@@ -239,15 +241,26 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   const [preferredPlan, setPreferredPlan] = useState('');
   const [planSearch, setPlanSearch] = useState('');
   const [planFilter, setPlanFilter] = useState<'Active' | 'Archived' | 'All'>('Active');
+  const [planSort, setPlanSort] = useState<'featured'|'price-low'|'price-high'|'name'>('featured');
   const [selected, setSelected] = useState<Customer | null>(null);
   const [showPayment, setShowPayment] = useState(false);
   const [editingPayment, setEditingPayment] = useState<Payment | null>(null);
   const [paymentSearch, setPaymentSearch] = useState('');
+  const [paymentMethodFilter, setPaymentMethodFilter] = useState('All');
+  const [paymentSort, setPaymentSort] = useState<'recent' | 'oldest' | 'highest' | 'lowest'>('recent');
   const [staffSearch, setStaffSearch] = useState('');
+  const [staffStatusFilter, setStaffStatusFilter] = useState<'All'|'Active'|'Inactive'>('All');
+  const [staffSort, setStaffSort] = useState<'active'|'name'|'recent'>('active');
+  const [taskSearch, setTaskSearch] = useState('');
+  const [taskStatusFilter, setTaskStatusFilter] = useState<'All'|'Pending'|'In progress'|'Completed'>('All');
+  const [taskSort, setTaskSort] = useState<'due'|'priority'|'recent'>('due');
+  const [complaintSearch, setComplaintSearch] = useState('');
+  const [complaintStatusFilter, setComplaintStatusFilter] = useState('All');
   const [showComplaint, setShowComplaint] = useState(false);
   const [complaintPreview, setComplaintPreview] = useState<{name:string;mimeType:string;dataUrl:string}|null>(null);
   const [notice, setNotice] = useState('');
   const [mobileNav, setMobileNav] = useState(false);
+  const [moreToolsOpen, setMoreToolsOpen] = useState(false);
   const [retentionItems, setRetentionItems] = useState<RetentionReviewItem[]>([]);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
@@ -440,19 +453,40 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
   const staffShiftActive = attendanceRecords.some(item => item.userId === session.user.id && isAttendanceShiftActive(item));
   const overdueValue = customers.filter(c => c.status === 'Active' && c.dueDate && c.dueDate <= today).reduce((sum, c) => sum + Math.max(0, Number(c.monthlyFee || 0) - (paidByCustomer.get(c.id) || 0)), 0);
-  const filtered = useMemo(
-    () =>
-      customers.filter(c =>
-        [c.name, c.phone, c.address, c.plan]
-          .join(' ')
-          .toLowerCase()
-          .includes(search.toLowerCase())
-      ),
-    [customers, search]
-  );
+  const overdueCustomersCount = customers.filter(c => c.status === 'Active' && c.dueDate && c.dueDate <= today && Number(c.monthlyFee || 0) > (paidByCustomer.get(c.id) || 0)).length;
+  const pendingStaffRequestsCount = staffRegistrationRequests.filter(item => item.status === 'pending').length;
+  const filtered = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    return customers
+      .filter(customer => customerStatusFilter === 'All' || customer.status === customerStatusFilter)
+      .filter(customer => !query || [customer.name, customer.phone, customer.address, customer.plan].join(' ').toLowerCase().includes(query))
+      .slice()
+      .sort((a, b) => customerSort === 'name'
+        ? a.name.localeCompare(b.name, 'en', { sensitivity: 'base' })
+        : customerSort === 'due'
+          ? String(a.dueDate || '9999-12-31').localeCompare(String(b.dueDate || '9999-12-31'))
+          : String(b.joinedAt || '').localeCompare(String(a.joinedAt || '')));
+  }, [customers, search, customerStatusFilter, customerSort]);
+  const visibleTasks = tasks.filter(task => {
+    const query=taskSearch.trim().toLocaleLowerCase();
+    const matchesSearch=!query||[task.title,task.details,task.priority,task.status,task.assignedToName,task.createdByName].join(' ').toLocaleLowerCase().includes(query);
+    return matchesSearch&&(taskStatusFilter==='All'||task.status===taskStatusFilter);
+  }).sort((a,b)=>taskSort==='priority'?({High:0,Normal:1,Low:2}[a.priority]??3)-({High:0,Normal:1,Low:2}[b.priority]??3):taskSort==='recent'?String(b.createdAt||'').localeCompare(String(a.createdAt||'')):String(a.dueDate||'9999-12-31').localeCompare(String(b.dueDate||'9999-12-31')));
   const selectedStaffProfile = staff.find(member => member.id === selectedStaffProfileId);
-  const filteredStaff = staff.filter(member => [member.displayName, member.userId].join(' ').toLowerCase().includes(staffSearch.toLowerCase()));
-  const filteredPayments = payments.filter(payment => [payment.customerName, payment.month, payment.method, payment.paidAt, payment.recordedByName || ''].join(' ').toLowerCase().includes(paymentSearch.toLowerCase()));
+  const filteredStaff = staff.filter(member => [member.displayName, member.userId].join(' ').toLocaleLowerCase().includes(staffSearch.trim().toLocaleLowerCase()) && (staffStatusFilter === 'All' || (staffStatusFilter === 'Active' ? member.active : !member.active))).sort((a,b) => staffSort === 'name' ? a.displayName.localeCompare(b.displayName) : staffSort === 'recent' ? String(b.createdAt||'').localeCompare(String(a.createdAt||'')) : Number(b.active)-Number(a.active) || a.displayName.localeCompare(b.displayName));
+  const visibleComplaints = complaints
+    .filter(item => complaintStatusFilter === 'All' || (complaintStatusFilter === 'Open' ? !['Solved','Resolved'].includes(item.status) : complaintStatusFilter === 'Solved' ? ['Solved','Resolved'].includes(item.status) : item.status === complaintStatusFilter))
+    .filter(item => [item.subject, item.details, item.customerName || '', item.staffName || '', item.status, item.assignedToName || ''].join(' ').toLowerCase().includes(complaintSearch.trim().toLowerCase()))
+    .slice()
+    .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+  const filteredPayments = payments
+    .filter(payment => [payment.customerName, payment.month, payment.method, payment.paidAt, payment.recordedByName || ''].join(' ').toLowerCase().includes(paymentSearch.trim().toLowerCase()))
+    .filter(payment => paymentMethodFilter === 'All' || payment.method === paymentMethodFilter)
+    .slice()
+    .sort((a, b) => paymentSort === 'highest' ? Number(b.amount || 0) - Number(a.amount || 0)
+      : paymentSort === 'lowest' ? Number(a.amount || 0) - Number(b.amount || 0)
+      : paymentSort === 'oldest' ? String(a.paidAt || '').localeCompare(String(b.paidAt || ''))
+      : String(b.paidAt || '').localeCompare(String(a.paidAt || '')));
   const selectedStaffPayments = payments.filter(payment => payment.recordedBy === selectedStaffProfileId).sort((a, b) => b.paidAt.localeCompare(a.paidAt));
   const selectedStaffAttendance = attendanceRecords.filter(record => record.userId === selectedStaffProfileId).sort((a, b) => b.workDate.localeCompare(a.workDate));
   const selectedStaffAttendanceEquivalent = selectedStaffAttendance.filter(record => record.dayType !== 'Absent' && String(record.status || '').toLowerCase() !== 'absent').reduce((sum, record) => sum + (record.dayType === 'Half day' ? 0.5 : 1), 0);
@@ -466,9 +500,9 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   const selectedStaffCollected = selectedStaffPayments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
   const visiblePlans = plans.filter(plan => {
     const matchesStatus = planFilter === 'All' || (planFilter === 'Active' ? plan.active : !plan.active);
-    const matchesSearch = [plan.name, plan.provider, plan.speed, plan.connectionType, plan.note].join(' ').toLowerCase().includes(planSearch.toLowerCase());
+    const matchesSearch = [plan.name, plan.provider, plan.speed, plan.connectionType, plan.note].join(' ').toLowerCase().includes(planSearch.trim().toLowerCase());
     return matchesStatus && matchesSearch;
-  });
+  }).sort((a,b) => planSort === 'price-low' ? Number(a.price)-Number(b.price) : planSort === 'price-high' ? Number(b.price)-Number(a.price) : planSort === 'name' ? a.name.localeCompare(b.name) : Number(Boolean(b.featured && b.active))-Number(Boolean(a.featured && a.active)) || a.name.localeCompare(b.name));
 
   function flash(message: string) {
     setNotice(message);
@@ -819,6 +853,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
     { label: 'Inventory', icon: ClipboardList },
     { label: 'Installations', icon: MapPin },
     ...(isAdmin ? [{ label: 'Plans & Pricing', icon: Wifi }] : []),
+    ...(isAdmin ? [{ label: 'Customer Portal Control Center', icon: Signal }] : []),
     ...(isAdmin ? [{ label: 'Team Operations', icon: Users }] : []),
     ...(isAdmin ? [{ label: 'GPS Tracking', icon: MapPin }] : []),
     ...(isAdmin ? [{ label: 'Staff', icon: UserRound, count: staff.length }] : []),
@@ -833,24 +868,27 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
     },
   ];
 
-  const navGroups = [
-    { label: 'HOME', items: nav.filter(item => ['Overview', 'Calendar', taskPage, 'My Day', 'Salary'].includes(item.label)) },
-    { label: 'CUSTOMERS & FIELD', items: nav.filter(item => ['Customers', 'Subscriptions', 'Inventory', 'Installations', 'Payments', 'Complaints', 'Plans & Pricing'].includes(item.label)) },
-    { label: 'MANAGEMENT', items: nav.filter(item => ['Team Operations', 'GPS Tracking', 'Staff', 'Admin Accounts', 'Invoices', 'Finance & Billing'].includes(item.label)) },
-  ].filter(group => group.items.length);
+  const primaryNavItems = nav.filter(item => ['Overview', 'Customers', isAdmin ? 'Finance & Billing' : taskPage, 'Complaints'].includes(item.label));
+  const moreToolsGroups = [
+    { label: 'CUSTOMER EXPERIENCE', items: nav.filter(item => ['Customer Portal Control Center', 'Subscriptions', 'Installations', 'Payments', 'Plans & Pricing'].includes(item.label)) },
+    { label: 'WORK MANAGEMENT', items: nav.filter(item => ['Calendar', taskPage, 'My Day', 'Salary', 'Inventory'].includes(item.label)) },
+    { label: 'ADMINISTRATION', items: nav.filter(item => ['Team Operations', 'GPS Tracking', 'Staff', 'Admin Accounts', 'Invoices'].includes(item.label)) },
+  ].map(group => ({ ...group, items: group.items.filter(item => !primaryNavItems.some(primary => primary.label === item.label)) })).filter(group => group.items.length);
+  const isMoreToolPage = moreToolsGroups.some(group => group.items.some(item => item.label === page));
+
 
   return (
     <div className="shell">
       <aside className={'sidebar ' + (mobileNav ? 'mobile-open' : '')}>
         <div className="brand">
           <div className="brand-mark">
-            <Signal size={21} />
+            <span className="brand-monogram">K&B</span>
           </div>
           <div>
             <strong>
               K&B <span>NET SERVICE</span>
             </strong>
-            <small>Customer management</small>
+            <small>Operations workspace</small>
           </div>
           <button className="mobile-close" onClick={() => setMobileNav(false)}>
             <X size={18} />
@@ -862,24 +900,32 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
           <ChevronDown size={14} />
         </div>
         <nav className="nexus-navigation" aria-label="Main navigation">
-          {navGroups.map(group => <section className="nav-group" key={group.label}>
-            <div className="nav-group-label">{group.label}</div>
-            {group.items.map(item => (
-              <button
-                key={item.label}
-                className={'nav-item ' + (page === item.label ? 'active' : '')}
-                onClick={() => {
-                  setPage(item.label);
-                  setNotificationsOpen(false);
-                  setMobileNav(false);
-                }}
-              >
-                <item.icon size={18} />
-                <span>{item.label}</span>
-                {item.count ? <em>{item.count}</em> : null}
+          <section className="nav-group primary-nav-group">
+            <div className="nav-group-label">WORKSPACE</div>
+            {primaryNavItems.map(item => (
+              <button key={item.label} className={'nav-item primary-nav-item ' + (page === item.label ? 'active' : '')}
+                onClick={() => { setPage(item.label); setMoreToolsOpen(false); setNotificationsOpen(false); setMobileNav(false); }}>
+                <item.icon size={19} /><span>{item.label}</span>{item.count ? <em>{item.count}</em> : null}
               </button>
             ))}
-          </section>)}
+          </section>
+          <section className="nav-group more-tools-group">
+            <button type="button" className={'more-tools-toggle ' + (isMoreToolPage ? 'current' : '')}
+              aria-expanded={moreToolsOpen || isMoreToolPage}
+              onClick={() => setMoreToolsOpen(open => !open)}>
+              <span className="more-tools-leading"><Menu size={18}/><span>More tools</span></span>
+              <ChevronDown size={16} className={(moreToolsOpen || isMoreToolPage) ? 'expanded' : ''}/>
+            </button>
+            {(moreToolsOpen || isMoreToolPage) && moreToolsGroups.map(group => <section className="nav-subgroup" key={group.label}>
+              <div className="nav-group-label">{group.label}</div>
+              {group.items.map(item => (
+                <button key={item.label} className={'nav-item ' + (page === item.label ? 'active' : '')}
+                  onClick={() => { setPage(item.label); setNotificationsOpen(false); setMobileNav(false); }}>
+                  <item.icon size={18}/><span>{item.label}</span>{item.count ? <em>{item.count}</em> : null}
+                </button>
+              ))}
+            </section>)}
+          </section>
         </nav>
         <div className="sidebar-bottom">
           <button className="btn secondary compact" style={{width:'100%',marginBottom:12}} onClick={async()=>{if(Capacitor.isNativePlatform()){const permission=await LocalNotifications.requestPermissions();flash(permission.display==='granted'?'Notifications enabled. You will receive new messages, assigned work and reminders while the app is running.':'Notifications are blocked. Enable them in Android settings.');return;}if(typeof Notification==='undefined'){flash('This browser does not support desktop notifications.');return;}const permission=await Notification.requestPermission();flash(permission==='granted'?'Notifications enabled. You will receive new messages, assigned work and reminders while the app is open.': 'Notifications are blocked. Enable them in your browser settings.');}}>
@@ -890,7 +936,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
               <CircleHelp size={18} />
             </div>
             <strong>Need help?</strong>
-            <p>Keep your customer records up to date.</p>
+            <p>Manage service, finance and team work from one place.</p>
             <button
               onClick={() =>
                 flash('Contact your K&B administrator for assistance.')
@@ -951,6 +997,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                   ? 'Here’s what is happening with your connections today.'
                   : page === 'Customers'
                     ? 'Manage customer details, connections and account status.'
+                    : page === 'Customer Portal Control Center' ? 'Manage the customer-facing experience using your existing shared K&B records.'
                     : page === 'Plans & Pricing'                      ? 'Your available internet packages and monthly pricing.'
                       : page === 'Subscriptions'
                         ? 'Manage customer renewals, subscription periods and expiry dates.'
@@ -1032,6 +1079,51 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
           {page === 'Overview' && !isAdmin && <StaffOperations session={session} customers={customers} flash={flash} compact onDataChanged={() => { void load(true); }} />}
           </Suspense>
 
+          {page === 'Customer Portal Control Center' && isAdmin && (
+            <section className="portal-control-center">
+              <div className="portal-control-intro">
+                <div>
+                  <span className="portal-kicker">CUSTOMER NEXUS · ADMIN WORKSPACE</span>
+                  <h2>Customer Portal Control Center</h2>
+                  <p>One place to monitor customer-facing records and move directly to the management tools that control them.</p>
+                </div>
+                <a className="btn primary portal-open-link" href="https://k-b-customer-portal-gvzmcs.v2.appdeploy.ai/" target="_blank" rel="noreferrer">Open Customer Portal <span aria-hidden="true">↗</span></a>
+              </div>
+              <div className="portal-metric-grid">
+                <article><span>Portal customer records</span><strong>{customers.length}</strong><small>Shared K&B customer records</small></article>
+                <article><span>Active connections</span><strong>{active}</strong><small>Customer status marked active</small></article>
+                <article><span>Available plans</span><strong>{plans.filter(plan => plan.active).length}</strong><small>Active plans in shared pricing</small></article>
+                <article><span>Open complaints</span><strong>{openComplaints}</strong><small>Requests awaiting resolution</small></article>
+              </div>
+              <div className="portal-control-grid">
+                <article className="portal-control-card">
+                  <div className="portal-card-icon blue"><Users size={20}/></div>
+                  <div><h3>Customer records</h3><p>Review customer details and connection status used by the customer experience.</p></div>
+                  <button type="button" onClick={() => setPage('Customers')}>Manage customers <span>→</span></button>
+                </article>
+                <article className="portal-control-card">
+                  <div className="portal-card-icon violet"><Wifi size={20}/></div>
+                  <div><h3>Plans & pricing</h3><p>Create, update, archive or restore plans through the existing shared plans service.</p></div>
+                  <button type="button" onClick={() => setPage('Plans & Pricing')}>Manage plans <span>→</span></button>
+                </article>
+                <article className="portal-control-card">
+                  <div className="portal-card-icon orange"><MessageSquare size={20}/></div>
+                  <div><h3>Customer complaints</h3><p>Review incoming service issues, update ownership and track resolution.</p></div>
+                  <button type="button" onClick={() => setPage('Complaints')}>Review complaints <span>→</span></button>
+                </article>
+                <article className="portal-control-card">
+                  <div className="portal-card-icon green"><MapPin size={20}/></div>
+                  <div><h3>Connection requests & visits</h3><p>Review installation and field work records associated with customer connections.</p></div>
+                  <button type="button" onClick={() => setPage('Installations')}>Manage installations <span>→</span></button>
+                </article>
+              </div>
+              <div className="portal-integration-panel">
+                <div className="portal-integration-status"><span className="portal-status-dot"/><div><strong>Shared K&B records are loaded</strong><small>Customer and plan data are being read from the existing Management Nexus API in this session.</small></div></div>
+                <p>Portal-specific appearance, announcement, feature-access and booking-approval controls are not exposed by the verified API routes currently connected to this app. They are intentionally not shown as working switches until their backend endpoints are implemented and verified.</p>
+              </div>
+            </section>
+          )}
+
           {page === 'Overview' && (
             <>
               <section className="quick-actions" aria-label="Quick actions">
@@ -1040,6 +1132,31 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                 {isAdmin && <button type="button" onClick={() => { setEditing(null); setShowCustomer(true); }}><Plus size={18}/><span>Add customer</span><small>Create a record</small></button>}
                 {isAdmin && <button type="button" onClick={() => setPage('Salary')}><IndianRupee size={18}/><span>Salary</span><small>Staff operations</small></button>}
                 {!isAdmin && <button type="button" onClick={() => setPage('My Work')}><ClipboardList size={18}/><span>My work</span><small>See assigned tasks</small></button>}
+              </section>
+
+              <section className="attention-center" aria-label="Items needing attention">
+                <div className="attention-center-heading">
+                  <div><span className="eyebrow">DAILY PRIORITIES</span><h2>Needs your attention</h2></div>
+                  <span className="attention-caption">Live operational queue</span>
+                </div>
+                <div className="attention-center-grid">
+                  <button type="button" className="attention-item" onClick={() => setPage('Complaints')}>
+                    <span className="attention-icon coral"><MessageSquare size={18}/></span>
+                    <span className="attention-copy"><strong>{openComplaints}</strong><b>Open complaints</b><small>Review customer and staff issues</small></span><span className="attention-arrow">→</span>
+                  </button>
+                  {isAdmin && <button type="button" className="attention-item" onClick={() => setPage('Payments')}>
+                    <span className="attention-icon amber"><IndianRupee size={18}/></span>
+                    <span className="attention-copy"><strong>{overdueCustomersCount}</strong><b>Customers with dues</b><small>{money(overdueValue)} outstanding based on recorded payments</small></span><span className="attention-arrow">→</span>
+                  </button>}
+                  <button type="button" className="attention-item" onClick={() => setPage(taskPage)}>
+                    <span className="attention-icon blue"><ClipboardList size={18}/></span>
+                    <span className="attention-copy"><strong>{pendingTasks}</strong><b>{isAdmin ? 'Pending team tasks' : 'Your pending tasks'}</b><small>{isAdmin ? 'Check assignments and progress' : 'Review your assigned work'}</small></span><span className="attention-arrow">→</span>
+                  </button>
+                  {isAdmin && <button type="button" className="attention-item" onClick={() => setPage('Staff')}>
+                    <span className="attention-icon violet"><UserPlus size={18}/></span>
+                    <span className="attention-copy"><strong>{pendingStaffRequestsCount}</strong><b>Staff access requests</b><small>Approve or decline new requests</small></span><span className="attention-arrow">→</span>
+                  </button>}
+                </div>
               </section>
 
               {isAdmin && (
@@ -1227,7 +1344,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
               </div>
             </section>
             <section className="panel table-panel">
-              <div className="toolbar"><div className="searchbox"><Search size={17}/><input value={staffSearch} onChange={e => setStaffSearch(e.target.value)} placeholder="Search staff name or user ID..."/></div><span className="result-count">{filteredStaff.length} of {staff.length} members</span></div>
+              <div className="toolbar staff-directory-main-toolbar"><div className="searchbox"><Search size={17}/><input value={staffSearch} onChange={e => setStaffSearch(e.target.value)} placeholder="Search staff name or user ID..."/></div><label className="staff-filter-control"><span>Account status</span><select value={staffStatusFilter} onChange={e=>setStaffStatusFilter(e.target.value as typeof staffStatusFilter)}><option>All</option><option>Active</option><option>Inactive</option></select></label><label className="staff-filter-control"><span>Sort by</span><select value={staffSort} onChange={e=>setStaffSort(e.target.value as typeof staffSort)}><option value="active">Active first</option><option value="name">Name A–Z</option><option value="recent">Recently added</option></select></label><span className="result-count">{filteredStaff.length} of {staff.length} members</span></div>
               <div className="table-wrap"><table><thead><tr><th>STAFF MEMBER</th><th>USER ID</th><th>ASSIGNED CUSTOMERS</th><th>COLLECTIONS RECORDED</th><th>ACCESS</th><th>ACTIONS</th></tr></thead><tbody>
                 {filteredStaff.map(member => {
                   const assigned = customers.filter(c => c.assignedTo === member.id).length;
@@ -1294,9 +1411,10 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                   <h2>{isAdmin ? 'Team task board' : 'My assigned work'}</h2>
                   <p className="subtle">{isAdmin ? 'Work assigned to staff members across the business.' : 'Update your task progress as work is completed.'}</p>
                 </div>
-                <span className="result-count">{tasks.length} tasks · {pendingTasks} pending</span>
+                <span className="result-count">{visibleTasks.length} of {tasks.length} tasks · {pendingTasks} pending</span>
               </div>
-              {tasks.length ? <div className="task-list">{tasks.map(task => (
+              <div className="task-board-filters"><label className="task-board-search"><span>Search tasks</span><input type="search" value={taskSearch} onChange={event=>setTaskSearch(event.target.value)} placeholder="Task, staff, priority or details"/></label><label><span>Status</span><select value={taskStatusFilter} onChange={event=>setTaskStatusFilter(event.target.value as typeof taskStatusFilter)}><option>All</option><option>Pending</option><option>In progress</option><option>Completed</option></select></label><label><span>Sort by</span><select value={taskSort} onChange={event=>setTaskSort(event.target.value as typeof taskSort)}><option value="due">Due date</option><option value="priority">Priority</option><option value="recent">Recently created</option></select></label></div>
+              {visibleTasks.length ? <div className="task-list">{visibleTasks.map(task => (
                 <article className="task-card" key={task.id}>
                   <div className="task-card-main">
                     <div className="task-card-top"><span className={'priority ' + task.priority.toLowerCase()}>{task.priority} priority</span><span className={'task-state ' + task.status.toLowerCase().replace(/ /g, '-')}>{task.status}</span></div>
@@ -1308,24 +1426,28 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                   <label className="task-status-control"><span>Progress</span><select value={task.status} onChange={e => updateTask(task, e.target.value)}><option>Pending</option><option>In progress</option><option>Completed</option></select></label>
                   {isAdmin && <button type="button" className="btn danger compact" onClick={()=>void deleteTask(task)}><Trash2 size={14}/> Delete task</button>}
                 </article>
-              ))}</div> : <Empty icon={<ClipboardList />} title={isAdmin ? 'No tasks assigned yet' : 'No work assigned yet'} text={isAdmin ? 'Create a task and assign it to an active staff member.' : 'Your administrator will assign work here when it is ready.'} action={isAdmin ? 'Assign first task' : undefined} onClick={() => setShowTask(true)} />}
+              ))}</div> : tasks.length ? <Empty icon={<ClipboardList />} title="No matching tasks" text="Try changing the search or status filter." action="Clear filters" onClick={() => { setTaskSearch(''); setTaskStatusFilter('All'); }} /> : <Empty icon={<ClipboardList />} title={isAdmin ? 'No tasks assigned yet' : 'No work assigned yet'} text={isAdmin ? 'Create a task and assign it to an active staff member.' : 'Your administrator will assign work here when it is ready.'} action={isAdmin ? 'Assign first task' : undefined} onClick={() => setShowTask(true)} />}
             </section>
           )}
 
           {page === 'Customers' && (
             <section className="panel table-panel">
-              <div className="toolbar">
-                <div className="searchbox">
+              <div className="customer-toolbar">
+                <div className="searchbox customer-searchbox">
                   <Search size={17} />
                   <input
                     value={search}
                     onChange={e => setSearch(e.target.value)}
                     placeholder="Search name, phone, address or plan..."
+                    aria-label="Search customers"
                   />
+                  {search && <button type="button" className="search-clear" aria-label="Clear customer search" onClick={() => setSearch('')}><X size={15}/></button>}
                 </div>
-                <span className="result-count">
-                  {filtered.length} customers
-                </span>
+                <div className="customer-view-controls">
+                  <label><span>Status</span><select value={customerStatusFilter} onChange={e => setCustomerStatusFilter(e.target.value as typeof customerStatusFilter)}><option value="All">All statuses</option><option value="Active">Active</option><option value="Inactive">Inactive</option><option value="Suspended">Suspended</option></select></label>
+                  <label><span>Sort by</span><select value={customerSort} onChange={e => setCustomerSort(e.target.value as typeof customerSort)}><option value="recent">Recently added</option><option value="name">Name A–Z</option><option value="due">Next due date</option></select></label>
+                </div>
+                <span className="result-count">{filtered.length} of {customers.length} customers</span>
               </div>
               <CustomerTable
                 rows={filtered}
@@ -1365,11 +1487,11 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
               </div>
               <div className="plan-controls">
                 <div className="plan-search"><Search size={16} /><input value={planSearch} onChange={e => setPlanSearch(e.target.value)} placeholder="Search plan, provider or speed..." /></div>
-                <div className="plan-filters">
+                <label className="plan-sort-control"><span>Sort</span><select aria-label="Sort plans" value={planSort} onChange={event=>setPlanSort(event.target.value as typeof planSort)}><option value="featured">Featured first</option><option value="price-low">Price: low to high</option><option value="price-high">Price: high to low</option><option value="name">Name A–Z</option></select></label>\n                <div className="plan-filters">
                   {(['Active', 'Archived', 'All'] as const).map(filter => <button key={filter} className={planFilter === filter ? 'selected' : ''} onClick={() => setPlanFilter(filter)}>{filter}{filter === 'Active' ? ' · ' + plans.filter(plan => plan.active).length : filter === 'Archived' ? ' · ' + plans.filter(plan => !plan.active).length : ''}</button>)}
                 </div>
               </div>
-              <div className="plans-grid">
+              <div className="plan-results-count">{visiblePlans.length} plans shown · {plans.filter(plan=>plan.active).length} active</div>\n              <div className="plans-grid">
                 {visiblePlans.map(p => (
                   <article className={'plan-card ' + (p.featured && p.active ? 'featured' : '')} key={p.id}>
                     {p.featured && p.active && <div className="popular">POPULAR</div>}
@@ -1398,12 +1520,13 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
 
           {page === 'Payments' && (
             <section className="panel table-panel">
-              <div className="toolbar">
-                <div>
-                  <h2>Payment history</h2>
-                  <p className="subtle">All recorded customer collections</p>
+              <div className="data-workspace-toolbar">
+                <div className="data-workspace-title"><h2>Payment history</h2><p className="subtle">All recorded customer collections</p></div>
+                <div className="data-workspace-search searchbox"><Search size={17}/><input value={paymentSearch} onChange={e => setPaymentSearch(e.target.value)} placeholder="Search customer, month, method or date..." aria-label="Search payments"/>{paymentSearch&&<button type="button" className="search-clear" aria-label="Clear payment search" onClick={()=>setPaymentSearch('')}><X size={15}/></button>}</div>
+                <div className="data-workspace-filters">
+                  <label><span>Method</span><select value={paymentMethodFilter} onChange={e=>setPaymentMethodFilter(e.target.value)}><option value="All">All methods</option>{Array.from(new Set(payments.map(payment=>payment.method).filter(Boolean))).sort().map(method=><option key={method} value={method}>{method}</option>)}</select></label>
+                  <label><span>Sort by</span><select value={paymentSort} onChange={e=>setPaymentSort(e.target.value as typeof paymentSort)}><option value="recent">Newest first</option><option value="oldest">Oldest first</option><option value="highest">Highest amount</option><option value="lowest">Lowest amount</option></select></label>
                 </div>
-                <div className="searchbox"><Search size={17}/><input value={paymentSearch} onChange={e => setPaymentSearch(e.target.value)} placeholder="Search customer, month, method or date..."/></div>
                 <span className="result-count">{filteredPayments.length} of {payments.length} records</span>
               </div>
               <PaymentTable rows={filteredPayments} isAdmin={isAdmin} onEdit={(payment: Payment) => { setEditingPayment(payment); setShowPayment(true); }} onDelete={isAdmin ? deletePayment : undefined} />
@@ -1422,13 +1545,15 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
 
           {page === 'Complaints' && (
             <section className="panel table-panel complaints-workspace">
-              <div className="toolbar">
-                <div><h2>Staff & customer complaints</h2><p className="subtle">Create a complaint, assign an owner and track it until it is solved.</p></div>
+              <div className="complaint-workspace-toolbar">
+                <div className="data-workspace-title"><h2>Staff & customer complaints</h2><p className="subtle">Create a complaint, assign an owner and track it until it is solved.</p></div>
                 <div className="complaint-counts"><span><b>{complaints.filter(item => !['Solved','Resolved'].includes(item.status)).length}</b> Pending / active</span><span><b>{complaints.filter(item => item.status === 'Solved' || item.status === 'Resolved').length}</b> Solved</span><span><b>{complaints.filter(item => item.status === 'Not Solved').length}</b> Not solved</span></div>
-                <span className="result-count">{complaints.length} records</span>
+                <div className="data-workspace-search searchbox"><Search size={17}/><input value={complaintSearch} onChange={e=>setComplaintSearch(e.target.value)} placeholder="Search subject, customer, staff or details..." aria-label="Search complaints"/>{complaintSearch&&<button type="button" className="search-clear" aria-label="Clear complaint search" onClick={()=>setComplaintSearch('')}><X size={15}/></button>}</div>
+                <label className="complaint-status-filter"><span>Status</span><select value={complaintStatusFilter} onChange={e=>setComplaintStatusFilter(e.target.value)}><option value="All">All statuses</option><option value="Open">Open / active</option><option value="Pending">Pending</option><option value="Assigned">Assigned</option><option value="In Progress">In progress</option><option value="Solved">Solved</option><option value="Not Solved">Not solved</option></select></label>
+                <span className="result-count">{visibleComplaints.length} of {complaints.length} records</span>
               </div>
               <div className="complaint-list">
-                {complaints.map(c => {
+                {visibleComplaints.map(c => {
                   const canUpdate = isAdmin;
                   const targetName = c.complaintFor === 'Staff' ? (c.staffName || 'Staff member') : (c.customerName || 'Customer');
                   return <article className="complaint-card" key={c.id}>
@@ -1471,10 +1596,19 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
             </section>
           )}
           <footer>
-            © {new Date().getFullYear()} K&B NET SERVICE <span>•</span> Customer
-            Management
+            © {new Date().getFullYear()} K&B NET SERVICE <span>•</span> Operations workspace
           </footer>
         </div>
+        <nav className="mobile-workspace-nav" aria-label="Quick workspace navigation">
+          {primaryNavItems.map(item => (
+            <button key={item.label} type="button" className={page === item.label ? 'active' : ''} aria-current={page === item.label ? 'page' : undefined}
+              onClick={() => { setPage(item.label); setMoreToolsOpen(false); setNotificationsOpen(false); }}>
+              <item.icon size={19} strokeWidth={page === item.label ? 2.4 : 1.8}/>
+              <span>{item.label === 'Finance & Billing' ? 'Finance' : item.label === taskPage ? (isAdmin ? 'Tasks' : 'My Work') : item.label}</span>
+              {item.count ? <em>{item.count}</em> : null}
+            </button>
+          ))}
+        </nav>
       </main>
 
       {showCustomer && (

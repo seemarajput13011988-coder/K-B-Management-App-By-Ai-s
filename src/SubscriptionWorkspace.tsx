@@ -39,6 +39,9 @@ export default function SubscriptionWorkspace({ customers, plans, isAdmin, flash
   const [paidAt,setPaidAt] = useState(todayKey());
   const [paymentMethod,setPaymentMethod] = useState('UPI');
   const [filter,setFilter] = useState<'All'|'Active'|'Pending'|'Expired'|'Cancelled'>('All');
+  const [search,setSearch] = useState('');
+  const [paymentFilter,setPaymentFilter] = useState<'All'|'Paid'|'Pending'>('All');
+  const [sort,setSort] = useState<'expiry'|'expiry-late'|'amount'>('expiry');
 
   async function load() {
     setLoading(true);
@@ -64,7 +67,11 @@ export default function SubscriptionWorkspace({ customers, plans, isAdmin, flash
     if(selectedPlan) setAmount(String(selectedPlan.price));
   },[plan]);
 
-  const visible = useMemo(()=>items.filter(item=>filter==='All'||item.status===filter),[items,filter]);
+  const visible = useMemo(()=>items.filter(item=>{
+    const query=search.trim().toLocaleLowerCase();
+    const matchesSearch=!query||[item.customerName,item.plan,item.startDate,item.endDate,item.status,item.paymentStatus].some(value=>String(value||'').toLocaleLowerCase().includes(query));
+    return matchesSearch&&(filter==='All'||item.status===filter)&&(paymentFilter==='All'||item.paymentStatus===paymentFilter);
+  }).sort((a,b)=>sort==='amount'?Number(b.amount)-Number(a.amount):sort==='expiry-late'?b.endDate.localeCompare(a.endDate):a.endDate.localeCompare(b.endDate)),[items,filter,search,paymentFilter,sort]);
   async function createRenewal(event: FormEvent) {
     event.preventDefault();
     if(!customerId||!plan||!startDate||!endDate||Number(amount)<=0) { flash('Complete all renewal details.'); return; }
@@ -85,7 +92,7 @@ export default function SubscriptionWorkspace({ customers, plans, isAdmin, flash
   return <section className="panel table-panel">
     <div className="toolbar">
       <div><h2>Customer renewals</h2><p className="subtle">Track subscription periods, expiry dates and payment status.</p></div>
-      <div className="subscription-toolbar-actions">
+      <div className="subscription-filter-bar"><label><span>Search renewals</span><input type="search" value={search} onChange={event=>setSearch(event.target.value)} placeholder="Customer, plan or date"/></label><label><span>Payment</span><select value={paymentFilter} onChange={event=>setPaymentFilter(event.target.value as typeof paymentFilter)}><option>All</option><option>Paid</option><option>Pending</option></select></label><label><span>Sort by</span><select value={sort} onChange={event=>setSort(event.target.value as typeof sort)}><option value="expiry">Expiry (soonest)</option><option value="expiry-late">Expiry (latest)</option><option value="amount">Highest amount</option></select></label><span className="subscription-result-count">{visible.length} of {items.length} renewals</span></div>\n    <div className="subscription-toolbar-actions">
         <select aria-label="Filter renewals" value={filter} onChange={event=>setFilter(event.target.value as typeof filter)}>
           <option>All</option><option>Active</option><option>Pending</option><option>Expired</option><option>Cancelled</option>
         </select>
@@ -117,6 +124,10 @@ export default function SubscriptionWorkspace({ customers, plans, isAdmin, flash
     </table>{!visible.length&&<p className="ops-empty">{items.length?'No renewals match this filter.':'No renewal records yet. Create the first renewal above.'}</p>}</div>}
     <style>{`
       .subscription-toolbar-actions{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+      .subscription-filter-bar{display:grid;grid-template-columns:minmax(220px,2fr) minmax(130px,1fr) minmax(160px,1fr) auto;align-items:end;gap:10px;margin:0 0 14px;padding:13px;border:1px solid var(--border,#dbe2ec);border-radius:13px;background:var(--surface-soft,#f7f9fc)}
+      .subscription-filter-bar label{display:grid;gap:5px;min-width:0}.subscription-filter-bar label span{font-size:11px;font-weight:750;color:var(--muted,#64748b)}
+      .subscription-filter-bar input,.subscription-filter-bar select{width:100%;min-height:40px;padding:8px 10px;border:1px solid var(--border,#dbe2ec);border-radius:9px;background:var(--surface,#fff);color:var(--text,#172033);font:inherit}
+      .subscription-result-count{padding:0 2px 10px;color:var(--muted,#64748b);font-size:11px;font-weight:700;white-space:nowrap}
       .subscription-toolbar-actions select,.subscription-table select,.subscription-form input,.subscription-form select{min-height:40px;padding:8px 10px;border:1px solid var(--border,#dbe2ec);border-radius:9px;background:var(--surface,#fff);color:var(--text,#172033);font:inherit}
       .subscription-form{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:13px;padding:16px;margin:12px 0 18px;border:1px solid var(--border,#dbe2ec);border-radius:14px;background:var(--surface-soft,#f7f9fc)}
       .subscription-form label{display:grid;gap:6px;font-size:12px;font-weight:700;color:var(--muted,#526176)}
@@ -128,8 +139,8 @@ export default function SubscriptionWorkspace({ customers, plans, isAdmin, flash
       .subscription-payment,.subscription-status{display:inline-block;padding:5px 8px;border-radius:999px;font-size:11px;font-weight:700;background:var(--surface-soft,#edf2f8)}
       .subscription-payment.paid{color:#087443;background:#e5f7ee}.subscription-payment.unpaid{color:#965b00;background:#fff4dd}
       .subscription-status.cancelled,.subscription-status.expired{color:#a33;background:#ffeded}.subscription-status.active{color:#087443;background:#e5f7ee}
-      @media(max-width:760px){.subscription-form{grid-template-columns:1fr 1fr}}
-      @media(max-width:480px){.subscription-form{grid-template-columns:1fr}.subscription-toolbar-actions{width:100%}.subscription-toolbar-actions select,.subscription-toolbar-actions button{flex:1}}
+      @media(max-width:760px){.subscription-form{grid-template-columns:1fr 1fr}.subscription-filter-bar{grid-template-columns:1fr 1fr}.subscription-filter-bar label:first-child{grid-column:1/-1}.subscription-result-count{grid-column:1/-1;padding:0}}
+      @media(max-width:480px){.subscription-form{grid-template-columns:1fr}.subscription-toolbar-actions{width:100%}.subscription-toolbar-actions select,.subscription-toolbar-actions button{flex:1}.subscription-filter-bar{grid-template-columns:1fr}.subscription-filter-bar label:first-child,.subscription-result-count{grid-column:auto}}
     `}</style>
   </section>;
 }

@@ -118,6 +118,9 @@ export default function StaffOperations({ session, customers, flash, compact = f
   const [staffDayTypes, setStaffDayTypes] = useState<Record<string, 'Full day'|'Half day'|'Absent'>>({});
   const [attendanceCorrection, setAttendanceCorrection] = useState<{id:string;dayType:'Full day'|'Half day'|'Absent';reason:string}|null>(null);
   const [staff, setStaff] = useState<Array<{ id: string; displayName: string; active: boolean }>>([]);
+  const [staffSearch, setStaffSearch] = useState('');
+  const [staffStatusFilter, setStaffStatusFilter] = useState<'all'|'active'|'inactive'>('all');
+  const [staffSort, setStaffSort] = useState<'name'|'active-first'>('active-first');
   const [payments, setPayments] = useState<Payment[]>([]);
   const [groups, setGroups] = useState<ChatGroup[]>([]);
   const [selectedGroupId, setSelectedGroupId] = useState('');
@@ -136,6 +139,11 @@ export default function StaffOperations({ session, customers, flash, compact = f
   const [shiftSettings, setShiftSettings] = useState({ shiftStartTime: '08:00', shiftEndTime: '19:00' });
   const [shiftSettingsBusy, setShiftSettingsBusy] = useState(false);
   const [shiftSettingsAvailable, setShiftSettingsAvailable] = useState(true);
+  const visibleStaff = staff.filter(member => {
+    const matchesSearch = member.displayName.toLocaleLowerCase().includes(staffSearch.trim().toLocaleLowerCase());
+    const matchesStatus = staffStatusFilter === 'all' || (staffStatusFilter === 'active' ? member.active : !member.active);
+    return matchesSearch && matchesStatus;
+  }).sort((a, b) => staffSort === 'name' ? a.displayName.localeCompare(b.displayName) : Number(b.active) - Number(a.active) || a.displayName.localeCompare(b.displayName));
   const toMinutes = (value: string) => { const [hour, minute] = value.split(':').map(Number); return hour * 60 + minute; };
   const staffShiftWindowOpen = indiaMinutes >= toMinutes(shiftSettings.shiftStartTime) && indiaMinutes < toMinutes(shiftSettings.shiftEndTime);
   const myTodayRecord = attendance.filter(item => item.userId === session.user.id && item.workDate === today).sort((a, b) => b.checkInAt.localeCompare(a.checkInAt))[0];
@@ -602,7 +610,7 @@ export default function StaffOperations({ session, customers, flash, compact = f
 
     {admin && <section className="panel ops-panel">
       <div className="ops-panel-head"><div><span className="eyebrow">STAFF ATTENDANCE</span><h2>Staff shift controls</h2><p>Start, end or correct a staff member’s attendance. Active shifts are monitored for GPS availability; unresolved GPS loss cancels the shift after a 15-minute restoration period.</p></div></div>
-      <div className="ops-location-list">{staff.map(member => {
+      <div className="staff-directory-toolbar"><label className="staff-directory-search"><span>Search staff</span><input type="search" value={staffSearch} onChange={event=>setStaffSearch(event.target.value)} placeholder="Search by staff name" /></label><label><span>Status</span><select value={staffStatusFilter} onChange={event=>setStaffStatusFilter(event.target.value as typeof staffStatusFilter)}><option value="all">All staff</option><option value="active">Active</option><option value="inactive">Inactive</option></select></label><label><span>Sort by</span><select value={staffSort} onChange={event=>setStaffSort(event.target.value as typeof staffSort)}><option value="active-first">Active first</option><option value="name">Name A–Z</option></select></label><span className="staff-directory-count">{visibleStaff.length} of {staff.length} staff</span></div><div className="ops-location-list">{visibleStaff.map(member => {
         const shiftRecord = sortedAttendance.find(item => item.userId === member.id && isUnclosedShift(item)) ||
           sortedAttendance.find(item => item.userId === member.id && item.workDate === today);
         const selectedType = staffDayTypes[member.id] || 'Full day';

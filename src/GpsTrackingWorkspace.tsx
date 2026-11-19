@@ -26,11 +26,18 @@ export default function GpsTrackingWorkspace({flash}:{flash:(message:string)=>vo
   const [busyStaffId,setBusyStaffId]=useState('');
   const [loading,setLoading]=useState(true);
   const [section,setSection]=useState<'live'|'saved'>('live');
+  const [staffSearch,setStaffSearch]=useState('');
+  const [shiftFilter,setShiftFilter]=useState<'all'|'on-shift'|'off-shift'>('all');
+  const [savedSearch,setSavedSearch]=useState('');
+  const [savedSort,setSavedSort]=useState<'newest'|'oldest'|'staff'>('newest');
   const [locationFresh,setLocationFresh]=useState(false);
   const [locationAge,setLocationAge]=useState<number|null>(null);
   const [locationStatus,setLocationStatus]=useState('location-unavailable');
   const [gpsDeadline,setGpsDeadline]=useState<string|null>(null);
   const [gpsCancelled,setGpsCancelled]=useState(false);
+
+  const visibleStaff=staff.filter(member=>member.displayName.toLocaleLowerCase().includes(staffSearch.trim().toLocaleLowerCase())&&(shiftFilter==='all'||(shiftFilter==='on-shift'?onShiftIds.includes(member.id):!onShiftIds.includes(member.id))));
+  const visibleSaved=saved.filter(item=>[item.staffName,item.address,item.savedByName].join(' ').toLocaleLowerCase().includes(savedSearch.trim().toLocaleLowerCase())).sort((a,b)=>savedSort==='oldest'?a.savedAt.localeCompare(b.savedAt):savedSort==='staff'?a.staffName.localeCompare(b.staffName):b.savedAt.localeCompare(a.savedAt));
 
   async function load() {
     setLoading(true);
@@ -158,14 +165,14 @@ export default function GpsTrackingWorkspace({flash}:{flash:(message:string)=>vo
     </div>
     {section==='live' ? <>
       <div className="gps-notice"><MapPin size={17}/><span>Background GPS updates are available only during an active shift. You can also request a one-time GPS point; staff must respond in the app, and requests are limited to active shifts.</span></div>
-      {loading?<p className="ops-empty">Loading staff…</p>:<div className="gps-staff-list">
-        {staff.map(member=><article className="gps-staff-row" key={member.id}>
+      {loading?<p className="ops-empty">Loading staff…</p>:<><div className="gps-directory-toolbar"><label><span>Search staff</span><input type="search" value={staffSearch} onChange={event=>setStaffSearch(event.target.value)} placeholder="Find staff by name"/></label><label><span>Shift status</span><select value={shiftFilter} onChange={event=>setShiftFilter(event.target.value as typeof shiftFilter)}><option value="all">All staff</option><option value="on-shift">On active shift</option><option value="off-shift">Not on shift</option></select></label><span>{visibleStaff.length} of {staff.length} staff</span></div><div className="gps-staff-list">
+        {visibleStaff.map(member=><article className="gps-staff-row" key={member.id}>
           <div className="gps-avatar"><MapPin size={17}/></div>
           <div className="gps-staff-name"><strong>{member.displayName}</strong><small>Staff account</small></div>
           <div className="gps-row-actions"><button className="btn secondary compact" disabled={!!busyStaffId||requestingStaffId===member.id||!onShiftIds.includes(member.id)} title={onShiftIds.includes(member.id)?'Ask staff to share one current GPS point':'Available only while this staff member is on an active shift'} onClick={()=>void requestOneTimeLocation(member)}>{requestingStaffId===member.id?'Sending…':'Request GPS'}</button><button className="btn primary compact" disabled={!!busyStaffId} onClick={()=>void getLiveLocation(member)}>{busyStaffId===member.id?'Fetching…':'View Location'}</button></div>
         </article>)}
-        {!staff.length&&<p className="ops-empty">No active staff accounts found.</p>}
-      </div>}
+        {!visibleStaff.length&&<p className="ops-empty">{staff.length?'No staff match these filters.':'No active staff accounts found.'}</p>}
+      </div></>}
       {selectedStaff&&<div className="gps-result">
         <div className="gps-result-head"><div><strong>{selectedStaff.displayName}</strong><small>Latest phone location · {stamp(liveLocation?.capturedAt)}</small></div><span className={'gps-status '+(locationStatus==='gps-off'?'gps-off':locationStatus==='live'&&liveLocation&&locationFresh?'captured':liveLocation?'pending':'unavailable')}>{locationStatus==='gps-off'?'GPS is OFF':locationStatus==='shift-not-active'?'Shift not active':liveLocation?(locationFresh?'Live · Fresh':'Last known · Stale'):'Location unavailable'}</span></div>
         {liveLocation?<>
@@ -175,16 +182,17 @@ export default function GpsTrackingWorkspace({flash}:{flash:(message:string)=>vo
           <div className="gps-result-actions"><a className="btn secondary" href={mapsUrl(Number(liveLocation.latitude),Number(liveLocation.longitude))} target="_blank" rel="noreferrer"><ExternalLink size={15}/> Open in Google Maps</a><button className="btn primary" onClick={()=>void saveLocation()}><Save size={15}/> Save Location</button></div>
         </>:<p className="gps-error">{locationStatus==='gps-off'?(gpsCancelled?'GPS is OFF and the 15-minute grace period expired. The shift was automatically cancelled; an administrator must restart it.':'GPS is OFF on this staff phone. The shift GPS grace period is active. '+(gpsDeadline?'Restore GPS before '+stamp(gpsDeadline)+'.':'')):locationStatus==='shift-not-active'?'This staff member is not currently on an active shift.': 'No location has been received yet. Check device connectivity and location permission.'}</p>}
       </div>}
-    </>:<div className="gps-saved-list">
-      {loading?<p className="ops-empty">Loading saved locations…</p>:saved.length?saved.map(item=><article className="gps-saved-card" key={item.id}>
+    </>:<><div className="gps-directory-toolbar"><label><span>Search saved locations</span><input type="search" value={savedSearch} onChange={event=>setSavedSearch(event.target.value)} placeholder="Staff name, address or saved by"/></label><label><span>Sort by</span><select value={savedSort} onChange={event=>setSavedSort(event.target.value as typeof savedSort)}><option value="newest">Recently saved</option><option value="oldest">Oldest saved</option><option value="staff">Staff name A–Z</option></select></label><span>{visibleSaved.length} of {saved.length} locations</span></div><div className="gps-saved-list">
+      {loading?<p className="ops-empty">Loading saved locations…</p>:visibleSaved.length?visibleSaved.map(item=><article className="gps-saved-card" key={item.id}>
         <div><strong>{item.staffName}</strong><small>{item.address||'Coordinates available in Google Maps'}</small><small>Captured {stamp(item.capturedAt)} · Saved {stamp(item.savedAt)} by {item.savedByName||'Admin'}</small><small>{Number(item.latitude).toFixed(6)}, {Number(item.longitude).toFixed(6)} · ±{Math.round(item.accuracy||0)} m</small></div>
         <a className="btn secondary compact" href={mapsUrl(item.latitude,item.longitude)} target="_blank" rel="noreferrer"><ExternalLink size={14}/> Google Maps</a>
-      </article>):<p className="ops-empty">No locations saved yet. Select a staff member and save their latest location.</p>}
-    </div>}
+      </article>):<p className="ops-empty">{saved.length?'No saved locations match your search.':'No locations saved yet. Select a staff member and save their latest location.'}</p>}
+    </div></>}
     <style>{`
       .gps-tabs{display:flex;gap:8px;border-bottom:1px solid var(--border,#e2e8f0);margin:12px 0 16px;flex-wrap:wrap}
       .gps-tabs button{display:flex;align-items:center;gap:7px;border:0;background:transparent;color:var(--muted,#64748b);padding:11px 13px;border-bottom:2px solid transparent;font:inherit;font-size:13px;font-weight:700;cursor:pointer}
       .gps-tabs button.active{color:var(--text,#172033);border-bottom-color:var(--accent,#2563eb)}.gps-tabs span{font-size:11px;border-radius:20px;background:var(--surface-soft,#f1f5f9);padding:2px 7px}
+      .gps-directory-toolbar{display:grid;grid-template-columns:minmax(200px,1fr) minmax(150px,.5fr) auto;align-items:end;gap:10px;margin:0 0 13px;padding:12px;border:1px solid var(--border,#dbe2ec);border-radius:13px;background:var(--surface-soft,#f7f9fc)}.gps-directory-toolbar label{display:grid;gap:5px}.gps-directory-toolbar label span{font-size:11px;font-weight:750;color:var(--muted,#64748b)}.gps-directory-toolbar input,.gps-directory-toolbar select{width:100%;min-height:40px;padding:8px 10px;border:1px solid var(--border,#dbe2ec);border-radius:9px;background:var(--surface,#fff);color:var(--text,#172033);font:inherit}.gps-directory-toolbar>span{padding:0 4px 11px;color:var(--muted,#64748b);font-size:11px;font-weight:750;white-space:nowrap}
       .gps-notice{display:flex;gap:10px;align-items:flex-start;padding:12px;border-radius:12px;background:var(--surface-soft,#f7f9fc);color:var(--muted,#526176);font-size:13px;line-height:1.5;margin-bottom:14px}
       .gps-staff-list,.gps-saved-list{display:grid;gap:9px}.gps-staff-row,.gps-saved-card{display:flex;align-items:center;gap:12px;padding:12px;border:1px solid var(--border,#e2e8f0);border-radius:12px}
       .gps-avatar{width:36px;height:36px;border-radius:10px;background:var(--surface-soft,#eff6ff);display:grid;place-items:center;color:var(--accent,#2563eb)}
@@ -195,7 +203,7 @@ export default function GpsTrackingWorkspace({flash}:{flash:(message:string)=>vo
       .gps-address{display:flex;align-items:flex-start;gap:10px;margin:16px 0;color:var(--text,#172033)}.gps-address svg{color:var(--accent,#2563eb);flex:none}
       .gps-map{width:100%;aspect-ratio:16/9;min-height:220px;margin:12px 0;border:1px solid var(--border,#dbe2ec);border-radius:12px;overflow:hidden;background:var(--surface-soft,#f7f9fc)}.gps-map iframe{display:block;width:100%;height:100%;min-height:220px;border:0}.gps-coordinates{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;padding:12px;border-radius:10px;background:var(--surface-soft,#f7f9fc)}.gps-coordinates small{display:block;color:var(--muted,#64748b);font-size:10px}.gps-coordinates strong{font-size:13px;overflow-wrap:anywhere}
       .gps-result-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}.gps-saved-card>div{flex:1;min-width:0}.gps-saved-card>div strong{display:block}.gps-saved-card small{overflow-wrap:anywhere}
-      @media(max-width:600px){.gps-coordinates{grid-template-columns:1fr}.gps-saved-card{align-items:flex-start;flex-direction:column}.gps-staff-row{flex-wrap:wrap}}
+      @media(max-width:600px){.gps-directory-toolbar{grid-template-columns:1fr 1fr}.gps-directory-toolbar label:first-child{grid-column:1/-1}.gps-directory-toolbar>span{grid-column:1/-1;padding:0}.gps-coordinates{grid-template-columns:1fr}.gps-saved-card{align-items:flex-start;flex-direction:column}.gps-staff-row{flex-wrap:wrap}}
     `}</style>
   </section>;
 }
