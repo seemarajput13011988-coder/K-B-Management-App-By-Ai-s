@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import { api, subscribeToApiChanges } from './lib/api';
 import { Download, FileText } from 'lucide-react';
@@ -33,6 +33,10 @@ export default function InventoryWorkspace({isAdmin,flash}:{isAdmin:boolean;flas
   const [staff,setStaff]=useState<Array<{id:string;displayName:string;active:boolean}>>([]);
   const [loading,setLoading]=useState(true);
   const [saving,setSaving]=useState(false);
+  const [search,setSearch]=useState('');
+  const [categoryFilter,setCategoryFilter]=useState('all');
+  const [stockFilter,setStockFilter]=useState<'all'|'low'|'healthy'|'archived'>('all');
+  const [sort,setSort]=useState<'name'|'low-first'|'high-stock'>('name');
   const [editing,setEditing]=useState<InventoryItem|null>(null);
   const [showForm,setShowForm]=useState(false);
   const [movementItem,setMovementItem]=useState<InventoryItem|null>(null);
@@ -84,6 +88,14 @@ export default function InventoryWorkspace({isAdmin,flash}:{isAdmin:boolean;flas
     catch(error) { flash(error instanceof Error?error.message:'Could not load stock history.'); }
   }
   const lowStock=items.filter(item=>item.active&&item.quantity<=item.minimumQuantity).length;
+  const categories=Array.from(new Set(items.map(item=>item.category).filter(Boolean))).sort((a,b)=>a.localeCompare(b));
+  const visibleItems=useMemo(()=>items.filter(item=>{
+    const query=search.trim().toLocaleLowerCase();
+    const matchesSearch=!query||[item.name,item.sku,item.category,item.supplier,item.location,item.assignedToName,item.notes].some(value=>String(value||'').toLocaleLowerCase().includes(query));
+    const matchesCategory=categoryFilter==='all'||item.category===categoryFilter;
+    const matchesStock=stockFilter==='all'?(item.active):stockFilter==='archived'?!item.active:stockFilter==='low'?item.active&&item.quantity<=item.minimumQuantity:item.active&&item.quantity>item.minimumQuantity;
+    return matchesSearch&&matchesCategory&&matchesStock;
+  }).sort((a,b)=>sort==='low-first'?Number(a.quantity-a.minimumQuantity)-Number(b.quantity-b.minimumQuantity):sort==='high-stock'?Number(b.quantity)-Number(a.quantity):a.name.localeCompare(b.name)),[items,search,categoryFilter,stockFilter,sort]);
 
   return <section className="panel table-panel">
     <div className="toolbar">
@@ -115,18 +127,22 @@ export default function InventoryWorkspace({isAdmin,flash}:{isAdmin:boolean;flas
       </div>
       <div className="inventory-form-actions"><button type="button" className="btn secondary" onClick={()=>setMovementItem(null)}>Cancel</button><button className="btn primary" disabled={saving}>{saving?'Saving…':'Record movement'}</button></div>
     </form>}
-    {loading?<p className="ops-empty">Loading inventory…</p>:<div className="inventory-table-wrap"><table className="inventory-table">
+    <div className="inventory-filter-bar"><label className="inventory-search"><span>Search inventory</span><input type="search" value={search} onChange={event=>setSearch(event.target.value)} placeholder="Item, SKU, supplier, location or assignee"/></label><label><span>Category</span><select value={categoryFilter} onChange={event=>setCategoryFilter(event.target.value)}><option value="all">All categories</option>{categories.map(value=><option key={value} value={value}>{value}</option>)}</select></label><label><span>Stock level</span><select value={stockFilter} onChange={event=>setStockFilter(event.target.value as typeof stockFilter)}><option value="all">Active stock</option><option value="low">Low stock</option><option value="healthy">Healthy stock</option><option value="archived">Archived</option></select></label><label><span>Sort by</span><select value={sort} onChange={event=>setSort(event.target.value as typeof sort)}><option value="name">Name A–Z</option><option value="low-first">Lowest stock first</option><option value="high-stock">Highest quantity</option></select></label><span className="inventory-result-count">{visibleItems.length} of {items.length} items</span></div>\n    {loading?<p className="ops-empty">Loading inventory…</p>:<div className="inventory-table-wrap"><table className="inventory-table">
       <thead><tr><th>Item</th><th>Category</th><th>In stock</th><th>Minimum</th>{isAdmin&&<th>Unit cost</th>}<th>Assigned to</th><th>Location</th><th>Actions</th></tr></thead>
-      <tbody>{items.map(item=><tr key={item.id} className={!item.active?'inventory-archived':''}>
+      <tbody>{visibleItems.map(item=><tr key={item.id} className={!item.active?'inventory-archived':''}>
         <td><strong>{item.name}</strong><small>{item.sku} · {item.unit}</small><small>Added {stamp(item.createdAt||'')}{item.updatedAt?' · Updated '+stamp(item.updatedAt):''}</small></td><td>{item.category}</td>
         <td><span className={'inventory-quantity '+(item.quantity<=item.minimumQuantity?'low':'')}>{item.quantity} {item.unit}</span></td>
         <td>{item.minimumQuantity} {item.unit}</td>{isAdmin&&<td>{money(item.unitCost||0)}</td>}<td>{item.assignedToName||'—'}</td><td>{item.location||'—'}</td>
         <td><div className="inventory-actions">{isAdmin&&<><button className="btn secondary compact" disabled={!item.active} onClick={()=>{setMovementItem(item);setMovementType('OUT');setMovementQuantity('1');}}>Issue</button><button className="btn secondary compact" disabled={!item.active} onClick={()=>{setMovementItem(item);setMovementType('IN');setMovementQuantity('1');}}>Receive</button><button className="btn secondary compact" onClick={()=>openEdit(item)}>Edit / assign</button></>}<button className="btn secondary compact" onClick={()=>void showHistory(item)}>History</button></div></td>
       </tr>)}</tbody>
-    </table>{!items.length&&<p className="ops-empty">No inventory items yet. {isAdmin?'Add routers, ONTs, cables and tools to begin stock tracking.':'Ask an administrator to add inventory items.'}</p>}</div>}
+    </table>{!visibleItems.length&&<p className="ops-empty">{items.length?'No inventory items match these filters.':'No inventory items yet. '+(isAdmin?'Add routers, ONTs, cables and tools to begin stock tracking.':'Ask an administrator to add inventory items.')}</p>}</div>}
     {historyItem&&<div className="inventory-history"><div className="inventory-form-title"><strong>Stock history · {historyItem.name}</strong><button className="btn secondary compact" onClick={()=>setHistoryItem(null)}>Close</button></div>{history.length?<div className="inventory-history-list">{history.map(entry=><div key={entry.id}><span className={'inventory-movement-badge '+entry.type.toLowerCase()}>{entry.type}</span><div><b>{entry.quantity} {historyItem.unit} · {entry.reason}</b><small>{entry.quantityBefore} → {entry.quantityAfter} · {entry.createdByName} · {stamp(entry.createdAt)}</small></div></div>)}</div>:<p className="ops-empty">No stock movements recorded yet.</p>}</div>}
     <style>{`
-      .inventory-toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.inventory-low-count{padding:6px 9px;border-radius:99px;background:#fff4df;color:#875500;font-size:12px;font-weight:700}
+      .inventory-toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+      .inventory-filter-bar{display:grid;grid-template-columns:minmax(220px,2fr) repeat(3,minmax(130px,1fr)) auto;align-items:end;gap:10px;margin:0 0 14px;padding:13px;border:1px solid var(--border,#dbe2ec);border-radius:13px;background:var(--surface-soft,#f7f9fc)}
+      .inventory-filter-bar label{display:grid;gap:5px;min-width:0}.inventory-filter-bar label span{font-size:11px;font-weight:750;color:var(--muted,#64748b)}
+      .inventory-filter-bar input,.inventory-filter-bar select{width:100%;min-height:40px;padding:8px 10px;border:1px solid var(--border,#dbe2ec);border-radius:9px;background:var(--surface,#fff);color:var(--text,#172033);font:inherit}
+      .inventory-result-count{padding:0 2px 10px;color:var(--muted,#64748b);font-size:11px;font-weight:700;white-space:nowrap}.inventory-low-count{padding:6px 9px;border-radius:99px;background:#fff4df;color:#875500;font-size:12px;font-weight:700}
       .inventory-form,.inventory-movement-form,.inventory-history{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;padding:16px;margin:12px 0 18px;border:1px solid var(--border,#dbe2ec);border-radius:14px;background:var(--surface-soft,#f7f9fc)}
       .inventory-form-title{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between}.inventory-form label,.inventory-movement-form label{display:grid;gap:6px;font-size:12px;font-weight:700;color:var(--muted,#526176)}
       .inventory-form input,.inventory-form textarea,.inventory-movement-form input,.inventory-movement-form select{width:100%;min-height:39px;padding:8px 10px;border:1px solid var(--border,#dbe2ec);border-radius:9px;background:var(--surface,#fff);color:var(--text,#172033);font:inherit}
@@ -134,8 +150,8 @@ export default function InventoryWorkspace({isAdmin,flash}:{isAdmin:boolean;flas
       .inventory-form-actions{grid-column:1/-1;display:flex;justify-content:flex-end;gap:8px}.inventory-movement-form{grid-template-columns:1fr}.inventory-movement-form>strong{font-size:14px}.inventory-movement-fields{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
       .inventory-table-wrap{width:100%;overflow:auto}.inventory-table{width:100%;min-width:760px;border-collapse:collapse;text-align:left}.inventory-table th,.inventory-table td{padding:12px 9px;border-bottom:1px solid var(--border,#e5eaf1);font-size:13px}.inventory-table th{font-size:11px;color:var(--muted,#64748b);text-transform:uppercase}.inventory-table td small{display:block;margin-top:4px;color:var(--muted,#64748b);font-size:11px}
       .inventory-quantity{font-weight:800}.inventory-quantity.low{color:#b45309}.inventory-archived{opacity:.58}.inventory-actions{display:flex;gap:5px;flex-wrap:wrap}.inventory-history{grid-template-columns:1fr}.inventory-history-list{display:grid;gap:10px}.inventory-history-list>div{display:flex;align-items:center;gap:10px;padding-bottom:9px;border-bottom:1px solid var(--border,#e5eaf1)}.inventory-history-list small{display:block;color:var(--muted,#64748b);margin-top:4px}.inventory-movement-badge{font-size:11px;font-weight:800;padding:5px 7px;border-radius:99px}.inventory-movement-badge.in{background:#e5f7ee;color:#087443}.inventory-movement-badge.out{background:#fff4df;color:#875500}
-      @media(max-width:720px){.inventory-form,.inventory-movement-fields{grid-template-columns:1fr 1fr}}
-      @media(max-width:480px){.inventory-form,.inventory-movement-fields{grid-template-columns:1fr}.inventory-form .inventory-notes{grid-column:auto}}
+      @media(max-width:720px){.inventory-form,.inventory-movement-fields{grid-template-columns:1fr 1fr}.inventory-filter-bar{grid-template-columns:1fr 1fr}.inventory-filter-bar .inventory-search{grid-column:1/-1}.inventory-result-count{grid-column:1/-1;padding:0}}
+      @media(max-width:480px){.inventory-form,.inventory-movement-fields{grid-template-columns:1fr}.inventory-form .inventory-notes{grid-column:auto}.inventory-filter-bar{grid-template-columns:1fr}.inventory-filter-bar .inventory-search,.inventory-result-count{grid-column:auto}}
     `}</style>
   </section>;
 }
