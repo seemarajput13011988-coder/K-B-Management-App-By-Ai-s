@@ -248,6 +248,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   const [complaintPreview, setComplaintPreview] = useState<{name:string;mimeType:string;dataUrl:string}|null>(null);
   const [notice, setNotice] = useState('');
   const [mobileNav, setMobileNav] = useState(false);
+  const [showMoreNav, setShowMoreNav] = useState(false);
   const [retentionItems, setRetentionItems] = useState<RetentionReviewItem[]>([]);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
@@ -809,10 +810,14 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
 
   const nav = [
     { label: 'Overview', icon: LayoutDashboard },
+    { label: 'Customers', icon: Users, count: customers.length },
+    ...(isAdmin ? [{ label: 'Finance & Billing', icon: IndianRupee }] : [{ label: 'My Day', icon: CalendarDays }]),
+    { label: 'Complaints', icon: MessageSquare, count: openComplaints || undefined },
+  ];
+  const moreNav = [
     { label: 'Calendar', icon: CalendarDays },
     { label: taskPage, icon: ClipboardList, count: pendingTasks || undefined },
-    ...(isAdmin ? [{ label: 'Salary', icon: IndianRupee }] : [{ label: 'My Day', icon: CalendarDays }]),
-    { label: 'Customers', icon: Users, count: customers.length },
+    ...(isAdmin ? [{ label: 'Salary', icon: IndianRupee }] : []),
     { label: 'Subscriptions', icon: CalendarDays },
     { label: 'Inventory', icon: ClipboardList },
     { label: 'Installations', icon: MapPin },
@@ -822,13 +827,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
     ...(isAdmin ? [{ label: 'Staff', icon: UserRound, count: staff.length }] : []),
     ...(canManageAdmins ? [{ label: 'Admin Accounts', icon: ShieldCheck, count: adminAccounts.length || undefined }] : []),
     ...(isAdmin ? [{ label: 'Invoices', icon: ReceiptText }] : []),
-    ...(isAdmin ? [{ label: 'Finance & Billing', icon: IndianRupee }] : []),
     { label: 'Payments', icon: CreditCard },
-    {
-      label: 'Complaints',
-      icon: MessageSquare,
-      count: openComplaints || undefined,
-    },
   ];
   const mobileTabs = [
     { label: 'Overview', icon: Home },
@@ -862,23 +861,23 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
           <ChevronDown size={14} />
         </div>
         <div className="nav-label">WORKSPACE</div>
-        <nav>
+        <nav className="primary-navigation">
           {nav.map(item => (
-            <button
-              key={item.label}
-              className={'nav-item ' + (page === item.label ? 'active' : '')}
-              onClick={() => {
-                setNotificationsOpen(false);
-                setMobileNav(false);
-                if (item.label === 'Customer Portal Control') { openCustomerPortalControl(); return; }
-                setPage(item.label);
-              }}
-            >
-              <item.icon size={18} />
-              <span>{item.label}</span>
-              {item.count ? <em>{item.count}</em> : null}
+            <button key={item.label} className={'nav-item ' + (page === item.label ? 'active' : '')}
+              onClick={() => { setNotificationsOpen(false); setMobileNav(false); setPage(item.label); }}>
+              <item.icon size={19} /><span>{item.label}</span>{item.count ? <em>{item.count}</em> : null}
             </button>
           ))}
+          <button type="button" className={'nav-item more-navigation-toggle ' + (showMoreNav || moreNav.some(item => item.label === page) ? 'active' : '')}
+            aria-expanded={showMoreNav} onClick={() => setShowMoreNav(value => !value)}>
+            <MoreHorizontal size={19}/><span>More tools</span><ChevronDown size={15} className={showMoreNav ? 'more-chevron expanded' : 'more-chevron'}/>
+          </button>
+          {showMoreNav && <div className="secondary-navigation">
+            {moreNav.map(item => <button key={item.label} className={'nav-item ' + (page === item.label ? 'active' : '')}
+              onClick={() => { setNotificationsOpen(false); setMobileNav(false); setShowMoreNav(true); if(item.label === 'Customer Portal Control'){openCustomerPortalControl();return;} setPage(item.label); }}>
+              <item.icon size={17}/><span>{item.label}</span>{item.count ? <em>{item.count}</em> : null}
+            </button>)}
+          </div>}
         </nav>
         <div className="sidebar-bottom">
           <button className="btn secondary compact" style={{width:'100%',marginBottom:12}} onClick={async()=>{if(Capacitor.isNativePlatform()){const permission=await LocalNotifications.requestPermissions();flash(permission.display==='granted'?'Notifications enabled. You will receive new messages, assigned work and reminders while the app is running.':'Notifications are blocked. Enable them in Android settings.');return;}if(typeof Notification==='undefined'){flash('This browser does not support desktop notifications.');return;}const permission=await Notification.requestPermission();flash(permission==='granted'?'Notifications enabled. You will receive new messages, assigned work and reminders while the app is open.': 'Notifications are blocked. Enable them in your browser settings.');}}>
