@@ -195,7 +195,7 @@ export async function sendInvoiceDueReminders() {
   const admins = users.filter(user => user.role === 'admin' && user.active === true);
   let notified = 0;
   for (const invoice of invoices) {
-    if (!invoice.id || invoice.voidedAt || !/^\\d{4}-\\d{2}-\\d{2}$/.test(String(invoice.dueDate || ''))) continue;
+    if (!invoice.id || invoice.voidedAt || !/^\\d{4}-\\d{2}$/.test(String(invoice.period || '')) || !/^\\d{4}-\\d{2}-\\d{2}$/.test(String(invoice.dueDate || ''))) continue;
     const dueDate = String(invoice.dueDate);
     const dueTime = Date.parse(dueDate + 'T00:00:00Z');
     const todayTime = Date.parse(today + 'T00:00:00Z');
