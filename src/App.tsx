@@ -248,6 +248,8 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   const [paymentMethodFilter, setPaymentMethodFilter] = useState('All');
   const [paymentSort, setPaymentSort] = useState<'recent' | 'oldest' | 'highest' | 'lowest'>('recent');
   const [staffSearch, setStaffSearch] = useState('');
+  const [complaintSearch, setComplaintSearch] = useState('');
+  const [complaintStatusFilter, setComplaintStatusFilter] = useState('All');
   const [showComplaint, setShowComplaint] = useState(false);
   const [complaintPreview, setComplaintPreview] = useState<{name:string;mimeType:string;dataUrl:string}|null>(null);
   const [notice, setNotice] = useState('');
@@ -461,6 +463,11 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   }, [customers, search, customerStatusFilter, customerSort]);
   const selectedStaffProfile = staff.find(member => member.id === selectedStaffProfileId);
   const filteredStaff = staff.filter(member => [member.displayName, member.userId].join(' ').toLowerCase().includes(staffSearch.toLowerCase()));
+  const visibleComplaints = complaints
+    .filter(item => complaintStatusFilter === 'All' || (complaintStatusFilter === 'Open' ? !['Solved','Resolved'].includes(item.status) : complaintStatusFilter === 'Solved' ? ['Solved','Resolved'].includes(item.status) : item.status === complaintStatusFilter))
+    .filter(item => [item.subject, item.details, item.customerName || '', item.staffName || '', item.status, item.assignedToName || ''].join(' ').toLowerCase().includes(complaintSearch.trim().toLowerCase()))
+    .slice()
+    .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
   const filteredPayments = payments
     .filter(payment => [payment.customerName, payment.month, payment.method, payment.paidAt, payment.recordedByName || ''].join(' ').toLowerCase().includes(paymentSearch.trim().toLowerCase()))
     .filter(payment => paymentMethodFilter === 'All' || payment.method === paymentMethodFilter)
@@ -1526,13 +1533,15 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
 
           {page === 'Complaints' && (
             <section className="panel table-panel complaints-workspace">
-              <div className="toolbar">
-                <div><h2>Staff & customer complaints</h2><p className="subtle">Create a complaint, assign an owner and track it until it is solved.</p></div>
+              <div className="complaint-workspace-toolbar">
+                <div className="data-workspace-title"><h2>Staff & customer complaints</h2><p className="subtle">Create a complaint, assign an owner and track it until it is solved.</p></div>
                 <div className="complaint-counts"><span><b>{complaints.filter(item => !['Solved','Resolved'].includes(item.status)).length}</b> Pending / active</span><span><b>{complaints.filter(item => item.status === 'Solved' || item.status === 'Resolved').length}</b> Solved</span><span><b>{complaints.filter(item => item.status === 'Not Solved').length}</b> Not solved</span></div>
-                <span className="result-count">{complaints.length} records</span>
+                <div className="data-workspace-search searchbox"><Search size={17}/><input value={complaintSearch} onChange={e=>setComplaintSearch(e.target.value)} placeholder="Search subject, customer, staff or details..." aria-label="Search complaints"/>{complaintSearch&&<button type="button" className="search-clear" aria-label="Clear complaint search" onClick={()=>setComplaintSearch('')}><X size={15}/></button>}</div>
+                <label className="complaint-status-filter"><span>Status</span><select value={complaintStatusFilter} onChange={e=>setComplaintStatusFilter(e.target.value)}><option value="All">All statuses</option><option value="Open">Open / active</option><option value="Pending">Pending</option><option value="Assigned">Assigned</option><option value="In Progress">In progress</option><option value="Solved">Solved</option><option value="Not Solved">Not solved</option></select></label>
+                <span className="result-count">{visibleComplaints.length} of {complaints.length} records</span>
               </div>
               <div className="complaint-list">
-                {complaints.map(c => {
+                {visibleComplaints.map(c => {
                   const canUpdate = isAdmin;
                   const targetName = c.complaintFor === 'Staff' ? (c.staffName || 'Staff member') : (c.customerName || 'Customer');
                   return <article className="complaint-card" key={c.id}>
