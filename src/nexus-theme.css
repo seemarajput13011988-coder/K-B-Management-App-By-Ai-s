@@ -500,3 +500,26 @@ input:focus,select:focus,textarea:focus{border-color:#79a9ff;box-shadow:0 0 0 3p
 .finance-record-toolbar .finance-record-search{flex:2;min-width:230px}
 .finance-record-count{padding:0 4px 12px;margin-left:auto;color:var(--nexus-muted,#718096);font-size:12px;font-weight:700;white-space:nowrap}
 @media(max-width:600px){.finance-record-toolbar{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:12px}.finance-record-toolbar .finance-record-search{grid-column:1/-1;min-width:0}.finance-record-toolbar label{min-width:0}.finance-record-count{grid-column:1/-1;margin:0;padding:2px 0 0}}
+
+
+/* Unified interaction and compact data-screen polish */
+.shell :focus-visible{outline:none;box-shadow:0 0 0 3px rgba(37,99,235,.16)}
+.shell input:focus-visible,.shell select:focus-visible,.shell textarea:focus-visible{border-color:#8eb5f8;box-shadow:0 0 0 3px rgba(37,99,235,.12)}
+.shell button:focus-visible{outline:none;box-shadow:0 0 0 3px rgba(37,99,235,.18)}
+.shell input,.shell select,.shell textarea{min-width:0;max-width:100%}
+.shell .table-wrap,.shell .finance-table-wrap,.shell .inventory-table-wrap,.shell .subscription-table-wrap{overscroll-behavior-x:contain;-webkit-overflow-scrolling:touch}
+.shell table th{white-space:nowrap}
+.shell table td{overflow-wrap:anywhere}
+.shell .amount,.shell .finance-amount,.shell .money-value{white-space:nowrap;overflow-wrap:normal}
+.shell .btn{transition:transform .16s ease,box-shadow .16s ease,background .16s ease,border-color .16s ease}
+.shell .btn:active{transform:translateY(1px)}
+.shell .panel{min-width:0}
+.shell .panel-head,.shell .ops-panel-head,.shell .finance-head{gap:14px}
+@media(max-width:680px){
+  .shell .content{padding:18px 14px 28px}
+  .shell .page-heading{margin-bottom:16px}
+  .shell .page-heading h1{font-size:24px;letter-spacing:-.55px}
+  .shell .panel,.shell .ops-panel{border-radius:15px}
+  .shell .finance-foot{gap:8px;flex-wrap:wrap}
+  .shell .finance-foot button{flex:1 1 auto}
+}
