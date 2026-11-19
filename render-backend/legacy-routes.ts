@@ -622,6 +622,16 @@ export const handler = router({
       }
       if (request.status === status) return { kind: 'unchanged' as const };
       const reviewedAt = new Date().toISOString();
+      let lockRef: FirebaseFirestore.DocumentReference | null = null;
+      let lockSnapshot: FirebaseFirestore.DocumentSnapshot | null = null;
+      if (status === 'Rejected') {
+        const phone = cleanText(request.phone, 10);
+        const lockId = phone ? createHash('sha256').update(phone).digest('hex') : '';
+        if (lockId) {
+          lockRef = firestore.collection('portal_connection_request_locks').doc(lockId);
+          lockSnapshot = await transaction.get(lockRef);
+        }
+      }
       transaction.update(requestRef, {
         status,
         updatedAt: reviewedAt,
@@ -635,16 +645,8 @@ export const handler = router({
           contactedByName: user.displayName,
         }),
       });
-      if (status === 'Rejected') {
-        const phone = cleanText(request.phone, 10);
-        const lockId = phone ? createHash('sha256').update(phone).digest('hex') : '';
-        if (lockId) {
-          const lockRef = firestore.collection('portal_connection_request_locks').doc(lockId);
-          const lockSnapshot = await transaction.get(lockRef);
-          if (lockSnapshot.exists && lockSnapshot.data()?.pendingRequestId === params.id) {
-            transaction.set(lockRef, { status: 'Closed', pendingRequestId: null, reviewedAt, reviewedBy: user.id }, { merge: true });
-          }
-        }
+      if (lockRef && lockSnapshot?.exists && lockSnapshot.data()?.pendingRequestId === params.id) {
+        transaction.set(lockRef, { status: 'Closed', pendingRequestId: null, reviewedAt, reviewedBy: user.id }, { merge: true });
       }
       return { kind: 'updated' as const };
     });
