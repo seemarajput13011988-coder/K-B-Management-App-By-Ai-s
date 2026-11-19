@@ -127,3 +127,41 @@ table td{color:#344d50}
 .kb-command-hero-aside small{color:#b7d2c8;font-size:10px;line-height:1.5}
 @media(max-width:700px){.kb-command-hero{grid-template-columns:1fr;gap:16px;margin-bottom:14px;padding:20px 17px;border-radius:19px}.kb-command-hero h2{font-size:26px}.kb-command-hero p{font-size:11px}.kb-command-hero-aside{display:grid;grid-template-columns:1fr auto;align-items:center;column-gap:12px;padding:12px 13px}.kb-command-aside-label{grid-column:1/-1;margin:0 0 5px}.kb-command-hero-aside strong{font-size:14px}.kb-command-hero-aside>span:not(.kb-command-aside-label){margin:0;text-align:right}.kb-command-aside-divider{display:none}.kb-command-hero-aside small{grid-column:1/-1;margin-top:5px}.kb-command-actions button{flex:1 1 auto}}
 [data-theme="dark"] .kb-command-hero{border-color:#376b62;box-shadow:0 15px 34px rgba(0,0,0,.2)}
+
+
+/* Customer Nexus intake history: keep reviewed requests visible without leaving active actions enabled. */
+.portal-request-panel{display:grid;gap:16px;margin:0 0 18px;padding:20px}
+.portal-request-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;min-width:0}
+.portal-request-heading>div{min-width:0}
+.portal-request-heading h2{margin:5px 0 5px;color:#1b3b40;font-size:17px;font-weight:800;letter-spacing:-.025em}
+.portal-request-heading p{margin:0;color:#718582;font-size:11px;line-height:1.5}
+.portal-request-count{flex:0 0 auto;padding:7px 10px;border:1px solid #d7e9e2;border-radius:999px;background:#eff8f3;color:#176b58;font-size:10px;font-weight:800;white-space:nowrap}
+.portal-request-list{display:grid;gap:10px}
+.portal-request-card{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;min-width:0;padding:14px;border:1px solid #e3ece7;border-radius:15px;background:#fbfdfc}
+.portal-request-main{display:grid;gap:5px;min-width:0}
+.portal-request-main>strong{color:#1d3c40;font-size:13px;font-weight:800}
+.portal-request-main>span{color:#3f625e;font-size:11px;font-weight:700;overflow-wrap:anywhere}
+.portal-request-main>small{color:#788d88;font-size:10px;line-height:1.45;overflow-wrap:anywhere}
+.portal-request-main>p{margin:3px 0 0;color:#536d68;font-size:11px;line-height:1.5;overflow-wrap:anywhere}
+.portal-request-actions{display:flex;flex:0 0 auto;flex-wrap:wrap;justify-content:flex-end;gap:7px;max-width:360px}
+.portal-request-actions .btn{min-height:34px;padding:0 10px;font-size:10px}
+.portal-request-status{align-self:center;flex:0 0 auto;padding:7px 10px;border:1px solid #dce8e2;border-radius:999px;background:#f1f6f3;color:#536e65;font-size:10px;font-weight:800;white-space:normal;text-align:center}
+.portal-request-status.contacted{background:#eef5ff;border-color:#d9e6fa;color:#315c91}
+.portal-request-status.rejected{background:#fff1f0;border-color:#f3d7d4;color:#a4433d}
+[data-theme="dark"] .portal-request-heading h2,[data-theme="dark"] .portal-request-main>strong{color:#e2f0eb}
+[data-theme="dark"] .portal-request-heading p,[data-theme="dark"] .portal-request-main>small{color:#a1b9b0}
+[data-theme="dark"] .portal-request-count{background:#193c35;border-color:#315e52;color:#a9e1c8}
+[data-theme="dark"] .portal-request-card{background:#172c30;border-color:#304a49}
+[data-theme="dark"] .portal-request-main>span{color:#c0dcd2}
+[data-theme="dark"] .portal-request-main>p{color:#b0c9bf}
+[data-theme="dark"] .portal-request-status{background:#263b3b;border-color:#405a55;color:#c5d9d0}
+[data-theme="dark"] .portal-request-status.contacted{background:#20384a;border-color:#36556d;color:#b6d5f4}
+[data-theme="dark"] .portal-request-status.rejected{background:#482b2b;border-color:#704141;color:#f1b6ae}
+@media(max-width:700px){
+ .portal-request-panel{padding:14px}
+ .portal-request-heading{flex-direction:column;gap:9px}
+ .portal-request-card{display:grid;gap:12px;padding:12px}
+ .portal-request-actions{max-width:none;justify-content:stretch}
+ .portal-request-actions .btn{flex:1 1 120px;min-height:40px}
+ .portal-request-status{justify-self:start}
+}
