@@ -245,6 +245,8 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   const [showPayment, setShowPayment] = useState(false);
   const [editingPayment, setEditingPayment] = useState<Payment | null>(null);
   const [paymentSearch, setPaymentSearch] = useState('');
+  const [paymentMethodFilter, setPaymentMethodFilter] = useState('All');
+  const [paymentSort, setPaymentSort] = useState<'recent' | 'oldest' | 'highest' | 'lowest'>('recent');
   const [staffSearch, setStaffSearch] = useState('');
   const [showComplaint, setShowComplaint] = useState(false);
   const [complaintPreview, setComplaintPreview] = useState<{name:string;mimeType:string;dataUrl:string}|null>(null);
@@ -459,7 +461,14 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   }, [customers, search, customerStatusFilter, customerSort]);
   const selectedStaffProfile = staff.find(member => member.id === selectedStaffProfileId);
   const filteredStaff = staff.filter(member => [member.displayName, member.userId].join(' ').toLowerCase().includes(staffSearch.toLowerCase()));
-  const filteredPayments = payments.filter(payment => [payment.customerName, payment.month, payment.method, payment.paidAt, payment.recordedByName || ''].join(' ').toLowerCase().includes(paymentSearch.toLowerCase()));
+  const filteredPayments = payments
+    .filter(payment => [payment.customerName, payment.month, payment.method, payment.paidAt, payment.recordedByName || ''].join(' ').toLowerCase().includes(paymentSearch.trim().toLowerCase()))
+    .filter(payment => paymentMethodFilter === 'All' || payment.method === paymentMethodFilter)
+    .slice()
+    .sort((a, b) => paymentSort === 'highest' ? Number(b.amount || 0) - Number(a.amount || 0)
+      : paymentSort === 'lowest' ? Number(a.amount || 0) - Number(b.amount || 0)
+      : paymentSort === 'oldest' ? String(a.paidAt || '').localeCompare(String(b.paidAt || ''))
+      : String(b.paidAt || '').localeCompare(String(a.paidAt || '')));
   const selectedStaffPayments = payments.filter(payment => payment.recordedBy === selectedStaffProfileId).sort((a, b) => b.paidAt.localeCompare(a.paidAt));
   const selectedStaffAttendance = attendanceRecords.filter(record => record.userId === selectedStaffProfileId).sort((a, b) => b.workDate.localeCompare(a.workDate));
   const selectedStaffAttendanceEquivalent = selectedStaffAttendance.filter(record => record.dayType !== 'Absent' && String(record.status || '').toLowerCase() !== 'absent').reduce((sum, record) => sum + (record.dayType === 'Half day' ? 0.5 : 1), 0);
@@ -1492,12 +1501,13 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
 
           {page === 'Payments' && (
             <section className="panel table-panel">
-              <div className="toolbar">
-                <div>
-                  <h2>Payment history</h2>
-                  <p className="subtle">All recorded customer collections</p>
+              <div className="data-workspace-toolbar">
+                <div className="data-workspace-title"><h2>Payment history</h2><p className="subtle">All recorded customer collections</p></div>
+                <div className="data-workspace-search searchbox"><Search size={17}/><input value={paymentSearch} onChange={e => setPaymentSearch(e.target.value)} placeholder="Search customer, month, method or date..." aria-label="Search payments"/>{paymentSearch&&<button type="button" className="search-clear" aria-label="Clear payment search" onClick={()=>setPaymentSearch('')}><X size={15}/></button>}</div>
+                <div className="data-workspace-filters">
+                  <label><span>Method</span><select value={paymentMethodFilter} onChange={e=>setPaymentMethodFilter(e.target.value)}><option value="All">All methods</option>{Array.from(new Set(payments.map(payment=>payment.method).filter(Boolean))).sort().map(method=><option key={method} value={method}>{method}</option>)}</select></label>
+                  <label><span>Sort by</span><select value={paymentSort} onChange={e=>setPaymentSort(e.target.value as typeof paymentSort)}><option value="recent">Newest first</option><option value="oldest">Oldest first</option><option value="highest">Highest amount</option><option value="lowest">Lowest amount</option></select></label>
                 </div>
-                <div className="searchbox"><Search size={17}/><input value={paymentSearch} onChange={e => setPaymentSearch(e.target.value)} placeholder="Search customer, month, method or date..."/></div>
                 <span className="result-count">{filteredPayments.length} of {payments.length} records</span>
               </div>
               <PaymentTable rows={filteredPayments} isAdmin={isAdmin} onEdit={(payment: Payment) => { setEditingPayment(payment); setShowPayment(true); }} onDelete={isAdmin ? deletePayment : undefined} />
