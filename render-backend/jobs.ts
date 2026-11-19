@@ -129,9 +129,8 @@ export async function runGpsGracePeriod() {
 function billingPeriodParts() {
   const { year, month } = indiaDateParts();
   const period = year + '-' + String(month).padStart(2, '0');
-  const label = new Date(period + '-01T12:00:00').toLocaleString('en-IN', { month: 'long', year: 'numeric' });
   const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
-  return { period, label, year, month, lastDay };
+  return { period, year, month, lastDay };
 }
 
 export async function generateMonthlyInvoicesAutomatically() {
