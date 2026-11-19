@@ -42,5 +42,6 @@
   },
   "overrides": {
     "@grpc/grpc-js": "^1.13.6"
-  }
+  },
+  "kbBuildRevision": "ota-ready-2026-11-19"
 }
