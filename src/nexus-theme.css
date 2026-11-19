@@ -596,3 +596,8 @@ input:focus,select:focus,textarea:focus{border-color:#79a9ff;box-shadow:0 0 0 3p
 :root[data-theme="dark"] .mobile-workspace-nav{background:rgba(16,29,49,.97);border-color:#2a3a51;box-shadow:0 -8px 28px rgba(0,0,0,.24)}
 :root[data-theme="dark"] .mobile-workspace-nav button{color:#aab8cc}
 :root[data-theme="dark"] .mobile-workspace-nav button.active{background:#203d63;color:#dceaff}
+
+/* K&B wordmark: use the business initials as the persistent product mark. */
+.brand-mark{display:grid;place-items:center}
+.brand-monogram{display:grid;place-items:center;width:38px;height:38px;border:1px solid rgba(255,255,255,.24);border-radius:12px;background:linear-gradient(145deg,#3474c6,#19385f);color:#fff;font:800 13px/1 'Manrope',sans-serif;letter-spacing:-.7px;box-shadow:0 5px 14px rgba(15,42,78,.28)}
+.brand>div:last-of-type small{letter-spacing:.035em}
