@@ -609,6 +609,52 @@ export const handler = router({
     return json({ items });
   }),
 
+  'PUT /api/portal/connection-requests/:id': protectedRoute(['admin'], async ({ params, body }, user) => {
+    const status = cleanText((body || {}).status, 24);
+    if (!['Contacted', 'Rejected'].includes(status)) return error('Choose Contacted or Rejected.', 400);
+    const requestRef = firestore.collection('portal_connection_requests').doc(params.id);
+    const result = await firestore.runTransaction(async transaction => {
+      const requestSnapshot = await transaction.get(requestRef);
+      if (!requestSnapshot.exists) return { kind: 'not-found' as const };
+      const request = requestSnapshot.data() || {};
+      if (!['Pending', 'Contacted'].includes(String(request.status || ''))) {
+        return { kind: 'not-actionable' as const, status: cleanText(request.status, 24) };
+      }
+      if (request.status === status) return { kind: 'unchanged' as const };
+      const reviewedAt = new Date().toISOString();
+      transaction.update(requestRef, {
+        status,
+        updatedAt: reviewedAt,
+        ...(status === 'Rejected' ? {
+          reviewedAt,
+          reviewedBy: user.id,
+          reviewedByName: user.displayName,
+        } : {
+          contactedAt: reviewedAt,
+          contactedBy: user.id,
+          contactedByName: user.displayName,
+        }),
+      });
+      if (status === 'Rejected') {
+        const phone = cleanText(request.phone, 10);
+        const lockId = phone ? createHash('sha256').update(phone).digest('hex') : '';
+        if (lockId) {
+          const lockRef = firestore.collection('portal_connection_request_locks').doc(lockId);
+          const lockSnapshot = await transaction.get(lockRef);
+          if (lockSnapshot.exists && lockSnapshot.data()?.pendingRequestId === params.id) {
+            transaction.set(lockRef, { status: 'Closed', pendingRequestId: null, reviewedAt, reviewedBy: user.id }, { merge: true });
+          }
+        }
+      }
+      return { kind: 'updated' as const };
+    });
+    if (result.kind === 'not-found') return error('Portal connection request not found.', 404);
+    if (result.kind === 'not-actionable') return error('This request is already ' + (result.status || 'closed') + '.', 409);
+    if (result.kind === 'unchanged') return json({ updated: true, status });
+    await writeAudit(user, 'UPDATE', 'portal_connection_request', params.id, 'Marked customer portal connection request as ' + status);
+    return json({ updated: true, status });
+  }),
+
   'POST /api/portal/connection-requests/:id/convert': protectedRoute(['admin'], async ({ params }, user) => {
     const requestRef = firestore.collection('portal_connection_requests').doc(params.id);
     const customerRef = firestore.collection('customers').doc();
@@ -618,7 +664,7 @@ export const handler = router({
       const request = requestSnapshot.data() || {};
       const existingCustomerId = cleanText(request.customerId, 128);
       if (existingCustomerId) return { kind: 'already-converted' as const, customerId: existingCustomerId };
-      if (request.status !== 'Pending') return { kind: 'not-pending' as const };
+      if (!['Pending', 'Contacted'].includes(String(request.status || ''))) return { kind: 'not-pending' as const };
 
       const phone = cleanText(request.phone, 10);
       const planId = cleanText(request.planId, 128);
