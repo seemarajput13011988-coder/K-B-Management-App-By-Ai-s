@@ -842,14 +842,12 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
     <div className="shell">
       <aside className={'sidebar ' + (mobileNav ? 'mobile-open' : '')}>
         <div className="brand">
-          <div className="brand-mark">
-            <Signal size={21} />
-          </div>
+          <div className="brand-mark brand-monogram" aria-label="K&B">K&amp;B</div>
           <div>
             <strong>
               K&B <span>NET SERVICE</span>
             </strong>
-            <small>Customer management</small>
+            <small>Operations workspace</small>
           </div>
           <button className="mobile-close" onClick={() => setMobileNav(false)}>
             <X size={18} />
@@ -888,7 +886,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
               <CircleHelp size={18} />
             </div>
             <strong>Need help?</strong>
-            <p>Keep your customer records up to date.</p>
+            <p>Manage service, finance and team work from one place.</p>
             <button
               onClick={() =>
                 flash('Contact your K&B administrator for assistance.')
@@ -1448,8 +1446,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
             </section>
           )}
           <footer>
-            © {new Date().getFullYear()} K&B NET SERVICE <span>•</span> Customer
-            Management
+            © {new Date().getFullYear()} K&amp;B NET SERVICE <span>•</span> Operations workspace
           </footer>
         </div>
       </main>
