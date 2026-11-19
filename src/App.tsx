@@ -798,6 +798,15 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
     }
   }
 
+  const openCustomerPortalControl = () => {
+    if (!isAdmin) return;
+    const token = getToken();
+    if (!token) { flash('Your admin session has expired. Please sign in again.'); return; }
+    const url = 'https://k-b-customer-portal-gvzmcs.v2.appdeploy.ai/#admin-sso=' + encodeURIComponent(token);
+    const opened = window.open(url, '_blank', 'noopener,noreferrer');
+    if (!opened) window.location.assign(url);
+  };
+
   const nav = [
     { label: 'Overview', icon: LayoutDashboard },
     { label: 'Calendar', icon: CalendarDays },
@@ -807,6 +816,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
     { label: 'Subscriptions', icon: CalendarDays },
     { label: 'Inventory', icon: ClipboardList },
     { label: 'Installations', icon: MapPin },
+    ...(isAdmin ? [{ label: 'Customer Portal Control', icon: Globe }] : []),
     ...(isAdmin ? [{ label: 'Plans & Pricing', icon: Wifi }] : []),
     ...(isAdmin ? [{ label: 'GPS Tracking', icon: MapPin }] : []),
     ...(isAdmin ? [{ label: 'Staff', icon: UserRound, count: staff.length }] : []),
@@ -858,9 +868,10 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
               key={item.label}
               className={'nav-item ' + (page === item.label ? 'active' : '')}
               onClick={() => {
-                setPage(item.label);
                 setNotificationsOpen(false);
                 setMobileNav(false);
+                if (item.label === 'Customer Portal Control') { openCustomerPortalControl(); return; }
+                setPage(item.label);
               }}
             >
               <item.icon size={18} />
@@ -926,7 +937,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                 {!notifications.length && <p className="notification-empty">You’re all caught up.</p>}
               </div>}
             </div>
-            {isAdmin && <button type="button" className="icon-button portal-control-trigger" title="Open Customer Portal Control" aria-label="Open Customer Portal Control" onClick={() => { const token = getToken(); if (!token) { flash('Your admin session has expired. Please sign in again.'); return; } const url = 'https://k-b-customer-portal-gvzmcs.v2.appdeploy.ai/#admin-sso=' + encodeURIComponent(token); const opened = window.open(url, '_blank'); if (opened) opened.opener = null; else window.location.assign(url); }}><Globe size={18}/></button>}
+            
             <button type="button" className="icon-button account-trigger" title="Account settings" aria-label="Account settings" onClick={() => { setNotificationsOpen(false); setShowAccountSettings(true); }}><div className="avatar small-avatar">{session.user.displayName.slice(0, 2).toUpperCase()}</div></button>
           </div>
         </header>
