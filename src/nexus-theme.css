@@ -389,3 +389,22 @@ input:focus,select:focus,textarea:focus{border-color:#79a9ff;box-shadow:0 0 0 3p
 [data-theme="dark"] .portal-control-card p,[data-theme="dark"] .portal-metric-grid article span,[data-theme="dark"] .portal-metric-grid article small,[data-theme="dark"] .portal-integration-status small,[data-theme="dark"] .portal-integration-panel>p{color:#a9bad0}
 @media(max-width:760px){.portal-control-intro{align-items:flex-start;flex-direction:column;padding:20px}.portal-metric-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.portal-control-grid{grid-template-columns:1fr}}
 @media(max-width:380px){.portal-metric-grid article{padding:14px}.portal-metric-grid article strong{font-size:23px}.portal-control-card{padding:15px}}
+
+/* Workspace-first navigation architecture */
+.nexus-navigation{gap:18px}
+.primary-nav-group{padding-bottom:13px;border-bottom:1px solid var(--kb-line,#e5eaf3)}
+.primary-nav-item{min-height:48px;font-weight:750;letter-spacing:-.1px}
+.primary-nav-item.active{background:linear-gradient(100deg,#e8f2ff,#f1f7ff);box-shadow:inset 3px 0 #1676d2,0 4px 12px rgba(37,99,235,.055)}
+.more-tools-group{padding-top:2px}
+.more-tools-toggle{width:calc(100% - 20px);min-height:46px;margin:0 10px;padding:0 13px;display:flex;align-items:center;justify-content:space-between;border:1px solid transparent;border-radius:12px;background:transparent;color:var(--kb-muted,#64748b);font-size:13px;font-weight:750;text-align:left;cursor:pointer;transition:background .18s ease,border-color .18s ease,color .18s ease}
+.more-tools-toggle:hover,.more-tools-toggle.current{background:#f0f6ff;border-color:#e1ebfa;color:#1e5ca5}
+.more-tools-leading{display:flex;align-items:center;gap:12px}
+.more-tools-toggle>svg{transition:transform .18s ease}
+.more-tools-toggle>svg.expanded{transform:rotate(180deg)}
+.nav-subgroup{padding-top:13px}
+.nav-subgroup .nav-group-label{padding-left:22px}
+.nav-subgroup .nav-item{min-height:41px;font-size:12px}
+[data-theme="dark"] .primary-nav-group{border-color:#293b54}
+[data-theme="dark"] .primary-nav-item.active{background:linear-gradient(100deg,#1a3659,#1a2d48);color:#b8d8ff;box-shadow:inset 3px 0 #55a7ff}
+[data-theme="dark"] .more-tools-toggle{color:#a9bad0}
+[data-theme="dark"] .more-tools-toggle:hover,[data-theme="dark"] .more-tools-toggle.current{background:#1b304c;border-color:#2a4565;color:#c5e0ff}
