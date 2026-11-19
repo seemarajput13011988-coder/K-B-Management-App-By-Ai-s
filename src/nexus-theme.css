@@ -542,3 +542,7 @@ input:focus,select:focus,textarea:focus{border-color:#79a9ff;box-shadow:0 0 0 3p
 [data-theme="dark"] .plan-results-count{color:#a9bad0}
 [data-theme="dark"] .installation-filter-select span,[data-theme="dark"] .installation-result-count{color:#a9bad0}
 [data-theme="dark"] .installation-filter-select select{background:#101b2b;border-color:#35455d;color:#e5edf8}
+
+[data-theme="dark"] .gps-directory-toolbar{background:#101b2b;border-color:#35455d}
+[data-theme="dark"] .gps-directory-toolbar label span,[data-theme="dark"] .gps-directory-toolbar>span{color:#a9bad0}
+[data-theme="dark"] .gps-directory-toolbar input,[data-theme="dark"] .gps-directory-toolbar select{background:#0b1422;border-color:#35455d;color:#e5edf8}
