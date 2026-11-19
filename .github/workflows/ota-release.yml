@@ -70,7 +70,7 @@ jobs:
             appId: 'kandbnet.service2010',
             version,
             checksum
-          }, null, 2) + '\\n');
+          }, null, 2) + String.fromCharCode(10));
           console.log('Prepared K&B Nexus OTA release', version, 'SHA-256', checksum);
           NODE
       - name: Publish immutable OTA release
