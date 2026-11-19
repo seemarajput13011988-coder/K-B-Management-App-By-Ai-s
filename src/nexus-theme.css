@@ -432,3 +432,21 @@ input:focus,select:focus,textarea:focus{border-color:#79a9ff;box-shadow:0 0 0 3p
 [data-theme="dark"] .attention-icon.blue{background:#1c3557;color:#91bfff}
 [data-theme="dark"] .attention-icon.violet{background:#342c4e;color:#c3adff}
 @media(max-width:680px){.attention-center-grid{grid-template-columns:1fr}.attention-item{padding:13px}.attention-center-heading{align-items:flex-start;flex-direction:column;gap:3px}}
+
+/* Unified customer data toolbar */
+.customer-toolbar{display:grid;grid-template-columns:minmax(220px,1.4fr) auto auto;align-items:end;gap:12px;padding:16px 18px;border-bottom:1px solid var(--kb-line,#e5eaf3)}
+.customer-searchbox{width:100%;min-width:0;min-height:43px;display:flex;align-items:center;gap:9px;padding:0 12px;border:1px solid #dce5f1;border-radius:12px;background:#f9fbfe;color:#8a9ab0}
+.customer-searchbox:focus-within{border-color:#8db8ed;box-shadow:0 0 0 3px rgba(37,99,235,.09)}
+.customer-searchbox input{width:100%;min-width:0;height:40px;border:0!important;outline:0!important;background:transparent!important;box-shadow:none!important;color:var(--kb-ink,#14213d);font-size:12px}
+.search-clear{width:26px;height:26px;flex:none;display:grid;place-items:center;border:0;border-radius:8px;background:#eaf0f8;color:#61738c}
+.customer-view-controls{display:flex;align-items:end;gap:8px}
+.customer-view-controls label{display:grid;gap:5px;min-width:116px}
+.customer-view-controls label span{padding-left:2px;color:var(--kb-muted,#64748b);font-size:10px;font-weight:800;letter-spacing:.35px}
+.customer-view-controls select{width:100%;height:43px;padding:0 30px 0 10px;border:1px solid #dce5f1;border-radius:11px;background:#fff;color:var(--kb-ink,#14213d);font-size:11px;font-weight:650}
+.customer-toolbar .result-count{align-self:center;white-space:nowrap}
+[data-theme="dark"] .customer-searchbox{background:#101b2b;border-color:#35455d;color:#a9bad0}
+[data-theme="dark"] .customer-searchbox input{color:#e5ebf4}
+[data-theme="dark"] .customer-view-controls select{background:#101b2b;border-color:#35455d;color:#e5ebf4}
+[data-theme="dark"] .search-clear{background:#25364d;color:#dbeafe}
+@media(max-width:780px){.customer-toolbar{grid-template-columns:minmax(0,1fr) auto}.customer-searchbox{grid-column:1/-1}.customer-view-controls{grid-column:1;flex-wrap:wrap}.customer-toolbar .result-count{grid-column:2;grid-row:2;justify-self:end}}
+@media(max-width:420px){.customer-toolbar{padding:13px;gap:10px}.customer-view-controls{width:100%;grid-column:1/-1}.customer-view-controls label{flex:1;min-width:0}.customer-toolbar .result-count{grid-column:1/-1;grid-row:auto;justify-self:start}}
