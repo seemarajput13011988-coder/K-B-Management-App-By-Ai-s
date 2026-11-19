@@ -814,21 +814,37 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
     ...(isAdmin ? [{ label: 'Finance & Billing', icon: IndianRupee }] : [{ label: 'My Day', icon: CalendarDays }]),
     { label: 'Complaints', icon: MessageSquare, count: openComplaints || undefined },
   ];
-  const moreNav = [
-    { label: 'Calendar', icon: CalendarDays },
-    { label: taskPage, icon: ClipboardList, count: pendingTasks || undefined },
-    ...(isAdmin ? [{ label: 'Salary', icon: IndianRupee }] : []),
-    { label: 'Subscriptions', icon: CalendarDays },
-    { label: 'Inventory', icon: ClipboardList },
-    { label: 'Installations', icon: MapPin },
-    ...(isAdmin ? [{ label: 'Customer Portal Control', icon: Globe }] : []),
-    ...(isAdmin ? [{ label: 'Plans & Pricing', icon: Wifi }] : []),
-    ...(isAdmin ? [{ label: 'GPS Tracking', icon: MapPin }] : []),
-    ...(isAdmin ? [{ label: 'Staff', icon: UserRound, count: staff.length }] : []),
-    ...(canManageAdmins ? [{ label: 'Admin Accounts', icon: ShieldCheck, count: adminAccounts.length || undefined }] : []),
-    ...(isAdmin ? [{ label: 'Invoices', icon: ReceiptText }] : []),
-    { label: 'Payments', icon: CreditCard },
+  const moreNavGroups = [
+    {
+      label: 'SERVICE OPERATIONS',
+      items: [
+        { label: 'Calendar', icon: CalendarDays },
+        { label: taskPage, icon: ClipboardList, count: pendingTasks || undefined },
+        { label: 'Installations', icon: MapPin },
+        { label: 'Subscriptions', icon: CalendarDays },
+      ],
+    },
+    {
+      label: 'BUSINESS & FINANCE',
+      items: [
+        { label: 'Payments', icon: CreditCard },
+        ...(isAdmin ? [{ label: 'Salary', icon: IndianRupee }] : []),
+        ...(isAdmin ? [{ label: 'Invoices', icon: ReceiptText }] : []),
+        ...(isAdmin ? [{ label: 'Plans & Pricing', icon: Wifi }] : []),
+        { label: 'Inventory', icon: ClipboardList },
+      ],
+    },
+    {
+      label: 'TEAM & ADMINISTRATION',
+      items: [
+        ...(isAdmin ? [{ label: 'GPS Tracking', icon: MapPin }] : []),
+        ...(isAdmin ? [{ label: 'Staff', icon: UserRound, count: staff.length }] : []),
+        ...(canManageAdmins ? [{ label: 'Admin Accounts', icon: ShieldCheck, count: adminAccounts.length || undefined }] : []),
+        ...(isAdmin ? [{ label: 'Customer Portal Control', icon: Globe }] : []),
+      ],
+    },
   ];
+  const moreNav = moreNavGroups.flatMap(group => group.items);
   const mobileTabs = [
     { label: 'Overview', icon: Home },
     ...(isAdmin
@@ -870,11 +886,17 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
             aria-expanded={showMoreNav} onClick={() => setShowMoreNav(value => !value)}>
             <MoreHorizontal size={19}/><span>More tools</span><ChevronDown size={15} className={showMoreNav ? 'more-chevron expanded' : 'more-chevron'}/>
           </button>
-          {showMoreNav && <div className="secondary-navigation">
-            {moreNav.map(item => <button key={item.label} className={'nav-item ' + (page === item.label ? 'active' : '')}
-              onClick={() => { setNotificationsOpen(false); setMobileNav(false); setShowMoreNav(true); if(item.label === 'Customer Portal Control'){openCustomerPortalControl();return;} setPage(item.label); }}>
-              <item.icon size={17}/><span>{item.label}</span>{item.count ? <em>{item.count}</em> : null}
-            </button>)}
+          {showMoreNav && <div className="secondary-navigation" aria-label="Additional workspace tools">
+            {moreNavGroups.map(group => (
+              <section className="navigation-group" key={group.label} aria-label={group.label}>
+                <div className="navigation-group-label">{group.label}</div>
+                {group.items.map(item => <button key={item.label} type="button" className={'nav-item ' + (page === item.label ? 'active' : '')}
+                  aria-current={page === item.label ? 'page' : undefined}
+                  onClick={() => { setNotificationsOpen(false); setMobileNav(false); setShowMoreNav(true); if(item.label === 'Customer Portal Control'){openCustomerPortalControl();return;} setPage(item.label); }}>
+                  <item.icon size={17}/><span>{item.label}</span>{item.count ? <em>{item.count}</em> : null}
+                </button>)}
+              </section>
+            ))}
           </div>}
         </nav>
         <div className="sidebar-bottom">
