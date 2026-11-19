@@ -115,6 +115,9 @@ export default function FinanceWorkspace({ session, customers, payments, flash, 
   const [method, setMethod] = useState('Cash');
   const [notes, setNotes] = useState('');
   const [busy, setBusy] = useState(false);
+  const [expenseSearch, setExpenseSearch] = useState('');
+  const [expenseCategoryFilter, setExpenseCategoryFilter] = useState('all');
+  const [expenseSort, setExpenseSort] = useState<'newest'|'oldest'|'highest'|'lowest'>('newest');
   const tokenQuery = '?sessionToken=' + encodeURIComponent(session.token);
   const load = async () => {
     const [e, i, a, st, pr] = await Promise.all([
@@ -178,7 +181,12 @@ export default function FinanceWorkspace({ session, customers, payments, flash, 
   const cashResult = collected - spent;
   const activeCustomers = customers.filter(item => item.status === 'Active');
   const unpaidInvoices = invoices.filter(item => item.status !== 'Paid');
-  const sortedExpenses = useMemo(() => [...expenses].sort((a, b) => b.spentAt.localeCompare(a.spentAt)), [expenses]);
+  const expenseCategories = Array.from(new Set(expenses.map(item => item.category).filter(Boolean))).sort((a,b)=>a.localeCompare(b));
+  const sortedExpenses = useMemo(() => expenses.filter(item => {
+    const query = expenseSearch.trim().toLocaleLowerCase();
+    const matchesSearch = !query || [item.title,item.category,item.method,item.notes,item.createdByName].some(value => String(value || '').toLocaleLowerCase().includes(query));
+    return matchesSearch && (expenseCategoryFilter === 'all' || item.category === expenseCategoryFilter);
+  }).sort((a,b) => expenseSort === 'oldest' ? a.spentAt.localeCompare(b.spentAt) : expenseSort === 'highest' ? Number(b.amount)-Number(a.amount) : expenseSort === 'lowest' ? Number(a.amount)-Number(b.amount) : b.spentAt.localeCompare(a.spentAt)), [expenses, expenseSearch, expenseCategoryFilter, expenseSort]);
   const monthlyTrend = Array.from({length:6},(_,index)=>{
     const date=new Date(); date.setDate(1); date.setMonth(date.getMonth()-(5-index));
     const key=date.getFullYear()+'-'+String(date.getMonth()+1).padStart(2,'0');
@@ -364,9 +372,9 @@ export default function FinanceWorkspace({ session, customers, payments, flash, 
         <label className="wide">Notes<input maxLength={300} value={notes} onChange={e => setNotes(e.target.value)} placeholder="Optional reference or details"/></label>
         <button className="btn primary" disabled={busy || !title.trim() || !amount}> <Plus size={15}/> Save expense</button>
       </form>
-      <div className="finance-table-wrap"><table><thead><tr><th>DATE</th><th>EXPENSE</th><th>CATEGORY</th><th>METHOD</th><th>AMOUNT</th><th>RECORDED BY</th><th></th></tr></thead><tbody>
+      <div className="finance-record-toolbar"><label className="finance-record-search"><span>Search expenses</span><input type="search" value={expenseSearch} onChange={event=>setExpenseSearch(event.target.value)} placeholder="Title, category, method, notes or staff"/></label><label><span>Category</span><select value={expenseCategoryFilter} onChange={event=>setExpenseCategoryFilter(event.target.value)}><option value="all">All categories</option>{expenseCategories.map(value=><option key={value} value={value}>{value}</option>)}</select></label><label><span>Sort by</span><select value={expenseSort} onChange={event=>setExpenseSort(event.target.value as typeof expenseSort)}><option value="newest">Newest first</option><option value="oldest">Oldest first</option><option value="highest">Highest amount</option><option value="lowest">Lowest amount</option></select></label><span className="finance-record-count">{sortedExpenses.length} of {expenses.length} records</span></div>\n      <div className="finance-table-wrap"><table><thead><tr><th>DATE</th><th>EXPENSE</th><th>CATEGORY</th><th>METHOD</th><th>AMOUNT</th><th>RECORDED BY</th><th></th></tr></thead><tbody>
         {sortedExpenses.map(item => <tr key={item.id}><td>{item.spentAt}</td><td><b>{item.title}</b>{item.notes && <small className="finance-note">{item.notes}</small>}</td><td>{item.category}</td><td>{item.method}</td><td className="amount">{money(item.amount)}</td><td>{item.createdByName}</td><td><button className="btn danger compact" disabled={busy} onClick={() => deleteExpense(item)}>Delete</button></td></tr>)}
-        {!sortedExpenses.length && <tr><td colSpan={7}>No expenses recorded yet.</td></tr>}
+        {!sortedExpenses.length && <tr><td colSpan={7}>{expenses.length ? 'No expenses match these filters.' : 'No expenses recorded yet.'}</td></tr>}
       </tbody></table></div>
       <div className="finance-foot"><span>{expenses.length} expense records · {payroll.length} salary payments included in exports</span><button className="btn secondary compact" onClick={() => downloadCsv('kb-expenses.csv', [['Date','Title','Category','Method','Amount','Notes','Recorded by'], ...sortedExpenses.map(e => [e.spentAt,e.title,e.category,e.method,e.amount,e.notes,e.createdByName]), ...payroll.map(item => [item.paidAt,'Salary - '+item.staffName,'Salary',item.method,item.amount,item.notes||'',item.recordedByName||''])])}><Download size={14}/> Export expenses</button><button className="btn secondary compact" onClick={() => printReport('Business expenses', [['Date','Title','Category','Method','Amount','Notes','Recorded by'], ...sortedExpenses.map(e => [e.spentAt,e.title,e.category,e.method,money(e.amount),e.notes||'',e.createdByName]), ...payroll.map(item => [item.paidAt,'Salary - '+item.staffName,'Salary',item.method,money(item.amount),item.notes||'',item.recordedByName||''])])}><ReceiptText size={14}/> Export PDF</button></div>
     </section>
