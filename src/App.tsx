@@ -1453,7 +1453,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
 
       <nav className="mobile-tab-bar" aria-label="Main navigation">
         {mobileTabs.map(item => item.label === 'More' ? (
-          <button key={item.label} type="button" className={'mobile-tab ' + (mobileNav ? 'active' : '')} onClick={() => setMobileNav(open => !open)} aria-expanded={mobileNav}>
+          <button key={item.label} type="button" className={'mobile-tab ' + (mobileNav || moreNav.some(tool => tool.label === page) ? 'active' : '')} onClick={() => setMobileNav(open => !open)} aria-expanded={mobileNav}>
             <item.icon size={20}/><span>{item.label}</span>
           </button>
         ) : (
