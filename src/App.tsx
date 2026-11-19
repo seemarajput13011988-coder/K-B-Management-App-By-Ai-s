@@ -248,6 +248,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   const [complaintPreview, setComplaintPreview] = useState<{name:string;mimeType:string;dataUrl:string}|null>(null);
   const [notice, setNotice] = useState('');
   const [mobileNav, setMobileNav] = useState(false);
+  const [moreToolsOpen, setMoreToolsOpen] = useState(false);
   const [retentionItems, setRetentionItems] = useState<RetentionReviewItem[]>([]);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
@@ -834,12 +835,14 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
     },
   ];
 
-  const navGroups = [
-    { label: 'HOME', items: nav.filter(item => ['Overview', 'Calendar', taskPage, 'My Day', 'Salary'].includes(item.label)) },
-    { label: 'CUSTOMER EXPERIENCE', items: nav.filter(item => ['Customer Portal Control Center', 'Customers', 'Subscriptions', 'Installations', 'Payments', 'Complaints', 'Plans & Pricing'].includes(item.label)) },
-    { label: 'FIELD OPERATIONS', items: nav.filter(item => ['Inventory'].includes(item.label)) },
-    { label: 'MANAGEMENT', items: nav.filter(item => ['Team Operations', 'GPS Tracking', 'Staff', 'Admin Accounts', 'Invoices', 'Finance & Billing'].includes(item.label)) },
-  ].filter(group => group.items.length);
+  const primaryNavItems = nav.filter(item => ['Overview', 'Customers', isAdmin ? 'Finance & Billing' : taskPage, 'Complaints'].includes(item.label));
+  const moreToolsGroups = [
+    { label: 'CUSTOMER EXPERIENCE', items: nav.filter(item => ['Customer Portal Control Center', 'Subscriptions', 'Installations', 'Payments', 'Plans & Pricing'].includes(item.label)) },
+    { label: 'WORK MANAGEMENT', items: nav.filter(item => ['Calendar', taskPage, 'My Day', 'Salary', 'Inventory'].includes(item.label)) },
+    { label: 'ADMINISTRATION', items: nav.filter(item => ['Team Operations', 'GPS Tracking', 'Staff', 'Admin Accounts', 'Invoices'].includes(item.label)) },
+  ].map(group => ({ ...group, items: group.items.filter(item => !primaryNavItems.some(primary => primary.label === item.label)) })).filter(group => group.items.length);
+  const isMoreToolPage = moreToolsGroups.some(group => group.items.some(item => item.label === page));
+
 
   return (
     <div className="shell">
@@ -864,24 +867,32 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
           <ChevronDown size={14} />
         </div>
         <nav className="nexus-navigation" aria-label="Main navigation">
-          {navGroups.map(group => <section className="nav-group" key={group.label}>
-            <div className="nav-group-label">{group.label}</div>
-            {group.items.map(item => (
-              <button
-                key={item.label}
-                className={'nav-item ' + (page === item.label ? 'active' : '')}
-                onClick={() => {
-                  setPage(item.label);
-                  setNotificationsOpen(false);
-                  setMobileNav(false);
-                }}
-              >
-                <item.icon size={18} />
-                <span>{item.label}</span>
-                {item.count ? <em>{item.count}</em> : null}
+          <section className="nav-group primary-nav-group">
+            <div className="nav-group-label">WORKSPACE</div>
+            {primaryNavItems.map(item => (
+              <button key={item.label} className={'nav-item primary-nav-item ' + (page === item.label ? 'active' : '')}
+                onClick={() => { setPage(item.label); setMoreToolsOpen(false); setNotificationsOpen(false); setMobileNav(false); }}>
+                <item.icon size={19} /><span>{item.label}</span>{item.count ? <em>{item.count}</em> : null}
               </button>
             ))}
-          </section>)}
+          </section>
+          <section className="nav-group more-tools-group">
+            <button type="button" className={'more-tools-toggle ' + (isMoreToolPage ? 'current' : '')}
+              aria-expanded={moreToolsOpen || isMoreToolPage}
+              onClick={() => setMoreToolsOpen(open => !open)}>
+              <span className="more-tools-leading"><Menu size={18}/><span>More tools</span></span>
+              <ChevronDown size={16} className={(moreToolsOpen || isMoreToolPage) ? 'expanded' : ''}/>
+            </button>
+            {(moreToolsOpen || isMoreToolPage) && moreToolsGroups.map(group => <section className="nav-subgroup" key={group.label}>
+              <div className="nav-group-label">{group.label}</div>
+              {group.items.map(item => (
+                <button key={item.label} className={'nav-item ' + (page === item.label ? 'active' : '')}
+                  onClick={() => { setPage(item.label); setNotificationsOpen(false); setMobileNav(false); }}>
+                  <item.icon size={18}/><span>{item.label}</span>{item.count ? <em>{item.count}</em> : null}
+                </button>
+              ))}
+            </section>)}
+          </section>
         </nav>
         <div className="sidebar-bottom">
           <button className="btn secondary compact" style={{width:'100%',marginBottom:12}} onClick={async()=>{if(Capacitor.isNativePlatform()){const permission=await LocalNotifications.requestPermissions();flash(permission.display==='granted'?'Notifications enabled. You will receive new messages, assigned work and reminders while the app is running.':'Notifications are blocked. Enable them in Android settings.');return;}if(typeof Notification==='undefined'){flash('This browser does not support desktop notifications.');return;}const permission=await Notification.requestPermission();flash(permission==='granted'?'Notifications enabled. You will receive new messages, assigned work and reminders while the app is open.': 'Notifications are blocked. Enable them in your browser settings.');}}>
