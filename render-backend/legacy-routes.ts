@@ -104,6 +104,27 @@ const newPasswordFields = (password: string) => {
   return { salt, passwordHash: hashPassword(password, salt) };
 };
 const tokenId = (token: string) => createHash('sha256').update(token).digest('hex');
+async function notifyActiveAdmins(type: string, title: string, message: string, relatedId: string) {
+  const admins = await firestore.collection('users').where('role', '==', 'admin').get();
+  const createdAt = new Date().toISOString();
+  const writes = admins.docs
+    .filter(document => document.data().active === true)
+    .map(document => {
+      const notificationId = 'portal-' + type + '-' + relatedId + '-' + document.id;
+      return firestore.collection('staff_notifications').doc(notificationId).set({
+        recipientId: document.id,
+        recipientRole: 'admin',
+        type: 'portal-' + type,
+        title,
+        message,
+        relatedId,
+        createdAt,
+        read: false,
+      }, { merge: true });
+    });
+  await Promise.all(writes);
+}
+
 
 async function createSession(user: UserRecord) {
   const token = randomBytes(32).toString('hex');
@@ -443,6 +464,7 @@ export const handler = router({
         batch.set(ref, { complaintId: complaintRef.id, mediaId, chunkIndex: index, data: dataBase64.slice(index * chunkSize, (index + 1) * chunkSize) });
       }
       await batch.commit();
+      await notifyActiveAdmins('customer-complaint', 'New customer complaint', customer.name + ' submitted a support request: ' + subject + '.', complaintRef.id);
       return json({ accepted: true, message: 'If the details match an active K&B connection, your support request will be reviewed by our team.' }, 202);
     } catch {
       return error('The photo could not be saved, so no complaint was submitted. Please try again.', 503);
@@ -600,6 +622,7 @@ export const handler = router({
     if (result.kind !== 'created') {
       return json({ accepted: true, message: 'Your request has been received or is already associated with an existing K&B record. Our team will review it.' }, 202);
     }
+    await notifyActiveAdmins('connection-request', 'New connection request', 'A new Customer Nexus connection request from ' + name + ' is waiting for review.', result.requestId);
     return json({ accepted: true, requestId: result.requestId, status: 'Pending', message: 'Your connection request has been sent to K&B for review.' }, 201);
   }],
 
