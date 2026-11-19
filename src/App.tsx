@@ -1583,7 +1583,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
       )}
       {loading && (
         <div className="loading-cover">
-          <div className="brand-mark" aria-label="K&B NET SERVICE"><Signal size={22} /></div>
+          <div className="kb-mascots" aria-label="K&B team loading"><div className="kb-mascot"><span className="kb-face">😊</span><span className="kb-shirt">K&amp;B</span></div><div className="kb-mascot"><span className="kb-face">😎</span><span className="kb-shirt">K&amp;B</span></div><div className="kb-mascot"><span className="kb-face">😮</span><span className="kb-shirt">K&amp;B</span></div></div>
           <span>Loading your workspace…</span>
         </div>
       )}
@@ -2378,7 +2378,7 @@ function App(){
  const [session,setSession]=useState<Session|null>(null);const [checking,setChecking]=useState(true);
  useEffect(()=>{let live=true;async function restore(){const raw=sessionStorage.getItem('kb-customer-session')||localStorage.getItem('kb-customer-session');if(!raw){setChecking(false);return;}try{const old=JSON.parse(raw) as Session;const r=await client.get('/api/auth/me?sessionToken='+encodeURIComponent(old.token));if(live){const restored={...old,user:r.data.user};sessionStorage.setItem('kb-customer-session',JSON.stringify(restored));localStorage.removeItem('kb-customer-session');setSession(restored);}}catch{sessionStorage.removeItem('kb-customer-session');localStorage.removeItem('kb-customer-session');}finally{if(live)setChecking(false);}}restore();return()=>{live=false;};},[]);
  async function login(userId:string,password:string,expectedRole:'admin'|'staff'){const next=await signInAppUser(userId,password,expectedRole) as Session;if(next.user.role!==expectedRole){await signOutAppUser();throw new Error(expectedRole==='admin'?'This account is not an admin account. Choose Staff Sign In instead.':'This account is not a staff account. Choose Admin Sign In instead.');}sessionStorage.setItem('kb-customer-session',JSON.stringify(next));localStorage.removeItem('kb-customer-session');setSession(next);}
- if(checking)return <div className="loading-cover"><div className="brand-mark" aria-label="K&B NET SERVICE"><Signal size={22} /></div><span>Preparing secure sign-in…</span></div>;
+ if(checking)return <div className="loading-cover"><div className="kb-mascots" aria-label="K&B team loading"><div className="kb-mascot"><span className="kb-face">😊</span><span className="kb-shirt">K&amp;B</span></div><div className="kb-mascot"><span className="kb-face">😎</span><span className="kb-shirt">K&amp;B</span></div><div className="kb-mascot"><span className="kb-face">😮</span><span className="kb-shirt">K&amp;B</span></div></div><span>Preparing secure sign-in…</span></div>;
  return session?<Workspace session={session} onLogout={()=>{signOutAppUser().catch(()=>undefined);sessionStorage.removeItem('kb-customer-session');localStorage.removeItem('kb-customer-session');setSession(null);}}/>:<LoginScreen onLogin={login}/>;
 }
 function LoginScreen({onLogin}:{onLogin:(id:string,pw:string,role:'admin'|'staff')=>Promise<void>}){
