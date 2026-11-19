@@ -105,24 +105,28 @@ const newPasswordFields = (password: string) => {
 };
 const tokenId = (token: string) => createHash('sha256').update(token).digest('hex');
 async function notifyActiveAdmins(type: string, title: string, message: string, relatedId: string) {
-  const admins = await firestore.collection('users').where('role', '==', 'admin').get();
-  const createdAt = new Date().toISOString();
-  const writes = admins.docs
-    .filter(document => document.data().active === true)
-    .map(document => {
-      const notificationId = 'portal-' + type + '-' + relatedId + '-' + document.id;
-      return firestore.collection('staff_notifications').doc(notificationId).set({
-        recipientId: document.id,
-        recipientRole: 'admin',
-        type: 'portal-' + type,
-        title,
-        message,
-        relatedId,
-        createdAt,
-        read: false,
-      }, { merge: true });
-    });
-  await Promise.all(writes);
+  try {
+    const admins = await firestore.collection('users').where('role', '==', 'admin').get();
+    const createdAt = new Date().toISOString();
+    const writes = admins.docs
+      .filter(document => document.data().active === true)
+      .map(document => {
+        const notificationId = 'portal-' + type + '-' + relatedId + '-' + document.id;
+        return firestore.collection('staff_notifications').doc(notificationId).set({
+          recipientId: document.id,
+          recipientRole: 'admin',
+          type: 'portal-' + type,
+          title,
+          message,
+          relatedId,
+          createdAt,
+          read: false,
+        }, { merge: true });
+      });
+    await Promise.all(writes);
+  } catch (cause) {
+    console.error('[K&B_PORTAL_NOTIFICATION_FAILED]', cause instanceof Error ? cause.message : String(cause));
+  }
 }
 
 
