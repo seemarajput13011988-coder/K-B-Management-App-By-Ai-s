@@ -6,6 +6,7 @@ import App from './App';
 import './index.css';
 import './mobile-overhaul.css';
 import './dashboard/overview.css';
+import './app-redesign.css';
 
 const UPDATE_CHECK_TIMEOUT_MS = 25000;
 const UPDATE_DOWNLOAD_TIMEOUT_MS = 120000;
