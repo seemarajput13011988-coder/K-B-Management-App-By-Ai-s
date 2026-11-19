@@ -251,6 +251,9 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   const [staffSearch, setStaffSearch] = useState('');
   const [staffStatusFilter, setStaffStatusFilter] = useState<'All'|'Active'|'Inactive'>('All');
   const [staffSort, setStaffSort] = useState<'active'|'name'|'recent'>('active');
+  const [taskSearch, setTaskSearch] = useState('');
+  const [taskStatusFilter, setTaskStatusFilter] = useState<'All'|'Pending'|'In progress'|'Completed'>('All');
+  const [taskSort, setTaskSort] = useState<'due'|'priority'|'recent'>('due');
   const [complaintSearch, setComplaintSearch] = useState('');
   const [complaintStatusFilter, setComplaintStatusFilter] = useState('All');
   const [showComplaint, setShowComplaint] = useState(false);
@@ -464,6 +467,11 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
           ? String(a.dueDate || '9999-12-31').localeCompare(String(b.dueDate || '9999-12-31'))
           : String(b.joinedAt || '').localeCompare(String(a.joinedAt || '')));
   }, [customers, search, customerStatusFilter, customerSort]);
+  const visibleTasks = tasks.filter(task => {
+    const query=taskSearch.trim().toLocaleLowerCase();
+    const matchesSearch=!query||[task.title,task.details,task.priority,task.status,task.assignedToName,task.createdByName].join(' ').toLocaleLowerCase().includes(query);
+    return matchesSearch&&(taskStatusFilter==='All'||task.status===taskStatusFilter);
+  }).sort((a,b)=>taskSort==='priority'?({High:0,Medium:1,Low:2}[a.priority]??3)-({High:0,Medium:1,Low:2}[b.priority]??3):taskSort==='recent'?String(b.createdAt||'').localeCompare(String(a.createdAt||'')):String(a.dueDate||'9999-12-31').localeCompare(String(b.dueDate||'9999-12-31')));
   const selectedStaffProfile = staff.find(member => member.id === selectedStaffProfileId);
   const filteredStaff = staff.filter(member => [member.displayName, member.userId].join(' ').toLocaleLowerCase().includes(staffSearch.trim().toLocaleLowerCase()) && (staffStatusFilter === 'All' || (staffStatusFilter === 'Active' ? member.active : !member.active))).sort((a,b) => staffSort === 'name' ? a.displayName.localeCompare(b.displayName) : staffSort === 'recent' ? String(b.createdAt||'').localeCompare(String(a.createdAt||'')) : Number(b.active)-Number(a.active) || a.displayName.localeCompare(b.displayName));
   const visibleComplaints = complaints
@@ -1403,9 +1411,10 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                   <h2>{isAdmin ? 'Team task board' : 'My assigned work'}</h2>
                   <p className="subtle">{isAdmin ? 'Work assigned to staff members across the business.' : 'Update your task progress as work is completed.'}</p>
                 </div>
-                <span className="result-count">{tasks.length} tasks · {pendingTasks} pending</span>
+                <span className="result-count">{visibleTasks.length} of {tasks.length} tasks · {pendingTasks} pending</span>
               </div>
-              {tasks.length ? <div className="task-list">{tasks.map(task => (
+              <div className="task-board-filters"><label className="task-board-search"><span>Search tasks</span><input type="search" value={taskSearch} onChange={event=>setTaskSearch(event.target.value)} placeholder="Task, staff, priority or details"/></label><label><span>Status</span><select value={taskStatusFilter} onChange={event=>setTaskStatusFilter(event.target.value as typeof taskStatusFilter)}><option>All</option><option>Pending</option><option>In progress</option><option>Completed</option></select></label><label><span>Sort by</span><select value={taskSort} onChange={event=>setTaskSort(event.target.value as typeof taskSort)}><option value="due">Due date</option><option value="priority">Priority</option><option value="recent">Recently created</option></select></label></div>
+              {visibleTasks.length ? <div className="task-list">{visibleTasks.map(task => (
                 <article className="task-card" key={task.id}>
                   <div className="task-card-main">
                     <div className="task-card-top"><span className={'priority ' + task.priority.toLowerCase()}>{task.priority} priority</span><span className={'task-state ' + task.status.toLowerCase().replace(/ /g, '-')}>{task.status}</span></div>
