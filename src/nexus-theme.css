@@ -490,3 +490,13 @@ input:focus,select:focus,textarea:focus{border-color:#79a9ff;box-shadow:0 0 0 3p
 .staff-directory-toolbar .staff-directory-search{flex:2;min-width:210px}
 .staff-directory-count{padding:0 4px 12px;margin-left:auto;color:var(--nexus-muted,#718096);font-size:12px;font-weight:700;white-space:nowrap}
 @media(max-width:600px){.staff-directory-toolbar{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:12px}.staff-directory-toolbar .staff-directory-search{grid-column:1/-1;min-width:0}.staff-directory-toolbar label{min-width:0}.staff-directory-count{grid-column:1/-1;margin:0;padding:2px 0 0}}
+
+
+/* Consistent finance record filtering */
+.finance-record-toolbar{display:flex;align-items:end;gap:12px;flex-wrap:wrap;margin:0 0 15px;padding:14px;border:1px solid var(--nexus-border,rgba(148,163,184,.22));border-radius:16px;background:var(--nexus-surface-soft,rgba(148,163,184,.06))}
+.finance-record-toolbar label{display:grid;gap:6px;min-width:150px;flex:1}
+.finance-record-toolbar label span{font-size:11px;font-weight:750;letter-spacing:.045em;color:var(--nexus-muted,#718096)}
+.finance-record-toolbar input,.finance-record-toolbar select{width:100%;min-height:42px;border:1px solid var(--nexus-border,#dbe3ec);border-radius:11px;padding:9px 12px;background:var(--nexus-surface,#fff);color:var(--nexus-text,#172033);font:inherit;outline-offset:2px}
+.finance-record-toolbar .finance-record-search{flex:2;min-width:230px}
+.finance-record-count{padding:0 4px 12px;margin-left:auto;color:var(--nexus-muted,#718096);font-size:12px;font-weight:700;white-space:nowrap}
+@media(max-width:600px){.finance-record-toolbar{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:12px}.finance-record-toolbar .finance-record-search{grid-column:1/-1;min-width:0}.finance-record-toolbar label{min-width:0}.finance-record-count{grid-column:1/-1;margin:0;padding:2px 0 0}}
