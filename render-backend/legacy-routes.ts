@@ -414,6 +414,9 @@ export const handler = router({
       return { kind: 'created' as const };
     });
     if (result.kind === 'unavailable') return error('This plan is no longer available. Refresh and choose another plan.', 409);
+    if (result.kind === 'created') {
+      await notifyActiveAdmins('plan-change-request', 'Customer plan change requested', 'A plan change for ' + String(result.customerName || 'a customer') + ' is waiting for review.', String(result.requestId));
+    }
     return genericPlanRequestResponse();
   }],
 
