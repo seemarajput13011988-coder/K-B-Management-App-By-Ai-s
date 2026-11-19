@@ -415,7 +415,7 @@ export const handler = router({
     });
     if (result.kind === 'unavailable') return error('This plan is no longer available. Refresh and choose another plan.', 409);
     if (result.kind === 'created') {
-      await notifyActiveAdmins('plan-change-request', 'Customer plan change requested', 'A plan change for ' + String(result.customerName || 'a customer') + ' is waiting for review.', String(result.requestId));
+      await notifyActiveAdmins('plan-change-request', 'Customer plan change requested', 'A Customer Nexus plan-change request is waiting for admin review.', requestRef.id);
     }
     return genericPlanRequestResponse();
   }],
