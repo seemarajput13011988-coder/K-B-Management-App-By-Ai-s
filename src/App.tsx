@@ -471,7 +471,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
     const query=taskSearch.trim().toLocaleLowerCase();
     const matchesSearch=!query||[task.title,task.details,task.priority,task.status,task.assignedToName,task.createdByName].join(' ').toLocaleLowerCase().includes(query);
     return matchesSearch&&(taskStatusFilter==='All'||task.status===taskStatusFilter);
-  }).sort((a,b)=>taskSort==='priority'?({High:0,Medium:1,Low:2}[a.priority]??3)-({High:0,Medium:1,Low:2}[b.priority]??3):taskSort==='recent'?String(b.createdAt||'').localeCompare(String(a.createdAt||'')):String(a.dueDate||'9999-12-31').localeCompare(String(b.dueDate||'9999-12-31')));
+  }).sort((a,b)=>taskSort==='priority'?({High:0,Normal:1,Low:2}[a.priority]??3)-({High:0,Normal:1,Low:2}[b.priority]??3):taskSort==='recent'?String(b.createdAt||'').localeCompare(String(a.createdAt||'')):String(a.dueDate||'9999-12-31').localeCompare(String(b.dueDate||'9999-12-31')));
   const selectedStaffProfile = staff.find(member => member.id === selectedStaffProfileId);
   const filteredStaff = staff.filter(member => [member.displayName, member.userId].join(' ').toLocaleLowerCase().includes(staffSearch.trim().toLocaleLowerCase()) && (staffStatusFilter === 'All' || (staffStatusFilter === 'Active' ? member.active : !member.active))).sort((a,b) => staffSort === 'name' ? a.displayName.localeCompare(b.displayName) : staffSort === 'recent' ? String(b.createdAt||'').localeCompare(String(a.createdAt||'')) : Number(b.active)-Number(a.active) || a.displayName.localeCompare(b.displayName));
   const visibleComplaints = complaints
