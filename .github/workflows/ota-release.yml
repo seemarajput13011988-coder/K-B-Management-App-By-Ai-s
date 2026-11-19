@@ -29,7 +29,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: kb-nexus-ota-${{ github.ref }}
+  group: nexus-ota-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -76,7 +76,7 @@ jobs:
         if: github.event_name == 'push' && github.ref == 'refs/heads/render-backend-migration'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: kb-nexus-ota-1.0.${{ github.run_number }}
+          tag_name: nexus-ota-1.0.${{ github.run_number }}
           name: K&B Nexus OTA 1.0.${{ github.run_number }}
           body: Automated web-bundle release. Native Android changes are not included.
           files: |
