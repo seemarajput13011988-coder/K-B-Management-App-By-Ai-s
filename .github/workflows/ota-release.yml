@@ -14,6 +14,7 @@ on:
       - "vite.config.ts"
       - "capacitor.config.ts"
       - ".github/workflows/ota-release.yml"
+      - ".github/workflows/android-apk.yml"
   pull_request:
     branches:
       - render-backend-migration
