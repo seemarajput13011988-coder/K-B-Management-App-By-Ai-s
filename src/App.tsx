@@ -232,6 +232,8 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   const [showAccountSettings, setShowAccountSettings] = useState(false);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [customerStatusFilter, setCustomerStatusFilter] = useState<'All' | Customer['status']>('All');
+  const [customerSort, setCustomerSort] = useState<'recent' | 'name' | 'due'>('recent');
   const [showCustomer, setShowCustomer] = useState(false);
   const [editing, setEditing] = useState<Customer | null>(null);
   const [showPlan, setShowPlan] = useState(false);
@@ -443,16 +445,18 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   const overdueValue = customers.filter(c => c.status === 'Active' && c.dueDate && c.dueDate <= today).reduce((sum, c) => sum + Math.max(0, Number(c.monthlyFee || 0) - (paidByCustomer.get(c.id) || 0)), 0);
   const overdueCustomersCount = customers.filter(c => c.status === 'Active' && c.dueDate && c.dueDate <= today && Number(c.monthlyFee || 0) > (paidByCustomer.get(c.id) || 0)).length;
   const pendingStaffRequestsCount = staffRegistrationRequests.filter(item => item.status === 'pending').length;
-  const filtered = useMemo(
-    () =>
-      customers.filter(c =>
-        [c.name, c.phone, c.address, c.plan]
-          .join(' ')
-          .toLowerCase()
-          .includes(search.toLowerCase())
-      ),
-    [customers, search]
-  );
+  const filtered = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    return customers
+      .filter(customer => customerStatusFilter === 'All' || customer.status === customerStatusFilter)
+      .filter(customer => !query || [customer.name, customer.phone, customer.address, customer.plan].join(' ').toLowerCase().includes(query))
+      .slice()
+      .sort((a, b) => customerSort === 'name'
+        ? a.name.localeCompare(b.name, 'en', { sensitivity: 'base' })
+        : customerSort === 'due'
+          ? String(a.dueDate || '9999-12-31').localeCompare(String(b.dueDate || '9999-12-31'))
+          : String(b.joinedAt || '').localeCompare(String(a.joinedAt || '')));
+  }, [customers, search, customerStatusFilter, customerSort]);
   const selectedStaffProfile = staff.find(member => member.id === selectedStaffProfileId);
   const filteredStaff = staff.filter(member => [member.displayName, member.userId].join(' ').toLowerCase().includes(staffSearch.toLowerCase()));
   const filteredPayments = payments.filter(payment => [payment.customerName, payment.month, payment.method, payment.paidAt, payment.recordedByName || ''].join(' ').toLowerCase().includes(paymentSearch.toLowerCase()));
@@ -1400,18 +1404,22 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
 
           {page === 'Customers' && (
             <section className="panel table-panel">
-              <div className="toolbar">
-                <div className="searchbox">
+              <div className="customer-toolbar">
+                <div className="searchbox customer-searchbox">
                   <Search size={17} />
                   <input
                     value={search}
                     onChange={e => setSearch(e.target.value)}
                     placeholder="Search name, phone, address or plan..."
+                    aria-label="Search customers"
                   />
+                  {search && <button type="button" className="search-clear" aria-label="Clear customer search" onClick={() => setSearch('')}><X size={15}/></button>}
                 </div>
-                <span className="result-count">
-                  {filtered.length} customers
-                </span>
+                <div className="customer-view-controls">
+                  <label><span>Status</span><select value={customerStatusFilter} onChange={e => setCustomerStatusFilter(e.target.value as typeof customerStatusFilter)}><option value="All">All statuses</option><option value="Active">Active</option><option value="Inactive">Inactive</option><option value="Suspended">Suspended</option></select></label>
+                  <label><span>Sort by</span><select value={customerSort} onChange={e => setCustomerSort(e.target.value as typeof customerSort)}><option value="recent">Recently added</option><option value="name">Name A–Z</option><option value="due">Next due date</option></select></label>
+                </div>
+                <span className="result-count">{filtered.length} of {customers.length} customers</span>
               </div>
               <CustomerTable
                 rows={filtered}
