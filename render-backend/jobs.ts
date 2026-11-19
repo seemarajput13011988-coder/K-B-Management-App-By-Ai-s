@@ -126,7 +126,7 @@ export async function runGpsGracePeriod() {
   }
 }
 
-function billingPeriodParts(date = new Date()) {
+function billingPeriodParts() {
   const { year, month } = indiaDateParts();
   const period = year + '-' + String(month).padStart(2, '0');
   const label = new Date(period + '-01T12:00:00').toLocaleString('en-IN', { month: 'long', year: 'numeric' });
@@ -185,7 +185,7 @@ export async function generateMonthlyInvoicesAutomatically() {
 }
 
 export async function sendInvoiceDueReminders() {
-  const { date: today, year, month, day } = indiaDateParts();
+  const { date: today } = indiaDateParts();
   const [invoices, payments, customers, users] = await Promise.all([
     readAllQuery(firestore.collection('invoices')),
     readAllQuery(firestore.collection('payments')),
