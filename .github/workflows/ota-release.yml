@@ -64,7 +64,7 @@ jobs:
           import crypto from 'node:crypto';
           const version = `1.0.${process.env.GITHUB_RUN_NUMBER}`;
           const checksum = crypto.createHash('sha256').update(fs.readFileSync('nexus-update.zip')).digest('hex');
-          fs.writeFileSync('ota-manifest.json', JSON.stringify({
+          }, null, 2) + String.fromCharCode(10));
             appId: 'kandbnet.service2010',
             version,
             checksum
