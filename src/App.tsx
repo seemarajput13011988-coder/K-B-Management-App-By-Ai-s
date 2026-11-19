@@ -1037,6 +1037,24 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
 
           {page === 'Overview' && (
             <section className="kb-overview" aria-label="Operations overview">
+              <section className="kb-command-hero" aria-label="Workspace summary">
+                <div className="kb-command-hero-copy">
+                  <span className="kb-command-kicker"><span className="kb-command-live-dot"/> K&amp;B OPERATIONS DESK</span>
+                  <h2>{isAdmin ? 'Your business, clearly in view.' : 'Your workday, organised.'}</h2>
+                  <p>{isAdmin ? 'A single place to oversee customer connections, service requests, collections and your team.' : 'See your assigned work, customer visits and service updates in one organised workspace.'}</p>
+                  <div className="kb-command-actions">
+                    {isAdmin && <button type="button" className="kb-command-primary" onClick={() => { setEditing(null); setShowCustomer(true); }}><Plus size={16}/> Add a customer</button>}
+                    <button type="button" className="kb-command-secondary" onClick={() => setPage('Complaints')}><MessageSquare size={16}/> Review complaints</button>
+                  </div>
+                </div>
+                <div className="kb-command-hero-aside">
+                  <span className="kb-command-aside-label">TODAY AT A GLANCE</span>
+                  <strong>{new Date().toLocaleDateString('en-IN',{weekday:'long'})}</strong>
+                  <span>{new Date().toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'})}</span>
+                  <div className="kb-command-aside-divider"/>
+                  <small>{isAdmin ? 'Keep every connection and follow-up moving.' : 'Focus on the next task and keep updates current.'}</small>
+                </div>
+              </section>
               <nav className="kb-overview-actions" aria-label="Overview shortcuts">
                 <button type="button" onClick={() => setPage('Customers')}><Users size={18}/><span>Customers</span><small>Browse records</small></button>
                 <button type="button" onClick={() => setPage('Complaints')}><MessageSquare size={18}/><span>Complaints</span><small>Resolve issues</small></button>
