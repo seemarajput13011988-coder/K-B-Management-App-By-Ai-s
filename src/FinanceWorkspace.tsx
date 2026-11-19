@@ -118,6 +118,9 @@ export default function FinanceWorkspace({ session, customers, payments, flash, 
   const [expenseSearch, setExpenseSearch] = useState('');
   const [expenseCategoryFilter, setExpenseCategoryFilter] = useState('all');
   const [expenseSort, setExpenseSort] = useState<'newest'|'oldest'|'highest'|'lowest'>('newest');
+  const [invoiceSearch, setInvoiceSearch] = useState('');
+  const [invoiceStatusFilter, setInvoiceStatusFilter] = useState<'all'|'unpaid'|'paid'>('all');
+  const [invoiceSort, setInvoiceSort] = useState<'due-soon'|'due-late'|'highest'>('due-soon');
   const tokenQuery = '?sessionToken=' + encodeURIComponent(session.token);
   const load = async () => {
     const [e, i, a, st, pr] = await Promise.all([
@@ -181,6 +184,12 @@ export default function FinanceWorkspace({ session, customers, payments, flash, 
   const cashResult = collected - spent;
   const activeCustomers = customers.filter(item => item.status === 'Active');
   const unpaidInvoices = invoices.filter(item => item.status !== 'Paid');
+  const visibleInvoices = useMemo(() => invoices.filter(item => {
+    const query = invoiceSearch.trim().toLocaleLowerCase();
+    const matchesSearch = !query || [item.customerName,item.period,item.dueDate,item.status].some(value => String(value || '').toLocaleLowerCase().includes(query));
+    const matchesStatus = invoiceStatusFilter === 'all' || (invoiceStatusFilter === 'paid' ? item.status === 'Paid' : item.status !== 'Paid');
+    return matchesSearch && matchesStatus;
+  }).sort((a,b) => invoiceSort === 'highest' ? Number(b.amount)-Number(a.amount) : invoiceSort === 'due-late' ? b.dueDate.localeCompare(a.dueDate) : a.dueDate.localeCompare(b.dueDate)), [invoices, invoiceSearch, invoiceStatusFilter, invoiceSort]);
   const expenseCategories = Array.from(new Set(expenses.map(item => item.category).filter(Boolean))).sort((a,b)=>a.localeCompare(b));
   const sortedExpenses = useMemo(() => expenses.filter(item => {
     const query = expenseSearch.trim().toLocaleLowerCase();
@@ -337,9 +346,9 @@ export default function FinanceWorkspace({ session, customers, payments, flash, 
     </section>
     <section className="panel finance-panel">
       <div className="finance-head"><div><span className="eyebrow">MONTHLY BILLING</span><h2>Customer invoices</h2><p>Generate a monthly bill for every active customer. Existing invoices for the same customer and month are skipped.</p></div><div className="finance-actions"><input aria-label="Billing month" type="month" value={period} onChange={e => setPeriod(e.target.value)}/><button className="btn primary" disabled={busy || !activeCustomers.length} onClick={generateInvoices}>Generate invoices</button></div></div>
-      <div className="finance-table-wrap"><table><thead><tr><th>CUSTOMER</th><th>PERIOD</th><th>DUE DATE</th><th>AMOUNT</th><th>PAID</th><th>BALANCE</th><th>STATUS</th></tr></thead><tbody>
-        {invoices.map(item => <tr key={item.id}><td><b>{item.customerName}</b></td><td>{monthName(item.period)}</td><td>{item.dueDate}</td><td>{money(item.amount)}</td><td>{money(item.paidAmount)}</td><td className="amount">{money(Math.max(0, item.amount - item.paidAmount))}</td><td><span className={'status ' + (item.status === 'Paid' ? 'active' : 'inactive')}>{item.status}</span></td></tr>)}
-        {!invoices.length && <tr><td colSpan={7}>No invoices for this month. Generate invoices to start monthly billing.</td></tr>}
+      <div className="finance-record-toolbar"><label className="finance-record-search"><span>Search invoices</span><input type="search" value={invoiceSearch} onChange={event=>setInvoiceSearch(event.target.value)} placeholder="Customer, period, due date or status"/></label><label><span>Payment status</span><select value={invoiceStatusFilter} onChange={event=>setInvoiceStatusFilter(event.target.value as typeof invoiceStatusFilter)}><option value="all">All invoices</option><option value="unpaid">Unpaid / partial</option><option value="paid">Paid</option></select></label><label><span>Sort by</span><select value={invoiceSort} onChange={event=>setInvoiceSort(event.target.value as typeof invoiceSort)}><option value="due-soon">Due date (soonest)</option><option value="due-late">Due date (latest)</option><option value="highest">Highest amount</option></select></label><span className="finance-record-count">{visibleInvoices.length} of {invoices.length} invoices</span></div>\n      <div className="finance-table-wrap"><table><thead><tr><th>CUSTOMER</th><th>PERIOD</th><th>DUE DATE</th><th>AMOUNT</th><th>PAID</th><th>BALANCE</th><th>STATUS</th></tr></thead><tbody>
+        {visibleInvoices.map(item => <tr key={item.id}><td><b>{item.customerName}</b></td><td>{monthName(item.period)}</td><td>{item.dueDate}</td><td>{money(item.amount)}</td><td>{money(item.paidAmount)}</td><td className="amount">{money(Math.max(0, item.amount - item.paidAmount))}</td><td><span className={'status ' + (item.status === 'Paid' ? 'active' : 'inactive')}>{item.status}</span></td></tr>)}
+        {!invoices.length && <tr><td colSpan={7}>{invoices.length ? 'No invoices match these filters.' : 'No invoices for this month. Generate invoices to start monthly billing.'}</td></tr>}
       </tbody></table></div>
       <div className="finance-foot"><span>{invoices.length} invoices · {activeCustomers.length} active customers</span><button className="btn secondary compact" onClick={() => downloadCsv('kb-invoices-' + period + '.csv', [['Customer','Period','Due date','Amount','Paid','Balance','Status'], ...invoices.map(i => [i.customerName, monthName(i.period), i.dueDate, i.amount, i.paidAmount, Math.max(0, i.amount-i.paidAmount), i.status])])}><Download size={14}/> Export invoices</button><button className="btn secondary compact" onClick={() => printReport('Customer invoices · ' + monthName(period), [['Customer','Period','Due date','Amount','Paid','Balance','Status'], ...invoices.map(i => [i.customerName, monthName(i.period), i.dueDate, money(i.amount), money(i.paidAmount), money(Math.max(0,i.amount-i.paidAmount)), i.status])])}><ReceiptText size={14}/> Export PDF</button></div>
     </section>
