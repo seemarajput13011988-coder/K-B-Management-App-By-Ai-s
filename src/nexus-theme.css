@@ -523,3 +523,10 @@ input:focus,select:focus,textarea:focus{border-color:#79a9ff;box-shadow:0 0 0 3p
   .shell .finance-foot{gap:8px;flex-wrap:wrap}
   .shell .finance-foot button{flex:1 1 auto}
 }
+
+
+/* Plan catalogue controls */
+.plan-sort-control{display:flex;align-items:center;gap:8px;min-width:190px;padding:0 4px;color:var(--kb-muted);font-size:11px;font-weight:750}
+.plan-sort-control select{min-height:38px;min-width:0;flex:1;padding:7px 10px;border:1px solid var(--kb-line);border-radius:10px;background:var(--kb-surface);color:var(--kb-ink);font:inherit}
+.plan-results-count{margin:0 0 12px;color:var(--kb-muted);font-size:12px;font-weight:700}
+@media(max-width:650px){.plan-controls{align-items:stretch;flex-direction:column}.plan-sort-control{width:100%;min-width:0}.plan-sort-control select{flex:1}.plan-filters{width:100%;overflow-x:auto;flex-wrap:nowrap}.plan-filters button{white-space:nowrap}}
