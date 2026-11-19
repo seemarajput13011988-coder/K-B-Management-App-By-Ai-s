@@ -58,24 +58,63 @@ function showUpdateScreen(message: string, retry: () => void) {
   const detail = document.createElement('p');
   detail.textContent = message;
   detail.style.cssText = 'max-width:320px;margin:0;color:#64748b;line-height:1.55;font-size:14px';
+  const progressTrack = document.createElement('div');
+  progressTrack.setAttribute('aria-label', 'Update download progress');
+  progressTrack.style.cssText = 'width:min(320px,78vw);height:9px;overflow:hidden;border-radius:999px;background:#dbe4f0';
+  const progressFill = document.createElement('div');
+  progressFill.style.cssText = 'display:block;width:0%;height:100%;border-radius:999px;background:linear-gradient(90deg,#2f7dd5,#32a36b);transition:width .18s ease';
+  progressTrack.append(progressFill);
+  const progressLabel = document.createElement('p');
+  progressLabel.textContent = 'Preparing download… 0%';
+  progressLabel.style.cssText = 'margin:0;color:#52657c;font-size:13px;font-weight:700;font-variant-numeric:tabular-nums';
   const button = document.createElement('button');
   button.type = 'button';
-  button.textContent = 'Retry';
+  button.textContent = 'Downloading update…';
+  button.disabled = true;
   button.style.cssText = 'border:0;border-radius:12px;background:linear-gradient(135deg,#347cdb,#2258ad);color:white;padding:12px 22px;font-weight:750;font-size:14px';
   button.addEventListener('click', () => {
     button.disabled = true;
     button.textContent = 'Checking…';
     retry();
   });
-  screen.append(mark, title, detail, button);
+  const openCurrent = document.createElement('button');
+  openCurrent.type = 'button';
+  openCurrent.textContent = 'Open current version';
+  openCurrent.hidden = true;
+  openCurrent.style.cssText = 'border:1px solid #cbd5e1;border-radius:12px;background:transparent;color:#334155;padding:11px 18px;font-weight:700;font-size:14px';
+  openCurrent.addEventListener('click', () => mountApp(true));
+  screen.append(mark, title, detail, progressTrack, progressLabel, button, openCurrent);
   appRoot.append(screen);
+  return {
+    setProgress(percent: number) {
+      const value = Math.max(0, Math.min(100, Math.round(Number(percent) || 0)));
+      progressFill.style.width = value + '%';
+      progressLabel.textContent = 'Downloading update… ' + value + '%';
+    },
+    showFailure(reason: string) {
+      detail.textContent = reason;
+      progressTrack.hidden = true;
+      progressLabel.hidden = true;
+      button.disabled = false;
+      button.textContent = 'Retry update';
+      openCurrent.hidden = false;
+    },
+  };
 }
 
+let updateRunInProgress = false;
+
 async function runUpdateCheck(): Promise<void> {
+  if (updateRunInProgress) return;
+  updateRunInProgress = true;
+  let updateScreen: ReturnType<typeof showUpdateScreen> | null = null;
+  let progressListener: { remove: () => Promise<void> } | null = null;
   try {
-    // Call the K&B self-hosted endpoint explicitly. Do not rely on the
-    // Capgo native getLatest request contract for our custom API.
-    const builtinVersion = await CapacitorUpdater.getBuiltinVersion();
+    // Compare against the active OTA bundle, not only the APK's built-in version.
+    // Otherwise every launch can repeatedly offer the same already-installed bundle.
+    const currentInfo = await CapacitorUpdater.current().catch(() => null);
+    const builtinVersion = await CapacitorUpdater.getBuiltinVersion().catch(() => null);
+    const currentVersion = currentInfo?.bundle?.version || builtinVersion || '1.0.0';
     const response = await withTimeout(
       fetch('https://kandb-management-nexus-api-zv7f.onrender.com/api/app-updates/check', {
         method: 'POST',
@@ -84,7 +123,7 @@ async function runUpdateCheck(): Promise<void> {
         body: JSON.stringify({
           app_id: 'kandbnet.service2010',
           platform: 'android',
-          version_name: builtinVersion || '1.0.0',
+          version_name: currentVersion,
         }),
       }),
       UPDATE_CHECK_TIMEOUT_MS,
@@ -102,30 +141,37 @@ async function runUpdateCheck(): Promise<void> {
       throw new Error(latest?.message || 'The update server returned an invalid update response.');
     }
 
-    showUpdateScreen('A new version is available. Installing it now…', () => {
+    updateScreen = showUpdateScreen('A new K&B update is available. Preparing download…', () => {
       void runUpdateCheck();
     });
-
-    // Keep the currently installed bundle marked healthy before attempting a switch.
     await CapacitorUpdater.notifyAppReady();
+    progressListener = await CapacitorUpdater.addListener('download', state => {
+      updateScreen?.setProgress(state.percent);
+    });
     const bundle = await withTimeout(
       CapacitorUpdater.download({
-        url: latest.url,
-        version: latest.version,
+        url: latest.url!,
+        version: latest.version!,
         ...(latest.checksum ? { checksum: latest.checksum } : {}),
       }),
       UPDATE_DOWNLOAD_TIMEOUT_MS,
-      'The update download timed out. Opening the last working version.',
+      'The update download timed out.',
     );
+    await progressListener.remove();
+    progressListener = null;
     await CapacitorUpdater.set(bundle);
   } catch (error) {
-    // Updates are mandatory when a newer bundle is advertised. Never silently bypass a failed download.
-    console.error('K&B Nexus mandatory OTA update failed:', error);
+    console.error('K&B Nexus OTA update failed:', error);
     const message = error instanceof Error ? error.message : 'The update could not be installed.';
-    showUpdateScreen(
-      'A required update could not be downloaded. Check your internet connection and retry. The app will open only after the update is installed. ' + message,
-      () => { void runUpdateCheck(); },
-    );
+    if (updateScreen) {
+      updateScreen.showFailure('The update could not be installed. Your current app version is still available. ' + message);
+    } else {
+      // A temporary check-server/network failure must not lock staff out of the working app.
+      mountApp(true);
+    }
+  } finally {
+    if (progressListener) await progressListener.remove().catch(() => undefined);
+    updateRunInProgress = false;
   }
 }
 

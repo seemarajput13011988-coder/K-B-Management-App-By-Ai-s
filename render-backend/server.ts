@@ -39,7 +39,7 @@ async function getLatestOtaRelease() {
   }
   const manifest = await manifestResponse.json();
   if (!isValidOtaManifest(manifest)) throw new Error('The OTA release manifest failed validation.');
-  const bundleUrl = releaseBase + '/nexus-update.zip';
+  const bundleUrl = 'https://github.com/seemarajput13011988-coder/K-B-Management-App-By-Ai-s/releases/download/nexus-ota-' + manifest.version + '/nexus-update.zip';
   otaReleaseCache = { expiresAt: Date.now() + 300000, manifest, bundleUrl };
   return otaReleaseCache;
 }
