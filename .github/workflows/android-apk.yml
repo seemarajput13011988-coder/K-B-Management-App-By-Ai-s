@@ -14,6 +14,7 @@ on:
       - quality-audit-2026-11-06
       - fix-android-document-picker-2026-11-06
       - production-reconciliation-2026-11-18
+      - nexus-native-redesign-2026-11-19
     paths:
       - "src/**"
       - "render-backend/**"
