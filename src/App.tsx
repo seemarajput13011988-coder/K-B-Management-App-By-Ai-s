@@ -1600,6 +1600,16 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
             Management
           </footer>
         </div>
+        <nav className="mobile-workspace-nav" aria-label="Quick workspace navigation">
+          {primaryNavItems.map(item => (
+            <button key={item.label} type="button" className={page === item.label ? 'active' : ''} aria-current={page === item.label ? 'page' : undefined}
+              onClick={() => { setPage(item.label); setMoreToolsOpen(false); setNotificationsOpen(false); }}>
+              <item.icon size={19} strokeWidth={page === item.label ? 2.4 : 1.8}/>
+              <span>{item.label === 'Finance & Billing' ? 'Finance' : item.label === taskPage ? (isAdmin ? 'Tasks' : 'My Work') : item.label}</span>
+              {item.count ? <em>{item.count}</em> : null}
+            </button>
+          ))}
+        </nav>
       </main>
 
       {showCustomer && (
