@@ -241,6 +241,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   const [preferredPlan, setPreferredPlan] = useState('');
   const [planSearch, setPlanSearch] = useState('');
   const [planFilter, setPlanFilter] = useState<'Active' | 'Archived' | 'All'>('Active');
+  const [planSort, setPlanSort] = useState<'featured'|'price-low'|'price-high'|'name'>('featured');
   const [selected, setSelected] = useState<Customer | null>(null);
   const [showPayment, setShowPayment] = useState(false);
   const [editingPayment, setEditingPayment] = useState<Payment | null>(null);
@@ -489,9 +490,9 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   const selectedStaffCollected = selectedStaffPayments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
   const visiblePlans = plans.filter(plan => {
     const matchesStatus = planFilter === 'All' || (planFilter === 'Active' ? plan.active : !plan.active);
-    const matchesSearch = [plan.name, plan.provider, plan.speed, plan.connectionType, plan.note].join(' ').toLowerCase().includes(planSearch.toLowerCase());
+    const matchesSearch = [plan.name, plan.provider, plan.speed, plan.connectionType, plan.note].join(' ').toLowerCase().includes(planSearch.trim().toLowerCase());
     return matchesStatus && matchesSearch;
-  });
+  }).sort((a,b) => planSort === 'price-low' ? Number(a.price)-Number(b.price) : planSort === 'price-high' ? Number(b.price)-Number(a.price) : planSort === 'name' ? a.name.localeCompare(b.name) : Number(Boolean(b.featured && b.active))-Number(Boolean(a.featured && a.active)) || a.name.localeCompare(b.name));
 
   function flash(message: string) {
     setNotice(message);
@@ -1475,11 +1476,11 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
               </div>
               <div className="plan-controls">
                 <div className="plan-search"><Search size={16} /><input value={planSearch} onChange={e => setPlanSearch(e.target.value)} placeholder="Search plan, provider or speed..." /></div>
-                <div className="plan-filters">
+                <label className="plan-sort-control"><span>Sort</span><select aria-label="Sort plans" value={planSort} onChange={event=>setPlanSort(event.target.value as typeof planSort)}><option value="featured">Featured first</option><option value="price-low">Price: low to high</option><option value="price-high">Price: high to low</option><option value="name">Name A–Z</option></select></label>\n                <div className="plan-filters">
                   {(['Active', 'Archived', 'All'] as const).map(filter => <button key={filter} className={planFilter === filter ? 'selected' : ''} onClick={() => setPlanFilter(filter)}>{filter}{filter === 'Active' ? ' · ' + plans.filter(plan => plan.active).length : filter === 'Archived' ? ' · ' + plans.filter(plan => !plan.active).length : ''}</button>)}
                 </div>
               </div>
-              <div className="plans-grid">
+              <div className="plan-results-count">{visiblePlans.length} plans shown · {plans.filter(plan=>plan.active).length} active</div>\n              <div className="plans-grid">
                 {visiblePlans.map(p => (
                   <article className={'plan-card ' + (p.featured && p.active ? 'featured' : '')} key={p.id}>
                     {p.featured && p.active && <div className="popular">POPULAR</div>}
