@@ -146,7 +146,7 @@ export async function generateMonthlyInvoicesAutomatically() {
     const key = String(customer.id) + '|' + period;
     if (existing.has(key)) continue;
     const configuredDueDate = String(customer.dueDate || '');
-    const dueDay = /^\\d{4}-\\d{2}-\\d{2}$/.test(configuredDueDate) ? Number(configuredDueDate.slice(-2)) : 10;
+    const dueDay = /^\d{4}-\d{2}-\d{2}$/.test(configuredDueDate) ? Number(configuredDueDate.slice(-2)) : 10;
     const dueDate = period + '-' + String(Math.min(Math.max(dueDay, 1), lastDay)).padStart(2, '0');
     const invoiceId = 'inv-' + Buffer.from(key).toString('base64url').slice(0, 32);
     const invoiceRef = firestore.collection('invoices').doc(invoiceId);
@@ -194,7 +194,7 @@ export async function sendInvoiceDueReminders() {
   const admins = users.filter(user => user.role === 'admin' && user.active === true);
   let notified = 0;
   for (const invoice of invoices) {
-    if (!invoice.id || invoice.voidedAt || !/^\\d{4}-\\d{2}$/.test(String(invoice.period || '')) || !/^\\d{4}-\\d{2}-\\d{2}$/.test(String(invoice.dueDate || ''))) continue;
+    if (!invoice.id || invoice.voidedAt || !/^\d{4}-\d{2}$/.test(String(invoice.period || '')) || !/^\d{4}-\d{2}-\d{2}$/.test(String(invoice.dueDate || ''))) continue;
     const dueDate = String(invoice.dueDate);
     const dueTime = Date.parse(dueDate + 'T00:00:00Z');
     const todayTime = Date.parse(today + 'T00:00:00Z');
