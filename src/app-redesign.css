@@ -104,3 +104,26 @@ table td{color:#344d50}
 /* Compact K&B monogram replaces the generic signal glyph in the workspace identity. */
 .brand-monogram{display:grid;place-items:center;color:#173b3b;font-size:13px;font-weight:950;letter-spacing:-.08em;text-shadow:0 1px 0 rgba(255,255,255,.35)}
 @media(max-width:700px){.brand-monogram{font-size:12px}}
+
+
+/* Command-centre dashboard: a clear business overview before the operational data. */
+.kb-command-hero{position:relative;display:grid;grid-template-columns:minmax(0,1.6fr) minmax(210px,.7fr);gap:24px;overflow:hidden;margin:0 0 18px;padding:clamp(22px,3vw,34px);border:1px solid #285953;border-radius:23px;background:radial-gradient(ellipse at 85% 15%,rgba(67,151,129,.28),transparent 42%),linear-gradient(118deg,#123c3d 0%,#164d49 58%,#1d6256 100%);color:#f3fbf7;box-shadow:0 15px 34px rgba(17,66,61,.14)}
+.kb-command-hero:after{content:"";position:absolute;width:260px;height:260px;right:16%;top:-190px;border:1px solid rgba(226,190,122,.18);border-radius:50%;box-shadow:0 0 0 28px rgba(226,190,122,.035),0 0 0 58px rgba(226,190,122,.025);pointer-events:none}
+.kb-command-hero-copy,.kb-command-hero-aside{position:relative;z-index:1}
+.kb-command-kicker{display:inline-flex;align-items:center;gap:8px;color:#b9d9cc;font-size:9px;font-weight:850;letter-spacing:.16em}
+.kb-command-live-dot{width:7px;height:7px;border-radius:50%;background:#69dfa9;box-shadow:0 0 0 4px rgba(105,223,169,.13)}
+.kb-command-hero h2{max-width:620px;margin:14px 0 8px;color:#fff;font:800 clamp(24px,3.2vw,36px)/1.08 Manrope,Inter,system-ui,sans-serif;letter-spacing:-.045em}
+.kb-command-hero p{max-width:590px;margin:0;color:#c1d9d1;font-size:12px;line-height:1.65}
+.kb-command-actions{display:flex;flex-wrap:wrap;gap:9px;margin-top:20px}
+.kb-command-actions button{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:39px;padding:0 14px;border-radius:12px;font-size:11px;font-weight:800;transition:transform .16s,background .16s}
+.kb-command-actions button:hover{transform:translateY(-1px)}
+.kb-command-primary{background:#f0b75d;color:#233a35;box-shadow:0 5px 15px rgba(4,24,22,.16)}
+.kb-command-secondary{border:1px solid rgba(211,235,224,.28);background:rgba(255,255,255,.07);color:#f0f8f4}
+.kb-command-hero-aside{align-self:stretch;display:flex;flex-direction:column;justify-content:center;min-width:0;padding:16px 18px;border:1px solid rgba(215,239,227,.17);border-radius:17px;background:rgba(8,37,36,.2);backdrop-filter:blur(8px)}
+.kb-command-aside-label{margin-bottom:11px;color:#a9d0c2;font-size:8px;font-weight:850;letter-spacing:.15em}
+.kb-command-hero-aside strong{color:#fff;font-size:18px;letter-spacing:-.02em}
+.kb-command-hero-aside>span:not(.kb-command-aside-label){margin-top:3px;color:#c1d9d1;font-size:10px}
+.kb-command-aside-divider{height:1px;margin:15px 0;background:rgba(220,241,231,.17)}
+.kb-command-hero-aside small{color:#b7d2c8;font-size:10px;line-height:1.5}
+@media(max-width:700px){.kb-command-hero{grid-template-columns:1fr;gap:16px;margin-bottom:14px;padding:20px 17px;border-radius:19px}.kb-command-hero h2{font-size:26px}.kb-command-hero p{font-size:11px}.kb-command-hero-aside{display:grid;grid-template-columns:1fr auto;align-items:center;column-gap:12px;padding:12px 13px}.kb-command-aside-label{grid-column:1/-1;margin:0 0 5px}.kb-command-hero-aside strong{font-size:14px}.kb-command-hero-aside>span:not(.kb-command-aside-label){margin:0;text-align:right}.kb-command-aside-divider{display:none}.kb-command-hero-aside small{grid-column:1/-1;margin-top:5px}.kb-command-actions button{flex:1 1 auto}}
+[data-theme="dark"] .kb-command-hero{border-color:#376b62;box-shadow:0 15px 34px rgba(0,0,0,.2)}
