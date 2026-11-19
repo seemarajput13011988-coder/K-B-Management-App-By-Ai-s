@@ -41,6 +41,10 @@ export default function InventoryWorkspace({isAdmin,flash}:{isAdmin:boolean;flas
   const [movementReason,setMovementReason]=useState('');
   const [historyItem,setHistoryItem]=useState<InventoryItem|null>(null);
   const [history,setHistory]=useState<Movement[]>([]);
+  const [search,setSearch]=useState('');
+  const [categoryFilter,setCategoryFilter]=useState('all');
+  const [stockFilter,setStockFilter]=useState<'all'|'low'|'archived'|'active'>('all');
+  const [sortBy,setSortBy]=useState<'name'|'quantity'|'category'|'updated'>('name');
   const [form,setForm]=useState({name:'',sku:'',category:'',unit:'pcs',quantity:'0',minimumQuantity:'2',unitCost:'0',supplier:'',location:'',notes:'',assignedTo:'',active:true});
 
   async function load() {
@@ -84,12 +88,15 @@ export default function InventoryWorkspace({isAdmin,flash}:{isAdmin:boolean;flas
     catch(error) { flash(error instanceof Error?error.message:'Could not load stock history.'); }
   }
   const lowStock=items.filter(item=>item.active&&item.quantity<=item.minimumQuantity).length;
+  const categories=[...new Set(items.map(item=>item.category).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
+  const visibleItems=items.filter(item=>{const q=search.trim().toLowerCase();const textMatch=!q||[item.name,item.sku,item.category,item.supplier||'',item.location||'',item.assignedToName||''].join(' ').toLowerCase().includes(q);const categoryMatch=categoryFilter==='all'||item.category===categoryFilter;const stockMatch=stockFilter==='all'||(stockFilter==='low'?item.active&&item.quantity<=item.minimumQuantity:stockFilter==='archived'?!item.active:item.active);return textMatch&&categoryMatch&&stockMatch;}).sort((a,b)=>sortBy==='quantity'?a.quantity-b.quantity:sortBy==='category'?a.category.localeCompare(b.category)||a.name.localeCompare(b.name):sortBy==='updated'?(b.updatedAt||b.createdAt||'').localeCompare(a.updatedAt||a.createdAt||''):a.name.localeCompare(b.name));
 
   return <section className="panel table-panel">
     <div className="toolbar">
       <div><h2>Inventory & equipment</h2><p className="subtle">Track routers, cables, ONTs, tools and other business stock.</p></div>
       <div className="inventory-toolbar"><span className="inventory-low-count">{lowStock} low-stock</span><button className="btn secondary" onClick={()=>exportInventory(items,isAdmin)} disabled={!items.length}><Download size={14}/> Export CSV</button><button className="btn secondary" onClick={()=>exportInventoryPdf(items,isAdmin)} disabled={!items.length}><FileText size={14}/> Export PDF</button>{isAdmin&&<button className="btn primary" onClick={openCreate}>+ Add item</button>}</div>
     </div>
+    <div className="data-toolbar inventory-data-toolbar"><label className="data-search"><span>Search inventory</span><input type="search" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Name, SKU, category, supplier…"/></label><label>Category<select value={categoryFilter} onChange={e=>setCategoryFilter(e.target.value)}><option value="all">All categories</option>{categories.map(category=><option key={category}>{category}</option>)}</select></label><label>Stock status<select value={stockFilter} onChange={e=>setStockFilter(e.target.value as typeof stockFilter)}><option value="all">All items</option><option value="active">Active</option><option value="low">Low stock</option><option value="archived">Archived</option></select></label><label>Sort by<select value={sortBy} onChange={e=>setSortBy(e.target.value as typeof sortBy)}><option value="name">Name A–Z</option><option value="quantity">Quantity (low–high)</option><option value="category">Category</option><option value="updated">Recently updated</option></select></label><span className="data-result-count">{visibleItems.length} of {items.length} items</span></div>
     {showForm&&isAdmin&&<form className="inventory-form" onSubmit={saveItem}>
       <div className="inventory-form-title"><strong>{editing?'Edit inventory item':'Add inventory item'}</strong><button type="button" className="btn secondary compact" onClick={()=>setShowForm(false)}>Close</button></div>
       <label>Item name<input required maxLength={100} value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/></label>
@@ -117,13 +124,13 @@ export default function InventoryWorkspace({isAdmin,flash}:{isAdmin:boolean;flas
     </form>}
     {loading?<p className="ops-empty">Loading inventory…</p>:<div className="inventory-table-wrap"><table className="inventory-table">
       <thead><tr><th>Item</th><th>Category</th><th>In stock</th><th>Minimum</th>{isAdmin&&<th>Unit cost</th>}<th>Assigned to</th><th>Location</th><th>Actions</th></tr></thead>
-      <tbody>{items.map(item=><tr key={item.id} className={!item.active?'inventory-archived':''}>
+      <tbody>{visibleItems.map(item=><tr key={item.id} className={!item.active?'inventory-archived':''}>
         <td><strong>{item.name}</strong><small>{item.sku} · {item.unit}</small><small>Added {stamp(item.createdAt||'')}{item.updatedAt?' · Updated '+stamp(item.updatedAt):''}</small></td><td>{item.category}</td>
         <td><span className={'inventory-quantity '+(item.quantity<=item.minimumQuantity?'low':'')}>{item.quantity} {item.unit}</span></td>
         <td>{item.minimumQuantity} {item.unit}</td>{isAdmin&&<td>{money(item.unitCost||0)}</td>}<td>{item.assignedToName||'—'}</td><td>{item.location||'—'}</td>
         <td><div className="inventory-actions">{isAdmin&&<><button className="btn secondary compact" disabled={!item.active} onClick={()=>{setMovementItem(item);setMovementType('OUT');setMovementQuantity('1');}}>Issue</button><button className="btn secondary compact" disabled={!item.active} onClick={()=>{setMovementItem(item);setMovementType('IN');setMovementQuantity('1');}}>Receive</button><button className="btn secondary compact" onClick={()=>openEdit(item)}>Edit / assign</button></>}<button className="btn secondary compact" onClick={()=>void showHistory(item)}>History</button></div></td>
       </tr>)}</tbody>
-    </table>{!items.length&&<p className="ops-empty">No inventory items yet. {isAdmin?'Add routers, ONTs, cables and tools to begin stock tracking.':'Ask an administrator to add inventory items.'}</p>}</div>}
+    </table>{!visibleItems.length&&<p className="ops-empty">{items.length?'No inventory items match these filters.':isAdmin?'No inventory items yet. Add routers, ONTs, cables and tools to begin stock tracking.':'No inventory items yet. Ask an administrator to add inventory items.'}</p>}</div>}
     {historyItem&&<div className="inventory-history"><div className="inventory-form-title"><strong>Stock history · {historyItem.name}</strong><button className="btn secondary compact" onClick={()=>setHistoryItem(null)}>Close</button></div>{history.length?<div className="inventory-history-list">{history.map(entry=><div key={entry.id}><span className={'inventory-movement-badge '+entry.type.toLowerCase()}>{entry.type}</span><div><b>{entry.quantity} {historyItem.unit} · {entry.reason}</b><small>{entry.quantityBefore} → {entry.quantityAfter} · {entry.createdByName} · {stamp(entry.createdAt)}</small></div></div>)}</div>:<p className="ops-empty">No stock movements recorded yet.</p>}</div>}
     <style>{`
       .inventory-toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.inventory-low-count{padding:6px 9px;border-radius:99px;background:#fff4df;color:#875500;font-size:12px;font-weight:700}

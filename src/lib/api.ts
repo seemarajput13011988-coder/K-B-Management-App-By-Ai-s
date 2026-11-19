@@ -1,6 +1,6 @@
 import { CapacitorHttp } from '@capacitor/core';
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'https://kandb-management-nexus-api-zv7f.onrender.com';
+export const API_BASE = import.meta.env.VITE_API_BASE_URL || 'https://kandb-management-nexus-api-zv7f.onrender.com';
 type ApiResult<T = any> = { data: T };
 type LocalSession = { token: string; expiresAt: number; user: { id: string; userId: string; displayName: string; role: 'admin'|'staff'; active: boolean; canManageAdmins?: boolean } };
 function storedToken(): string {
@@ -96,7 +96,49 @@ export const api = {
   put: <T = any>(path: string, payload?: Record<string, unknown>) => request<T>(path, 'PUT', payload),
   delete: <T = any>(path: string) => request<T>(path, 'DELETE'),
 };
+async function waitForApiReady(): Promise<void> {
+  const deadline = Date.now() + 60000;
+  let lastStatus = 0;
+  while (Date.now() < deadline) {
+    // Newer API builds verify Firestore readiness. Older deployed builds expose
+    // only the Render health route, so retain a safe compatibility fallback.
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 12000);
+    try {
+      const response = await fetch(new URL('/api/_readycheck', API_BASE).toString(), {
+        method: 'GET',
+        cache: 'no-store',
+        signal: controller.signal,
+      });
+      lastStatus = response.status;
+      if (response.ok) return;
+      if (response.status === 503) {
+        throw new Error('K&B server is running, but Firestore is not ready. Please try again later.');
+      }
+      if (response.status === 401 || response.status === 404) {
+        const legacy = await fetch(new URL('/api/_healthcheck', API_BASE).toString(), {
+          method: 'GET',
+          cache: 'no-store',
+          signal: controller.signal,
+        });
+        lastStatus = legacy.status;
+        if (legacy.ok) return;
+      }
+    } catch (error) {
+      if (error instanceof Error && error.message.startsWith('K&B server is running')) throw error;
+      // A sleeping Render service or a temporary network interruption gets another attempt.
+    } finally {
+      window.clearTimeout(timeout);
+    }
+    await new Promise(resolve => window.setTimeout(resolve, 2500));
+  }
+  throw new Error('K&B server did not become ready within 60 seconds (last HTTP status ' + lastStatus + '). Please wait and try signing in again.');
+}
+
 export async function signInAppUser(userId: string, password: string, role: 'admin'|'staff') {
+  // Render's free service can sleep when idle. Wait for its health endpoint
+  // before sending credentials so a cold start is not mistaken for bad login.
+  await waitForApiReady();
   const url = new URL('/api/auth/login', API_BASE);
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), 45000);

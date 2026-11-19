@@ -2178,3 +2178,52 @@ td,th{padding:12px 13px}
 .workspace-loading{min-height:220px;display:grid;place-content:center;justify-items:center;gap:12px;color:var(--kb-muted,#718096);font-size:12px}
 .chart-track i,.status-chart-row i,.finance-chart-bar{transition:height .55s cubic-bezier(.2,.75,.2,1),width .55s cubic-bezier(.2,.75,.2,1)}
 @media(prefers-reduced-motion:reduce){.chart-track i,.status-chart-row i,.finance-chart-bar{transition:none!important}}
+
+
+/* K&B secure sign-in refresh: clear role selection, accessible controls and mobile-first sizing. */
+.auth-shell{min-height:100svh;display:grid;grid-template-columns:minmax(280px,.88fr) minmax(0,1.12fr);background:#f3f6fb;color:#17243a;overflow-x:hidden}
+.auth-side{position:relative;isolation:isolate;display:flex;flex-direction:column;justify-content:space-between;gap:40px;min-height:100svh;padding:clamp(28px,5vw,72px);overflow:hidden;background:linear-gradient(145deg,#0e2038 0%,#173e66 58%,#1e5d8d 100%);color:#f7fbff}
+.auth-side:before,.auth-side:after{content:"";position:absolute;z-index:-1;border:1px solid #ffffff18;border-radius:50%;pointer-events:none}
+.auth-side:before{width:520px;height:520px;right:-240px;top:12%;box-shadow:0 0 0 48px #ffffff08,0 0 0 100px #ffffff05}
+.auth-side:after{width:260px;height:260px;left:-130px;bottom:-90px;background:radial-gradient(circle,#70b7ed20,transparent 70%)}
+.auth-brand{display:flex;align-items:center;gap:13px;font-size:14px;letter-spacing:.08em}
+.brand-mark{width:46px;height:46px;display:grid;place-items:center;border:1px solid #ffffff42;border-radius:14px;background:#ffffff12;color:#fff}
+.brand-mark svg{width:23px;height:23px}
+.auth-promo{max-width:540px;margin:auto 0}
+.auth-kicker{display:inline-flex;align-items:center;gap:8px;color:#a9d4fa;font-size:10px;font-weight:800;letter-spacing:.2em}
+.auth-promo h1{max-width:520px;margin:18px 0 14px;color:#fff;font:800 clamp(34px,4.2vw,58px)/1.08 Manrope,'DM Sans',sans-serif;letter-spacing:-1.8px}
+.auth-promo p{max-width:430px;margin:0;color:#c6d8e9;font-size:15px;line-height:1.8}
+.auth-main{position:relative;min-width:0;min-height:100svh;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:18px;padding:clamp(20px,4vw,56px);background:radial-gradient(circle at 90% 8%,#dceafb 0,transparent 32%),#f5f7fb}
+.auth-card{width:min(460px,100%);max-width:460px;display:grid;gap:13px;padding:clamp(22px,3vw,36px);border:1px solid #e3eaf3;border-radius:22px;background:#fff;box-shadow:0 22px 65px #1c355012}
+.auth-card h2{margin:2px 0 0;color:#162941;font:800 25px/1.2 Manrope,'DM Sans',sans-serif;letter-spacing:-.6px}
+.auth-card>p{margin:0;color:#718198;font-size:13px;line-height:1.6}
+.auth-icon{width:48px;height:48px;display:grid;place-items:center;border-radius:15px;background:#eaf2ff;color:#2457a6}
+.auth-icon svg{width:23px;height:23px}
+.auth-field{display:grid;gap:7px;margin-top:5px;color:#44556c;font-size:12px;font-weight:700}
+.auth-field input{width:100%;min-width:0;min-height:46px;padding:10px 13px;border:1px solid #dce5f0;border-radius:11px;background:#fbfcfe;color:#17243a;font:inherit;font-size:14px;outline:none;transition:border-color .15s,box-shadow .15s}
+.auth-field input:focus{border-color:#4c83c7;box-shadow:0 0 0 3px #3b82f61a}
+.auth-submit{width:100%;min-height:48px;justify-content:center;border:0;border-radius:11px;background:linear-gradient(110deg,#2457a6,#1d6da0);color:#fff;font-size:13px;font-weight:800;box-shadow:0 7px 18px #2457a626}
+.auth-submit:disabled{opacity:.65;cursor:wait}
+.auth-link{justify-self:center;border:0;background:transparent;color:#2457a6;font-size:12px;font-weight:700;padding:8px 10px;cursor:pointer}
+.auth-security{display:flex;align-items:flex-start;justify-content:center;gap:7px;padding-top:12px;border-top:1px solid #edf1f6;color:#8190a4;font-size:10px;line-height:1.5;text-align:center}
+.auth-security svg{flex:none;margin-top:1px}
+.auth-message{padding:11px 12px;border:1px solid #f3caca;border-radius:10px;background:#fff5f5;color:#a32c2c;font-size:12px;line-height:1.5}
+.registration-status{display:grid;gap:9px;padding:14px;border:1px solid #dce8f5;border-radius:12px;background:#f7faff}
+.registration-status>strong{color:#243b59;font-size:12px}
+.registration-status>small{color:#77869a;font-size:10px;line-height:1.5}
+.registration-status-steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px}
+.registration-status-steps span{padding:7px 4px;border-radius:7px;background:#edf1f6;color:#7b899b;font-size:9px;font-weight:800;text-align:center}
+.registration-status-steps span.done{background:#e8f7ef;color:#21784b}
+.registration-status-steps span.current{background:#fff2df;color:#a45e17}
+.registration-status-steps span.rejected{background:#fff0f0;color:#ad3535}
+.staff-registration-form{display:grid;gap:12px;padding:14px;border:1px solid #e4eaf2;border-radius:13px;background:#fbfcfe}
+.staff-registration-form>strong{color:#24364e;font-size:13px}
+@media(max-width:850px){.auth-shell{grid-template-columns:minmax(0,1fr)}.auth-side{display:none}.auth-main{min-height:100svh;padding:24px 16px 32px}.auth-card{width:min(460px,100%)}}
+@media(max-width:480px){.auth-main{padding:14px 12px calc(18px + env(safe-area-inset-bottom))}.auth-card{padding:22px 18px;border-radius:18px}.auth-card h2{font-size:22px}.login-role-card{min-height:100px;padding:13px}.auth-security{font-size:9px}}
+@media(max-width:350px){.auth-card{padding:18px 14px}.login-role-card{grid-template-columns:34px minmax(0,1fr);column-gap:9px}.login-role-icon{width:34px;height:34px}}
+/* Shared overflow guards for narrow Android screens and browser zoom. */
+:where(.shell,.main,.content,.panel,.toolbar,.page-heading,.workspace-loading){min-width:0;max-width:100%}
+:where(input,select,textarea,button){max-width:100%}
+:where(img,video,iframe,canvas){max-width:100%}
+.content :where(.table-wrap,.finance-table-wrap,.inventory-table-wrap,.subscription-table-wrap){max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}
+@media(max-width:360px){.content{padding-left:8px;padding-right:8px}.content .panel,.content .finance-panel,.content .ops-panel{padding:12px}.content .page-heading h1{font-size:20px}.content .btn{min-height:38px;padding-inline:10px}}

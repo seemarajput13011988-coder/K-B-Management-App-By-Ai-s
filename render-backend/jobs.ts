@@ -202,7 +202,7 @@ export async function deliverPendingPushNotifications() {
     }
     const tokenDocs = tokenSnap.docs;
     const previouslyDelivered = new Set(Array.isArray(notification.pushDeliveredTokenIds) ? notification.pushDeliveredTokenIds.map(String) : []);
-    const eligibleDocs = tokenDocs.filter(doc => !previouslyDelivered.has(doc.id) && String(doc.data().token || '').trim());
+    const eligibleDocs = tokenDocs.filter(doc => doc.data().active !== false && !previouslyDelivered.has(doc.id) && String(doc.data().token || '').trim());
     if (!eligibleDocs.length) {
       await notificationRef.update({ pushDeliveredAt: now(), pushSuccessCount: Number(notification.pushSuccessCount || 0), pushFailureCount: 0 });
       continue;
@@ -219,7 +219,7 @@ export async function deliverPendingPushNotifications() {
       const tokenDoc = eligibleDocs[index];
       if (response.success) completedTokenIds.push(tokenDoc.id);
       else if (['messaging/registration-token-not-registered', 'messaging/invalid-registration-token'].includes(String(response.error?.code || ''))) {
-        invalid.push(tokenDoc.ref.delete());
+        invalid.push(tokenDoc.ref.set({ active: false, invalidAt: now(), invalidReason: 'invalid-registration-token' }, { merge: true }));
       }
     });
     if (invalid.length) await Promise.all(invalid);

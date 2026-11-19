@@ -5,7 +5,7 @@ import { MapPin, RefreshCw, Save, ExternalLink, LocateFixed } from 'lucide-react
 type StaffMember = { id: string; displayName: string; active: boolean };
 type LiveLocation = {
   staffId: string; staffName: string; latitude: number; longitude: number;
-  accuracy: number; capturedAt: string; source?: string;
+  accuracy: number; capturedAt: string; receivedAt?: string; source?: string;
 };
 type SavedLocation = {
   id: string; staffId: string; staffName: string; latitude: number; longitude: number;
@@ -19,7 +19,6 @@ const hasValidCoordinates=(lat:number,lng:number)=>Number.isFinite(lat)&&Number.
 export default function GpsTrackingWorkspace({flash}:{flash:(message:string)=>void}) {
   const [staff,setStaff]=useState<StaffMember[]>([]);
   const [onShiftIds,setOnShiftIds]=useState<string[]>([]);
-  const [requestingStaffId,setRequestingStaffId]=useState('');
   const [saved,setSaved]=useState<SavedLocation[]>([]);
   const [liveLocation,setLiveLocation]=useState<LiveLocation|null>(null);
   const [selectedStaff,setSelectedStaff]=useState<StaffMember|null>(null);
@@ -73,17 +72,6 @@ export default function GpsTrackingWorkspace({flash}:{flash:(message:string)=>vo
   },[]);
   useEffect(()=>subscribeToApiChanges(()=>{void load();}),[]);
 
-  async function requestOneTimeLocation(member:StaffMember) {
-    setRequestingStaffId(member.id);
-    try {
-      await api.post('/api/location-requests',{staffId:member.id});
-      setSelectedStaff(member);
-      flash('One-time GPS request sent to '+member.displayName+'. They must respond in the app during their active shift.');
-    } catch(error) {
-      flash(error instanceof Error?error.message:'Could not send the one-time location request.');
-    } finally { setRequestingStaffId(''); }
-  }
-
   async function getLiveLocation(member:StaffMember) {
     setBusyStaffId(member.id);
     setSelectedStaff(member);
@@ -91,7 +79,40 @@ export default function GpsTrackingWorkspace({flash}:{flash:(message:string)=>vo
     setLocationFresh(false);
     setLocationAge(null);
     try {
-      const result=await api.get<{item?:LiveLocation|null;isFresh?:boolean;ageSeconds?:number|null;status?:string;deadlineAt?:string;cancelled?:boolean}>('/api/staff/'+encodeURIComponent(member.id)+'/live-location');
+      const endpoint='/api/staff/'+encodeURIComponent(member.id)+'/live-location';
+      let result=await api.get<{item?:LiveLocation|null;isFresh?:boolean;ageSeconds?:number|null;status?:string;deadlineAt?:string;cancelled?:boolean}>(endpoint);
+      // A deliberate admin click always requests a new phone reading, even if
+      // the cached point is recent. The map must not substitute a saved point
+      // for the location response requested by the administrator.
+      if (onShiftIds.includes(member.id)) {
+        const requestedAt = Date.now();
+        const requestResult=await api.post<{id:string}>('/api/location-requests',{staffId:member.id});
+        flash('Fresh GPS requested from '+member.displayName+'. Waiting for a new phone reading…');
+        let captured=false;
+        for(let attempt=0;attempt<18;attempt++){
+          await new Promise(resolve=>window.setTimeout(resolve,2500));
+          const [requestStatus, latestLocation]=await Promise.all([
+            api.get<{item?:{status?:string;responseMessage?:string}}>('/api/location-requests/'+encodeURIComponent(requestResult.data.id)),
+            api.get(endpoint),
+          ]);
+          result=latestLocation;
+          const receivedAt = Date.parse(String(latestLocation.data.item?.receivedAt || ''));
+          // The Android foreground service uploads continuously even if its app
+          // screen is swiped away. Do not depend only on the visible React poller.
+          if(Number.isFinite(receivedAt) && receivedAt >= requestedAt - 1000){
+            captured=true;
+            break;
+          }
+          if(String(requestStatus.data.item?.status||'')==='captured'){
+            captured=true;
+            break;
+          }
+          if(['unavailable','expired'].includes(String(requestStatus.data.item?.status||'')) && attempt>=5) break;
+        }
+        if(!captured){
+          flash('No new GPS upload arrived yet. The map is showing the last saved point with its age, not calling it live.');
+        }
+      }
       const status=result.data.status || (result.data.isFresh ? 'live' : 'stale');
       setLocationStatus(status);
       setGpsDeadline(result.data.deadlineAt || null);
@@ -101,10 +122,11 @@ export default function GpsTrackingWorkspace({flash}:{flash:(message:string)=>vo
       setLocationAge(result.data.ageSeconds ?? null);
       if(status==='gps-off') flash('GPS is OFF on '+member.displayName+'’s phone.');
       else if(status==='shift-not-active') flash(member.displayName+' does not have an active shift.');
-      else if(status==='location-unavailable') flash('Location is not available from '+member.displayName+'’s phone yet.');
-      else flash(result.data.isFresh?'Latest live location loaded for '+member.displayName+'.':'Showing the last shared location for '+member.displayName+'.');
+      else if(status==='location-unavailable') flash('No location has been received from '+member.displayName+' yet.');
+      else if(result.data.isFresh) flash('Fresh GPS location received. Live map refresh is active for '+member.displayName+'.');
+      else flash('Showing the last known location. Its age is displayed; it is not being labelled as live.');
     }catch(error){
-      flash(error instanceof Error?error.message:'No live location is available. The staff app must be open with location permission enabled.');
+      flash(error instanceof Error?error.message:'No live location is available. Check the staff app and location permission.');
     }finally{setBusyStaffId('');}
   }
 
@@ -149,7 +171,7 @@ export default function GpsTrackingWorkspace({flash}:{flash:(message:string)=>vo
 
   return <section className="panel gps-workspace">
     <div className="toolbar">
-      <div><h2>GPS Tracking</h2><p className="subtle">Select a staff member to load their latest shared live location.</p></div>
+      <div><h2>GPS Tracking</h2><p className="subtle">Choose a staff member to request a fresh GPS reading and monitor updates during their active shift.</p></div>
       <button className="btn secondary" onClick={()=>void load()} disabled={loading}><RefreshCw size={15}/> Refresh staff</button>
     </div>
     <div className="gps-tabs">
@@ -157,12 +179,12 @@ export default function GpsTrackingWorkspace({flash}:{flash:(message:string)=>vo
       <button className={section==='saved'?'active':''} onClick={()=>setSection('saved')}><Save size={15}/> Saved Locations <span>{saved.length}</span></button>
     </div>
     {section==='live' ? <>
-      <div className="gps-notice"><MapPin size={17}/><span>Background GPS updates are available only during an active shift. You can also request a one-time GPS point; staff must respond in the app, and requests are limited to active shifts.</span></div>
+      <div className="gps-notice"><MapPin size={17}/><span>Live GPS is available only during an active shift. On Android, the visible foreground location service uploads automatically while the shift is active, including when the app screen is in the background. The browser version can update location only while its page remains open. If no fresh point arrives, this screen shows the last known point as stale rather than calling it live.</span></div>
       {loading?<p className="ops-empty">Loading staff…</p>:<div className="gps-staff-list">
         {staff.map(member=><article className="gps-staff-row" key={member.id}>
           <div className="gps-avatar"><MapPin size={17}/></div>
           <div className="gps-staff-name"><strong>{member.displayName}</strong><small>Staff account</small></div>
-          <div className="gps-row-actions"><button className="btn secondary compact" disabled={!!busyStaffId||requestingStaffId===member.id||!onShiftIds.includes(member.id)} title={onShiftIds.includes(member.id)?'Ask staff to share one current GPS point':'Available only while this staff member is on an active shift'} onClick={()=>void requestOneTimeLocation(member)}>{requestingStaffId===member.id?'Sending…':'Request GPS'}</button><button className="btn primary compact" disabled={!!busyStaffId} onClick={()=>void getLiveLocation(member)}>{busyStaffId===member.id?'Fetching…':'View Location'}</button></div>
+          <div className="gps-row-actions"><button className="btn primary compact" disabled={!!busyStaffId||!onShiftIds.includes(member.id)} onClick={()=>void getLiveLocation(member)}>{busyStaffId===member.id?'Requesting fresh GPS…':'Get Live Location'}</button></div>
         </article>)}
         {!staff.length&&<p className="ops-empty">No active staff accounts found.</p>}
       </div>}
