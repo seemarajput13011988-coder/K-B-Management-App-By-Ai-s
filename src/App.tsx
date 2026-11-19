@@ -249,6 +249,20 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   const [notice, setNotice] = useState('');
   const [mobileNav, setMobileNav] = useState(false);
   const [showMoreNav, setShowMoreNav] = useState(false);
+
+  useEffect(() => {
+    if (!mobileNav) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setMobileNav(false);
+    };
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    window.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [mobileNav]);
   const [retentionItems, setRetentionItems] = useState<RetentionReviewItem[]>([]);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
@@ -856,7 +870,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
 
   return (
     <div className="shell">
-      <aside className={'sidebar ' + (mobileNav ? 'mobile-open' : '')}>
+      <aside id="kb-primary-navigation" className={'sidebar ' + (mobileNav ? 'mobile-open' : '')} aria-label="K&B workspace navigation">
         <div className="brand">
           <div className="brand-mark brand-monogram" aria-label="K&B">K&amp;B</div>
           <div>
@@ -865,7 +879,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
             </strong>
             <small>Operations workspace</small>
           </div>
-          <button className="mobile-close" onClick={() => setMobileNav(false)}>
+          <button type="button" className="mobile-close" aria-label="Close navigation" onClick={() => setMobileNav(false)}>
             <X size={18} />
           </button>
         </div>
@@ -929,11 +943,11 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
         </div>
       </aside>
       {mobileNav && (
-        <div className="scrim" onClick={() => setMobileNav(false)} />
+        <button type="button" className="scrim" aria-label="Close navigation menu" onClick={() => setMobileNav(false)} />
       )}
       <main className="main">
         <header className="topbar">
-          <button className="hamburger" onClick={() => setMobileNav(true)}>
+          <button type="button" className="hamburger" aria-label="Open navigation menu" aria-controls="kb-primary-navigation" aria-expanded={mobileNav} onClick={() => setMobileNav(true)}>
             <Menu />
           </button>
           <div className="crumb">
