@@ -1,19 +1,26 @@
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { api } from './lib/api';
-import { Download } from 'lucide-react';
+import { Download, FileText, Trash2 } from 'lucide-react';
+import { exportCsvFile, exportPdfReport } from './lib/file-export';
 
 type Customer={id:string;name:string;phone?:string;address:string};
 type Staff={id:string;displayName:string;active:boolean};
-type Installation={id:string;customerId:string;customerName:string;phone?:string;address:string;type:string;scheduledDate:string;assignedTo:string;assignedToName:string;status:'Scheduled'|'In progress'|'Completed'|'Cancelled';notes:string;createdAt:string};
+type Installation={id:string;customerId:string;customerName:string;phone?:string;address:string;type:string;scheduledDate:string;assignedTo:string;assignedToName:string;status:'Scheduled'|'In progress'|'Completed'|'Cancelled';notes:string;createdAt:string;updatedAt?:string;}
 const dateToday=()=>{const d=new Date();return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-');};
 const prettyDate=(value:string)=>value?new Date(value+'T12:00:00').toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}):'—';
-function exportInstallations(items:Installation[]){
+async function exportInstallations(items:Installation[]){
   const rows=[['Customer','Phone','Address','Job type','Scheduled date','Assigned staff','Status','Notes'],
     ...items.map(item=>[item.customerName,item.phone||'',item.address,item.type,item.scheduledDate,item.assignedToName,item.status,item.notes||''])];
-  const csv='\uFEFF'+rows.map(row=>row.map(value=>'"'+String(value??'').replace(/"/g,'""')+'"').join(',')).join('\r\n');
-  const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
-  const link=document.createElement('a');link.href=url;link.download='kb-installations-'+dateToday()+'.csv';link.click();URL.revokeObjectURL(url);
+  try { await exportCsvFile('kb-installations-'+dateToday()+'.csv',rows); }
+  catch(error) { window.alert(error instanceof Error?error.message:'Could not export installation jobs.'); }
+}
+
+async function exportInstallationsPdf(items:Installation[]){
+  const rows=[['Customer','Phone','Address','Job type','Scheduled date','Assigned staff','Status','Notes'],
+    ...items.map(item=>[item.customerName,item.phone||'',item.address,item.type,item.scheduledDate,item.assignedToName,item.status,item.notes||''])];
+  try { await exportPdfReport('kb-installations-'+dateToday()+'.pdf','Installation jobs',rows); }
+  catch(error) { window.alert(error instanceof Error?error.message:'Could not create installation PDF.'); }
 }
 
 export default function InstallationsWorkspace({customers,staff,isAdmin,flash}:{customers:Customer[];staff:Staff[];isAdmin:boolean;flash:(message:string)=>void}) {
@@ -29,6 +36,8 @@ export default function InstallationsWorkspace({customers,staff,isAdmin,flash}:{
   const [scheduledDate,setScheduledDate]=useState(dateToday());
   const [address,setAddress]=useState(selectedCustomer?.address||'');
   const [notes,setNotes]=useState('');
+  const [search,setSearch]=useState('');
+  const filteredItems=items.filter(item=>[item.customerName,item.phone||'',item.address,item.type,item.assignedToName,item.status].join(' ').toLowerCase().includes(search.toLowerCase()));
 
   async function load(){setLoading(true);try{const result=await api.get<{items:Installation[]}>('/api/installations');setItems(result.data.items||[]);}catch(error){flash(error instanceof Error?error.message:'Could not load installation jobs.');}finally{setLoading(false);}}
   useEffect(()=>{void load();},[]);
@@ -39,9 +48,16 @@ export default function InstallationsWorkspace({customers,staff,isAdmin,flash}:{
   function openEdit(item:Installation){setEditingJob(item);setCustomerId(item.customerId);setAssignedTo(item.assignedTo);setType(item.type);setScheduledDate(item.scheduledDate);setAddress(item.address);setNotes(item.notes||'');setShowForm(true);}
   async function createJob(event:FormEvent){event.preventDefault();if(!customerId||!assignedTo){flash('Choose a customer and staff member.');return;}setSaving(true);try{if(editingJob){await api.put('/api/installations/'+editingJob.id,{status:editingJob.status,assignedTo,scheduledDate,address,notes});}else{await api.post('/api/installations',{customerId,assignedTo,type,scheduledDate,address,notes});}setShowForm(false);setEditingJob(null);setNotes('');await load();flash(editingJob?'Installation job updated.':'Installation job assigned.');}catch(error){flash(error instanceof Error?error.message:'Could not save installation job.');}finally{setSaving(false);}}
   async function updateJob(item:Installation,status:Installation['status']){try{await api.put('/api/installations/'+item.id,{status,notes:item.notes||''});await load();flash('Installation status updated.');}catch(error){flash(error instanceof Error?error.message:'Could not update installation.');}}
+  async function deleteJob(item:Installation){
+    if(!window.confirm('Delete installation job for '+item.customerName+'? This cannot be undone.'))return;
+    setSaving(true);
+    try{await api.delete('/api/installations/'+item.id);await load();flash('Installation job deleted.');}
+    catch(error){flash(error instanceof Error?error.message:'Could not delete installation job.');}
+    finally{setSaving(false);}
+  }
 
   return <section className="panel table-panel">
-    <div className="toolbar"><div><h2>Installation jobs</h2><p className="subtle">Schedule new connections, upgrades, repairs and relocations.</p></div><div className="installation-toolbar-actions"><button className="btn secondary" disabled={!items.length} onClick={()=>exportInstallations(items)}><Download size={14}/> Export CSV</button>{isAdmin&&<button className="btn primary" onClick={()=>{setEditingJob(null);setShowForm(value=>!value);}}>+ Schedule installation</button>}</div></div>
+    <div className="toolbar"><div><h2>Installation jobs</h2><p className="subtle">Schedule new connections, upgrades, repairs and relocations.</p></div><div className="installation-toolbar-actions"><div className="searchbox"><input aria-label="Search installation jobs" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search customer, staff, address or status..."/></div><button className="btn secondary" disabled={!items.length} onClick={()=>exportInstallations(items)}><Download size={14}/> Export CSV</button><button className="btn secondary" disabled={!items.length} onClick={()=>exportInstallationsPdf(items)}><FileText size={14}/> Export PDF</button>{isAdmin&&<button className="btn primary" onClick={()=>{setEditingJob(null);setShowForm(value=>!value);}}>+ Schedule installation</button>}</div></div>
     {showForm&&isAdmin&&<form className="installation-form" onSubmit={createJob}><strong className="installation-form-heading">{editingJob?'Edit installation job':'Schedule installation'}</strong>
       {!editingJob&&<label>Customer<select required value={customerId} onChange={e=>setCustomerId(e.target.value)}>{customers.map(item=><option key={item.id} value={item.id}>{item.name} · {item.phone||'Customer'}</option>)}</select></label>}
       <label>Assigned staff<select required value={assignedTo} onChange={e=>setAssignedTo(e.target.value)}>{staff.filter(item=>item.active).map(item=><option key={item.id} value={item.id}>{item.displayName}</option>)}</select></label>
@@ -52,13 +68,13 @@ export default function InstallationsWorkspace({customers,staff,isAdmin,flash}:{
       <div className="installation-form-actions"><button type="button" className="btn secondary" onClick={()=>setShowForm(false)}>Cancel</button><button className="btn primary" disabled={saving}>{saving?'Saving…':'Assign job'}</button></div>
     </form>}
     {loading?<p className="ops-empty">Loading installation jobs…</p>:<div className="installation-list">
-      {items.map(item=><article className="installation-card" key={item.id}>
+      {filteredItems.map(item=><article className="installation-card" key={item.id}>
         <div className="installation-main"><div><span className="installation-type">{item.type}</span><h3>{item.customerName}</h3><p>{item.address}</p><small>{item.phone||''}</small></div><div className="installation-date"><b>{prettyDate(item.scheduledDate)}</b><small>Scheduled date</small></div></div>
-        <div className="installation-meta"><span>Assigned to: <b>{item.assignedToName||'Unassigned'}</b></span><span>Created: {prettyDate(String(item.createdAt||'').slice(0,10))}</span></div>
+        <div className="installation-meta"><span>Assigned to: <b>{item.assignedToName||'Unassigned'}</b></span><span>Created: {item.createdAt?new Date(item.createdAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'}):'—'}{item.updatedAt?' · Updated: '+new Date(item.updatedAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'}):''}</span></div>
         {item.notes&&<p className="installation-notes">{item.notes}</p>}
-        <div className="installation-footer"><span className={'installation-status '+item.status.toLowerCase().replace(' ','-')}>{item.status}</span>{isAdmin&&<button className="btn secondary compact" onClick={()=>openEdit(item)}>Edit job</button>}<label>Update status<select aria-label={'Update status for '+item.customerName} value={item.status} onChange={e=>void updateJob(item,e.target.value as Installation['status'])}><option>Scheduled</option><option>In progress</option><option>Completed</option>{isAdmin&&<option>Cancelled</option>}</select></label></div>
+        <div className="installation-footer"><span className={'installation-status '+item.status.toLowerCase().replace(' ','-')}>{item.status}</span>{isAdmin&&<button className="btn secondary compact" onClick={()=>openEdit(item)}>Edit job</button>}<button className="btn danger compact" disabled={saving} onClick={()=>void deleteJob(item)}><Trash2 size={13}/> Delete job</button><label>Update status<select aria-label={'Update status for '+item.customerName} value={item.status} onChange={e=>void updateJob(item,e.target.value as Installation['status'])}><option>Scheduled</option><option>In progress</option><option>Completed</option>{isAdmin&&<option>Cancelled</option>}</select></label></div>
       </article>)}
-      {!items.length&&<p className="ops-empty">{isAdmin?'No installation jobs yet. Schedule a new connection, upgrade or repair.':'No installation jobs are assigned to you yet.'}</p>}
+      {!filteredItems.length&&<p className="ops-empty">{items.length?'No installation jobs match your search.':isAdmin?'No installation jobs yet. Schedule a new connection, upgrade or repair.':'No installation jobs are assigned to you yet.'}</p>}
     </div>}
     <style>{`
       .installation-toolbar-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.installation-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;padding:16px;margin:12px 0 18px;border:1px solid var(--border,#dbe2ec);border-radius:14px;background:var(--surface-soft,#f7f9fc)}

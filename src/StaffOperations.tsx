@@ -1,21 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
-import { Capacitor, registerPlugin } from '@capacitor/core';
-import { LocalNotifications } from '@capacitor/local-notifications';
-import type { BackgroundGeolocationPlugin } from '@capacitor-community/background-geolocation';
-import { api as client, nativeApiPost } from './lib/api';
-import LiveStaffMap from './LiveStaffMap';
-
-const BackgroundGeolocation = registerPlugin<BackgroundGeolocationPlugin>('BackgroundGeolocation');
+import { api as client } from './lib/api';
+import { DateRangeFilter, dateRangeBounds, initialDateRange, isInDateRange, sortReportRows } from './components/DateRangeFilter';
+import type { DateRange } from './components/DateRangeFilter';
+import { exportCsvFile } from './lib/file-export';
 
 type Session = { token: string; user: { id: string; displayName: string; role: 'admin' | 'staff'; isSuperAdmin?: boolean } };
-type Attendance = { id: string; userId: string; displayName: string; workDate: string; checkInAt: string; checkOutAt?: string; dayType?: 'Full day' | 'Half day'; correctionReason?: string; gpsRestartRequired?: boolean; gpsCancelled?: boolean; status?: string };
+type Attendance = { id: string; userId: string; displayName: string; workDate: string; checkInAt: string; checkOutAt?: string; dayType?: 'Full day' | 'Half day' | 'Absent'; correctionReason?: string; gpsRestartRequired?: boolean; gpsCancelled?: boolean; status?: string };
 type HolidayRequest = { id: string; userId: string; displayName: string; startDate: string; endDate: string; reason: string; status: 'pending'|'approved'|'rejected'; createdAt: string };
 type StaffRegistrationRequest = { id: string; userId: string; displayName: string; phone?: string; reason?: string; status: 'pending'|'approved'|'rejected'; createdAt: string };
 type Visit = { id: string; customerName: string; purpose: string; notes: string; visitedAt: string; staffName: string };
 type Announcement = { id: string; title: string; message: string; createdAt: string; createdByName: string };
 type Message = { id: string; senderName: string; recipientName: string; message: string; createdAt: string };
-type Location = { userId: string; displayName: string; latitude: number; longitude: number; accuracy: number; capturedAt: string };
 type Payment = { id: string; recordedBy?: string; recordedByName?: string; amount: number; paidAt: string };
 type ChatGroup = { id: string; name: string; memberIds: string[]; memberNames: string[] };
 type GroupMessage = { id: string; groupId: string; senderId: string; senderName: string; message: string; createdAt: string };
@@ -34,19 +30,18 @@ function AttendanceCalendar({ staffId, staffName, records, holidays }: { staffId
   const mondayOffset = (new Date(year, monthIndex, 1).getDay() + 6) % 7;
   const today = localDay();
   const dateKey = (day: number) => [year, String(monthIndex + 1).padStart(2,'0'), String(day).padStart(2,'0')].join('-');
-  const recordsByDate = new Map(records.filter(item => item.userId === staffId).map(item => [item.workDate, item]));
+  const recordsByDate = new Map(records.filter(item => item.userId === staffId).sort((a, b) => a.checkInAt.localeCompare(b.checkInAt)).map(item => [item.workDate, item]));
   const holidayOn = (date: string) => holidays.some(item => item.userId === staffId && ['pending','approved'].includes(item.status) && item.startDate <= date && item.endDate >= date);
   const statusFor = (day: number) => {
     const date = dateKey(day), weekday = new Date(year, monthIndex, day).getDay(), record = recordsByDate.get(date);
     if (holidayOn(date)) return 'holiday';
-    if (record) return record.gpsCancelled || String(record.status || '').toLowerCase().includes('cancelled') ? 'absent' : record.dayType === 'Half day' ? 'half' : 'full';
+    if (record) return record.dayType === 'Absent' || record.gpsCancelled || String(record.status || '').toLowerCase().includes('absent') || String(record.status || '').toLowerCase().includes('cancelled') ? 'absent' : record.dayType === 'Half day' ? 'half' : 'full';
     if (weekday === 0) return 'off';
     if (date < today) return 'absent';
     return date === today ? 'today' : 'future';
   };
-  const label = month.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
   return <div className="attendance-calendar-card">
-    <div className="attendance-calendar-head"><div><b>{staffName}</b><small>Attendance calendar</small></div><div className="attendance-calendar-nav"><button type="button" aria-label="Previous month" onClick={() => setMonth(new Date(year, monthIndex - 1, 1))}>‹</button><strong>{label}</strong><button type="button" aria-label="Next month" onClick={() => setMonth(new Date(year, monthIndex + 1, 1))}>›</button></div></div>
+    <div className="attendance-calendar-head"><div><b>{staffName}</b><small>Attendance calendar</small></div><div className="attendance-calendar-nav"><button type="button" aria-label="Previous month" onClick={() => setMonth(new Date(year, monthIndex - 1, 1))}>‹</button><input className="attendance-month-picker" type="month" aria-label={'Choose month for ' + staffName} value={year + '-' + String(monthIndex + 1).padStart(2,'0')} onChange={event=>{if(!event.target.value)return;const [nextYear,nextMonth]=event.target.value.split('-').map(Number);setMonth(new Date(nextYear,nextMonth-1,1));}}/><button type="button" aria-label="Next month" onClick={() => setMonth(new Date(year, monthIndex + 1, 1))}>›</button></div></div>
     <div className="attendance-calendar-grid">{['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(day => <span className="attendance-calendar-weekday" key={day}>{day}</span>)}
       {Array.from({length:mondayOffset},(_,i)=><span className="attendance-calendar-blank" key={'blank-'+i}/>)}
       {Array.from({length:daysInMonth},(_,i)=>{const day=i+1,status=statusFor(day);return <span key={day} className={'attendance-calendar-day '+status} title={dateKey(day)+' · '+status.replace('-',' ')}>{day}</span>;})}
@@ -55,23 +50,24 @@ function AttendanceCalendar({ staffId, staffName, records, holidays }: { staffId
   </div>;
 }
 
-export default function StaffOperations({ session, customers, flash, compact = false }: { session: Session; customers: Array<{ id: string; name: string }>; flash: (message: string) => void; compact?: boolean }) {
+export default function StaffOperations({ session, customers, flash, compact = false, onDataChanged }: { session: Session; customers: Array<{ id: string; name: string; assignedTo?: string }>; flash: (message: string) => void; compact?: boolean; onDataChanged?: () => void }) {
   const admin = session.user.role === 'admin';
   const superAdmin = admin && session.user.isSuperAdmin === true;
   const [attendance, setAttendance] = useState<Attendance[]>([]);
+  const [attendanceRange, setAttendanceRange] = useState<DateRange>(initialDateRange);
+  const [attendanceSort, setAttendanceSort] = useState('newest');
   const [holidays, setHolidays] = useState<HolidayRequest[]>([]);
   const [holidayForm, setHolidayForm] = useState({ startDate: localDay(), endDate: localDay(), reason: '' });
   const [visits, setVisits] = useState<Visit[]>([]);
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
-  const [locations, setLocations] = useState<Location[]>([]);
-  const [locationHistory, setLocationHistory] = useState<Location[]>([]);
   const [admins, setAdmins] = useState<Array<{id:string;userId:string;displayName:string;active:boolean}>>([]);
   const [adminForm, setAdminForm] = useState({userId:'',displayName:'',password:''});
   const [registrationRequests, setRegistrationRequests] = useState<StaffRegistrationRequest[]>([]);
   const [registrationPasswords, setRegistrationPasswords] = useState<Record<string,string>>({});
   const [dayType, setDayType] = useState<'Full day'|'Half day'>('Full day');
-  const [attendanceCorrection, setAttendanceCorrection] = useState<{id:string;dayType:'Full day'|'Half day';reason:string}|null>(null);
+  const [staffDayTypes, setStaffDayTypes] = useState<Record<string, 'Full day'|'Half day'|'Absent'>>({});
+  const [attendanceCorrection, setAttendanceCorrection] = useState<{id:string;dayType:'Full day'|'Half day'|'Absent';reason:string}|null>(null);
   const [staff, setStaff] = useState<Array<{ id: string; displayName: string; active: boolean }>>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [groups, setGroups] = useState<ChatGroup[]>([]);
@@ -82,18 +78,14 @@ export default function StaffOperations({ session, customers, flash, compact = f
   const [groupMemberIds, setGroupMemberIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [gpsMessage, setGpsMessage] = useState('Location sharing is limited to active work shifts.');
-  const [gpsDeadline, setGpsDeadline] = useState<string | null>(null);
-  const [gpsConsentShiftId, setGpsConsentShiftId] = useState<string | null>(() => { try { return localStorage.getItem('kandb-gps-consent-shift'); } catch { return null; } });
-  const consentPromptedShiftRef = useRef<string | null>(null);
   const [announcementForm, setAnnouncementForm] = useState({ title: '', message: '' });
   const [messageForm, setMessageForm] = useState({ recipientId: '', message: '' });
   const [visitForm, setVisitForm] = useState({ customerId: customers[0]?.id || '', purpose: 'Installation / service visit', notes: '' });
   const selectedGroupRef = useRef('');
   const today = localDay();
-  const myToday = attendance.find(item => item.userId === session.user.id && item.workDate === today);
-  const gpsRemainingMinutes = gpsDeadline ? Math.max(0, Math.ceil((new Date(gpsDeadline).getTime() - Date.now()) / 60000)) : null;
-  const activeShift = !!myToday && !myToday.checkOutAt;
+  const myToday = attendance.filter(item => item.userId === session.user.id && item.workDate === today).sort((a, b) => b.checkInAt.localeCompare(a.checkInAt))[0];
+  const myTodayAbsent = myToday?.dayType === 'Absent' || String(myToday?.status || '').toLowerCase() === 'absent';
+  const activeShift = !!myToday && !myTodayAbsent && !myToday.checkOutAt;
 
   const request = useCallback((method: 'get' | 'post' | 'put' | 'delete', path: string, data?: Record<string, unknown>) => {
     if (method === 'get') return client.get(path + (path.includes('?') ? '&' : '?') + 'sessionToken=' + encodeURIComponent(session.token));
@@ -144,10 +136,8 @@ export default function StaffOperations({ session, customers, flash, compact = f
       setGroups(availableGroups);
       setSelectedGroupId(current => current && availableGroups.some(group => group.id === current) ? current : availableGroups[0]?.id || '');
       if (admin) {
-        const [l, s, h, rr] = await Promise.all([request('get', '/api/locations'), request('get', '/api/staff'), request('get', '/api/locations/history'), request('get', '/api/staff-registration-requests')]);
-        setLocations(l.data.items || []);
+        const [s, rr] = await Promise.all([request('get', '/api/staff'), request('get', '/api/staff-registration-requests')]);
         setStaff(s.data.items || []);
-        setLocationHistory(h.data.items || []);
         setRegistrationRequests(rr.data.items || []);
       }
       if (superAdmin) {
@@ -161,7 +151,10 @@ export default function StaffOperations({ session, customers, flash, compact = f
     }
   }, [admin, superAdmin, request, flash]);
 
+
   useEffect(() => { refresh(); }, [refresh]);
+
+
 
   useEffect(() => {
     if (!admin) return;
@@ -178,31 +171,6 @@ export default function StaffOperations({ session, customers, flash, compact = f
     return () => { stopped = true; window.clearInterval(timer); };
   }, [admin, request]);
 
-  useEffect(() => {
-    if (!admin) return;
-    let stopped = false;
-    let pending = false;
-    const updateLiveLocations = async () => {
-      if (stopped || pending || document.visibilityState !== 'visible') return;
-      pending = true;
-      try {
-        const result = await request('get', '/api/locations');
-        if (!stopped) setLocations(result.data.items || []);
-      } catch {
-        // Keep the last successfully received location visible if a refresh briefly fails.
-      } finally {
-        pending = false;
-      }
-    };
-    const interval = window.setInterval(updateLiveLocations, 15000);
-    const onVisibilityChange = () => { if (document.visibilityState === 'visible') updateLiveLocations(); };
-    document.addEventListener('visibilitychange', onVisibilityChange);
-    return () => {
-      stopped = true;
-      window.clearInterval(interval);
-      document.removeEventListener('visibilitychange', onVisibilityChange);
-    };
-  }, [admin, request]);
 
   useEffect(() => {
     selectedGroupRef.current = selectedGroupId;
@@ -235,178 +203,12 @@ export default function StaffOperations({ session, customers, flash, compact = f
   }, [selectedGroupId, request]);
 
 
-  useEffect(() => {
-    if (admin) return;
-    if (!activeShift || !myToday) {
-      consentPromptedShiftRef.current = null;
-      if (gpsConsentShiftId) {
-        try { localStorage.removeItem('kandb-gps-consent-shift'); } catch { /* storage may be unavailable */ }
-        setGpsConsentShiftId(null);
-      }
-      return;
-    }
-    if (gpsConsentShiftId === myToday.id || consentPromptedShiftRef.current === myToday.id) return;
-    consentPromptedShiftRef.current = myToday.id;
-    const accepted = window.confirm('Your shift was started by an administrator. K&B shares your live work location with authorised administrators only while the shift is active. Android shows a persistent tracking notification. Do you agree to location sharing for this shift?');
-    if (accepted) {
-      try { localStorage.setItem('kandb-gps-consent-shift', myToday.id); } catch { /* in-memory consent still applies for this app session */ }
-      setGpsConsentShiftId(myToday.id);
-      setGpsMessage('Location sharing consent recorded for this shift.');
-    } else {
-      setGpsMessage('You did not agree to location sharing. This shift is being ended; contact an administrator if this was unexpected.');
-      void request('post', '/api/attendance/check-out').then(() => refresh()).catch(() => setGpsMessage('Location sharing was declined, but the shift could not be ended automatically. Please contact an administrator.'));
-    }
-  }, [admin, activeShift, myToday?.id, gpsConsentShiftId, request, refresh]);
-
-  useEffect(() => {
-    if (!activeShift || admin || gpsConsentShiftId !== myToday?.id || !Capacitor.isNativePlatform()) return;
-    let cancelled = false;
-    let watcherId: string | null = null;
-    const startBackgroundTracking = async () => {
-      try {
-        const watcher = await BackgroundGeolocation.addWatcher({
-          backgroundTitle: 'K&B work location active',
-          backgroundMessage: 'Your location is shared with K&B admin only during this active shift. Tracking stops when you check out.',
-          requestPermissions: true,
-          stale: false,
-          distanceFilter: 10
-        }, (location, error) => {
-          if (cancelled) return;
-          if (error || !location) {
-            const reason = error?.code === 'NOT_AUTHORIZED' ? 'Location permission was turned off' : 'Phone location services are unavailable';
-            void nativeApiPost<{monitoring?:boolean;deadlineAt?:string;remainingSeconds?:number;reason?:string}>('/api/attendance/gps-lost', { reason })
-              .then(result => {
-                if (cancelled) return;
-                if (!result.data.monitoring && result.data.reason === 'no-active-shift') {
-                  if (watcherId) void BackgroundGeolocation.removeWatcher({ id: watcherId });
-                  setGpsMessage('The shift is no longer active. Background location tracking has stopped.');
-                } else if (result.data.monitoring && result.data.deadlineAt) {
-                  setGpsDeadline(result.data.deadlineAt);
-                  const minutes = Math.max(0, Math.ceil(Number(result.data.remainingSeconds || 0) / 60));
-                  setGpsMessage('GPS is unavailable. Turn it back on within 15 minutes. About ' + minutes + ' minutes remain. Your shift stays active during this grace period.');
-                } else if (result.data.reason === 'holiday-exempt') setGpsMessage('GPS monitoring is paused for your pending/approved holiday date.');
-              })
-              .catch(() => { if (!cancelled) setGpsMessage('GPS status could not be checked. Restore location and internet access; contact an admin if this continues.'); });
-            return;
-          }
-          void nativeApiPost<{gpsRestored?:boolean}>('/api/locations', {
-            latitude: location.latitude,
-            longitude: location.longitude,
-            accuracy: location.accuracy,
-            capturedAt: new Date(location.time || Date.now()).toISOString(),
-            source: 'android-background-service'
-          }).then(async result => {
-            if (cancelled) return;
-            if (result.data.gpsRestored) {
-              setGpsDeadline(null);
-              setGpsMessage('GPS restored. Your shift continues normally, including while the screen is locked.');
-              await refresh();
-            } else setGpsMessage('Background GPS tracking is active. Android shows a persistent location notification while your shift is open.');
-          }).catch(error => {
-            if (cancelled) return;
-            if ((error as Error & {status?:number}).status === 403 && watcherId) {
-              void BackgroundGeolocation.removeWatcher({ id: watcherId });
-              setGpsMessage('The server confirmed that your shift is no longer active. Background location tracking has stopped.');
-            } else setGpsMessage('Background GPS is active, but the latest point could not reach the server. Check your internet connection.');
-          });
-        });
-        if (cancelled) await BackgroundGeolocation.removeWatcher({ id: watcher });
-        else {
-          watcherId = watcher;
-          setGpsMessage('Background GPS tracking is active. A persistent Android notification shows when your location is being shared.');
-        }
-      } catch {
-        if (!cancelled) setGpsMessage('Background GPS could not start. Allow precise location and notifications in Android settings, then reopen the app.');
-      }
-    };
-    void startBackgroundTracking();
-    return () => {
-      cancelled = true;
-      if (watcherId) void BackgroundGeolocation.removeWatcher({ id: watcherId });
-    };
-  }, [activeShift, admin, refresh, gpsConsentShiftId, myToday?.id]);
-
-  useEffect(() => {
-    if (!activeShift || admin || gpsConsentShiftId !== myToday?.id || Capacitor.isNativePlatform() || !navigator.geolocation) return;
-    let cancelled = false;
-    let inFlight = false;
-    const captureLocation = () => {
-      if (cancelled || inFlight || document.visibilityState !== 'visible') return;
-      inFlight = true;
-      navigator.geolocation.getCurrentPosition(async position => {
-        try {
-          const saved = await request('post', '/api/locations', {
-            latitude: position.coords.latitude,
-            longitude: position.coords.longitude,
-            accuracy: position.coords.accuracy,
-            capturedAt: new Date().toISOString()
-          });
-          if (!cancelled) {
-            setGpsMessage(saved.data.gpsRestored ? 'GPS restored. Your shift continues normally.' : 'Work location sharing is active. Last update: ' + new Date().toLocaleTimeString());
-            if (saved.data.gpsRestored) { setGpsDeadline(null); await refresh(); }
-          }
-        } catch {
-          if (!cancelled) setGpsMessage('Location update failed. Check your connection and location permission.');
-        } finally {
-          inFlight = false;
-        }
-      }, async error => {
-        if (error.code === 3) {
-          if (!cancelled) setGpsMessage('Location request timed out. This can happen with a weak signal or connection; your shift will not be cancelled for a timeout. Checking again shortly.');
-          inFlight = false;
-          return;
-        }
-        try {
-          const reason = error.code === 1 ? 'Location permission denied' : 'GPS location unavailable';
-          const result = await request('post', '/api/attendance/gps-lost', { reason });
-          if (result.data.monitoring && result.data.deadlineAt) {
-            setGpsDeadline(result.data.deadlineAt);
-            const minutes = Math.max(0, Math.ceil(Number(result.data.remainingSeconds || 0) / 60));
-            if (!cancelled) setGpsMessage('GPS is unavailable. Turn it back on within 15 minutes. About ' + minutes + ' minutes remain. Your shift will be cancelled only after the grace period.');
-          } else if (result.data.reason === 'holiday-exempt') setGpsMessage('GPS monitoring is paused for your pending/approved holiday date.');
-        } catch { if (!cancelled) setGpsMessage('GPS is unavailable. Reconnect and restore location; the 15-minute grace timer will be enforced by the server once detected.'); }
-        inFlight = false;
-      }, { enableHighAccuracy: true, maximumAge: 10000, timeout: 20000 });
-    };
-    captureLocation();
-    const interval = window.setInterval(captureLocation, 30000);
-    const onVisibilityChange = () => { if (document.visibilityState === 'visible') captureLocation(); };
-    document.addEventListener('visibilitychange', onVisibilityChange);
-    return () => {
-      cancelled = true;
-      window.clearInterval(interval);
-      document.removeEventListener('visibilitychange', onVisibilityChange);
-    };
-  }, [activeShift, admin, request, refresh, gpsConsentShiftId, myToday?.id]);
-
   async function shift(action: 'check-in' | 'check-out') {
     setBusy(true);
     try {
-      let coords: Record<string, number> = {};
-      if (action === 'check-in' && !window.confirm('K&B will share your live work location with authorised administrators while your shift is active. Android will show a persistent tracking notification. Tracking stops when you check out. Do you agree and want to start your shift?')) return;
-      if (action === 'check-in' && Capacitor.isNativePlatform()) {
-        const notificationPermission = await LocalNotifications.requestPermissions();
-        if (notificationPermission.display !== 'granted') throw new Error('Allow Android notifications so the app can show its visible location-tracking notification during your shift.');
-      }
-      if (action === 'check-in' && navigator.geolocation) {
-        try {
-          const p = await new Promise<GeolocationPosition>((resolve, reject) => navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 9000, maximumAge: 30000 }));
-          coords = { latitude: p.coords.latitude, longitude: p.coords.longitude, accuracy: p.coords.accuracy };
-        } catch {
-          setGpsMessage('Location permission is required to start a shift.');
-          throw new Error('Enable GPS/location permission before starting your shift.');
-        }
-      }
-      const result = await request('post', '/api/attendance/' + action, { ...coords, dayType, capturedAt: new Date().toISOString() });
-      if (action === 'check-in' && result.data.id) {
-        try { localStorage.setItem('kandb-gps-consent-shift', result.data.id); } catch { /* in-memory consent still applies for this app session */ }
-        setGpsConsentShiftId(result.data.id);
-      } else if (action === 'check-out') {
-        consentPromptedShiftRef.current = myToday?.id || null;
-        try { localStorage.removeItem('kandb-gps-consent-shift'); } catch { /* storage may be unavailable */ }
-        setGpsConsentShiftId(null);
-      }
+      await request('post', '/api/attendance/' + action, { dayType, capturedAt: new Date().toISOString() });
       await refresh();
+      onDataChanged?.();
       flash(action === 'check-in' ? 'You are checked in for today.' : 'Your shift has been checked out.');
     } catch (err) {
       flash(err instanceof Error ? err.message : 'Attendance update failed.');
@@ -424,14 +226,28 @@ export default function StaffOperations({ session, customers, flash, compact = f
     } finally { setBusy(false); }
   }
 
-  async function adminShift(userId: string, action: 'admin-start' | 'admin-end') {
+  async function adminShift(userId: string, action: 'admin-start' | 'admin-end', requestedDayType: 'Full day'|'Half day' = 'Full day') {
     setBusy(true);
     try {
-      await request('post', '/api/attendance/' + action, { userId, dayType });
+      await request('post', '/api/attendance/' + action, { userId, dayType: requestedDayType });
       await refresh();
+      onDataChanged?.();
       flash(action === 'admin-start' ? 'Staff shift started or restarted by administrator.' : 'Staff shift ended by administrator.');
     } catch (err) {
       flash(err instanceof Error ? err.message : 'Could not update staff attendance.');
+    } finally { setBusy(false); }
+  }
+
+  async function adminAbsent(userId: string) {
+    if (!window.confirm('Mark this staff member absent for today?')) return;
+    setBusy(true);
+    try {
+      await request('post', '/api/attendance/admin-absent', { userId, reason: 'Marked absent by administrator' });
+      await refresh();
+      onDataChanged?.();
+      flash('Staff member marked absent for today.');
+    } catch (err) {
+      flash(err instanceof Error ? err.message : 'Could not mark staff member absent.');
     } finally { setBusy(false); }
   }
 
@@ -466,7 +282,7 @@ export default function StaffOperations({ session, customers, flash, compact = f
   }
   async function correctAttendance(event:FormEvent) {
     event.preventDefault(); if(!attendanceCorrection?.reason.trim())return; setBusy(true);
-    try{await request('put','/api/attendance/'+attendanceCorrection.id+'/day-type',{dayType:attendanceCorrection.dayType,reason:attendanceCorrection.reason});setAttendanceCorrection(null);await refresh();flash('Attendance corrected and audit logged.');}
+    try{await request('put','/api/attendance/'+attendanceCorrection.id+'/day-type',{dayType:attendanceCorrection.dayType,reason:attendanceCorrection.reason});setAttendanceCorrection(null);await refresh();onDataChanged?.();flash('Attendance corrected and audit logged.');}
     catch(err){flash(err instanceof Error?err.message:'Could not correct attendance.');}
     finally{setBusy(false);}
   }
@@ -505,20 +321,22 @@ export default function StaffOperations({ session, customers, flash, compact = f
   const totalCollected = payments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
   const monthCollected = payments.filter(payment => String(payment.paidAt || '').slice(0, 7) === monthKey).reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
   const activeToday = attendance.filter(item => item.workDate === today && !item.checkOutAt).length;
-  const completedToday = attendance.filter(item => item.workDate === today && !!item.checkOutAt).length;
+  const completedToday = attendance.filter(item => item.workDate === today && !!item.checkInAt && !!item.checkOutAt && item.dayType !== 'Absent' && String(item.status || '').toLowerCase() !== 'absent').length;
   const sortedAttendance = [...attendance].sort((a, b) => b.workDate.localeCompare(a.workDate) || b.checkInAt.localeCompare(a.checkInAt));
+  const historyAttendance = sortReportRows(attendance.filter(item => isInDateRange(item.workDate, attendanceRange)), attendanceSort, item => item.workDate + item.checkInAt, () => 0, item => item.displayName);
   const sortedVisits = [...visits].sort((a, b) => b.visitedAt.localeCompare(a.visitedAt));
   const sortedMessages = [...messages].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   const attendanceTrend = Array.from({length:6},(_,index)=>{
     const date=new Date(); date.setDate(1); date.setMonth(date.getMonth()-(5-index));
     const key=date.getFullYear()+'-'+String(date.getMonth()+1).padStart(2,'0');
-    return {key,label:date.toLocaleString('en-IN',{month:'short'}),full:attendance.filter(item=>item.workDate.startsWith(key)&&(item.dayType||'Full day')==='Full day').length,half:attendance.filter(item=>item.workDate.startsWith(key)&&item.dayType==='Half day').length};
+    const eligible = attendance.filter(item=>item.workDate.startsWith(key)&&!!item.checkInAt&&item.dayType!=='Absent'&&String(item.status||'').toLowerCase()!=='absent');
+    return {key,label:date.toLocaleString('en-IN',{month:'short'}),full:eligible.filter(item=>(item.dayType||'Full day')==='Full day').length,half:eligible.filter(item=>item.dayType==='Half day').length};
   });
   const attendanceMax=Math.max(1,...attendanceTrend.map(item=>item.full+item.half*.5));
 
 
   if (compact && !admin) return <section className="panel ops-home-shift">
-    <div className="ops-home-shift-copy"><span className="eyebrow">TODAY’S ATTENDANCE</span><h2>{activeShift ? 'Your shift is active' : myToday?.checkOutAt ? 'Shift completed' : 'Ready to start work?'}</h2><p>{activeShift ? 'Checked in at ' + stamp(myToday?.checkInAt) + '. Your workday is being recorded.' : myToday?.checkOutAt ? 'You checked out at ' + stamp(myToday.checkOutAt) + '.' : 'Start your shift directly from the home screen.'}</p></div>
+    <div className="ops-home-shift-copy"><span className="eyebrow">TODAY’S ATTENDANCE</span><h2>{activeShift ? 'Your shift is active' : myToday?.dayType === 'Absent' || String(myToday?.status || '').toLowerCase() === 'absent' ? 'Marked absent today' : myToday?.checkOutAt ? 'Shift completed' : 'Ready to start work?'}</h2><p>{activeShift ? 'Checked in at ' + stamp(myToday?.checkInAt) + '. Your workday is being recorded.' : myToday?.dayType === 'Absent' || String(myToday?.status || '').toLowerCase() === 'absent' ? 'Your attendance was marked absent by an administrator.' : myToday?.checkOutAt ? 'You checked out at ' + stamp(myToday.checkOutAt) + '.' : 'Start your shift directly from the home screen.'}</p></div>
     <div className="ops-home-shift-action">{!myToday ? <button className="btn primary" disabled={busy || loading} onClick={() => shift('check-in')}>{busy ? 'Starting…' : 'Start shift'}</button> : activeShift ? <button className="btn danger" disabled={busy} onClick={() => shift('check-out')}>{busy ? 'Ending…' : 'End shift'}</button> : <span className="ops-complete">Completed for today</span>}</div>
     {loading && <small className="ops-home-loading">Loading attendance status…</small>}
   </section>;
@@ -557,15 +375,33 @@ export default function StaffOperations({ session, customers, flash, compact = f
         const memberPayments = payments.filter(payment => payment.recordedBy === member.id);
         const memberTotal = memberPayments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
         const memberMonth = memberPayments.filter(payment => String(payment.paidAt || '').slice(0, 7) === monthKey).reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
-        const memberDays = attendance.filter(item => item.userId === member.id).reduce((sum,item) => sum + (item.dayType === 'Half day' ? 0.5 : 1), 0);
+        const memberDays = attendance.filter(item => item.userId === member.id && !!item.checkInAt && item.dayType !== 'Absent' && String(item.status || '').toLowerCase() !== 'absent').reduce((sum,item) => sum + (item.dayType === 'Half day' ? 0.5 : 1), 0);
         const memberShift = attendance.find(item => item.userId === member.id && item.workDate === today);
-        return <tr key={member.id}><td><b>{member.displayName}</b></td><td>{memberPayments.length}</td><td className="amount">₹{memberTotal.toLocaleString('en-IN')}</td><td className="amount">₹{memberMonth.toLocaleString('en-IN')}</td><td>{memberDays}</td><td>{memberShift?.checkOutAt ? 'Completed' : memberShift ? 'On shift' : 'Not started'}</td></tr>;
+        const memberAbsent = memberShift?.dayType === 'Absent' || String(memberShift?.status || '').toLowerCase() === 'absent';
+        return <tr key={member.id}><td><b>{member.displayName}</b></td><td>{memberPayments.length}</td><td className="amount">₹{memberTotal.toLocaleString('en-IN')}</td><td className="amount">₹{memberMonth.toLocaleString('en-IN')}</td><td>{memberDays}</td><td>{memberAbsent ? 'Absent' : memberShift?.checkOutAt ? 'Completed' : memberShift ? 'On shift' : 'Not started'}</td></tr>;
       })}{!staff.length && <tr><td colSpan={6}>No staff records available yet.</td></tr>}</tbody></table></div>
     </section>}
 
     {admin && <section className="panel ops-panel">
       <div className="ops-panel-head"><div><span className="eyebrow">TEAM ATTENDANCE</span><h2>Individual staff calendars</h2><p>Green is full day, yellow is half day, red is absent. Sundays are weekly off by default; pending and approved holidays are marked separately.</p></div></div>
-      <div className="attendance-calendar-list">{staff.map(member=><AttendanceCalendar key={member.id} staffId={member.id} staffName={member.displayName} records={attendance} holidays={holidays}/>)}</div>
+      <div className="attendance-calendar-list">{staff.map(member=>{
+        const memberRecords=attendance.filter(item=>item.userId===member.id);
+        const memberDays=memberRecords.filter(item=>item.dayType!=='Absent').reduce((sum,item)=>sum+(item.dayType==='Half day'?0.5:1),0);
+        const memberPayments=payments.filter(item=>item.recordedBy===member.id);
+        const memberCollected=memberPayments.reduce((sum,item)=>sum+Number(item.amount||0),0);
+        const todayRecord=memberRecords.find(item=>item.workDate===today);
+        const todayStatus=todayRecord?.dayType==='Absent'||String(todayRecord?.status||'').toLowerCase()==='absent'?'Absent':todayRecord?.checkOutAt?'Completed':todayRecord?'On shift':'Not started';
+        return <details className="staff-calendar-accordion" key={member.id}>
+          <summary><span className="avatar">{member.displayName.slice(0,2).toUpperCase()}</span><span><b>{member.displayName}</b><small>{memberRecords.length} attendance records · Tap to view staff details</small></span><span className="staff-calendar-chevron">⌄</span></summary>
+          <div className="staff-calendar-profile">
+            <span><small>Assigned customers</small><b>{customers.filter(item=>item.assignedTo===member.id).length}</b></span>
+            <span><small>Attendance days</small><b>{memberDays.toLocaleString('en-IN')}</b></span>
+            <span><small>Collections recorded</small><b>₹{memberCollected.toLocaleString('en-IN')}</b></span>
+            <span><small>Today's attendance</small><b>{todayStatus}</b></span>
+          </div>
+          <AttendanceCalendar staffId={member.id} staffName={member.displayName} records={attendance} holidays={holidays}/>
+        </details>;
+      })}</div>
       {!staff.length && <p className="ops-empty">Staff calendars will appear after staff accounts are added.</p>}
     </section>}
 
@@ -576,10 +412,25 @@ export default function StaffOperations({ session, customers, flash, compact = f
     </section>
 
     {!admin && <section className="panel ops-panel">
-      <div className="ops-panel-head"><div><span className="eyebrow">ATTENDANCE</span><h2>My workday</h2><p>Record your shift start and finish. Work location is shared with authorised Admins during an active shift. On Android, background tracking continues with a persistent notification and stops at checkout.</p></div><span className={'ops-pill ' + (activeShift ? 'is-live' : 'is-idle')}>{activeShift ? 'ON SHIFT' : myToday?.checkOutAt ? 'SHIFT COMPLETE' : 'OFF SHIFT'}</span></div>
-      <div className="ops-clock-row"><div><small>CHECK IN</small><strong>{myToday ? stamp(myToday.checkInAt) : 'Not checked in'}</strong></div><div><small>CHECK OUT</small><strong>{myToday?.checkOutAt ? stamp(myToday.checkOutAt) : '—'}</strong></div></div>
-      <div className="ops-actions"><label className="ops-day-type">Attendance type <select value={dayType} disabled={!!myToday} onChange={e=>setDayType(e.target.value as 'Full day'|'Half day')}><option>Full day</option><option>Half day</option></select></label>{!myToday ? <button className="btn primary" disabled={busy} onClick={() => shift('check-in')}>Check in and start shift</button> : activeShift ? <button className="btn danger" disabled={busy} onClick={() => shift('check-out')}>Check out and end shift</button> : <span className="ops-complete">Today’s attendance is complete.</span>}</div>
-      <p className="ops-gps-note">{gpsMessage}{gpsRemainingMinutes !== null ? ' Time remaining: about ' + gpsRemainingMinutes + ' minute(s).' : ''}</p>
+      <div className="ops-panel-head"><div><span className="eyebrow">ATTENDANCE</span><h2>My workday</h2><p>Record your shift start and finish. Work location is shared with authorised Admins during an active shift. On Android, background tracking continues with a persistent notification and stops at checkout.</p></div><span className={'ops-pill ' + (activeShift ? 'is-live' : 'is-idle')}>{activeShift ? 'ON SHIFT' : myToday?.dayType === 'Absent' ? 'ABSENT' : myToday?.checkOutAt ? 'SHIFT COMPLETE' : 'OFF SHIFT'}</span></div>
+      <div className="ops-clock-row"><div><small>CHECK IN</small><strong>{myToday?.dayType === 'Absent' ? 'Absent' : myToday ? stamp(myToday.checkInAt) : 'Not checked in'}</strong></div><div><small>CHECK OUT</small><strong>{myToday?.dayType === 'Absent' ? '—' : myToday?.checkOutAt ? stamp(myToday.checkOutAt) : '—'}</strong></div></div>
+      <div className="ops-actions"><label className="ops-day-type">Attendance type <select value={dayType} disabled={!!myToday} onChange={e=>setDayType(e.target.value as 'Full day'|'Half day')}><option>Full day</option><option>Half day</option></select></label>{!myToday ? <button className="btn primary" disabled={busy} onClick={() => shift('check-in')}>Check in and start shift</button> : activeShift ? <button className="btn danger" disabled={busy} onClick={() => shift('check-out')}>Check out and end shift</button> : <span className="ops-complete">{myToday.dayType === 'Absent' ? 'Today’s attendance is marked absent.' : 'Today’s attendance is complete.'}</span>}</div>
+      <p className="ops-gps-note">Your location is shared only when an administrator sends a one-time request. No continuous tracking is active.</p>
+    </section>}
+
+    {admin && <section className="panel ops-panel">
+      <div className="ops-panel-head"><div><span className="eyebrow">STAFF ATTENDANCE</span><h2>Staff shift controls</h2><p>Start, end or correct a staff member’s attendance. GPS is not required for shifts.</p></div></div>
+      <div className="ops-location-list">{staff.map(member => {
+        const shiftRecord = sortedAttendance.find(item => item.userId === member.id && item.workDate === today);
+        const selectedType = staffDayTypes[member.id] || 'Full day';
+        return <article className="ops-location-card" key={member.id}>
+          <div className="ops-person"><span className="avatar">{member.displayName.slice(0,2).toUpperCase()}</span><div><b>{member.displayName}</b><small>{shiftRecord?.dayType === 'Absent' ? 'Marked absent today' : shiftRecord?.checkOutAt ? 'Checked out ' + stamp(shiftRecord.checkOutAt) : shiftRecord ? 'Checked in ' + stamp(shiftRecord.checkInAt) : 'No attendance today'}</small></div></div>
+          <div className="ops-location-detail">
+            {!shiftRecord && <label className="ops-day-type">Attendance type <select value={selectedType} onChange={e=>setStaffDayTypes(current=>({...current,[member.id]:e.target.value as 'Full day'|'Half day'|'Absent'}))}><option>Full day</option><option>Half day</option><option>Absent</option></select></label>}
+            {!shiftRecord ? selectedType === 'Absent' ? <button className="btn danger compact" disabled={busy || !member.active} onClick={() => adminAbsent(member.id)}>Mark absent</button> : <button className="btn primary compact" disabled={busy || !member.active} onClick={() => adminShift(member.id, 'admin-start', selectedType)}>Start shift</button> : shiftRecord.gpsRestartRequired ? <button className="btn primary compact" disabled={busy || !member.active} onClick={() => adminShift(member.id, 'admin-start', selectedType === 'Absent' ? 'Full day' : selectedType)}>Restart shift</button> : shiftRecord.checkOutAt ? <span className="ops-complete">Shift completed</span> : <button className="btn danger compact" disabled={busy} onClick={() => adminShift(member.id, 'admin-end')}>End shift</button>}
+          </div>
+        </article>;
+      })}{!staff.length && <p className="ops-empty">Staff accounts will appear here after they are created.</p>}</div>
     </section>}
 
     {admin && <section className="panel ops-panel finance-chart-panel">
@@ -590,22 +441,9 @@ export default function StaffOperations({ session, customers, flash, compact = f
       <div className="finance-chart-legend"><span><i className="income-dot"/> Full day</span><span><i className="expense-dot"/> Half day (0.5)</span></div>
     </section>}
 
-    {admin && <section className="panel ops-panel">
-      <div className="ops-panel-head"><div><span className="eyebrow">TEAM VISIBILITY · LIVE</span><h2>Live staff locations</h2><p>Admin locations refresh every 15 seconds. Android staff devices use a visible background location service during active shifts; browser tracking works only while the page is open.</p></div><label className="ops-day-type">New shift type <select value={dayType} onChange={e=>setDayType(e.target.value as 'Full day'|'Half day')}><option>Full day</option><option>Half day</option></select></label><button className="btn secondary compact" onClick={refresh}>Refresh now</button></div>
-      <LiveStaffMap locations={locations} staff={staff} />
-      <div className="ops-location-list">{staff.map(member => {
-        const loc = locations.find(item => item.userId === member.id);
-        const shiftRecord = sortedAttendance.find(item => item.userId === member.id && item.workDate === today);
-        const locationAge = loc ? Date.now() - new Date(loc.capturedAt).getTime() : Number.POSITIVE_INFINITY;
-        const locationStatus = locationAge < 90000 ? 'Live · Updated ' : 'Last known · Updated ';
-        return <article className="ops-location-card" key={member.id}><div className="ops-person"><span className="avatar">{member.displayName.slice(0, 2).toUpperCase()}</span><div><b>{member.displayName}</b><small>{shiftRecord?.checkOutAt ? 'Checked out ' + stamp(shiftRecord.checkOutAt) : shiftRecord ? 'Checked in ' + stamp(shiftRecord.checkInAt) : 'No attendance today'}</small></div></div><div className="ops-location-detail">{loc ? <><span>{locationStatus}{stamp(loc.capturedAt)}</span><small>Accuracy approx. {Math.round(loc.accuracy)} m</small><a href={'https://www.google.com/maps?q=' + loc.latitude + ',' + loc.longitude} target="_blank" rel="noreferrer">Open in Google Maps ↗</a></> : <span>No location shared during this shift yet</span>}{!shiftRecord ? <button className="btn primary compact" disabled={busy || !member.active} onClick={() => adminShift(member.id, 'admin-start')}>Start shift</button> : shiftRecord.gpsRestartRequired ? <button className="btn primary compact" disabled={busy || !member.active} onClick={() => adminShift(member.id, 'admin-start')}>Admin restart required</button> : shiftRecord.checkOutAt ? <span className="ops-complete">Shift completed</span> : <button className="btn danger compact" disabled={busy} onClick={() => adminShift(member.id, 'admin-end')}>End shift</button>}</div></article>;
-      })}{!staff.length && <p className="ops-empty">Staff accounts will appear here after they are created.</p>}</div>
-    </section>}
 
-    {admin && <section className="panel ops-panel">
-      <div className="ops-panel-head"><div><span className="eyebrow">GPS AUDIT TRAIL</span><h2>Location history</h2><p>Location points recorded during active shifts. Open any point in Google Maps.</p></div><span className="ops-pill">{locationHistory.length} RECENT POINTS</span></div>
-      <div className="ops-history-list">{locationHistory.slice(0,40).map((point,index)=><article className="ops-history-row" key={point.userId+'-'+point.capturedAt+'-'+index}><div><b>{point.displayName}</b><small>{stamp(point.capturedAt)}</small></div><span>±{Math.round(point.accuracy||0)} m</span><a href={'https://www.google.com/maps?q='+point.latitude+','+point.longitude} target="_blank" rel="noreferrer">Open map ↗</a></article>)}{!locationHistory.length && <p className="ops-empty">No GPS points have been recorded yet.</p>}</div>
-    </section>}
+
+
 
     <div className="ops-two-col">
       <section className="panel ops-panel">
@@ -649,7 +487,7 @@ export default function StaffOperations({ session, customers, flash, compact = f
       <div className="ops-feed">{sortedVisits.map(item => <article className="ops-feed-item" key={item.id}><div className="ops-message-top"><b>{item.customerName}</b><small>{stamp(item.visitedAt)}</small></div><p>{item.purpose}</p>{item.notes && <p>{item.notes}</p>}{admin && <small>Staff: {item.staffName}</small>}</article>)}{!visits.length && <p className="ops-empty">No field visits recorded yet.</p>}</div>
     </section>
 
-    {admin && attendanceCorrection && <section className="panel ops-panel"><div className="ops-panel-head"><div><span className="eyebrow">ATTENDANCE CORRECTION</span><h2>Correct day type</h2><p>Changes are recorded in the audit log.</p></div><button className="btn secondary compact" onClick={()=>setAttendanceCorrection(null)}>Cancel</button></div><form className="ops-form" onSubmit={correctAttendance}><select value={attendanceCorrection.dayType} onChange={e=>setAttendanceCorrection({...attendanceCorrection,dayType:e.target.value as 'Full day'|'Half day'})}><option>Full day</option><option>Half day</option></select><textarea required maxLength={300} rows={2} placeholder="Reason for correction" value={attendanceCorrection.reason} onChange={e=>setAttendanceCorrection({...attendanceCorrection,reason:e.target.value})}/><button className="btn primary" disabled={busy}>Save correction</button></form></section>}
+    {admin && attendanceCorrection && <section className="panel ops-panel"><div className="ops-panel-head"><div><span className="eyebrow">ATTENDANCE CORRECTION</span><h2>Correct day type</h2><p>Changes are recorded in the audit log.</p></div><button className="btn secondary compact" onClick={()=>setAttendanceCorrection(null)}>Cancel</button></div><form className="ops-form" onSubmit={correctAttendance}><select value={attendanceCorrection.dayType} onChange={e=>setAttendanceCorrection({...attendanceCorrection,dayType:e.target.value as 'Full day'|'Half day'|'Absent'})}><option>Full day</option><option>Half day</option><option>Absent</option></select><textarea required maxLength={300} rows={2} placeholder="Reason for correction" value={attendanceCorrection.reason} onChange={e=>setAttendanceCorrection({...attendanceCorrection,reason:e.target.value})}/><button className="btn primary" disabled={busy}>Save correction</button></form></section>}
     {!admin && <section className="panel ops-panel">
       <div className="ops-panel-head"><div><span className="eyebrow">MY ATTENDANCE</span><h2>My attendance calendar</h2><p>Green is full day, yellow is half day, red is absent. Sundays are weekly off by default.</p></div></div>
       <AttendanceCalendar staffId={session.user.id} staffName={session.user.displayName} records={attendance} holidays={holidays}/>
@@ -657,8 +495,10 @@ export default function StaffOperations({ session, customers, flash, compact = f
 
     <section className="panel ops-panel">
       <div className="ops-panel-head"><div><span className="eyebrow">WORK HISTORY</span><h2>{admin ? 'Team attendance history' : 'My attendance history'}</h2><p>Daily attendance records, kept separate by staff member and date.</p></div></div>
-      <div className="ops-history-list">{sortedAttendance.slice(0, 30).map(item => <article className="ops-history-row" key={item.id}><div><b>{item.displayName}</b><small>{item.workDate}</small></div><span>{stamp(item.checkInAt)}</span><span>{item.checkOutAt ? stamp(item.checkOutAt) : 'Still checked in'}</span><strong>{item.dayType || 'Full day'} · {item.checkOutAt ? 'Completed' : 'On shift'}</strong>{admin && <button className="btn secondary compact" onClick={()=>setAttendanceCorrection({id:item.id,dayType:item.dayType||'Full day',reason:''})}>Correct</button>}</article>)}{!attendance.length && <p className="ops-empty">Attendance history will appear here.</p>}</div>
+      <DateRangeFilter value={attendanceRange} onChange={setAttendanceRange}><label><span>Sort by</span><select value={attendanceSort} onChange={event=>setAttendanceSort(event.target.value)}><option value="newest">Newest first</option><option value="oldest">Oldest first</option><option value="name">Staff name</option></select></label><span className="result-count">{historyAttendance.length} records</span><button type="button" className="btn secondary compact" disabled={!historyAttendance.length} onClick={()=>{const{start,end}=dateRangeBounds(attendanceRange);void exportCsvFile(`kb-attendance-${start&&end?`${start}_to_${end}`:'all-dates'}.csv`,[['Staff member','Work date','Check in','Check out','Day type','Status'],...historyAttendance.map(item=>[item.displayName,item.workDate,item.checkInAt,item.checkOutAt||'',item.dayType||'Full day',item.checkOutAt?'Completed':'On shift'])]);}}>Export selected</button></DateRangeFilter>
+      <div className="ops-history-list">{historyAttendance.map(item => <article className="ops-history-row" key={item.id}><div><b>{item.displayName}</b><small>{item.workDate}</small></div><span>{stamp(item.checkInAt)}</span><span>{item.checkOutAt ? stamp(item.checkOutAt) : 'Still checked in'}</span><strong>{item.dayType === 'Absent' || String(item.status || '').toLowerCase() === 'absent' ? 'Absent' : (item.dayType || 'Full day') + ' · ' + (item.checkOutAt ? 'Completed' : 'On shift')}</strong>{admin && <button className="btn secondary compact" onClick={()=>setAttendanceCorrection({id:item.id,dayType:item.dayType||'Full day',reason:''})}>Correct</button>}</article>)}{!historyAttendance.length && <p className="ops-empty">No attendance records match this date range.</p>}</div>
     </section>
     {loading && <div className="ops-loading">Loading team operations…</div>}
   </div>;
 }
+

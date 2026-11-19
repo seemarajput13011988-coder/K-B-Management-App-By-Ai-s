@@ -1,0 +1,14 @@
+import type { ReactNode } from 'react';
+export type DateRange = { preset: 'month'|'this-week'|'last-week'|'custom'|'all'; start: string; end: string; month: string };
+function dayKey(date: Date) { return new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit'}).format(date); }
+export const initialDateRange = (): DateRange => ({preset:'month',start:'',end:'',month:dayKey(new Date()).slice(0,7)});
+export function dateRangeBounds(range: DateRange, now = new Date()) {
+  if(range.preset==='all') return {start:'',end:''};
+  if(range.preset==='custom') return {start:range.start,end:range.end};
+  const today=dayKey(now);
+  if(range.preset==='month') { const month=range.month||today.slice(0,7); const [year,monthNumber]=month.split('-').map(Number); const lastDay=new Date(Date.UTC(year,monthNumber,0)).getUTCDate(); return {start:`${month}-01`,end:`${month}-${String(lastDay).padStart(2,'0')}`}; }
+  const base=new Date(`${today}T12:00:00+05:30`); const weekday=(base.getUTCDay()+6)%7; const monday=new Date(base); monday.setUTCDate(monday.getUTCDate()-weekday-(range.preset==='last-week'?7:0)); const start=dayKey(monday); if(range.preset==='last-week'){const end=new Date(monday);end.setUTCDate(end.getUTCDate()+6);return {start,end:dayKey(end)};} return {start,end:today};
+}
+export function isInDateRange(value:string|undefined,range:DateRange){const date=String(value||'').slice(0,10);if(!date)return false;const{start,end}=dateRangeBounds(range);return(!start||date>=start)&&(!end||date<=end);}
+export function sortReportRows<T>(items:T[],sort:string,dateOf:(item:T)=>string,amountOf:(item:T)=>number,nameOf:(item:T)=>string){return[...items].sort((a,b)=>sort==='oldest'?dateOf(a).localeCompare(dateOf(b)):sort==='amount-high'?amountOf(b)-amountOf(a):sort==='amount-low'?amountOf(a)-amountOf(b):sort==='name'?nameOf(a).localeCompare(nameOf(b)):dateOf(b).localeCompare(dateOf(a)));}
+export function DateRangeFilter({value,onChange,children}:{value:DateRange;onChange:(value:DateRange)=>void;children?:ReactNode}){return <div className="date-range-controls"><label><span>Date range</span><select value={value.preset} onChange={event=>onChange({...value,preset:event.target.value as DateRange['preset']})}><option value="month">Month</option><option value="this-week">This week</option><option value="last-week">Last week</option><option value="custom">Custom dates</option><option value="all">All dates</option></select></label>{value.preset==='month'&&<label><span>Select month</span><input type="month" value={value.month} onChange={event=>onChange({...value,month:event.target.value})}/></label>}{value.preset==='custom'&&<><label><span>From</span><input type="date" value={value.start} onChange={event=>onChange({...value,start:event.target.value})}/></label><label><span>To</span><input type="date" value={value.end} onChange={event=>onChange({...value,end:event.target.value})}/></label></>}{children}</div>;}

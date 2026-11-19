@@ -2,12 +2,43 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#101827" />
     <title>K&B Management Nexus</title>
+    <style>
+      #root:empty { min-height:100dvh; }
+      .kb-entry-splash { min-height:100dvh; display:grid; place-content:center; justify-items:center; gap:13px; background:linear-gradient(145deg,#101c31,#1e3a5c); color:#fff; font-family:system-ui,sans-serif; }
+      .kb-entry-logo { width:82px; height:82px; display:grid; place-items:center; border-radius:23px; background:linear-gradient(145deg,#f5b65f,#df812d); box-shadow:0 10px 28px #071b3444; }
+      .kb-entry-logo svg { width:48px; height:48px; }
+      .kb-entry-splash strong { font-size:19px; letter-spacing:.3px; }
+      .kb-entry-splash small { color:#c5d2e2; font-size:10px; letter-spacing:2px; }
+    
+      .kb-mascots{display:flex;align-items:flex-end;justify-content:center;gap:13px;margin:5px auto 8px;height:94px}
+      .kb-mascot{width:62px;display:flex;flex-direction:column;align-items:center;gap:2px;animation:kb-mascot-bob 1.15s ease-in-out infinite}
+      .kb-mascot:nth-child(2){animation-delay:.18s}.kb-mascot:nth-child(3){animation-delay:.36s}
+      .kb-face{font-size:36px;line-height:1.15;display:block;animation:kb-face-pop 1.15s ease-in-out infinite}
+      .kb-mascot:nth-child(2) .kb-face{animation-delay:.18s}.kb-mascot:nth-child(3) .kb-face{animation-delay:.36s}
+      .kb-shirt{width:58px;height:35px;border-radius:13px 13px 8px 8px;background:linear-gradient(145deg,#f5b65f,#df812d);color:#17243a;font:900 12px/35px system-ui,sans-serif;text-align:center;letter-spacing:.3px;box-shadow:0 5px 12px #071b3440;position:relative}
+      .kb-shirt:before,.kb-shirt:after{content:"";position:absolute;top:5px;width:12px;height:13px;background:#e99a43;border-radius:5px}
+      .kb-shirt:before{left:-7px;transform:rotate(25deg)}.kb-shirt:after{right:-7px;transform:rotate(-25deg)}
+      .loading-cover .kb-mascots{height:82px;margin:0 auto 8px}
+      .loading-cover .kb-mascot{width:54px}.loading-cover .kb-face{font-size:31px}
+      .loading-cover .kb-shirt{width:50px;height:30px;font-size:10px;line-height:30px}
+      @keyframes kb-mascot-bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-9px)}}
+      @keyframes kb-face-pop{0%,100%{transform:rotate(0) scale(1)}50%{transform:rotate(-5deg) scale(1.09)}}
+      @media(prefers-reduced-motion:reduce){.kb-mascot,.kb-face{animation:none!important}}
+    
+      .auth-mascot-brand{text-align:center;margin:0 auto 20px}
+      .auth-mascot-brand .kb-mascots{height:86px;margin:0 auto 7px;gap:10px}
+      .auth-mascot-brand .kb-mascot{width:54px}
+      .auth-mascot-brand .kb-face{font-size:31px}
+      .auth-mascot-brand .kb-shirt{width:50px;height:30px;font-size:10px;line-height:30px}
+      .auth-mascot-brand>strong{display:block;color:#1d2e46;font:800 12px system-ui,sans-serif;letter-spacing:1.5px}
+      [data-theme="dark"] .auth-mascot-brand>strong{color:#e5ebf4}
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root"><div class="kb-entry-splash" role="status" aria-label="K&B Management Nexus loading"><div class="kb-mascots" aria-hidden="true"><div class="kb-mascot"><span class="kb-face">😊</span><span class="kb-shirt">K&amp;B</span></div><div class="kb-mascot"><span class="kb-face">😎</span><span class="kb-shirt">K&amp;B</span></div><div class="kb-mascot"><span class="kb-face">😮</span><span class="kb-shirt">K&amp;B</span></div></div><strong>K&amp;B Management Nexus</strong><small>K&amp;B NET SERVICE</small></div></div>
     <script type="module" src="./src/main.tsx"></script>
   </body>
 </html>
