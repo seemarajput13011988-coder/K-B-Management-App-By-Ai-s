@@ -35,6 +35,7 @@ import {
   Signal,
   Users,
   Wifi,
+  Globe,
   X,
   CalendarDays,
   Phone,
@@ -925,6 +926,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                 {!notifications.length && <p className="notification-empty">You’re all caught up.</p>}
               </div>}
             </div>
+            {isAdmin && <button type="button" className="icon-button portal-control-trigger" title="Open Customer Portal Control" aria-label="Open Customer Portal Control" onClick={() => { const token = getToken(); if (!token) { flash('Your admin session has expired. Please sign in again.'); return; } const url = 'https://k-b-customer-portal-gvzmcs.v2.appdeploy.ai/#admin-sso=' + encodeURIComponent(token); const opened = window.open(url, '_blank', 'noopener,noreferrer'); if (!opened) window.location.assign(url); }}><Globe size={18}/></button>}
             <button type="button" className="icon-button account-trigger" title="Account settings" aria-label="Account settings" onClick={() => { setNotificationsOpen(false); setShowAccountSettings(true); }}><div className="avatar small-avatar">{session.user.displayName.slice(0, 2).toUpperCase()}</div></button>
           </div>
         </header>
