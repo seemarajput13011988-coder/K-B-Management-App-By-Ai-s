@@ -450,3 +450,17 @@ input:focus,select:focus,textarea:focus{border-color:#79a9ff;box-shadow:0 0 0 3p
 [data-theme="dark"] .search-clear{background:#25364d;color:#dbeafe}
 @media(max-width:780px){.customer-toolbar{grid-template-columns:minmax(0,1fr) auto}.customer-searchbox{grid-column:1/-1}.customer-view-controls{grid-column:1;flex-wrap:wrap}.customer-toolbar .result-count{grid-column:2;grid-row:2;justify-self:end}}
 @media(max-width:420px){.customer-toolbar{padding:13px;gap:10px}.customer-view-controls{width:100%;grid-column:1/-1}.customer-view-controls label{flex:1;min-width:0}.customer-toolbar .result-count{grid-column:1/-1;grid-row:auto;justify-self:start}}
+
+/* Consistent data workspace toolbar used by finance and records */
+.data-workspace-toolbar{display:grid;grid-template-columns:minmax(170px,.8fr) minmax(220px,1.3fr) auto auto;align-items:end;gap:12px;padding:17px 18px;border-bottom:1px solid var(--kb-line,#e5eaf3)}
+.data-workspace-title h2{margin:0 0 4px;color:var(--kb-ink,#14213d);font:800 16px Manrope,'DM Sans',sans-serif}
+.data-workspace-title p{margin:0;font-size:11px}
+.data-workspace-search{width:100%;min-width:0;min-height:42px}
+.data-workspace-filters{display:flex;align-items:end;gap:8px}
+.data-workspace-filters label{display:grid;gap:5px;min-width:108px}
+.data-workspace-filters label span{padding-left:2px;color:var(--kb-muted,#64748b);font-size:10px;font-weight:800}
+.data-workspace-filters select{height:42px;width:100%;padding:0 27px 0 10px;border:1px solid #dce5f1;border-radius:11px;background:#fff;color:var(--kb-ink,#14213d);font-size:11px;font-weight:650}
+.data-workspace-toolbar>.result-count{align-self:center;white-space:nowrap}
+[data-theme="dark"] .data-workspace-filters select{background:#101b2b;border-color:#35455d;color:#e5ebf4}
+@media(max-width:900px){.data-workspace-toolbar{grid-template-columns:minmax(0,1fr) auto}.data-workspace-title{grid-column:1/-1}.data-workspace-search{grid-column:1/-1}.data-workspace-filters{grid-column:1}.data-workspace-toolbar>.result-count{grid-column:2;grid-row:3;justify-self:end}}
+@media(max-width:480px){.data-workspace-toolbar{padding:14px;gap:10px}.data-workspace-filters{width:100%}.data-workspace-filters label{flex:1;min-width:0}.data-workspace-toolbar>.result-count{grid-column:1/-1;grid-row:auto;justify-self:start}}
