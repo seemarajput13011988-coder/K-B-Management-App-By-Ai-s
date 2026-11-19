@@ -1100,7 +1100,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                     <div><h2>Recent customers</h2><p>Latest connections added to your records</p></div>
                     <button className="kb-overview-link" type="button" onClick={() => setPage('Customers')}>View all <span>→</span></button>
                   </header>
-                  <CustomerTable rows={customers.slice(0,5)} onView={setSelected}/>
+                  <CustomerTable rows={customers.slice().sort((left, right) => Date.parse(String(right.joinedAt || '')) - Date.parse(String(left.joinedAt || ''))).slice(0,5)} onView={setSelected}/>
                   {!customers.length && <Empty icon={<Users/>} title="No customers yet" text="Add your first customer to start building your records." action={isAdmin ? 'Add customer' : undefined} onClick={() => setShowCustomer(true)}/>}
                 </section>
 
@@ -1129,7 +1129,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                   <div><h2>Recent payments</h2><p>Latest recorded customer payments</p></div>
                   <button className="kb-overview-link" type="button" onClick={() => setPage('Payments')}>View payments <span>→</span></button>
                 </header>
-                <PaymentTable rows={payments.slice(0,4)}/>
+                <PaymentTable rows={payments.slice().sort((left, right) => Date.parse(String(right.paidAt || '')) - Date.parse(String(left.paidAt || ''))).slice(0,4)}/>
               </section>
             </section>
           )}
