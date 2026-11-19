@@ -39,6 +39,8 @@ const labelDate = (value: string) => {
 export default function CalendarWorkspace({ tasks, attendance, isAdmin, festivals = [] }: Props) {
   const [month, setMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
   const [selected, setSelected] = useState(() => keyOf(new Date()));
+  const [agendaFilter,setAgendaFilter]=useState<'all'|'tasks'|'attendance'|'festivals'>('all');
+  const [agendaSearch,setAgendaSearch]=useState('');
   const todayKey = keyOf(new Date());
   const monthLabel = month.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
   const cells = useMemo(() => {
@@ -71,9 +73,13 @@ export default function CalendarWorkspace({ tasks, attendance, isAdmin, festival
     festivals.forEach(festival => map.set(festival.date, [...(map.get(festival.date) || []), festival]));
     return map;
   }, [festivals]);
-  const selectedTasks = taskByDate.get(selected) || [];
-  const selectedAttendance = attendanceByDate.get(selected) || [];
-  const selectedFestivals = festivalByDate.get(selected) || [];
+  const dayTasks = taskByDate.get(selected) || [];
+  const dayAttendance = attendanceByDate.get(selected) || [];
+  const dayFestivals = festivalByDate.get(selected) || [];
+  const query=agendaSearch.trim().toLocaleLowerCase();
+  const selectedTasks = agendaFilter==='attendance'||agendaFilter==='festivals'?[]:dayTasks.filter(item=>!query||[item.title,item.details,item.status,item.priority,item.assignedToName].join(' ').toLocaleLowerCase().includes(query));
+  const selectedAttendance = agendaFilter==='tasks'||agendaFilter==='festivals'?[]:dayAttendance.filter(item=>!query||item.displayName.toLocaleLowerCase().includes(query));
+  const selectedFestivals = agendaFilter==='tasks'||agendaFilter==='attendance'?[]:dayFestivals.filter(item=>!query||item.name.toLocaleLowerCase().includes(query));
   const monthTaskCount = cells.filter(cell => cell.inMonth).reduce((sum, cell) => sum + (taskByDate.get(cell.key)?.length || 0), 0);
   const monthAttendanceCount = cells.filter(cell => cell.inMonth).reduce((sum, cell) => sum + (attendanceByDate.get(cell.key)?.length || 0), 0);
   const monthFestivalCount = cells.filter(cell => cell.inMonth).reduce((sum, cell) => sum + (festivalByDate.get(cell.key)?.length || 0), 0);
@@ -104,6 +110,7 @@ export default function CalendarWorkspace({ tasks, attendance, isAdmin, festival
     </section>
     <section className="calendar-panel calendar-agenda">
       <div className="calendar-agenda-head"><div><span className="calendar-eyebrow"><Clock3 size={14}/> DAILY AGENDA</span><h3>{labelDate(selected)}</h3></div><span className="calendar-agenda-count">{selectedFestivals.length + selectedTasks.length + selectedAttendance.length} records</span></div>
+      <div className="calendar-agenda-controls"><label><span>Show</span><select value={agendaFilter} onChange={event=>setAgendaFilter(event.target.value as typeof agendaFilter)}><option value="all">All activity</option><option value="tasks">Tasks only</option><option value="attendance">Attendance only</option><option value="festivals">Festivals &amp; holidays</option></select></label><label className="calendar-agenda-search"><span>Find in this day</span><input type="search" value={agendaSearch} onChange={event=>setAgendaSearch(event.target.value)} placeholder="Search title, staff or details"/></label></div>
       {selectedFestivals.map(festival => <article className="calendar-event festival-event" key={"festival-" + festival.date + "-" + festival.name}><div className="calendar-event-icon"><Wifi size={17}/></div><div><b>{festival.name}</b><p>Festival / holiday · K&amp;B festive calendar</p></div></article>)}
       {selectedTasks.map(task => <article className="calendar-event task-event" key={'task-' + task.id}><div className="calendar-event-icon"><ClipboardList size={17}/></div><div><b>{task.title}</b><p>{task.status}{task.priority ? ' · ' + task.priority + ' priority' : ''}{isAdmin && task.assignedToName ? ' · ' + task.assignedToName : ''}</p>{task.details && <small>{task.details}</small>}</div></article>)}
       {selectedAttendance.map(record => <article className="calendar-event attendance-event" key={'attendance-' + record.id}><div className="calendar-event-icon"><Clock3 size={17}/></div><div><b>{record.displayName}</b><p>{record.dayType === 'Absent' || String(record.status || '').toLowerCase() === 'absent' ? 'Marked absent' : 'Shift started ' + (record.checkInAt ? new Date(record.checkInAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '—') + (record.checkOutAt ? ' · Ended ' + new Date(record.checkOutAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : ' · No checkout recorded')}</p></div></article>)}
