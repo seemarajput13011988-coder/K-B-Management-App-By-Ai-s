@@ -58,18 +58,10 @@ function showUpdateScreen(message: string, retry: () => void) {
   const detail = document.createElement('p');
   detail.textContent = message;
   detail.style.cssText = 'max-width:320px;margin:0;color:#64748b;line-height:1.55;font-size:14px';
-  const gauge = document.createElement('div');
-  gauge.style.cssText = 'width:132px;height:132px;border-radius:50%;display:grid;place-items:center;background:conic-gradient(#e57b2b 0deg,#e2e8f0 0deg);transition:background .18s ease';
-  const gaugeInner = document.createElement('div');
-  gaugeInner.style.cssText = 'width:112px;height:112px;border-radius:50%;background:#fff;display:grid;align-content:center;justify-items:center;box-shadow:inset 0 0 0 1px #e2e8f0';
-  const percent = document.createElement('strong');
-  percent.textContent = '0%';
-  percent.style.cssText = 'font-size:30px;line-height:1.1;font-variant-numeric:tabular-nums;color:#17243a';
-  const gaugeCaption = document.createElement('span');
-  gaugeCaption.textContent = 'DOWNLOAD';
-  gaugeCaption.style.cssText = 'font-size:10px;letter-spacing:1.5px;font-weight:800;color:#64748b;margin-top:5px';
-  gaugeInner.append(percent, gaugeCaption);
-  gauge.append(gaugeInner);
+  const mascots = document.createElement('div');
+  mascots.className = 'kb-mascots';
+  mascots.setAttribute('aria-label', 'K&B team loading');
+  mascots.innerHTML = '<div class="kb-mascot"><span class="kb-face">😊</span><span class="kb-shirt">K&amp;B</span></div><div class="kb-mascot"><span class="kb-face">😎</span><span class="kb-shirt">K&amp;B</span></div><div class="kb-mascot"><span class="kb-face">😮</span><span class="kb-shirt">K&amp;B</span></div>';
   const progressTrack = document.createElement('div');
   progressTrack.style.cssText = 'width:min(320px,82vw);height:9px;border-radius:99px;background:#e2e8f0;overflow:hidden';
   const progressFill = document.createElement('div');
@@ -87,15 +79,13 @@ function showUpdateScreen(message: string, retry: () => void) {
     button.textContent = 'Checking…';
     retry();
   });
-  screen.append(mark, title, detail, gauge, progressTrack, progressLabel, button);
+  screen.append(mark, title, detail, mascots, progressTrack, progressLabel, button);
   appRoot.append(screen);
   return {
     setMessage(next: string) { detail.textContent = next; },
     setProgress(value: number) {
       const safe = Math.max(0, Math.min(100, Math.round(value)));
-      percent.textContent = safe + '%';
       progressFill.style.width = safe + '%';
-      gauge.style.background = 'conic-gradient(#e57b2b ' + (safe * 3.6) + 'deg,#e2e8f0 ' + (safe * 3.6) + 'deg)';
       progressLabel.textContent = safe >= 100 ? 'Download complete' : 'Downloaded ' + safe + '%';
     },
   };
