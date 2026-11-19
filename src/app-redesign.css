@@ -165,3 +165,84 @@ table td{color:#344d50}
  .portal-request-actions .btn{flex:1 1 120px;min-height:40px}
  .portal-request-status{justify-self:start}
 }
+
+
+/* K&B Operations Workspace — cohesive application shell redesign */
+:root{
+  --kb-page:#f4f7f6;
+  --kb-surface:#ffffff;
+  --kb-line:#e3ebe7;
+  --kb-ink:#183b3a;
+  --kb-muted:#718783;
+  --kb-primary:#176b5b;
+  --kb-primary-deep:#104f46;
+  --kb-accent:#e8a94f;
+}
+html,body,#root{min-height:100%;background:var(--kb-page)}
+.shell{min-height:100dvh;display:grid;grid-template-columns:256px minmax(0,1fr);background:var(--kb-page)}
+.sidebar{position:sticky;top:0;height:100dvh;width:256px;min-width:0;padding:22px 15px 16px;background:linear-gradient(165deg,#102f31 0%,#174542 58%,#123a39 100%);border:0;box-shadow:8px 0 30px rgba(17,54,49,.07);display:flex;flex-direction:column;z-index:30}
+.brand{padding:7px 8px 22px;border-bottom:1px solid rgba(222,241,231,.13);gap:11px}
+.brand-mark{width:43px;height:43px;border-radius:14px;background:linear-gradient(145deg,#f3c16f,#dc9140);color:#173a36;font-size:14px;letter-spacing:-.06em}
+.brand>div:nth-child(2) strong{font-size:13px;letter-spacing:.02em;color:#f5fbf7}
+.brand>div:nth-child(2) strong span{color:#b9d5c9}
+.brand>div:nth-child(2) small{display:block;margin-top:4px;color:#a8c6bb;font-size:10px}
+.workspace{margin:17px 2px 21px;padding:11px 12px;border:1px solid rgba(216,239,228,.14);border-radius:12px;background:rgba(255,255,255,.055);color:#d7e9e0;font-size:11px;font-weight:750}
+.workspace-dot{width:7px;height:7px;background:#74d4a3;box-shadow:0 0 0 4px rgba(116,212,163,.12)}
+.nav-label{padding:0 11px 9px;color:#91b5a8;font-size:9px;font-weight:850;letter-spacing:.16em}
+.primary-navigation{display:grid;gap:5px;overflow-y:auto;overscroll-behavior:contain;padding:0 1px}
+.nav-item{min-height:43px;padding:0 12px;border-radius:11px;color:#c4d9d0;font-size:11px;font-weight:680;gap:11px}
+.nav-item svg{opacity:.88}
+.nav-item:hover{background:rgba(255,255,255,.08);color:#fff}
+.nav-item.active{background:linear-gradient(100deg,rgba(237,180,91,.2),rgba(237,180,91,.07));box-shadow:inset 3px 0 #efb65e;color:#fff}
+.nav-item.active svg{color:#f1c477}
+.nav-item em{background:#e8b15f;color:#24413a;border-radius:20px;padding:3px 7px;font-size:9px}
+.secondary-navigation{display:grid;gap:4px;margin:1px 0 7px 13px;padding-left:10px;border-left:1px solid rgba(216,239,228,.17)}
+.secondary-navigation .nav-item{min-height:38px;font-size:10px}
+.sidebar-bottom{margin-top:auto;padding-top:14px}
+.sidebar-bottom>.btn{background:rgba(255,255,255,.08)!important;border:1px solid rgba(222,241,231,.15)!important;color:#e5f1eb!important}
+.help-card{padding:13px;border:1px solid rgba(222,241,231,.12);border-radius:13px;background:rgba(255,255,255,.055);color:#e9f4ee}
+.help-card p{color:#b6cdc3}
+.help-card button{color:#f0c47d}
+.user-row{margin-top:13px;padding:12px 5px 0;border-top:1px solid rgba(222,241,231,.14);color:#f1f7f3}
+.user-row small{color:#a9c4b9}
+.main{min-width:0;background:var(--kb-page)}
+.topbar{position:sticky;top:0;z-index:20;min-height:68px;padding:0 clamp(18px,3vw,38px);background:rgba(255,255,255,.9);border-bottom:1px solid #e4ece8;box-shadow:0 4px 18px rgba(30,66,57,.035);backdrop-filter:blur(16px)}
+.crumb{color:#8a9c96;font-size:11px}.crumb strong{color:#234d45;font-size:12px}
+.system-status{padding:7px 10px;border:1px solid #dcebe2;border-radius:999px;background:#f2f8f4;color:#4e7768;font-size:9px;font-weight:750}
+.system-status i{background:#3ba879}
+.content{width:min(100%,1500px);margin:0 auto;padding:30px clamp(18px,3vw,40px) 48px}
+.page-heading{margin-bottom:24px}
+.page-heading .eyebrow{color:#6b9485;font-size:9px;font-weight:850;letter-spacing:.16em}
+.page-heading h1{margin:8px 0 6px;color:#173e3b;font-size:clamp(25px,2.4vw,34px);font-weight:820;letter-spacing:-1.1px;line-height:1.12}
+.page-heading>div>p{max-width:660px;color:#7a9189;font-size:12px;line-height:1.6}
+.panel,.ops-panel,.task-card,.plan-card,.staff-insight,.finance-panel{border:1px solid var(--kb-line);border-radius:17px;background:var(--kb-surface);box-shadow:0 7px 24px rgba(29,67,57,.045)}
+.btn.primary{background:linear-gradient(135deg,#1b806b,#176454);box-shadow:0 5px 13px rgba(23,107,91,.16)}
+.btn.secondary{background:#f6faf8;border-color:#dce9e3;color:#42645a}
+.icon-button,.theme-toggle{border-color:#e0eae5;background:#f8fbf9;color:#47685e}
+@media(max-width:900px){
+ .shell{display:block;min-height:100dvh}
+ .sidebar{position:fixed;left:0;top:0;bottom:0;width:min(292px,86vw);height:100dvh;transform:translateX(-105%);transition:transform .22s ease;box-shadow:18px 0 45px rgba(10,36,32,.2)}
+ .sidebar.mobile-open{transform:translateX(0)}
+ .main{min-height:100dvh;width:100%}
+ .topbar{min-height:60px;padding:0 13px}
+ .content{padding:20px 14px calc(34px + env(safe-area-inset-bottom))}
+ .page-heading{margin-bottom:18px}
+ .page-heading h1{font-size:25px;letter-spacing:-.7px}
+ .system-status{display:none}
+ .top-actions{gap:7px}
+ .preference-controls{gap:5px}
+ .language-control{max-width:104px}
+ .language-control select{max-width:78px}
+}
+@media(max-width:390px){
+ .crumb{font-size:10px}
+ .topbar{padding:0 9px}
+ .content{padding-left:11px;padding-right:11px}
+ .theme-toggle span{display:none}
+}
+[data-theme="dark"] .main,[data-theme="dark"] .shell{background:#101d20}
+[data-theme="dark"] .topbar{background:rgba(20,37,39,.94);border-bottom-color:#2b4140}
+[data-theme="dark"] .crumb strong,[data-theme="dark"] .page-heading h1{color:#e0eee7}
+[data-theme="dark"] .page-heading>div>p{color:#a4bbb1}
+[data-theme="dark"] .panel,[data-theme="dark"] .ops-panel,[data-theme="dark"] .task-card,[data-theme="dark"] .plan-card,[data-theme="dark"] .staff-insight,[data-theme="dark"] .finance-panel{background:#17292b;border-color:#304846}
+[data-theme="dark"] .system-status{background:#1b3831;border-color:#31594b;color:#a9d8c0}
