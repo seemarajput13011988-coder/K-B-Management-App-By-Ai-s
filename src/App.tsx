@@ -15,6 +15,7 @@ const GpsTrackingWorkspace = lazy(() => import('./GpsTrackingWorkspace'));
 const InstallationsWorkspace = lazy(() => import('./InstallationsWorkspace'));
 const CalendarWorkspace = lazy(() => import('./CalendarWorkspace'));
 import { useAppPreferences } from './appPreferences';
+import { matchesSearch } from './lib/search';
 import { api as client, changeAppPassword, changeAppUserId, signInAppUser, signOutAppUser, submitStaffRegistrationRequest, getStaffRegistrationStatus, nativeApiPost } from './lib/api';
 import {
   Activity,
@@ -441,18 +442,22 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   const staffShiftActive = attendanceRecords.some(item => item.userId === session.user.id && isAttendanceShiftActive(item));
   const overdueValue = customers.filter(c => c.status === 'Active' && c.dueDate && c.dueDate <= today).reduce((sum, c) => sum + Math.max(0, Number(c.monthlyFee || 0) - (paidByCustomer.get(c.id) || 0)), 0);
   const filtered = useMemo(
-    () =>
-      customers.filter(c =>
-        [c.name, c.phone, c.address, c.plan]
-          .join(' ')
-          .toLowerCase()
-          .includes(search.toLowerCase())
-      ),
+    () => customers.filter(customer => matchesSearch(
+      search,
+      customer.id, customer.name, customer.phone, customer.address, customer.plan,
+      customer.status, customer.notes, customer.assignedTo, customer.assignedToName,
+      customer.joinedAt, customer.dueDate, customer.monthlyFee
+    )),
     [customers, search]
   );
   const selectedStaffProfile = staff.find(member => member.id === selectedStaffProfileId);
-  const filteredStaff = staff.filter(member => [member.displayName, member.userId].join(' ').toLowerCase().includes(staffSearch.toLowerCase()));
-  const filteredPayments = payments.filter(payment => [payment.customerName, payment.month, payment.method, payment.paidAt, payment.recordedByName || ''].join(' ').toLowerCase().includes(paymentSearch.toLowerCase()));
+  const filteredStaff = staff.filter(member => matchesSearch(
+    staffSearch, member.id, member.displayName, member.userId, member.phone, member.active ? 'active enabled' : 'disabled inactive'
+  ));
+  const filteredPayments = payments.filter(payment => matchesSearch(
+    paymentSearch, payment.id, payment.customerId, payment.customerName, payment.month,
+    payment.method, payment.paidAt, payment.amount, payment.recordedBy, payment.recordedByName
+  ));
   const selectedStaffPayments = payments.filter(payment => payment.recordedBy === selectedStaffProfileId).sort((a, b) => b.paidAt.localeCompare(a.paidAt));
   const selectedStaffAttendance = attendanceRecords.filter(record => record.userId === selectedStaffProfileId).sort((a, b) => b.workDate.localeCompare(a.workDate));
   const selectedStaffAttendanceEquivalent = selectedStaffAttendance.filter(record => record.dayType !== 'Absent' && String(record.status || '').toLowerCase() !== 'absent').reduce((sum, record) => sum + (record.dayType === 'Half day' ? 0.5 : 1), 0);
@@ -466,8 +471,8 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   const selectedStaffCollected = selectedStaffPayments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
   const visiblePlans = plans.filter(plan => {
     const matchesStatus = planFilter === 'All' || (planFilter === 'Active' ? plan.active : !plan.active);
-    const matchesSearch = [plan.name, plan.provider, plan.speed, plan.connectionType, plan.note].join(' ').toLowerCase().includes(planSearch.toLowerCase());
-    return matchesStatus && matchesSearch;
+    const matchesSearchForPlan = matchesSearch(planSearch, plan.id, plan.name, plan.provider, plan.speed, plan.data, plan.connectionType, plan.note, plan.details, plan.price);
+    return matchesStatus && matchesSearchForPlan;
   });
 
   function flash(message: string) {

@@ -2178,3 +2178,102 @@ td,th{padding:12px 13px}
 .workspace-loading{min-height:220px;display:grid;place-content:center;justify-items:center;gap:12px;color:var(--kb-muted,#718096);font-size:12px}
 .chart-track i,.status-chart-row i,.finance-chart-bar{transition:height .55s cubic-bezier(.2,.75,.2,1),width .55s cubic-bezier(.2,.75,.2,1)}
 @media(prefers-reduced-motion:reduce){.chart-track i,.status-chart-row i,.finance-chart-bar{transition:none!important}}
+/* Complete dark appearance coverage for secondary workspaces and controls. */
+[data-theme="dark"] .stat-card,
+[data-theme="dark"] .row-action,
+[data-theme="dark"] .complaint-row select,
+[data-theme="dark"] .field input,
+[data-theme="dark"] .field select,
+[data-theme="dark"] .field textarea,
+[data-theme="dark"] .staff-record-metrics article,
+[data-theme="dark"] .staff-record-section,
+[data-theme="dark"] .auth-card,
+[data-theme="dark"] .auth-field input,
+[data-theme="dark"] .group-select,
+[data-theme="dark"] .task-status-control select,
+[data-theme="dark"] .login-role-card,
+[data-theme="dark"] .plan-search,
+[data-theme="dark"] .plan-filters button,
+[data-theme="dark"] .attendance-calendar-nav button,
+[data-theme="dark"] .notification-popover,
+[data-theme="dark"] .staff-registration-form input,
+[data-theme="dark"] .staff-registration-form textarea,
+[data-theme="dark"] .finance-actions select,
+[data-theme="dark"] .complaint-controls select,
+[data-theme="dark"] .quick-actions button {
+  background: #162235 !important;
+  border-color: #35455d !important;
+  color: #e5ebf4 !important;
+}
+[data-theme="dark"] .stat-label,
+[data-theme="dark"] .stat-foot,
+[data-theme="dark"] .finance-head p,
+[data-theme="dark"] .finance-actions label,
+[data-theme="dark"] .finance-disclaimer,
+[data-theme="dark"] .invoice-form-section label,
+[data-theme="dark"] .toolbar .subtle,
+[data-theme="dark"] .plan-toolbar p,
+[data-theme="dark"] .empty-state p,
+[data-theme="dark"] .staff-record-section p,
+[data-theme="dark"] .auth-card p,
+[data-theme="dark"] .notification-popover small {
+  color: #a9b8cb !important;
+}
+[data-theme="dark"] .stat-value,
+[data-theme="dark"] .finance-metrics strong,
+[data-theme="dark"] .finance-audit-list b,
+[data-theme="dark"] .finance-table-wrap td,
+[data-theme="dark"] .finance-table-wrap th,
+[data-theme="dark"] .invoice-form-section h3,
+[data-theme="dark"] .plan-toolbar h2,
+[data-theme="dark"] .notification-popover b {
+  color: #e5ebf4 !important;
+}
+[data-theme="dark"] .finance-metrics article,
+[data-theme="dark"] .finance-panel,
+[data-theme="dark"] .invoice-form-section,
+[data-theme="dark"] .notification-popover,
+[data-theme="dark"] .auth-card {
+  box-shadow: 0 8px 28px #00000025;
+}
+[data-theme="dark"] .plan-filters button.selected,
+[data-theme="dark"] .group-select.active {
+  background: #293b53 !important;
+  border-color: #e99a43 !important;
+  color: #ffd29b !important;
+}
+[data-theme="dark"] input::placeholder,
+[data-theme="dark"] textarea::placeholder {
+  color: #8192a8 !important;
+  opacity: 1;
+}
+[data-theme="dark"] :focus-visible {
+  outline-color: #e99a43;
+}
+/* Neutral action surfaces and invoice workspace follow the selected appearance too. */
+[data-theme="dark"] .icon-button,
+[data-theme="dark"] .btn.secondary,
+[data-theme="dark"] .finance-metrics article,
+[data-theme="dark"] .finance-panel,
+[data-theme="dark"] .invoice-intro,
+[data-theme="dark"] .invoice-modal,
+[data-theme="dark"] .invoice-form-section,
+[data-theme="dark"] .invoice-modal-head,
+[data-theme="dark"] .invoice-preview {
+  background: #162235 !important;
+  border-color: #35455d !important;
+  color: #e5ebf4 !important;
+}
+[data-theme="dark"] .icon-button:hover,
+[data-theme="dark"] .btn.secondary:hover {
+  background: #22334a !important;
+}
+
+
+/* Keep appearance settings reachable on compact Android screens. */
+@media(max-width:420px){
+  .top-actions>.preference-controls{display:flex;align-items:center;gap:4px;min-width:0}
+  .top-actions>.preference-controls .theme-toggle{display:inline-flex;align-items:center;justify-content:center;min-width:34px;width:34px;height:34px;padding:0;flex:0 0 34px}
+  .top-actions>.preference-controls .theme-toggle span{display:none}
+  .top-actions>.preference-controls .language-control{min-width:0}
+}

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { api, subscribeToApiChanges } from './lib/api';
+import { matchesSearch } from './lib/search';
 import { Download, FileText } from 'lucide-react';
 import { exportCsvFile, exportPdfReport } from './lib/file-export';
 
@@ -41,6 +42,9 @@ export default function InventoryWorkspace({isAdmin,flash}:{isAdmin:boolean;flas
   const [movementReason,setMovementReason]=useState('');
   const [historyItem,setHistoryItem]=useState<InventoryItem|null>(null);
   const [history,setHistory]=useState<Movement[]>([]);
+  const [search,setSearch]=useState('');
+  const [categoryFilter,setCategoryFilter]=useState('All');
+  const [stockFilter,setStockFilter]=useState<'All'|'Low stock'|'In stock'|'Archived'>('All');
   const [form,setForm]=useState({name:'',sku:'',category:'',unit:'pcs',quantity:'0',minimumQuantity:'2',unitCost:'0',supplier:'',location:'',notes:'',assignedTo:'',active:true});
 
   async function load() {
@@ -84,11 +88,17 @@ export default function InventoryWorkspace({isAdmin,flash}:{isAdmin:boolean;flas
     catch(error) { flash(error instanceof Error?error.message:'Could not load stock history.'); }
   }
   const lowStock=items.filter(item=>item.active&&item.quantity<=item.minimumQuantity).length;
+  const categories=Array.from(new Set(items.map(item=>item.category).filter(Boolean))).sort((a,b)=>a.localeCompare(b));
+  const visibleItems=items.filter(item=>{
+    const categoryMatches=categoryFilter==='All'||item.category===categoryFilter;
+    const stockMatches=stockFilter==='All'||(stockFilter==='Low stock'?item.active&&item.quantity<=item.minimumQuantity:stockFilter==='In stock'?item.active&&item.quantity>item.minimumQuantity:!item.active);
+    return categoryMatches&&stockMatches&&matchesSearch(search,item.id,item.name,item.sku,item.category,item.unit,item.quantity,item.minimumQuantity,item.supplier,item.location,item.notes,item.assignedToName,item.active?'active':'archived');
+  });
 
   return <section className="panel table-panel">
     <div className="toolbar">
       <div><h2>Inventory & equipment</h2><p className="subtle">Track routers, cables, ONTs, tools and other business stock.</p></div>
-      <div className="inventory-toolbar"><span className="inventory-low-count">{lowStock} low-stock</span><button className="btn secondary" onClick={()=>exportInventory(items,isAdmin)} disabled={!items.length}><Download size={14}/> Export CSV</button><button className="btn secondary" onClick={()=>exportInventoryPdf(items,isAdmin)} disabled={!items.length}><FileText size={14}/> Export PDF</button>{isAdmin&&<button className="btn primary" onClick={openCreate}>+ Add item</button>}</div>
+      <div className="inventory-toolbar"><input className="inventory-search" aria-label="Search inventory" placeholder="Search item, SKU, supplier or location…" value={search} onChange={event=>setSearch(event.target.value)}/><select aria-label="Filter inventory category" value={categoryFilter} onChange={event=>setCategoryFilter(event.target.value)}><option value="All">All categories</option>{categories.map(category=><option key={category} value={category}>{category}</option>)}</select><select aria-label="Filter inventory stock" value={stockFilter} onChange={event=>setStockFilter(event.target.value as typeof stockFilter)}><option>All</option><option>Low stock</option><option>In stock</option><option>Archived</option></select><span className="inventory-low-count">{lowStock} low-stock</span><button className="btn secondary" onClick={()=>exportInventory(visibleItems,isAdmin)} disabled={!visibleItems.length}><Download size={14}/> Export CSV</button><button className="btn secondary" onClick={()=>exportInventoryPdf(visibleItems,isAdmin)} disabled={!visibleItems.length}><FileText size={14}/> Export PDF</button>{isAdmin&&<button className="btn primary" onClick={openCreate}>+ Add item</button>}</div>
     </div>
     {showForm&&isAdmin&&<form className="inventory-form" onSubmit={saveItem}>
       <div className="inventory-form-title"><strong>{editing?'Edit inventory item':'Add inventory item'}</strong><button type="button" className="btn secondary compact" onClick={()=>setShowForm(false)}>Close</button></div>
@@ -117,16 +127,16 @@ export default function InventoryWorkspace({isAdmin,flash}:{isAdmin:boolean;flas
     </form>}
     {loading?<p className="ops-empty">Loading inventory…</p>:<div className="inventory-table-wrap"><table className="inventory-table">
       <thead><tr><th>Item</th><th>Category</th><th>In stock</th><th>Minimum</th>{isAdmin&&<th>Unit cost</th>}<th>Assigned to</th><th>Location</th><th>Actions</th></tr></thead>
-      <tbody>{items.map(item=><tr key={item.id} className={!item.active?'inventory-archived':''}>
+      <tbody>{visibleItems.map(item=><tr key={item.id} className={!item.active?'inventory-archived':''}>
         <td><strong>{item.name}</strong><small>{item.sku} · {item.unit}</small><small>Added {stamp(item.createdAt||'')}{item.updatedAt?' · Updated '+stamp(item.updatedAt):''}</small></td><td>{item.category}</td>
         <td><span className={'inventory-quantity '+(item.quantity<=item.minimumQuantity?'low':'')}>{item.quantity} {item.unit}</span></td>
         <td>{item.minimumQuantity} {item.unit}</td>{isAdmin&&<td>{money(item.unitCost||0)}</td>}<td>{item.assignedToName||'—'}</td><td>{item.location||'—'}</td>
         <td><div className="inventory-actions">{isAdmin&&<><button className="btn secondary compact" disabled={!item.active} onClick={()=>{setMovementItem(item);setMovementType('OUT');setMovementQuantity('1');}}>Issue</button><button className="btn secondary compact" disabled={!item.active} onClick={()=>{setMovementItem(item);setMovementType('IN');setMovementQuantity('1');}}>Receive</button><button className="btn secondary compact" onClick={()=>openEdit(item)}>Edit / assign</button></>}<button className="btn secondary compact" onClick={()=>void showHistory(item)}>History</button></div></td>
       </tr>)}</tbody>
-    </table>{!items.length&&<p className="ops-empty">No inventory items yet. {isAdmin?'Add routers, ONTs, cables and tools to begin stock tracking.':'Ask an administrator to add inventory items.'}</p>}</div>}
+    </table>{!visibleItems.length&&<p className="ops-empty">{items.length?'No inventory items match these search and filter settings.':`No inventory items yet. ${isAdmin?'Add routers, ONTs, cables and tools to begin stock tracking.':'Ask an administrator to add inventory items.'}`}</p>}</div>}
     {historyItem&&<div className="inventory-history"><div className="inventory-form-title"><strong>Stock history · {historyItem.name}</strong><button className="btn secondary compact" onClick={()=>setHistoryItem(null)}>Close</button></div>{history.length?<div className="inventory-history-list">{history.map(entry=><div key={entry.id}><span className={'inventory-movement-badge '+entry.type.toLowerCase()}>{entry.type}</span><div><b>{entry.quantity} {historyItem.unit} · {entry.reason}</b><small>{entry.quantityBefore} → {entry.quantityAfter} · {entry.createdByName} · {stamp(entry.createdAt)}</small></div></div>)}</div>:<p className="ops-empty">No stock movements recorded yet.</p>}</div>}
     <style>{`
-      .inventory-toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.inventory-low-count{padding:6px 9px;border-radius:99px;background:#fff4df;color:#875500;font-size:12px;font-weight:700}
+      .inventory-toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.inventory-search,.inventory-toolbar select{min-height:38px;min-width:150px;max-width:230px;padding:7px 10px;border:1px solid var(--border,#dbe2ec);border-radius:9px;background:var(--surface,#fff);color:var(--text,#172033);font:inherit}.inventory-low-count{padding:6px 9px;border-radius:99px;background:#fff4df;color:#875500;font-size:12px;font-weight:700}
       .inventory-form,.inventory-movement-form,.inventory-history{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;padding:16px;margin:12px 0 18px;border:1px solid var(--border,#dbe2ec);border-radius:14px;background:var(--surface-soft,#f7f9fc)}
       .inventory-form-title{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between}.inventory-form label,.inventory-movement-form label{display:grid;gap:6px;font-size:12px;font-weight:700;color:var(--muted,#526176)}
       .inventory-form input,.inventory-form textarea,.inventory-movement-form input,.inventory-movement-form select{width:100%;min-height:39px;padding:8px 10px;border:1px solid var(--border,#dbe2ec);border-radius:9px;background:var(--surface,#fff);color:var(--text,#172033);font:inherit}
