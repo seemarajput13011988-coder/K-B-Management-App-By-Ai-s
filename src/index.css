@@ -2178,3 +2178,142 @@ td,th{padding:12px 13px}
 .workspace-loading{min-height:220px;display:grid;place-content:center;justify-items:center;gap:12px;color:var(--kb-muted,#718096);font-size:12px}
 .chart-track i,.status-chart-row i,.finance-chart-bar{transition:height .55s cubic-bezier(.2,.75,.2,1),width .55s cubic-bezier(.2,.75,.2,1)}
 @media(prefers-reduced-motion:reduce){.chart-track i,.status-chart-row i,.finance-chart-bar{transition:none!important}}
+
+
+/* K&B UI stabilization: consistent card headings and responsive action alignment. */
+.content .panel-head,
+.content .ops-panel-head,
+.content .finance-head,
+.content .calendar-toolbar,
+.content .calendar-agenda-head,
+.content .staff-record-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  max-width: 100%;
+}
+.content .panel-head > div:first-child,
+.content .ops-panel-head > div:first-child,
+.content .finance-head > div:first-child,
+.content .calendar-toolbar > div:first-child,
+.content .calendar-agenda-head > div:first-child,
+.content .staff-record-heading > div:first-child {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+.content .panel-head h2,
+.content .ops-panel-head h2,
+.content .finance-head h2,
+.content .calendar-toolbar h2,
+.content .calendar-agenda h3,
+.content .staff-record-heading h2 {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: normal;
+  line-height: 1.3;
+}
+.content .panel-head p,
+.content .ops-panel-head p,
+.content .finance-head p,
+.content .calendar-toolbar p {
+  max-width: 68ch;
+  overflow-wrap: anywhere;
+  line-height: 1.5;
+}
+.content .panel-head > :not(:first-child),
+.content .ops-panel-head > :not(:first-child),
+.content .finance-head > :not(:first-child),
+.content .calendar-agenda-head > :not(:first-child),
+.content .staff-record-heading > :not(:first-child) {
+  flex: 0 0 auto;
+  min-width: 0;
+  max-width: 100%;
+}
+.content .panel-head .text-btn,
+.content .panel-head .live-tag {
+  flex-shrink: 0;
+}
+.content .panel,
+.content .ops-panel,
+.content .finance-panel,
+.content .calendar-panel,
+.content .task-card,
+.content .staff-insight {
+  min-width: 0;
+}
+.content .toolbar {
+  align-items: flex-start;
+  min-width: 0;
+}
+.content .toolbar > div:first-child {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+.content .toolbar h2,
+.content .toolbar p {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 600px) {
+  .content .panel-head,
+  .content .ops-panel-head,
+  .content .finance-head,
+  .content .calendar-toolbar,
+  .content .calendar-agenda-head,
+  .content .staff-record-heading {
+    align-items: flex-start;
+    gap: 9px;
+  }
+  .content .panel-head > div:first-child,
+  .content .ops-panel-head > div:first-child,
+  .content .finance-head > div:first-child,
+  .content .calendar-toolbar > div:first-child,
+  .content .calendar-agenda-head > div:first-child,
+  .content .staff-record-heading > div:first-child {
+    flex-basis: 100%;
+  }
+  .content .panel-head,
+  .content .ops-panel-head,
+  .content .finance-head {
+    flex-wrap: wrap;
+  }
+  .content .panel-head > :not(:first-child),
+  .content .ops-panel-head > :not(:first-child),
+  .content .finance-head > :not(:first-child) {
+    max-width: 100%;
+  }
+  .content .panel-head h2,
+  .content .ops-panel-head h2,
+  .content .finance-head h2 {
+    font-size: clamp(13px, 3.5vw, 16px);
+  }
+  .content .panel-head p,
+  .content .ops-panel-head p,
+  .content .finance-head p {
+    font-size: 11px;
+  }
+  .content .toolbar {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .content .toolbar > div:first-child,
+  .content .inventory-toolbar,
+  .content .installation-toolbar-actions {
+    width: 100%;
+    max-width: 100%;
+  }
+}
+@media (max-width: 380px) {
+  .content .panel-head,
+  .content .ops-panel-head,
+  .content .finance-head {
+    margin-bottom: 12px;
+  }
+  .content .panel-head .live-tag,
+  .content .ops-panel-head .ops-pill {
+    font-size: 8px;
+    padding: 5px 7px;
+  }
+}
