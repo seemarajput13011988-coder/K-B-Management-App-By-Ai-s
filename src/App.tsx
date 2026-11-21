@@ -254,6 +254,8 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   const notificationAnchorRef = useRef<HTMLDivElement | null>(null);
   const pushToken = useRef<string | null>(null);
   const seenNotifications = useRef<Set<string> | null>(null);
+  // Ignore stale overlapping refreshes so older responses cannot overwrite newer records.
+  const loadRequestId = useRef(0);
 
   useEffect(() => {
     const root = document.querySelector('.content');
@@ -289,6 +291,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   }, [mobileNav]);
 
   async function load(silent = false) {
+    const requestId = ++loadRequestId.current;
     if (!silent) setLoading(true);
     try {
       const [c, p, t, w, a, planResult] = await Promise.all([
@@ -299,6 +302,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
         api.get('/api/attendance'),
         api.get('/api/plans'),
       ]);
+      if (requestId !== loadRequestId.current) return;
       setCustomers((c.data.items || []).map((item: Customer) => ({ ...item, status: customerStatusLabel(item.status) })));
       setPlans(planResult.data.items || []);
       setPayments(p.data.items || []);
@@ -307,6 +311,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
       setTasks(w.data.items || []);
       if (isAdmin) {
         const [s, requests, inventoryResult, installationResult, payrollResult, holidayResult] = await Promise.all([api.get('/api/staff'),api.get('/api/staff-registration-requests'),api.get('/api/inventory'),api.get('/api/installations'),api.get('/api/payroll'),api.get('/api/holidays')]);
+        if (requestId !== loadRequestId.current) return;
         setStaff(s.data.items || []);
         setStaffRegistrationRequests(requests.data.items || []);
         setStaffHolidayRequests(holidayResult.data.items || []);
@@ -315,19 +320,23 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
         setStaffPayroll(payrollResult.data.items || []);
         try {
           const review = await api.get('/api/retention/review');
+          if (requestId !== loadRequestId.current) return;
           setRetentionItems((review.data.items || []) as RetentionReviewItem[]);
         } catch {
-          setRetentionItems([]);
+          if (requestId === loadRequestId.current) setRetentionItems([]);
         }
       }
       if (canManageAdmins) {
         const adminsResult = await api.get('/api/admins');
+        if (requestId !== loadRequestId.current) return;
         setAdminAccounts(adminsResult.data.items || []);
       }
-    } catch (e) {
-      setNotice('Could not load records. Please refresh and try again.');
+    } catch {
+      if (requestId === loadRequestId.current) {
+        setNotice('Could not load records. Please refresh and try again.');
+      }
     } finally {
-      if (!silent) setLoading(false);
+      if (requestId === loadRequestId.current && !silent) setLoading(false);
     }
   }
   useEffect(() => {
