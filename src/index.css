@@ -2383,3 +2383,24 @@ td,th{padding:12px 13px}
   border-color:#1e5489;
 }
 .nav-item.active svg{color:#8ab7ff !important}
+
+
+/* Blue brand treatment for former green status accents; status meaning remains unchanged. */
+.ops-pill.is-live,
+.ops-complete,
+.ops-history-row strong,
+.task-state.completed,
+.plan-state.is-active,
+.registration-status-steps .done {
+  color:#2457a6 !important;
+  background:#eaf2ff !important;
+  border-color:#cfe0f7 !important;
+}
+[data-theme="dark"] .ops-pill.is-live,
+[data-theme="dark"] .task-state.completed,
+[data-theme="dark"] .plan-state.is-active,
+[data-theme="dark"] .registration-status-steps .done {
+  color:#a9cbff !important;
+  background:#1c3554 !important;
+  border-color:#315a82 !important;
+}
