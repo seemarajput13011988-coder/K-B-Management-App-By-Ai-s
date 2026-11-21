@@ -131,6 +131,7 @@ export default function StaffOperations({ session, customers, flash, compact = f
   const [messageForm, setMessageForm] = useState({ recipientId: '', message: '' });
   const [visitForm, setVisitForm] = useState({ customerId: customers[0]?.id || '', purpose: 'Installation / service visit', notes: '' });
   const selectedGroupRef = useRef('');
+  const refreshRequestId = useRef(0);
   const [today, setToday] = useState(localDay);
   const [indiaMinutes, setIndiaMinutes] = useState(indiaMinutesNow);
   const [shiftSettings, setShiftSettings] = useState({ shiftStartTime: '08:00', shiftEndTime: '19:00' });
@@ -178,6 +179,7 @@ export default function StaffOperations({ session, customers, flash, compact = f
   }
 
   const refresh = useCallback(async () => {
+    const requestId = ++refreshRequestId.current;
     try {
       const [a, v, n, m, g, p, hr, settings] = await Promise.all([
         request('get', '/api/attendance'), request('get', '/api/visits'),
@@ -185,6 +187,7 @@ export default function StaffOperations({ session, customers, flash, compact = f
         request('get', '/api/groups'), request('get', '/api/payments'),
         request('get', '/api/holidays'), request('get', '/api/workforce-settings').catch(() => ({ data: null }))
       ]);
+      if (requestId !== refreshRequestId.current) return;
       setShiftSettingsAvailable(Boolean(settings.data?.shiftStartTime && settings.data?.shiftEndTime));
       setShiftSettings({
         shiftStartTime: settings.data?.shiftStartTime || '08:00',
@@ -203,17 +206,21 @@ export default function StaffOperations({ session, customers, flash, compact = f
         const [s, rr] = await Promise.all([
           request('get', '/api/staff'), request('get', '/api/staff-registration-requests'),
         ]);
+        if (requestId !== refreshRequestId.current) return;
         setStaff(s.data.items || []);
         setRegistrationRequests(rr.data.items || []);
       }
       if (superAdmin) {
         const ad = await request('get', '/api/admins');
+        if (requestId !== refreshRequestId.current) return;
         setAdmins(ad.data.items || []);
       }
     } catch {
-      flash('Could not load team operations. Please refresh and try again.');
+      if (requestId === refreshRequestId.current) {
+        flash('Could not load team operations. Please refresh and try again.');
+      }
     } finally {
-      setLoading(false);
+      if (requestId === refreshRequestId.current) setLoading(false);
     }
   }, [admin, superAdmin, request, flash]);
 
