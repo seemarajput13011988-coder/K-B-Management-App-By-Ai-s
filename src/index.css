@@ -2346,3 +2346,40 @@ td,th{padding:12px 13px}
   .chart-panel{padding:13px}
   .panel-head{gap:7px}
 }
+
+
+/* K&B brand refresh: replace green-led styling with midnight blue, cobalt and amber. */
+:root{
+  --kb-primary:#2563a6;
+  --kb-primary-deep:#174879;
+  --kb-accent:#f0a34a;
+  --kb-success:#2563a6;
+  --nexus-primary:#2457a6;
+  --nexus-primary-soft:#edf4ff;
+}
+.welcome-strip{
+  background:linear-gradient(120deg,#142b4a 0%,#1e5489 58%,#286eae 100%) !important;
+  border-color:#294f79 !important;
+  color:#fff !important;
+}
+.welcome-strip strong,.welcome-strip h2,.welcome-strip h3{color:#fff !important}
+.welcome-strip .welcome-icon,.welcome-strip .welcome-mark{
+  background:rgba(255,255,255,.13) !important;
+  color:#ffc477 !important;
+}
+.stat-icon.green{background:#eaf2ff !important;color:#2866b1 !important}
+.status.active,.plan-state.is-active,.ops-pill.is-live,.registration-status-steps .done{
+  background:#eaf2ff !important;color:#2457a6 !important;
+}
+.ops-complete,.ops-history-row strong{color:#2457a6 !important}
+.attendance-dot{background:#3977d5 !important}
+.workspace-dot{background:#72a9ee !important;box-shadow:0 0 0 3px #29496d !important}
+[data-theme="dark"] .welcome-strip{
+  background:linear-gradient(120deg,#102642 0%,#174879 58%,#2457a6 100%) !important;
+  border-color:#315a82 !important;
+}
+.btn.primary{
+  background:linear-gradient(135deg,#286eae,#1e5489);
+  border-color:#1e5489;
+}
+.nav-item.active svg{color:#8ab7ff !important}
