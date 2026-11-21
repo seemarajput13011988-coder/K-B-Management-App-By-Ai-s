@@ -336,7 +336,8 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
         setNotice('Could not load records. Please refresh and try again.');
       }
     } finally {
-      if (requestId === loadRequestId.current && !silent) setLoading(false);
+      // A newer silent refresh must also finish any older visible initial-load state.
+      if (requestId === loadRequestId.current) setLoading(false);
     }
   }
   useEffect(() => {
