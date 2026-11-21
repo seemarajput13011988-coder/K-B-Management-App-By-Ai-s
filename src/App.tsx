@@ -848,9 +848,6 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
     { label: 'CUSTOMERS & FIELD', items: nav.filter(item => ['Customers', 'Subscriptions', 'Inventory', 'Installations', 'Payments', 'Complaints', 'Plans & Pricing'].includes(item.label)) },
     { label: 'MANAGEMENT', items: nav.filter(item => ['Team Operations', 'GPS Tracking', 'Staff', 'Admin Accounts', 'Invoices', 'Finance & Billing'].includes(item.label)) },
   ].filter(group => group.items.length);
-  // Keep the four most-used destinations reachable while retaining the full drawer.
-  const mobileNavItems = nav.filter(item => ['Overview', 'Customers', 'Payments', taskPage].includes(item.label)).slice(0, 4);
-
   return (
     <div className="shell">
       <aside className={'sidebar ' + (mobileNav ? 'mobile-open' : '')}>
@@ -1488,29 +1485,6 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
           </footer>
         </div>
       </main>
-
-      <nav className="mobile-bottom-nav" aria-label="Quick navigation">
-        {mobileNavItems.map(item => (
-          <button
-            type="button"
-            key={item.label}
-            className={'mobile-bottom-nav-item ' + (page === item.label ? 'active' : '')}
-            aria-current={page === item.label ? 'page' : undefined}
-            onClick={() => {
-              setPage(item.label);
-              setNotificationsOpen(false);
-              setMobileNav(false);
-            }}
-          >
-            <item.icon size={19} />
-            <span>{item.label === taskPage ? (isAdmin ? 'Tasks' : 'My Work') : item.label}</span>
-          </button>
-        ))}
-        <button type="button" className="mobile-bottom-nav-item" onClick={() => setMobileNav(true)} aria-label="Open all sections">
-          <Menu size={19} />
-          <span>More</span>
-        </button>
-      </nav>
 
       {showCustomer && (
         <CustomerModal
