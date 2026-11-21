@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { api as client, subscribeToApiChanges } from './lib/api';
 import { Download, Plus, RefreshCw, ReceiptText, Trash2, TrendingDown, TrendingUp, Wallet } from 'lucide-react';
 import { exportCsvFile, exportPdfFile } from './lib/file-export';
@@ -108,6 +108,7 @@ export default function FinanceWorkspace({ session, customers, payments, flash, 
   const [salaryNotes, setSalaryNotes] = useState('');
   const [salaryDrafts, setSalaryDrafts] = useState<Record<string, string>>({});
   const [period, setPeriod] = useState(today().slice(0, 7));
+  const loadRequestId = useRef(0);
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState('Network / provider');
   const [amount, setAmount] = useState('');
@@ -117,26 +118,32 @@ export default function FinanceWorkspace({ session, customers, payments, flash, 
   const [busy, setBusy] = useState(false);
   const tokenQuery = '?sessionToken=' + encodeURIComponent(session.token);
   const load = async () => {
-    const [e, i, a, st, pr] = await Promise.all([
-      client.get('/api/expenses' + tokenQuery),
-      client.get('/api/invoices?period=' + encodeURIComponent(period) + '&sessionToken=' + encodeURIComponent(session.token)),
-      client.get('/api/audit' + tokenQuery),
-      client.get('/api/staff' + tokenQuery),
-      client.get('/api/payroll' + tokenQuery)
-    ]);
-    setExpenses(e.data.items || []);
-    setInvoices(i.data.items || []);
-    setAudit(a.data.items || []);
-    const activeStaff = (st.data.items || []).filter((item: StaffMember) => item.active);
-    setStaff(activeStaff);
-    setSalaryDrafts(current => {
-      const nextDrafts = { ...current };
-      activeStaff.forEach((member: StaffMember) => {
-        if (nextDrafts[member.id] === undefined) nextDrafts[member.id] = String(member.monthlySalary || 0);
+    const requestId = ++loadRequestId.current;
+    try {
+      const [e, i, a, st, pr] = await Promise.all([
+        client.get('/api/expenses' + tokenQuery),
+        client.get('/api/invoices?period=' + encodeURIComponent(period) + '&sessionToken=' + encodeURIComponent(session.token)),
+        client.get('/api/audit' + tokenQuery),
+        client.get('/api/staff' + tokenQuery),
+        client.get('/api/payroll' + tokenQuery)
+      ]);
+      if (requestId !== loadRequestId.current) return;
+      setExpenses(e.data.items || []);
+      setInvoices(i.data.items || []);
+      setAudit(a.data.items || []);
+      const activeStaff = (st.data.items || []).filter((item: StaffMember) => item.active);
+      setStaff(activeStaff);
+      setSalaryDrafts(current => {
+        const nextDrafts = { ...current };
+        activeStaff.forEach((member: StaffMember) => {
+          if (nextDrafts[member.id] === undefined) nextDrafts[member.id] = String(member.monthlySalary || 0);
+        });
+        return nextDrafts;
       });
-      return nextDrafts;
-    });
-    setPayroll(pr.data.items || []);
+      setPayroll(pr.data.items || []);
+    } catch (error) {
+      if (requestId === loadRequestId.current) throw error;
+    }
   };
   useEffect(() => { load().catch(() => flash('Could not load finance records.')); }, [period]);
   useEffect(() => subscribeToApiChanges(() => { void load().catch(() => flash('Could not refresh finance records.')); }), [period]);
