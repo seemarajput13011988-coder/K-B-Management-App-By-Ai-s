@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { Capacitor } from '@capacitor/core';
 import { CapacitorUpdater } from '@capgo/capacitor-updater';
 import App from './App';
+import { ConfirmProvider } from './ui/ConfirmDialog';
 import './styles/tokens.css';
 import './styles/base.css';
 import './index.css';
@@ -42,8 +43,10 @@ function NativeReadinessSignal() {
 function mountApp(native = false) {
   createRoot(appRoot).render(
     <StrictMode>
-      <App />
-      {native ? <NativeReadinessSignal /> : null}
+      <ConfirmProvider>
+        <App />
+        {native ? <NativeReadinessSignal /> : null}
+      </ConfirmProvider>
     </StrictMode>,
   );
 }
