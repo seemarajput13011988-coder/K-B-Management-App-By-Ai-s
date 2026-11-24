@@ -35,3 +35,38 @@
 @keyframes more-sheet-up { from { opacity: .7; transform: translateY(18px); } }
 @media (min-width: 701px) { .more-sheet-backdrop { display: none; } }
 @media (prefers-reduced-motion: reduce) { .more-sheet-backdrop, .more-services-sheet { animation: none; } }
+
+/* App-shell polish shared by desktop and Android WebView. */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  min-height: var(--appbar-h);
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  border-bottom: 1px solid var(--border);
+  backdrop-filter: saturate(1.35) blur(16px);
+}
+.mobile-brand { color: var(--text); font-size: var(--fs-md); font-weight: 800; letter-spacing: -.02em; }
+.desktop-crumb { color: var(--text-2); font-size: var(--fs-sm); }
+.desktop-crumb strong { color: var(--text); }
+.page-heading h1 { color: var(--text); letter-spacing: -.035em; }
+.page-heading p { color: var(--text-2); }
+.panel, .ops-panel, .finance-panel, .calendar-panel, .task-card, .staff-insight, .plan-card, .ops-summary {
+  border-color: var(--border);
+  box-shadow: var(--shadow-1);
+}
+.nav-item.active { background: var(--brand-50); color: var(--brand-700); box-shadow: inset 3px 0 var(--brand-500); }
+.nav-item { min-height: 44px; border-radius: var(--r-md); }
+@media (min-width: 701px) {
+  .sidebar { width: var(--sidebar-w); background: var(--navy-900); }
+  .main { margin-left: var(--sidebar-w); min-width: 0; }
+  .topbar { padding-inline: 22px; }
+  .content { max-width: 1440px; margin-inline: auto; padding: 24px 28px 40px; }
+}
+@media (max-width: 700px) {
+  .topbar { min-height: calc(var(--appbar-h) + var(--safe-top)); padding-top: var(--safe-top); }
+  .content { padding-bottom: calc(var(--tabbar-h) + var(--safe-bottom) + 24px); }
+  .mobile-tab-bar { background: var(--surface) !important; border-top-color: var(--border) !important; }
+  .mobile-tab { color: var(--text-3) !important; }
+  .mobile-tab.active { background: var(--brand-50) !important; color: var(--brand-600) !important; border-color: var(--brand-100) !important; }
+}
