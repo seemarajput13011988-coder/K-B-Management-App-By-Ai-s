@@ -90,14 +90,14 @@ async function printReport(title: string, rows: unknown[][]) {
   }
 }
 
-export default function FinanceWorkspace({
-  const confirm = useConfirm(); session, customers, payments, flash, salaryOnly = false }: {
+export default function FinanceWorkspace({ session, customers, payments, flash, salaryOnly = false }: {
   session: Session;
   customers: Customer[];
   payments: Payment[];
   flash: (message: string) => void;
   salaryOnly?: boolean;
 }) {
+  const confirm = useConfirm();
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [audit, setAudit] = useState<Array<{ id: string; action: string; entityType: string; description: string; actorName: string; createdAt: string }>>([]);
