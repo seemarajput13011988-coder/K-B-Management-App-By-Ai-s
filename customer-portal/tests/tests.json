@@ -1,0 +1,117 @@
+[
+  {
+    "name": "Mobile customer shell and protected admin entry",
+    "sanity": true,
+    "viewport": "mobile",
+    "covers": [
+      "mobile navigation",
+      "light and dark themes",
+      "responsive layout",
+      "customer sign-in preview",
+      "protected admin entry",
+      "admin login denial when credentials are incorrect"
+    ],
+    "description": "Checks the mobile customer shell and verifies the admin area remains protected while the redesigned layout works on a narrow screen.",
+    "steps": [
+      "Open the portal at 375x667 and inspect the mobile header and bottom navigation.",
+      "Open Account and choose Admin studio.",
+      "Enter an incorrect admin password and submit.",
+      "Return to the customer screens and switch to night mode."
+    ],
+    "expected": "The customer shell remains readable without horizontal overflow. The admin editor stays locked after an incorrect password and does not reveal editable plans or image controls."
+  },
+  {
+    "name": "Live Management Nexus plan catalogue",
+    "viewport": "mobile",
+    "covers": [
+      "active plans sourced from Management Nexus",
+      "single source of truth for plan price and speed",
+      "featured plan card hierarchy",
+      "plan price and GST disclosure",
+      "speed and monthly data specifications",
+      "validity and plan benefits",
+      "plan search and sorting",
+      "direct plan selection"
+    ],
+    "description": "Verifies the customer portal renders the centrally managed active plan catalogue and uses the selected Management Nexus plan during checkout.",
+    "steps": [
+      "Open Explore and inspect the active plans.",
+      "Compare the displayed plan name, price, speed and data allowance with the active Management Nexus plan catalogue.",
+      "Search for one active plan and sort by low-to-high price.",
+      "Select a plan and confirm the checkout review uses the same plan identifier and price."
+    ],
+    "expected": "Only active Management Nexus plans appear. Plan search and sorting work, and the selected plan details remain consistent through checkout."
+  },
+  {
+    "name": "Connection request validation and safe failure handling",
+    "viewport": "mobile",
+    "covers": [
+      "booking details validation",
+      "no simulated OTP confirmation",
+      "customer connection request payload",
+      "cash-after-installation preference without payment collection",
+      "visible management API failure and retry guidance",
+      "no false invoice or customer activation"
+    ],
+    "description": "Verifies a customer can prepare a real connection request and receives a clear retryable error if Management Nexus is temporarily unavailable.",
+    "qa_faults": [
+      {
+        "method": "POST",
+        "path": "/api/management/connection-requests",
+        "status": 503,
+        "body_json": {
+          "error": "K&B Management Nexus is temporarily unavailable. Your request was not submitted. Please try again."
+        }
+      }
+    ],
+    "steps": [
+      "Select an active plan from Explore.",
+      "Enter a valid name, 10-digit mobile number, state, city, PIN code and installation address.",
+      "Continue without a demo OTP; review the mobile confirmation notice.",
+      "Choose Cash after installation, accept the terms and submit the connection request."
+    ],
+    "expected": "The portal shows a clear retryable Management Nexus error. It does not show a successful booking, create an invoice, collect payment or claim that a customer account is active."
+  },
+  {
+    "name": "Admin campaign publishing while plans remain centrally managed",
+    "viewport": "desktop",
+    "covers": [
+      "protected portal admin login",
+      "campaign banner editing",
+      "promotional image upload",
+      "persistent campaign publishing",
+      "plan catalogue read-only in Customer Studio",
+      "plan pricing managed in Management Nexus"
+    ],
+    "description": "Verifies portal administrators can publish campaign copy and images without creating a second source of plan pricing.",
+    "steps": [
+      "Open Account and enter Admin Studio using the configured portal admin password.",
+      "Confirm the plan section directs administrators to Management Nexus for plan changes.",
+      "Edit the campaign headline and supporting message.",
+      "Upload a valid campaign image or add an HTTPS image URL.",
+      "Save and publish, then refresh the customer Home page."
+    ],
+    "expected": "Campaign text and images remain published after refresh. Plan editing is not offered in Customer Studio; the customer catalogue remains sourced from Management Nexus."
+  },
+  {
+    "name": "Support complaint requires a registered mobile and real router photo",
+    "viewport": "mobile",
+    "covers": [
+      "live complaint proxy to Management Nexus",
+      "registered mobile number validation",
+      "mandatory real photo upload",
+      "JPEG PNG and WebP validation",
+      "safe generic response for customer privacy",
+      "retryable backend error"
+    ],
+    "description": "Verifies the complaint form sends the actual selected image and issue details to Management Nexus and blocks incomplete submissions.",
+    "steps": [
+      "Open Support and choose Raise complaint.",
+      "Enter a registered 10-digit mobile number and describe the issue.",
+      "Try to submit without a photo and confirm submission is blocked.",
+      "Attach a JPG, PNG or WebP router/modem photo no larger than 2 MB and submit.",
+      "Review the generic server response and confirmation wording."
+    ],
+    "expected": "The form blocks missing photos and invalid mobile numbers. With valid details it sends the real image bytes and issue to the Management Nexus proxy; the confirmation does not expose whether a phone number has an active account."
+  }
+]
