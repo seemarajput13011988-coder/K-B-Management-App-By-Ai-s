@@ -29,6 +29,7 @@ import { CustomerTable } from './features/customers/CustomerTable';
 import { PaymentTable } from './features/payments/PaymentTable';
 import { MonthlyChart } from './features/overview/MonthlyChart';
 import { StatusChart } from './features/overview/StatusChart';
+import { OverduePanel } from './features/overview/OverduePanel';
 import { clearSession, getSession, saveSession, type Session } from './lib/session';
 import { registerBackButton } from './lib/backButton';
 import type { Customer, Payment, Staff, AdminAccount, AttendanceRecord, Task, Complaint, Plan } from './types/models';
@@ -1124,7 +1125,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                 <MonthlyChart title={isAdmin ? 'Monthly collections' : 'Your recorded collections'} subtitle="Payment totals from the last six months" items={payments} dateKey="paidAt" valueKey="amount" moneyValue money={money}/>
                 <MonthlyChart title="Customer additions" subtitle={isAdmin ? 'New connections added each month' : 'Your assigned customer base by join date'} items={customers} dateKey="joinedAt" countOnly money={money}/>
               </div>
-              {isAdmin && <div className="kb-overview-charts kb-overview-admin-charts"><StatusChart complaints={complaints}/><OverduePanel value={overdueValue}/></div>}
+              {isAdmin && <div className="kb-overview-charts kb-overview-admin-charts"><StatusChart complaints={complaints}/><OverduePanel value={overdueValue} money={money}/></div>}
 
               <section className="kb-overview-section kb-overview-payments">
                 <header className="kb-overview-section-head">
@@ -1651,11 +1652,6 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
     </div>
   );
 }
-
-function OverduePanel({ value }: { value: number }) {
-  return <section className="panel chart-panel"><div className="panel-head"><div><h2>Estimated overdue plan value</h2><p>Active accounts past their due date with no full payment recorded for this month</p></div><span className="chart-mark"><IndianRupee size={17} /></span></div><div className="overdue-value">{money(value)}</div><p className="overdue-note">Estimate only: accounts without a due date are excluded. Partial payments are deducted from the monthly fee.</p></section>;
-}
-
 
 function PlanModal({ initial, onClose, onSave }: { initial: Plan | null; onClose: () => void; onSave: (data: Omit<Plan, 'id'>) => Promise<void> }) {
   const [form, setForm] = useState({
