@@ -85,7 +85,7 @@ export function CustomerModal({ initial, onClose, onSave, staff = [], role = 'ad
         <Field label="Connection status">
           <select
             value={form.status}
-            onChange={e => setForm({ ...form, status: e.target.value })}
+            onChange={e => setForm({ ...form, status: e.target.value as Customer['status'] })}
           >
             <option>Active</option>
             <option>Inactive</option>
