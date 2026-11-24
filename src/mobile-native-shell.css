@@ -138,7 +138,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
     background: #fff;
     color: #526983;
   }
-  .account-trigger { display: none !important; }
+  .account-trigger { width: 36px; height: 36px; flex: 0 0 36px; }
   .notification-anchor { position: relative; }
   .notification-popover {
     position: fixed !important;
