@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { api } from '@appdeploy/client';
+import { api } from '../lib/api';
 import { CheckCircle2, ImagePlus, LogOut, Plus, Save, ShieldCheck, Upload, X } from 'lucide-react';
 import '../admin-studio.css';
 import type { PortalContent, PortalPlan } from '../data/portalContent';
