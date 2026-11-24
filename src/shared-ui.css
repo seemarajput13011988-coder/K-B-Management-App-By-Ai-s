@@ -415,7 +415,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
 .modal-backdrop { overscroll-behavior:contain; }
 .invoice-modal {
   box-sizing:border-box;
-  width:min( min(760px, calc(100vw - 28px)), 760px);
+  width:min(760px, calc(100vw - 28px));
   max-width:calc(100vw - 28px);
   max-height:calc(100dvh - 28px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
   overflow-y:auto;
@@ -550,5 +550,27 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
     animation-duration: .01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: .01ms !important;
+  }
+}
+
+
+/* Phase 8 — narrow-phone layout guardrails.
+   Keeps existing navigation and feature content intact on compact Android screens. */
+@media (max-width:360px) {
+  .topbar { gap:6px; padding-right:8px !important; padding-left:8px !important; }
+  .crumb { min-width:0; }
+  .crumb strong { font-size:14px; }
+  .top-actions { gap:3px !important; }
+  .preference-controls { gap:3px !important; }
+  .language-control { width:34px; }
+  .theme-toggle, .icon-button { width:36px; height:36px; }
+  .content { padding-right:9px !important; padding-left:9px !important; }
+  .mobile-tab-bar { gap:1px; padding-right:3px !important; padding-left:3px !important; }
+  .mobile-tab { padding-right:1px; padding-left:1px; }
+  .mobile-tab span { font-size:8px !important; letter-spacing:-.01em; }
+  .panel, .ops-panel, .finance-panel { padding:12px; }
+  .invoice-modal {
+    width:calc(100vw - 12px);
+    max-width:calc(100vw - 12px);
   }
 }
