@@ -36,6 +36,8 @@ import { PlanModal } from '../plans/PlanModal';
 import { TaskModal } from '../tasks/TaskModal';
 import { TaskCompletionModal } from '../tasks/TaskCompletionModal';
 import { AccountSettingsModal } from '../auth/AccountSettingsModal';
+import { StaffUsernameModal } from '../staff/StaffUsernameModal';
+import { StaffPasswordModal } from '../staff/StaffPasswordModal';
 import { getSession, type Session } from '../../lib/session';
 import { registerBackButton } from '../../lib/backButton';
 import type { Customer, Payment, Staff, AdminAccount, AttendanceRecord, Task, Complaint, Plan } from '../../types/models';
@@ -1809,16 +1811,6 @@ function StaffPermissionSetup({ onComplete }: { onComplete:()=>void }) {
   </Modal>;
 }
 
-function StaffUsernameModal({ staff, onClose, onSave }: any) {
-  const [userId, setUserId] = useState(staff.userId);
-  const [busy, setBusy] = useState(false);
-  return <Modal title={'Change username · ' + staff.displayName} subtitle="The staff member must use the new ID at their next sign-in." onClose={onClose}><form className="form-grid" onSubmit={async e => { e.preventDefault(); setBusy(true); await onSave(userId.trim()); setBusy(false); }}><Field label="New staff user ID"><input required minLength={3} maxLength={32} pattern="[a-zA-Z0-9_-]{3,32}" value={userId} onChange={e => setUserId(e.target.value)} /></Field><div className="form-actions"><button type="button" className="btn secondary" onClick={onClose}>Cancel</button><button className="btn primary" disabled={busy || userId.trim().toLowerCase() === staff.userId.toLowerCase()}>{busy ? 'Saving…' : 'Save username'}</button></div></form></Modal>;
-}
-function StaffPasswordModal({ staff, onClose, onSave }: any) {
-  const [password, setPassword] = useState('');
-  const [busy, setBusy] = useState(false);
-  return <Modal title={'Reset password · ' + staff.displayName} subtitle="The staff member will need to sign in again." onClose={onClose}><form className="form-grid" onSubmit={async e => { e.preventDefault(); setBusy(true); await onSave(password); setBusy(false); }}><Field label="New temporary password" wide><input type="password" required minLength={10} value={password} onChange={e => setPassword(e.target.value)} /></Field><div className="form-actions"><button type="button" className="btn secondary" onClick={onClose}>Cancel</button><button className="btn primary" disabled={busy}>{busy ? 'Saving…' : 'Reset password'}</button></div></form></Modal>;
-}
 function ComplaintModal({ customers, staff, session, onClose, onSave, flash }: any) {
   const isAdmin = session.user.role === 'admin';
   const [f, setF] = useState<any>({
