@@ -380,7 +380,7 @@ export default function StaffOperations({ session, customers, flash, compact = f
         const memberDays = attendance.filter(item => item.userId === member.id && !!item.checkInAt && item.dayType !== 'Absent' && String(item.status || '').toLowerCase() !== 'absent').reduce((sum,item) => sum + (item.dayType === 'Half day' ? 0.5 : 1), 0);
         const memberShift = attendance.find(item => item.userId === member.id && item.workDate === today);
         const memberAbsent = memberShift?.dayType === 'Absent' || String(memberShift?.status || '').toLowerCase() === 'absent';
-        return <tr key={member.id}><td><b>{member.displayName}</b></td><td>{memberPayments.length}</td><td className="amount">₹{memberTotal.toLocaleString('en-IN')}</td><td className="amount">₹{memberMonth.toLocaleString('en-IN')}</td><td>{memberDays}</td><td>{memberAbsent ? 'Absent' : memberShift?.checkOutAt ? 'Completed' : memberShift ? 'On shift' : 'Not started'}</td></tr>;
+        return <tr key={member.id}><td data-label="Staff Member"><b>{member.displayName}</b></td><td data-label="Payment Records">{memberPayments.length}</td><td data-label="Total Collected" className="amount">₹{memberTotal.toLocaleString('en-IN')}</td><td data-label="This Month" className="amount">₹{memberMonth.toLocaleString('en-IN')}</td><td data-label="Attendance Days">{memberDays}</td><td data-label="Today">{memberAbsent ? 'Absent' : memberShift?.checkOutAt ? 'Completed' : memberShift ? 'On shift' : 'Not started'}</td></tr>;
       })}{!staff.length && <tr><td colSpan={6}>No staff records available yet.</td></tr>}</tbody></table></div>
     </section>}
 
