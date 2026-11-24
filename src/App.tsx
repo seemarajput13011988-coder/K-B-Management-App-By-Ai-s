@@ -19,7 +19,7 @@ import { buildNav, TABS } from './ui/nav';
 import { pageSubtitle } from './ui/pageMeta';
 import { MoreServicesSheet } from './ui/MoreServicesSheet';
 import { useConfirm } from './ui/ConfirmDialog';
-import { EmptyState } from './ui/EmptyState';
+import { Empty } from './ui/Empty';
 import { HomeHero } from './ui/HomeHero';
 import { Field } from './ui/Field';
 import { Modal } from './ui/Modal';
@@ -1739,16 +1739,6 @@ function OverduePanel({ value }: { value: number }) {
 }
 
 
-function Empty({ icon, title, text, action, onClick }: any) {
-  return (
-    <EmptyState
-      icon={icon}
-      title={title}
-      text={text}
-      action={action ? <button type="button" className="btn primary" onClick={onClick}><Plus size={16} />{action}</button> : undefined}
-    />
-  );
-}
 function CustomerTable({ rows, onView, onEdit, onDelete }: any) {
   return (
     <div className="table-wrap customer-table-wrap">
