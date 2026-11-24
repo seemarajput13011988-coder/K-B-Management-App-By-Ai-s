@@ -13,6 +13,7 @@
     "check": "npm run typecheck && npm run build"
   },
   "dependencies": {
+    "@capacitor/app": "^7.0.1",
     "@fontsource-variable/plus-jakarta-sans": "^5.2.6",
     "lucide-react": "^0.469.0",
     "react": "^19.0.0",
