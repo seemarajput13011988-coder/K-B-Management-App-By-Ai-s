@@ -1,0 +1,107 @@
+/* ============ K&B DESIGN TOKENS ============ */
+:root {
+  /* Brand */
+  --brand-50: #eef4ff;
+  --brand-100: #dbe7ff;
+  --brand-500: #2563eb;
+  --brand-600: #1d4ed8;
+  --brand-700: #1e40af;
+  --navy-900: #0f1b30;
+  --navy-800: #14243d;
+  --accent: #e9872d; /* festival themes override this one */
+  --accent-soft: #fdf0e1;
+
+  /* Semantic */
+  --success: #16a34a;
+  --success-soft: #dcfce7;
+  --warning: #d97706;
+  --warning-soft: #fef3c7;
+  --danger: #dc2626;
+  --danger-soft: #fee2e2;
+  --info: #0284c7;
+  --info-soft: #e0f2fe;
+
+  /* Surfaces & text (light) */
+  --bg: #f4f6fb;
+  --surface: #ffffff;
+  --surface-2: #f8fafc;
+  --border: #e5eaf2;
+  --text: #0f172a;
+  --text-2: #475569;
+  --text-3: #94a3b8;
+
+  /* Shape */
+  --r-sm: 10px;
+  --r-md: 14px;
+  --r-lg: 20px;
+  --r-xl: 28px;
+  --r-pill: 999px;
+
+  /* Elevation */
+  --shadow-1: 0 1px 2px rgba(15,23,42,.06), 0 1px 3px rgba(15,23,42,.05);
+  --shadow-2: 0 6px 18px rgba(15,23,42,.08);
+  --shadow-3: 0 18px 40px rgba(15,23,42,.16);
+
+  /* Spacing (4-pt scale) */
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 20px;
+  --s-6: 24px;
+  --s-8: 32px;
+
+  /* Type */
+  --font: 'Plus Jakarta Sans Variable', 'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --fs-xs: 11px;
+  --fs-sm: 13px;
+  --fs-md: 15px;
+  --fs-lg: 18px;
+  --fs-xl: 22px;
+  --fs-2xl: 28px;
+
+  /* Layout */
+  --appbar-h: 56px;
+  --tabbar-h: 64px;
+  --sidebar-w: 264px;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+
+  /* Motion */
+  --ease: cubic-bezier(.2,.8,.2,1);
+  --t-fast: 150ms;
+  --t-med: 240ms;
+
+  /* Hero gradient (Jio/Airtel style) */
+  --hero: linear-gradient(135deg, #1d4ed8 0%, #2563eb 45%, #4f46e5 100%);
+}
+
+/* Dark mode = only change tokens. */
+[data-theme="dark"] {
+  --bg: #0b1220;
+  --surface: #131d30;
+  --surface-2: #19253b;
+  --border: #263552;
+  --text: #e8eef9;
+  --text-2: #a9b6cc;
+  --text-3: #70809b;
+  --brand-50: #14213d;
+  --brand-100: #1b2d55;
+  --accent-soft: #3a2a17;
+  --success-soft: #12301f;
+  --warning-soft: #3a2a0d;
+  --danger-soft: #3b1717;
+  --info-soft: #0e2a3b;
+  --shadow-1: 0 1px 2px rgba(0,0,0,.5);
+  --shadow-2: 0 6px 18px rgba(0,0,0,.45);
+  --hero: linear-gradient(135deg, #1e3a8a 0%, #1d4ed8 50%, #4338ca 100%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: .01ms !important;
+    transition-duration: .01ms !important;
+  }
+}
