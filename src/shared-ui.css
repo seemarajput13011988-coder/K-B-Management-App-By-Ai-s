@@ -13,6 +13,16 @@
   --kb-control-radius: 12px;
 }
 
+
+/* Festival palettes remain runtime-driven; semantic success/attendance colors are untouched. */
+[data-festival-theme="holi"] { --kb-primary:#9d367b; --kb-primary-deep:#712557; --kb-accent:#ef79a9; }
+[data-festival-theme="ganesh"] { --kb-primary:#a9511f; --kb-primary-deep:#773a19; --kb-accent:#f1a348; }
+[data-festival-theme="diwali"] { --kb-primary:#9a5b12; --kb-primary-deep:#71410b; --kb-accent:#f4bf44; }
+[data-festival-theme="navratri"] { --kb-primary:#7545aa; --kb-primary-deep:#53317e; --kb-accent:#e68ab4; }
+[data-festival-theme="janmashtami"] { --kb-primary:#235e9c; --kb-primary-deep:#183e68; --kb-accent:#71b3ed; }
+[data-festival-theme="shivratri"] { --kb-primary:#4d57a5; --kb-primary-deep:#363d79; --kb-accent:#adb6ff; }
+[data-festival-theme="ram-navami"] { --kb-primary:#ad5220; --kb-primary-deep:#7b3b17; --kb-accent:#f4a45b; }
+
 /* Shared action controls */
 .btn {
   min-height: 42px;
