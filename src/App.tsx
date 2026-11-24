@@ -269,6 +269,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const notificationAnchorRef = useRef<HTMLDivElement | null>(null);
+  const noticeTimerRef = useRef<number | null>(null);
   const seenNotifications = useRef<Set<string> | null>(null);
   const pushToken = useRef<string | null>(null);
 
@@ -517,8 +518,13 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
 
   function flash(message: string) {
     setNotice(message);
-    window.setTimeout(() => setNotice(''), 3200);
+    if (noticeTimerRef.current !== null) window.clearTimeout(noticeTimerRef.current);
+    noticeTimerRef.current = window.setTimeout(() => { setNotice(''); noticeTimerRef.current = null; }, 3200);
   }
+
+  useEffect(() => () => {
+    if (noticeTimerRef.current !== null) window.clearTimeout(noticeTimerRef.current);
+  }, []);
 
   useEffect(() => {
     const onToast = (event: Event) => {
