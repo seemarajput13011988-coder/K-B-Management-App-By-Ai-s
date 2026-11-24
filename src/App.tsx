@@ -944,7 +944,8 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
             <Menu />
           </button>
           <div className="crumb">
-            Workspace <span>/</span> <strong>{page}</strong>
+            <span className="desktop-crumb">Workspace / <strong>{page}</strong></span>
+            <strong className="mobile-brand">K&amp;B NET SERVICE</strong>
           </div>
           <div className="top-actions">
             <span className="system-status" title="Workspace status">
