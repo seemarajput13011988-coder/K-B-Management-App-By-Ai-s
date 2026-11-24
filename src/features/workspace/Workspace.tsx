@@ -33,6 +33,8 @@ import { MonthlyChart } from '../overview/MonthlyChart';
 import { StatusChart } from '../overview/StatusChart';
 import { OverduePanel } from '../overview/OverduePanel';
 import { PlanModal } from '../plans/PlanModal';
+import { TaskModal } from '../tasks/TaskModal';
+import { TaskCompletionModal } from '../tasks/TaskCompletionModal';
 import { getSession, type Session } from '../../lib/session';
 import { registerBackButton } from '../../lib/backButton';
 import type { Customer, Payment, Staff, AdminAccount, AttendanceRecord, Task, Complaint, Plan } from '../../types/models';
@@ -1806,40 +1808,6 @@ function StaffPermissionSetup({ onComplete }: { onComplete:()=>void }) {
   </Modal>;
 }
 
-function TaskCompletionModal({ task, onClose, onComplete, flash }: any) {
-  const [photo, setPhoto] = useState<File | null>(null);
-  const [video, setVideo] = useState<File | null>(null);
-  const [busy, setBusy] = useState(false);
-  function valid(file: File, kind: 'photo'|'video') {
-    const allowed = kind === 'photo' ? ['image/jpeg','image/png','image/webp'] : ['video/mp4','video/webm','video/quicktime'];
-    const limit = kind === 'photo' ? 2 * 1024 * 1024 : 8 * 1024 * 1024;
-    if (!allowed.includes(file.type)) { flash(kind === 'photo' ? 'Choose a JPG, PNG or WEBP photo.' : 'Choose an MP4, WEBM or MOV video.'); return false; }
-    if (file.size > limit) { flash(kind === 'photo' ? 'Photo must be 2 MB or smaller.' : 'Video must be 8 MB or smaller.'); return false; }
-    return true;
-  }
-  return <Modal title="Complete task with evidence" subtitle={task.title} onClose={onClose}>
-    <form className="form-grid" onSubmit={async event => { event.preventDefault(); if (!photo || !video) { flash('Both a task photo and a task video are required.'); return; } setBusy(true); await onComplete(photo, video); setBusy(false); }}>
-      <p className="form-hint">Both a photo and a video are required. The task remains open until both files upload successfully.</p>
-      <Field label="Task photo (required)" wide><input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={event => { const file=event.target.files?.[0]||null; setPhoto(file&&valid(file,'photo')?file:null); }}/>{photo&&<small>{photo.name} · {(photo.size/1024).toFixed(0)} KB</small>}</Field>
-      <Field label="Task video (required)" wide><input type="file" accept="video/mp4,video/webm,video/quicktime" capture="environment" onChange={event => { const file=event.target.files?.[0]||null; setVideo(file&&valid(file,'video')?file:null); }}/>{video&&<small>{video.name} · {(video.size/1024/1024).toFixed(1)} MB</small>}</Field>
-      <div className="form-actions"><button type="button" className="btn secondary" onClick={onClose}>Cancel</button><button className="btn primary" disabled={busy||!photo||!video}>{busy?'Uploading evidence…':'Upload and complete task'}</button></div>
-    </form>
-  </Modal>;
-}
-
-function TaskModal({ staff, onClose, onSave }: any) {
-  const [form, setForm] = useState({ title: '', details: '', assignedTo: staff[0]?.id || '', priority: 'Normal', dueDate: new Date().toISOString().slice(0, 10) });
-  const [busy, setBusy] = useState(false);
-  return <Modal title="Assign a task" subtitle="Create clear work for one staff member." onClose={onClose}><form className="form-grid" onSubmit={async e => { e.preventDefault(); setBusy(true); await onSave(form); setBusy(false); }}>
-    <Field label="Task title" wide><input required maxLength={120} value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} placeholder="e.g. Visit customer and check router" /></Field>
-    <Field label="Assign to staff" wide><select required value={form.assignedTo} onChange={e => setForm({ ...form, assignedTo: e.target.value })}>{staff.map((member: Staff) => <option value={member.id} key={member.id}>{member.displayName} · {member.userId}</option>)}</select></Field>
-    <Field label="Priority"><select value={form.priority} onChange={e => setForm({ ...form, priority: e.target.value })}><option>Low</option><option>Normal</option><option>High</option></select></Field>
-    <Field label="Due date"><input type="date" required value={form.dueDate} onChange={e => setForm({ ...form, dueDate: e.target.value })} /></Field>
-    <Field label="Instructions" wide><textarea rows={3} maxLength={1000} value={form.details} onChange={e => setForm({ ...form, details: e.target.value })} placeholder="Add location, customer or work instructions" /></Field>
-    {!staff.length && <p className="form-hint">Create an active staff account before assigning work.</p>}
-    <div className="form-actions"><button type="button" className="btn secondary" onClick={onClose}>Cancel</button><button className="btn primary" disabled={busy || !staff.length}>{busy ? 'Assigning…' : 'Assign task'}</button></div>
-  </form></Modal>;
-}
 function AccountSettingsModal({ session, onClose, onChangeUserId, onChangePassword, language, setLanguage, theme, toggleTheme, onEnableNotifications, onHelp }: any) {
   const [currentPasswordForUserId, setCurrentPasswordForUserId] = useState('');
   const [currentPasswordForPassword, setCurrentPasswordForPassword] = useState('');
