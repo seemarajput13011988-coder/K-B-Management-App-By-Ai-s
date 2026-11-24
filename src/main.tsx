@@ -3,11 +3,14 @@ import { createRoot } from 'react-dom/client';
 import { Capacitor } from '@capacitor/core';
 import { CapacitorUpdater } from '@capgo/capacitor-updater';
 import App from './App';
+import './styles/tokens.css';
+import './styles/base.css';
 import './index.css';
 import './mobile-overhaul.css';
 import './dashboard/overview.css';
 import './app-redesign.css';
 import './mobile-native-shell.css';
+import './styles/components.css';
 
 const UPDATE_CHECK_TIMEOUT_MS = 25000;
 const UPDATE_DOWNLOAD_TIMEOUT_MS = 120000;
