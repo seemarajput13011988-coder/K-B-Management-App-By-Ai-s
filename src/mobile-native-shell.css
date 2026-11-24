@@ -238,9 +238,9 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
     min-height: calc(68px + env(safe-area-inset-bottom, 0px));
     padding: 7px 7px calc(7px + env(safe-area-inset-bottom, 0px)) !important;
     border: 0 !important;
-    border-top: 1px solid #e4eaf2 !important;
+    border-top: 1px solid var(--border) !important;
     border-radius: 0 !important;
-    background: rgba(255,255,255,.97) !important;
+    background: var(--surface) !important;
     box-shadow: 0 -7px 26px rgba(24,48,79,.075);
     backdrop-filter: blur(22px);
   }
@@ -255,7 +255,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
     border: 0 !important;
     border-radius: 13px !important;
     background: transparent !important;
-    color: #7c8ba0 !important;
+    color: var(--text-3) !important;
     touch-action: manipulation;
   }
   .mobile-tab svg { width: 20px; height: 20px; stroke-width: 1.9; }
@@ -271,9 +271,9 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
     white-space: nowrap;
   }
   .mobile-tab.active {
-    border: 1px solid #f2dfc8 !important;
-    background: #fff5e9 !important;
-    color: #a85d18 !important;
+    border: 1px solid var(--brand-100) !important;
+    background: var(--brand-50) !important;
+    color: var(--brand-600) !important;
   }
   .mobile-tab.active svg { stroke-width: 2.35; }
 
@@ -335,9 +335,9 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   }
   [data-theme="dark"] .mobile-tab { color: #a8b6c9 !important; }
   [data-theme="dark"] .mobile-tab.active {
-    border-color: #654a2d !important;
-    background: #382a1d !important;
-    color: #ffc47a !important;
+    border-color: var(--brand-500) !important;
+    background: var(--brand-100) !important;
+    color: var(--brand-600) !important;
   }
   [data-theme="dark"] .hamburger, [data-theme="dark"] .icon-button,
   [data-theme="dark"] .language-control, [data-theme="dark"] .theme-toggle {
