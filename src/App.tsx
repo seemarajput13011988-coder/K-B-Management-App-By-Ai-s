@@ -1729,6 +1729,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
             <div className="modal-actions">
               <button
                 className="btn secondary"
+                hidden={!isAdmin}
                 onClick={() => {
                   setEditing(selected);
                   setSelected(null);
