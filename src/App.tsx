@@ -1570,7 +1570,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
             if (e.target === e.currentTarget) setSelected(null);
           }}
         >
-          <div className={'modal ' + className}>
+          <div className="modal">
             <div className="modal-head">
               <div>
                 <span className="eyebrow">CUSTOMER PROFILE</span>
