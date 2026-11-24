@@ -11,6 +11,7 @@ import './dashboard/overview.css';
 import './app-redesign.css';
 import './mobile-native-shell.css';
 import './styles/components.css';
+import './ui/shell.css';
 
 const UPDATE_CHECK_TIMEOUT_MS = 25000;
 const UPDATE_DOWNLOAD_TIMEOUT_MS = 120000;
