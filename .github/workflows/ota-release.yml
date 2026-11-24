@@ -6,6 +6,7 @@ on:
       - production-reconciliation-2026-11-18
       - render-backend-migration
       - nexus-native-redesign-2026-11-19
+      - nexus-redesign-phase3-2026-11-24
     paths:
       - "src/**"
       - "public/**"
@@ -75,7 +76,7 @@ jobs:
           console.log('Prepared K&B Nexus OTA release', version, 'SHA-256', checksum);
           NODE
       - name: Publish immutable OTA release
-        if: github.event_name == 'push' && (github.ref == 'refs/heads/render-backend-migration' || github.ref == 'refs/heads/nexus-native-redesign-2026-11-19')
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/render-backend-migration' || github.ref == 'refs/heads/nexus-native-redesign-2026-11-19' || github.ref == 'refs/heads/nexus-redesign-phase3-2026-11-24')
         uses: softprops/action-gh-release@v2
         with:
           tag_name: nexus-ota-1.0.${{ github.run_number }}
