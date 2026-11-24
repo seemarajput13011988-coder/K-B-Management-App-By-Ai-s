@@ -1121,7 +1121,7 @@ export const handler = router({
     return json({ updated: true });
   }),
 
-  'POST /api/payments': protectedRoute(['admin', 'staff'], async ({ body }, user) => {
+  'POST /api/payments': protectedRoute(['admin'], async ({ body }, user) => {
     const input = (body || {}) as Payment;
     const [customer] = await db.get<Customer>('customers', [cleanText(input.customerId, 128)], { consistent: true });
     if (!customer) return error('Customer not found.', 404);
