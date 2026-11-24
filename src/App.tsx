@@ -256,6 +256,8 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const notificationAnchorRef = useRef<HTMLDivElement | null>(null);
   const seenNotifications = useRef<Set<string> | null>(null);
+  const notificationPollInFlight = useRef(false);
+  const [notificationActionBusy, setNotificationActionBusy] = useState(false);
   const pushToken = useRef<string | null>(null);
 
   useEffect(() => {
@@ -350,6 +352,8 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   useEffect(() => {
     let stopped = false;
     const pollNotifications = async () => {
+      if (stopped || notificationPollInFlight.current) return;
+      notificationPollInFlight.current = true;
       try {
         const result = await api.get('/api/notifications');
         if (stopped) return;
@@ -378,6 +382,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
           }
         }
       } catch { /* Notification polling must not interrupt normal app use. */ }
+      finally { notificationPollInFlight.current = false; }
     };
     void pollNotifications();
     const timer = window.setInterval(pollNotifications, 12000);
@@ -420,14 +425,22 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
         receivedListener = await PushNotifications.addListener('pushNotificationReceived', async () => {
           try {
             const result = await api.get('/api/notifications');
-            if (!stopped) setNotifications((result.data.items || []) as AppNotification[]);
+            if (!stopped) {
+              const items = (result.data.items || []) as AppNotification[];
+              setNotifications(items);
+              if (seenNotifications.current === null) seenNotifications.current = new Set();
+              items.forEach(item => seenNotifications.current?.add(item.id));
+            }
           } catch { /* The normal notification poll will retry. */ }
         });
         actionListener = await PushNotifications.addListener('pushNotificationActionPerformed', async () => {
           try {
             const result = await api.get('/api/notifications');
             if (!stopped) {
-              setNotifications((result.data.items || []) as AppNotification[]);
+              const items = (result.data.items || []) as AppNotification[];
+              setNotifications(items);
+              if (seenNotifications.current === null) seenNotifications.current = new Set();
+              items.forEach(item => seenNotifications.current?.add(item.id));
               setNotificationsOpen(true);
             }
           } catch { /* The normal notification poll will retry. */ }
@@ -508,7 +521,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   async function deleteNotification(item: AppNotification) {
     if (!window.confirm('Delete this notification?')) return;
     try {
-      await api.delete('/api/notifications/' + item.id);
+      await api.delete('/api/notifications/' + encodeURIComponent(item.id));
       setNotifications(current => current.filter(entry => entry.id !== item.id));
       flash('Notification deleted.');
     } catch (error) {
@@ -518,8 +531,16 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
 
   async function markNotificationsRead() {
     const unread = notifications.filter(item => !item.read);
-    await Promise.all(unread.map(item => api.put('/api/notifications/' + item.id, { read: true }).catch(() => undefined)));
-    setNotifications(current => current.map(item => ({ ...item, read: true })));
+    if (!unread.length || notificationActionBusy) return;
+    setNotificationActionBusy(true);
+    try {
+      const results = await Promise.allSettled(unread.map(item => api.put('/api/notifications/' + encodeURIComponent(item.id), { read: true })));
+      const succeeded = new Set(unread.filter((_item, index) => results[index].status === 'fulfilled').map(item => item.id));
+      setNotifications(current => current.map(item => succeeded.has(item.id) ? { ...item, read: true } : item));
+      if (succeeded.size !== unread.length) flash('Some notifications could not be marked read. Please retry.');
+    } finally {
+      setNotificationActionBusy(false);
+    }
   }
   async function signOut() {
     if (pushToken.current) {
@@ -963,7 +984,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                 <Bell size={18}/>{notifications.filter(item=>!item.read).length>0 && <span className="notification-count">{Math.min(99,notifications.filter(item=>!item.read).length)}</span>}
               </button>
               {notificationsOpen && <div className="notification-popover">
-                <div className="notification-popover-head"><b>Notifications</b><button onClick={markNotificationsRead} disabled={!notifications.some(item=>!item.read)}>Mark all read</button></div>
+                <div className="notification-popover-head"><b>Notifications</b><button type="button" onClick={markNotificationsRead} disabled={notificationActionBusy || !notifications.some(item=>!item.read)}>{notificationActionBusy ? 'Updating…' : 'Mark all read'}</button></div>
                 {notifications.slice(0,12).map(item=><article className={'notification-item '+(!item.read?'unread':'')} key={item.id}><div className="notification-item-head" style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8}}><b>{item.title}</b><button type="button" className="row-action danger" aria-label="Delete notification" title="Delete notification" onClick={()=>void deleteNotification(item)}><Trash2 size={13}/></button></div><p>{item.message}</p><small>{item.createdAt ? new Date(item.createdAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'}) : ''}</small></article>)}
                 {!notifications.length && <p className="notification-empty">You’re all caught up.</p>}
               </div>}
