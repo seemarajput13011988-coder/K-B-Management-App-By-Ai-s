@@ -238,3 +238,137 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
 [data-theme="dark"] .loading-cover { background:radial-gradient(ellipse at 50% 42%,#1c2c43 0%,#101b2b 70%)!important;color:#c1d1e4; }
 [data-theme="dark"] .loading-brand-name { color:#e3edf8; }
 [data-theme="dark"] .loading-cover>span { color:#a7bad1; }
+
+
+/* Phase 5 — mobile card and page polish.
+   Scoped to presentation primitives; preserves all feature markup and workflows. */
+.kb-overview-metric,
+.staff-insight,
+.task-card,
+.plan-card,
+.complaint-card,
+.staff-request-card,
+.portal-request-card {
+  min-width:0;
+  overflow-wrap:anywhere;
+}
+.kb-overview-metric {
+  border-radius:18px;
+  border-color:#e0e9f3;
+  background:linear-gradient(150deg,#fff 0%,#f7faff 100%);
+  box-shadow:0 8px 24px rgba(25,55,90,.055);
+}
+.kb-overview-metric-icon {
+  flex-shrink:0;
+  border-radius:13px;
+}
+.kb-overview-section,
+.kb-overview-main,
+.kb-overview-charts,
+.staff-insight-grid,
+.plans-grid,
+.complaint-list,
+.task-list { min-width:0; }
+.kb-overview-section-head { min-width:0; }
+.kb-overview-section-head>div { min-width:0; }
+.kb-overview-section-head h2,
+.kb-overview-section-head p,
+.kb-overview-metric small,
+.kb-overview-metric span:not(.kb-overview-metric-icon) {
+  overflow-wrap:anywhere;
+}
+.kb-overview-link { min-height:36px; padding-inline:5px; }
+.staff-insight,
+.task-card,
+.plan-card,
+.complaint-card,
+.staff-request-card,
+.portal-request-card {
+  border-radius:16px;
+  border-color:var(--kb-line);
+}
+.plan-card h3,
+.plan-card p,
+.task-card strong,
+.complaint-card strong,
+.staff-request-card strong,
+.portal-request-card strong {
+  overflow-wrap:anywhere;
+}
+.plan-price,
+.amount,
+.finance-metrics strong { font-variant-numeric:tabular-nums; }
+.searchbox,
+.plan-search {
+  min-width:0;
+  max-width:100%;
+}
+.searchbox input,
+.plan-search input {
+  min-width:0;
+  width:100%;
+}
+[data-theme="dark"] .kb-overview-metric {
+  border-color:#2b3d56;
+  background:linear-gradient(150deg,#192b42 0%,#15243a 100%);
+  box-shadow:0 8px 24px rgba(0,0,0,.12);
+}
+
+@media(max-width:700px) {
+  .kb-overview-metric,
+  .staff-insight,
+  .task-card,
+  .plan-card,
+  .complaint-card,
+  .staff-request-card,
+  .portal-request-card {
+    border-radius:16px;
+  }
+  .kb-overview-metric { min-height:104px; }
+  .kb-overview-main { gap:24px; }
+  .kb-overview-section-head { align-items:center; }
+  .kb-overview-section-head h2 { line-height:1.3; }
+  .kb-overview-actions button {
+    min-width:0;
+    padding:7px 5px;
+    border-radius:12px;
+    background:rgba(255,255,255,.62);
+  }
+  .kb-overview-actions button span,
+  .kb-overview-actions button small { overflow-wrap:anywhere; }
+  .toolbar,
+  .plan-toolbar,
+  .plan-controls,
+  .finance-head,
+  .finance-actions {
+    min-width:0;
+    max-width:100%;
+  }
+  .toolbar .searchbox,
+  .toolbar .search-box,
+  .toolbar .search-input,
+  .plan-search {
+    flex:1 1 100%;
+    width:100%;
+    min-width:0;
+  }
+  .plans-grid,
+  .staff-insight-grid {
+    grid-template-columns:minmax(0,1fr);
+  }
+  .plan-card { padding:17px; }
+  .complaint-card,
+  .task-card,
+  .staff-request-card,
+  .portal-request-card { padding:14px; }
+  .content .panel { overflow:hidden; }
+  .content .table-wrap,
+  .content .finance-table-wrap { overflow-x:auto; }
+}
+@media(max-width:390px) {
+  .kb-overview-metrics { gap:9px; }
+  .kb-overview-metric { padding:11px; }
+  .kb-overview-metric strong { font-size:clamp(16px,5vw,19px); }
+  .kb-overview-actions { gap:7px; }
+  .kb-overview-actions button { grid-template-columns:18px minmax(0,1fr); column-gap:7px; }
+}
