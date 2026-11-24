@@ -671,6 +671,9 @@ export const handler = router({
       }
       if (request.status === status) return { kind: 'unchanged' as const };
       const reviewedAt = new Date().toISOString();
+      const linkedCustomerId = cleanText(request.customerId, 128);
+      const linkedCustomerRef = linkedCustomerId ? firestore.collection('customers').doc(linkedCustomerId) : null;
+      const linkedCustomerSnapshot = linkedCustomerRef ? await transaction.get(linkedCustomerRef) : null;
       let lockToClose = '';
       if (status === 'Rejected') {
         const phone = cleanText(request.phone, 10);
@@ -694,6 +697,12 @@ export const handler = router({
           contactedByName: user.displayName,
         }),
       });
+      if (status === 'Rejected' && linkedCustomerRef && linkedCustomerSnapshot?.exists) {
+        transaction.update(linkedCustomerRef, {
+          status: 'Inactive',
+          notes: 'Customer Nexus registration was rejected by K&B on ' + reviewedAt + '. No service was activated.',
+        });
+      }
       if (lockToClose) {
         const lockRef = firestore.collection('portal_connection_request_locks').doc(lockToClose);
         transaction.set(lockRef, { status: 'Closed', pendingRequestId: null, reviewedAt, reviewedBy: user.id }, { merge: true });
