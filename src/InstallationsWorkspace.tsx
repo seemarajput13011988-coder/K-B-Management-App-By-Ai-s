@@ -4,6 +4,7 @@ import type { FormEvent } from 'react';
 import { api } from './lib/api';
 import { Download, FileText, Trash2 } from 'lucide-react';
 import { exportCsvFile, exportPdfReport } from './lib/file-export';
+import { notifyToast } from './ui/toast';
 
 type Customer={id:string;name:string;phone?:string;address:string};
 type Staff={id:string;displayName:string;active:boolean};
@@ -14,14 +15,14 @@ async function exportInstallations(items:Installation[]){
   const rows=[['Customer','Phone','Address','Job type','Scheduled date','Assigned staff','Status','Notes'],
     ...items.map(item=>[item.customerName,item.phone||'',item.address,item.type,item.scheduledDate,item.assignedToName,item.status,item.notes||''])];
   try { await exportCsvFile('kb-installations-'+dateToday()+'.csv',rows); }
-  catch(error) { window.alert(error instanceof Error?error.message:'Could not export installation jobs.'); }
+  catch(error) { notifyToast(error instanceof Error?error.message:'Could not export installation jobs.'); }
 }
 
 async function exportInstallationsPdf(items:Installation[]){
   const rows=[['Customer','Phone','Address','Job type','Scheduled date','Assigned staff','Status','Notes'],
     ...items.map(item=>[item.customerName,item.phone||'',item.address,item.type,item.scheduledDate,item.assignedToName,item.status,item.notes||''])];
   try { await exportPdfReport('kb-installations-'+dateToday()+'.pdf','Installation jobs',rows); }
-  catch(error) { window.alert(error instanceof Error?error.message:'Could not create installation PDF.'); }
+  catch(error) { notifyToast(error instanceof Error?error.message:'Could not create installation PDF.'); }
 }
 
 export default function InstallationsWorkspace({
