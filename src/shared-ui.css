@@ -574,3 +574,18 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
     max-width:calc(100vw - 12px);
   }
 }
+
+
+/* Android touch-focus cleanup: remove default black tap outlines while
+   retaining a clear accent focus indicator for keyboard navigation. */
+:where(button, a, input, select, textarea, [role="button"], [tabindex]):not([tabindex="-1"]) {
+  -webkit-tap-highlight-color: transparent;
+}
+:where(button, a, input, select, textarea, [role="button"], [tabindex]):focus:not(:focus-visible) {
+  outline: none !important;
+  box-shadow: none;
+}
+:where(button, a, [role="button"], [tabindex]):focus-visible {
+  outline: 2px solid var(--kb-focus, rgba(233,149,56,.72)) !important;
+  outline-offset: 2px;
+}
