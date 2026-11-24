@@ -508,3 +508,60 @@ body {
   from { transform: translateX(-85%); }
   to { transform: translateX(190%); }
 }
+
+/* Premium K&B visual hierarchy: navy surfaces, crisp type and warm orange actions. */
+.kb-command-hero {
+  border-color: #2b527c;
+  background:
+    radial-gradient(ellipse at 88% 12%, rgba(91,145,204,.26), transparent 42%),
+    linear-gradient(118deg, #122640 0%, #1b3e65 58%, #285887 100%);
+  box-shadow: 0 16px 38px rgba(19, 47, 80, .17);
+}
+.kb-command-kicker { color: #bfd2e8; }
+.kb-command-live-dot { background: #f1ae54; box-shadow: 0 0 0 4px rgba(241,174,84,.15); }
+.kb-command-hero p { color: #d0deee; }
+.kb-command-hero-aside {
+  border-color: rgba(220,235,251,.2);
+  background: rgba(10,28,51,.32);
+}
+.kb-command-aside-label, .kb-command-hero-aside small { color: #c3d5e9; }
+.kb-command-hero-aside>span:not(.kb-command-aside-label) { color: #d0deee; }
+.kb-command-primary {
+  background: linear-gradient(135deg, #ffc46f, #e99538);
+  color: #263b54;
+  box-shadow: 0 6px 18px rgba(6,22,41,.2);
+}
+.kb-command-secondary {
+  border-color: rgba(220,235,251,.28);
+  background: rgba(255,255,255,.08);
+}
+.kb-overview-section-head h2,
+.kb-overview .chart-panel .panel-head h2 { color: #203d61; }
+.stat-card, .kb-overview-metric {
+  border: 1px solid #e1e9f3;
+  border-radius: 18px;
+  background: linear-gradient(155deg, #fff 0%, #f9fbfe 100%);
+  box-shadow: 0 8px 24px rgba(24,48,79,.065);
+}
+.stat-card { position: relative; overflow: hidden; }
+.stat-card::after {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 3px;
+  background: linear-gradient(90deg, #2c6eae, #e99538);
+  opacity: .82;
+}
+[data-theme="dark"] .kb-command-hero {
+  border-color: #345b82;
+  background:
+    radial-gradient(ellipse at 88% 12%, rgba(70,119,174,.2), transparent 42%),
+    linear-gradient(118deg, #102139 0%, #193657 58%, #21466f 100%);
+}
+[data-theme="dark"] .kb-overview-section-head h2,
+[data-theme="dark"] .kb-overview .chart-panel .panel-head h2 { color: #e7effa; }
+[data-theme="dark"] .stat-card,
+[data-theme="dark"] .kb-overview-metric {
+  border-color: #2c405a;
+  background: linear-gradient(155deg, #192b42, #15243a);
+}
