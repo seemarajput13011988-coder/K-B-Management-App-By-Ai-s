@@ -17,6 +17,7 @@ const CalendarWorkspace = lazy(() => import('./CalendarWorkspace'));
 import { useAppPreferences } from './appPreferences';
 import { buildNav, TABS } from './ui/nav';
 import { pageSubtitle } from './ui/pageMeta';
+import { MoreServicesSheet } from './ui/MoreServicesSheet';
 import { DateRangeFilter, dateRangeBounds, initialDateRange, isInDateRange, sortReportRows } from './components/DateRangeFilter';
 import type { DateRange } from './components/DateRangeFilter';
 import { exportCsvFile } from './lib/file-export';
@@ -251,6 +252,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   const [notice, setNotice] = useState('');
   const [mobileNav, setMobileNav] = useState(false);
   const [showMoreNav, setShowMoreNav] = useState(false);
+  const [showMoreSheet, setShowMoreSheet] = useState(false);
 
 
   const [retentionItems, setRetentionItems] = useState<RetentionReviewItem[]>([]);
@@ -1479,7 +1481,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
 
       <nav className="mobile-tab-bar" aria-label="Main navigation">
         {mobileTabs.map(item => item.id === 'More' ? (
-          <button key={item.id} type="button" className={'mobile-tab ' + (mobileNav || moreNav.some(tool => tool.label === page) ? 'active' : '')} onClick={() => setMobileNav(open => !open)} aria-expanded={mobileNav}>
+          <button key={item.id} type="button" className={'mobile-tab ' + (mobileNav || moreNav.some(tool => tool.label === page) ? 'active' : '')} onClick={() => setShowMoreSheet(true)} aria-expanded={showMoreSheet}>
             <item.icon size={20}/><span>{item.label}</span>
           </button>
         ) : (
@@ -1488,6 +1490,22 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
           </button>
         ))}
       </nav>
+
+      {showMoreSheet && (
+        <MoreServicesSheet
+          groups={moreNavGroups}
+          onClose={() => setShowMoreSheet(false)}
+          onSelect={item => {
+            setShowMoreSheet(false);
+            setNotificationsOpen(false);
+            if (item.label === 'Customer Portal Control') {
+              openCustomerPortalControl();
+              return;
+            }
+            setPage(item.label);
+          }}
+        />
+      )}
 
       {showCustomer && (
         <CustomerModal
