@@ -6,14 +6,14 @@ import { Camera } from '@capacitor/camera';
 import { Geolocation } from '@capacitor/geolocation';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { PushNotifications } from '@capacitor/push-notifications';
-const StaffOperations = lazy(() => import('./StaffOperations'));
-const FinanceWorkspace = lazy(() => import('./FinanceWorkspace'));
-const SubscriptionWorkspace = lazy(() => import('./SubscriptionWorkspace'));
-const InvoiceWorkspace = lazy(() => import('./InvoiceWorkspace'));
-const InventoryWorkspace = lazy(() => import('./InventoryWorkspace'));
-const GpsTrackingWorkspace = lazy(() => import('./GpsTrackingWorkspace'));
-const InstallationsWorkspace = lazy(() => import('./InstallationsWorkspace'));
-const CalendarWorkspace = lazy(() => import('./CalendarWorkspace'));
+const StaffOperations = lazy(() => import('../../StaffOperations'));
+const FinanceWorkspace = lazy(() => import('../../FinanceWorkspace'));
+const SubscriptionWorkspace = lazy(() => import('../../SubscriptionWorkspace'));
+const InvoiceWorkspace = lazy(() => import('../../InvoiceWorkspace'));
+const InventoryWorkspace = lazy(() => import('../../InventoryWorkspace'));
+const GpsTrackingWorkspace = lazy(() => import('../../GpsTrackingWorkspace'));
+const InstallationsWorkspace = lazy(() => import('../../InstallationsWorkspace'));
+const CalendarWorkspace = lazy(() => import('../../CalendarWorkspace'));
 import { useAppPreferences } from '../../appPreferences';
 import { buildNav, TABS } from '../../ui/nav';
 import { pageSubtitle } from '../../ui/pageMeta';
@@ -39,7 +39,7 @@ import type { Customer, Payment, Staff, AdminAccount, AttendanceRecord, Task, Co
 import { DateRangeFilter, dateRangeBounds, initialDateRange, isInDateRange, sortReportRows } from '../../components/DateRangeFilter';
 import type { DateRange } from '../../components/DateRangeFilter';
 import { exportCsvFile } from '../../lib/file-export';
-import { api as client, nativeApiPost, changeAppPassword, changeAppUserId, signInAppUser, signOutAppUser } from '../../lib/api';
+import { api as client, nativeApiPost, changeAppPassword, changeAppUserId } from '../../lib/api';
 import {
   Activity,
   Bell,
