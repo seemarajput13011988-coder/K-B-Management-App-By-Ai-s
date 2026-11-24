@@ -47,10 +47,9 @@ function mountApp(native = false) {
 }
 
 function showUpdateScreen(message: string, retry: () => void) {
-  appRoot.replaceChildren();
   const screen = document.createElement('main');
   screen.setAttribute('role', 'status');
-  screen.style.cssText = 'min-height:100dvh;display:grid;place-content:center;justify-items:center;gap:14px;padding:28px;background:#f4f7fb;color:#17243a;font-family:system-ui,sans-serif;text-align:center';
+  screen.style.cssText = 'position:fixed;inset:0;z-index:10000;min-height:100dvh;display:grid;place-content:center;justify-items:center;gap:14px;padding:28px;background:#f4f7fb;color:#17243a;font-family:system-ui,sans-serif;text-align:center';
   const mark = document.createElement('div');
   mark.setAttribute('aria-label', 'K&B NET SERVICE');
   mark.style.cssText = 'display:grid;place-items:center;width:82px;height:82px;border-radius:25px;background:linear-gradient(145deg,#ffc15e,#ed842c);box-shadow:0 14px 34px rgba(237,132,44,.24);color:#fff;font-size:23px;font-weight:900;letter-spacing:-1.5px;border:1px solid rgba(255,255,255,.65)';
@@ -85,9 +84,9 @@ function showUpdateScreen(message: string, retry: () => void) {
   openCurrent.textContent = 'Open current version';
   openCurrent.hidden = true;
   openCurrent.style.cssText = 'border:1px solid #cbd5e1;border-radius:12px;background:transparent;color:#334155;padding:11px 18px;font-weight:700;font-size:14px';
-  openCurrent.addEventListener('click', () => mountApp(true));
+  openCurrent.addEventListener('click', () => screen.remove());
   screen.append(mark, title, detail, progressTrack, progressLabel, button, openCurrent);
-  appRoot.append(screen);
+  document.body.append(screen);
   return {
     setProgress(percent: number) {
       const value = Math.max(0, Math.min(100, Math.round(Number(percent) || 0)));
