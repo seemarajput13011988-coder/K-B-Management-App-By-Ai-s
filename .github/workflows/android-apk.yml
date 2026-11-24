@@ -1,5 +1,4 @@
 name: Build private Android APK
-# Rebuild after the final mobile shell and navigation refinements.
 # Layout and frontend changes must always produce a fresh installable APK.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -16,7 +15,6 @@ on:
       - fix-android-document-picker-2026-11-06
       - production-reconciliation-2026-11-18
       - nexus-native-redesign-2026-11-19
-      - mobile-native-shell-rebuild-2026-11-24
     paths:
       - "src/**"
       - "render-backend/**"
