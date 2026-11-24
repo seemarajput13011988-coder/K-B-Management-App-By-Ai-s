@@ -1534,13 +1534,14 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
       )}
       {!isAdmin && <StaffLocationResponder activeShift={staffShiftActive} userId={session.user.id} />}
       {permissionSetupOpen && <StaffPermissionSetup onComplete={() => { localStorage.setItem('kb-staff-permissions-v1', 'done'); setPermissionSetupOpen(false); }} />}
-      {completingTask && <TaskCompletionModal task={completingTask} onClose={() => setCompletingTask(null)} onComplete={(photo: File | null, video: File | null) => completeTaskWithEvidence(completingTask, photo, video)} />}
+      {completingTask && <TaskCompletionModal task={completingTask} flash={flash} onClose={() => setCompletingTask(null)} onComplete={(photo: File | null, video: File | null) => completeTaskWithEvidence(completingTask, photo, video)} />}
       {taskPreview && <Modal title={taskPreview.name} subtitle="Task completion evidence" onClose={() => setTaskPreview(null)}><div className="complaint-preview">{taskPreview.mimeType.startsWith('video/') ? <video src={taskPreview.dataUrl} controls playsInline /> : <img src={taskPreview.dataUrl} alt={taskPreview.name}/>}</div><div className="form-actions"><a className="btn secondary" href={taskPreview.dataUrl} download={taskPreview.name}>Download evidence</a><button type="button" className="btn primary" onClick={() => setTaskPreview(null)}>Close</button></div></Modal>}
       {showComplaint && (
         <ComplaintModal
           customers={customers}
           staff={staff}
           session={session}
+          flash={flash}
           onClose={() => setShowComplaint(false)}
           onSave={saveComplaint}
         />
@@ -2126,19 +2127,19 @@ function StaffPermissionSetup({ onComplete }: { onComplete:()=>void }) {
   </Modal>;
 }
 
-function TaskCompletionModal({ task, onClose, onComplete }: any) {
+function TaskCompletionModal({ task, onClose, onComplete, flash }: any) {
   const [photo, setPhoto] = useState<File | null>(null);
   const [video, setVideo] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   function valid(file: File, kind: 'photo'|'video') {
     const allowed = kind === 'photo' ? ['image/jpeg','image/png','image/webp'] : ['video/mp4','video/webm','video/quicktime'];
     const limit = kind === 'photo' ? 2 * 1024 * 1024 : 8 * 1024 * 1024;
-    if (!allowed.includes(file.type)) { window.alert(kind === 'photo' ? 'Choose a JPG, PNG or WEBP photo.' : 'Choose an MP4, WEBM or MOV video.'); return false; }
-    if (file.size > limit) { window.alert(kind === 'photo' ? 'Photo must be 2 MB or smaller.' : 'Video must be 8 MB or smaller.'); return false; }
+    if (!allowed.includes(file.type)) { flash(kind === 'photo' ? 'Choose a JPG, PNG or WEBP photo.' : 'Choose an MP4, WEBM or MOV video.'); return false; }
+    if (file.size > limit) { flash(kind === 'photo' ? 'Photo must be 2 MB or smaller.' : 'Video must be 8 MB or smaller.'); return false; }
     return true;
   }
   return <Modal title="Complete task with evidence" subtitle={task.title} onClose={onClose}>
-    <form className="form-grid" onSubmit={async event => { event.preventDefault(); if (!photo || !video) { window.alert('Both a task photo and a task video are required.'); return; } setBusy(true); await onComplete(photo, video); setBusy(false); }}>
+    <form className="form-grid" onSubmit={async event => { event.preventDefault(); if (!photo || !video) { flash('Both a task photo and a task video are required.'); return; } setBusy(true); await onComplete(photo, video); setBusy(false); }}>
       <p className="form-hint">Both a photo and a video are required. The task remains open until both files upload successfully.</p>
       <Field label="Task photo (required)" wide><input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={event => { const file=event.target.files?.[0]||null; setPhoto(file&&valid(file,'photo')?file:null); }}/>{photo&&<small>{photo.name} · {(photo.size/1024).toFixed(0)} KB</small>}</Field>
       <Field label="Task video (required)" wide><input type="file" accept="video/mp4,video/webm,video/quicktime" capture="environment" onChange={event => { const file=event.target.files?.[0]||null; setVideo(file&&valid(file,'video')?file:null); }}/>{video&&<small>{video.name} · {(video.size/1024/1024).toFixed(1)} MB</small>}</Field>
@@ -2307,7 +2308,7 @@ function PaymentModal({ customers, initial, onClose, onSave }: any) {
     </Modal>
   );
 }
-function ComplaintModal({ customers, staff, session, onClose, onSave }: any) {
+function ComplaintModal({ customers, staff, session, onClose, onSave, flash }: any) {
   const isAdmin = session.user.role === 'admin';
   const [f, setF] = useState<any>({
     complaintFor: 'Customer',
@@ -2353,8 +2354,8 @@ function ComplaintModal({ customers, staff, session, onClose, onSave }: any) {
   return <Modal title="New complaint" subtitle="Choose a customer or staff member, then add the issue details." onClose={onClose}>
     <form className="form-grid complaint-form" onSubmit={async event => {
       event.preventDefault();
-      if (f.complaintFor === 'Customer' && !f.customerId) { window.alert('Select a customer.'); return; }
-      if (f.complaintFor === 'Staff' && !(isAdmin ? f.staffId : session.user.id)) { window.alert('Select a staff member.'); return; }
+      if (f.complaintFor === 'Customer' && !f.customerId) { flash('Select a customer.'); return; }
+      if (f.complaintFor === 'Staff' && !(isAdmin ? f.staffId : session.user.id)) { flash('Select a staff member.'); return; }
       setSaving(true);
       await onSave({ ...f, customerName: customer?.name || '', staffId: isAdmin ? f.staffId : session.user.id, photoFile, videoFile });
       setSaving(false);
