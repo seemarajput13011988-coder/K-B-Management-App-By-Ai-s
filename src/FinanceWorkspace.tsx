@@ -3,6 +3,7 @@ import { useConfirm } from './ui/ConfirmDialog';
 import { api as client } from './lib/api';
 import { Download, Plus, RefreshCw, ReceiptText, Trash2, TrendingDown, TrendingUp, Wallet } from 'lucide-react';
 import { exportCsvFile, exportPdfFile } from './lib/file-export';
+import { notifyToast } from './ui/toast';
 import { DateRangeFilter, dateRangeBounds, initialDateRange, isInDateRange, sortReportRows } from './components/DateRangeFilter';
 import type { DateRange } from './components/DateRangeFilter';
 
@@ -23,7 +24,7 @@ async function downloadCsv(name: string, rows: unknown[][]) {
   try {
     await exportCsvFile(name, rows);
   } catch (error) {
-    window.alert(error instanceof Error ? error.message : 'Could not export this CSV file.');
+    notifyToast(error instanceof Error ? error.message : 'Could not export this CSV file.');
   }
 }
 
@@ -85,7 +86,7 @@ async function printReport(title: string, rows: unknown[][]) {
     const fileName = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') + '.pdf';
     await exportPdfFile(fileName, doc.output('datauristring'));
   } catch (error) {
-    window.alert(error instanceof Error ? error.message : 'Could not create this PDF report.');
+    notifyToast(error instanceof Error ? error.message : 'Could not create this PDF report.');
   }
 }
 
