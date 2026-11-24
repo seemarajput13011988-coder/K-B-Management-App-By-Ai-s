@@ -746,3 +746,70 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
   .modal .form-actions .btn,
   .modal .modal-actions .btn { flex: 1 1 112px; }
 }
+
+
+/* Final mobile modal scroll model:
+   one scroll container per dialog (the dialog itself), never nested form scrollers.
+   This keeps the action row in the same scroll chain and sticky above the phone safe area. */
+@media (max-width: 700px) {
+  .modal {
+    display: block !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
+    max-height: calc(100dvh - max(20px, env(safe-area-inset-top, 0px) + 12px)) !important;
+    padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .modal > form,
+  .modal > .form-grid,
+  .modal > .ops-form,
+  .modal > .inventory-form,
+  .modal > .inventory-movement-form {
+    max-height: none !important;
+    min-height: 0;
+    overflow: visible !important;
+  }
+
+  .modal .form-actions,
+  .modal .modal-actions,
+  .modal .staff-create-actions {
+    position: sticky !important;
+    bottom: 0 !important;
+    z-index: 20;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: stretch;
+    gap: 9px;
+    margin: 12px -16px calc(-16px - env(safe-area-inset-bottom, 0px)) !important;
+    padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px)) !important;
+    border-top: 1px solid var(--kb-line, #e4eaf2);
+    background: var(--kb-surface, #fff);
+    backdrop-filter: blur(14px);
+  }
+
+  .modal .form-actions .btn,
+  .modal .modal-actions .btn,
+  .modal .staff-create-actions .btn {
+    flex: 1 1 120px;
+    min-width: 0;
+    min-height: 46px;
+  }
+
+  .staff-create-modal {
+    overflow-y: auto !important;
+  }
+
+  .staff-create-form {
+    max-height: none !important;
+    overflow: visible !important;
+  }
+}
+
+[data-theme="dark"] .modal .form-actions,
+[data-theme="dark"] .modal .modal-actions,
+[data-theme="dark"] .modal .staff-create-actions {
+  background: #17263b;
+  border-color: #2b3d56;
+}
