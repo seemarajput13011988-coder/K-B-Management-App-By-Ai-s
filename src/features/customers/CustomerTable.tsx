@@ -38,7 +38,7 @@ export function CustomerTable({ rows, onView, onEdit, onDelete, money, dateLabel
               <td data-label="Monthly fee" className="amount">{money(c.monthlyFee)}</td>
               <td data-label="Status">
                 <span className={'status ' + statusLabel(c.status).toLowerCase()} aria-label={'Customer status: ' + statusLabel(c.status)}>
-                  {customerStatusLabel(c.status)}
+                  {statusLabel(c.status)}
                 </span>
               </td>
               <td data-label="Joined">{dateLabel(c.joinedAt)}</td>
