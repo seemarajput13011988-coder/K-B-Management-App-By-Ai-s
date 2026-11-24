@@ -66,7 +66,7 @@ import {
   Trash2,
   Eye,
   EyeOff,
-  ShieldCheck, KeyRound, BarChart3, LogOut, UserPlus, UserRound, UsersRound, LockKeyhole, ReceiptText, MoreHorizontal,
+  ShieldCheck, KeyRound, LogOut, UserPlus, UserRound, UsersRound, LockKeyhole, ReceiptText, MoreHorizontal,
 } from 'lucide-react';
 import { getHinduFestival, getIndiaDateKey } from './festivalTheme';
 
