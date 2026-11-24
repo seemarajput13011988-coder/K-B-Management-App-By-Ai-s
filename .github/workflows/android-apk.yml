@@ -17,6 +17,7 @@ on:
       - production-reconciliation-2026-11-18
       - nexus-native-redesign-2026-11-19
       - mobile-native-shell-rebuild-2026-11-24
+      - nexus-redesign-phase3-2026-11-24
     paths:
       - "src/**"
       - "render-backend/**"
