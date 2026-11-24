@@ -52,7 +52,6 @@ import {
   Activity,
   Bell,
   ChevronDown,
-  CircleHelp,
   CreditCard,
   IndianRupee,
   LayoutDashboard,
