@@ -1061,7 +1061,6 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
             {page === 'Inventory' && <InventoryWorkspace isAdmin={isAdmin} flash={flash} />}
             {page === 'GPS Tracking' && isAdmin && <GpsTrackingWorkspace flash={flash} />}
             {page === 'Installations' && <InstallationsWorkspace customers={customers} staff={staff} isAdmin={isAdmin} flash={flash} />}
-            {page === 'Overview' && !isAdmin && <StaffOperations session={session} customers={customers} flash={flash} compact onDataChanged={() => { void load(true); }} />}
           </Suspense>
 
           {page === 'Overview' && (
@@ -1089,6 +1088,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                   { id: 'Calendar', label: 'Calendar', icon: CalendarDays, tint: '#7c3aed' },
                 ]}
               />
+              {!isAdmin && <StaffOperations session={session} customers={customers} flash={flash} compact onDataChanged={() => { void load(true); }} />}
 
               {isAdmin && (
                 <aside className="kb-overview-review" aria-label="Records due for review">
