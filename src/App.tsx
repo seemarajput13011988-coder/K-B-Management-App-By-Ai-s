@@ -1570,7 +1570,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
             if (e.target === e.currentTarget) setSelected(null);
           }}
         >
-          <div className="modal">
+          <div className={'modal ' + className}>
             <div className="modal-head">
               <div>
                 <span className="eyebrow">CUSTOMER PROFILE</span>
@@ -1989,7 +1989,33 @@ function AdminModal({ onClose, onSave }: any) {
 function StaffModal({ onClose, onSave }: any) {
   const [form, setForm] = useState({ displayName: '', userId: '', password: '' });
   const [busy, setBusy] = useState(false);
-  return <Modal title="Create staff account" subtitle="Give this team member a secure sign-in." onClose={onClose}><form className="form-grid" onSubmit={async e => { e.preventDefault(); setBusy(true); await onSave(form); setBusy(false); }}><Field label="Staff full name"><input required value={form.displayName} onChange={e => setForm({ ...form, displayName: e.target.value })} /></Field><Field label="Staff user ID"><input required minLength={3} maxLength={32} pattern="[a-zA-Z0-9_-]{3,32}" value={form.userId} onChange={e => setForm({ ...form, userId: e.target.value })} /></Field><Field label="Temporary password" wide><input required type="password" minLength={10} value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} /></Field><p className="form-hint">Use at least 10 characters and share it privately. Admin can reset it from Staff if needed.</p><div className="form-actions"><button type="button" className="btn secondary" onClick={onClose}>Cancel</button><button className="btn primary" disabled={busy}>{busy ? 'Creating…' : 'Create account'}</button></div></form></Modal>;
+  const [error, setError] = useState('');
+  async function submitStaffForm(event: FormEvent) {
+    event.preventDefault();
+    if (busy) return;
+    setBusy(true);
+    setError('');
+    try {
+      await onSave({ displayName: form.displayName.trim(), userId: form.userId.trim(), password: form.password });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not create staff account. Please try again.');
+    } finally {
+      setBusy(false);
+    }
+  }
+  return <Modal className="staff-create-modal" title="Create staff account" subtitle="Complete all three fields, then use the button below to add this team member." onClose={onClose}>
+    <form className="form-grid staff-create-form" onSubmit={submitStaffForm}>
+      <Field label="Staff full name"><input required maxLength={80} autoComplete="name" value={form.displayName} onChange={e => setForm({ ...form, displayName: e.target.value })} /></Field>
+      <Field label="Staff user ID"><input required minLength={3} maxLength={32} pattern="[a-zA-Z0-9_-]{3,32}" autoComplete="username" value={form.userId} onChange={e => setForm({ ...form, userId: e.target.value })} /></Field>
+      <Field label="Temporary password" wide><input required type="password" minLength={10} autoComplete="new-password" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} /></Field>
+      <p className="form-hint">Use at least 10 characters and share it privately. Admin can reset it from Staff if needed.</p>
+      {error && <p className="staff-create-error" role="alert">{error}</p>}
+      <div className="form-actions staff-create-actions">
+        <button type="button" className="btn secondary" onClick={onClose} disabled={busy}>Cancel</button>
+        <button type="submit" className="btn primary" disabled={busy || !form.displayName.trim() || !form.userId.trim() || form.password.length < 10}>{busy ? 'Creating…' : 'Add Staff'}</button>
+      </div>
+    </form>
+  </Modal>;
 }
 function StaffLocationResponder({ activeShift, userId }: { activeShift: boolean; userId: string }) {
   const [shiftActive, setShiftActive] = useState(activeShift);
@@ -2413,7 +2439,7 @@ function Field({ label, children, wide }: any) {
     </label>
   );
 }
-function Modal({ title, subtitle, onClose, children }: any) {
+function Modal({ title, subtitle, onClose, children, className = '' }: any) {
   return (
     <div
       className="modal-backdrop"
