@@ -77,6 +77,7 @@ function showUpdateScreen(message: string, retry: () => void) {
   button.addEventListener('click', () => {
     button.disabled = true;
     button.textContent = 'Checking…';
+    screen.remove();
     retry();
   });
   const openCurrent = document.createElement('button');
