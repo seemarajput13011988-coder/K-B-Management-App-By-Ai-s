@@ -1,0 +1,17 @@
+.kb-admin-plan-list { display:grid; gap:13px; }
+.kb-admin-plan-editor,.kb-admin-new-plan { display:grid; gap:13px; padding:15px; border:1px solid #dce5f0; border-radius:16px; background:#fbfdff; }
+.kb-admin-plan-editor-head,.kb-admin-plan-actions { display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; }
+.kb-admin-plan-editor-head b { color:#1d304b; font-size:13px; }
+.kb-admin-plan-editor-head span { padding:4px 8px; border-radius:999px; background:#e6f6ee; color:#16754a; font-size:9px; font-weight:850; letter-spacing:.06em; }
+.kb-admin-plan-editor-head span.is-archived { background:#edf0f4; color:#66758a; }
+.kb-admin-plan-fields { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+.kb-admin-plan-fields label { display:grid; gap:5px; min-width:0; color:#5f7087; font-size:10px; font-weight:750; }
+.kb-admin-plan-fields input,.kb-admin-plan-fields textarea { box-sizing:border-box; width:100%; min-width:0; border:1px solid #d8e1ec; border-radius:10px; padding:10px; background:#fff; color:#1d304b; font:inherit; font-size:12px; }
+.kb-admin-plan-fields textarea { resize:vertical; }
+.kb-admin-plan-actions .kb-admin-check { margin-right:auto; }
+.kb-admin-new-plan h4 { margin:0; color:#1d304b; font-size:14px; }
+.theme-dark .kb-admin-plan-editor,.theme-dark .kb-admin-new-plan { border-color:#35465e; background:#1a2a40; }
+.theme-dark .kb-admin-plan-editor-head b,.theme-dark .kb-admin-new-plan h4 { color:#eef4ff; }
+.theme-dark .kb-admin-plan-fields label { color:#b3c1d4; }
+.theme-dark .kb-admin-plan-fields input,.theme-dark .kb-admin-plan-fields textarea { border-color:#40516a; background:#17243a; color:#f0f4fa; }
+@media(max-width:600px) { .kb-admin-plan-fields { grid-template-columns:minmax(0,1fr); } .kb-admin-plan-editor,.kb-admin-new-plan { padding:12px; } }
