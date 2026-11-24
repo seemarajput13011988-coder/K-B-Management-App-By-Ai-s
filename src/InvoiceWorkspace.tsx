@@ -25,7 +25,7 @@ export default function InvoiceWorkspace({customers,plans,flash}:{customers:Cust
   const [manualRate,setManualRate]=useState('');
   const [manualDiscount,setManualDiscount]=useState('0');
   const [manualGst,setManualGst]=useState('18');
-  const [businessUpi,setBusinessUpi]=useState('');
+  const [businessUpi,setBusinessUpi]=useState('brajrajsinghchauhan3517-5@okhdfcbank');
   const [invoiceNo,setInvoiceNo]=useState(()=> 'KB/INV/'+new Date().getFullYear()+'/'+String(Date.now()).slice(-6));
   const [invoiceDate,setInvoiceDate]=useState(today);
   const [dueDate,setDueDate]=useState(today);
@@ -80,6 +80,10 @@ export default function InvoiceWorkspace({customers,plans,flash}:{customers:Cust
     e.preventDefault();
     if(!customerName.trim()||!customerPhone.trim()||!items.length||items.some(i=>!i.description.trim()||!Number.isFinite(Number(i.quantity))||Number(i.quantity)<=0||!Number.isFinite(Number(i.rate))||Number(i.rate)<0)||extraSummaryFields.some(f=>(f.label.trim()||f.details.trim()||f.amount.trim())&&(!f.label.trim()||!f.amount.trim()||!Number.isFinite(Number(f.amount))||Number(f.amount)<0))){
       flash('Enter customer details, valid service amounts, and a name plus amount for each optional summary field.');
+      return;
+    }
+    if(businessUpi.trim() && !/^[A-Za-z0-9._-]{2,256}@[A-Za-z0-9.-]{2,64}$/.test(businessUpi.trim())){
+      flash('Enter a valid UPI ID or clear the optional UPI field.');
       return;
     }
     setBusy(true);
@@ -155,6 +159,16 @@ export default function InvoiceWorkspace({customers,plans,flash}:{customers:Cust
       doc.setFont('helvetica','bold');doc.setFontSize(13);doc.setTextColor(20,59,103);doc.text('GRAND TOTAL  '+pdfMoney(payable),right,y,{align:'right'});y+=7;
       doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(70,83,100);
       textLine('Amount in words: '+numberWords(payable),left,8,[70,83,100]);
+      if(businessUpi.trim()){
+        const upiUri='upi://pay?pa='+encodeURIComponent(businessUpi.trim())+'&pn='+encodeURIComponent(BUSINESS.name)+'&am='+encodeURIComponent(payable.toFixed(2))+'&cu=INR&tn='+encodeURIComponent('Invoice '+invoiceNo);
+        ensureSpace(14);
+        doc.setFont('helvetica','bold');doc.setFontSize(9);doc.setTextColor(20,105,75);
+        const payLinkLabel='Tap here to pay '+pdfMoney(payable)+' using UPI';
+        doc.text(payLinkLabel,left,y);
+        doc.link(left,y-3,doc.getTextWidth(payLinkLabel),5,{url:upiUri});
+        y+=5;
+        textLine('UPI ID: '+businessUpi.trim()+' · Amount and invoice reference are prefilled. Check the details in your UPI app before confirming.',left,7,[70,83,100]);
+      }
       y+=2;textLine('Notes: '+(notes||'—'),left,8,[70,83,100]);
       y+=2;textLine('Terms & Conditions: '+(terms||'—'),left,8,[70,83,100]);
       ensureSpace(15);y+=5;doc.setDrawColor(215,224,234);doc.line(left,y,right,y);y+=7;
@@ -181,7 +195,7 @@ export default function InvoiceWorkspace({customers,plans,flash}:{customers:Cust
         <label>Choose existing customer <small>Optional, or enter details manually</small><select value={customerId} onChange={e=>chooseCustomer(e.target.value)}><option value="">Manual customer entry</option>{customers.map(c=><option key={c.id} value={c.id}>{c.name} · {c.phone}</option>)}</select></label>
         <label>Customer name<input required value={customerName} onChange={e=>setCustomerName(e.target.value)} placeholder="Full customer / business name"/></label><label>Phone number<input required type="tel" value={customerPhone} onChange={e=>setCustomerPhone(e.target.value)} placeholder="Customer mobile number"/></label><label>Email address <small>Optional</small><input type="email" value={customerEmail} onChange={e=>setCustomerEmail(e.target.value)} placeholder="customer@example.com"/></label><label className="wide">Billing address<textarea rows={2} value={customerAddress} onChange={e=>setCustomerAddress(e.target.value)} placeholder="House, street, area, city, state, PIN"/></label><label>Customer GSTIN <small>Optional</small><input maxLength={15} value={customerGstin} onChange={e=>setCustomerGstin(e.target.value.toUpperCase())} placeholder="15-character GSTIN"/></label>
         <label className="wide">K&amp;B business address<input value={businessAddress} onChange={e=>setBusinessAddress(e.target.value)} /></label>
-        <label>Business UPI ID <small>Optional</small><input value={businessUpi} onChange={e=>setBusinessUpi(e.target.value)} placeholder="business@upi"/></label>
+        <label>Business UPI ID <small>Prefilled from the approved K&B payment details</small><input value={businessUpi} onChange={e=>setBusinessUpi(e.target.value)} placeholder="business@upi"/></label>
       </div></section>
       <section className="invoice-form-section"><h3>Service / plan charges</h3><p className="invoice-help">Add internet plan, installation, router, maintenance or other billable items. Each line can use its own GST rate.</p>
         {items.map((item,index)=><div className="invoice-line" key={item.id}><div className="invoice-line-title"><b>Item {index+1}</b>{items.length>1&&<button type="button" className="invoice-remove" onClick={()=>setItems(prev=>prev.filter(x=>x.id!==item.id))}>Remove</button>}</div><div className="invoice-grid"><label>Choose plan <small>Optional</small><select value="" onChange={e=>{const p=plans.find(x=>x.id===e.target.value);if(p)updateItem(item.id,{description:p.name,details:[p.provider,p.speed,p.data,p.details,p.note].filter(Boolean).join(' · '),rate:String(p.price)});}}><option value="">Select a plan to fill details</option>{plans.map(p=><option key={p.id} value={p.id}>{p.name} · ₹{p.price}</option>)}</select></label><label>Description<input required value={item.description} onChange={e=>updateItem(item.id,{description:e.target.value})} placeholder="Monthly internet plan"/></label><label>Additional plan details <small>Optional</small><input value={item.details} onChange={e=>updateItem(item.id,{details:e.target.value})} placeholder="Speed, data limit, validity, installation details"/></label><label>SAC / HSN <small>Optional</small><input value={item.sac} onChange={e=>updateItem(item.id,{sac:e.target.value})}/></label><label>Quantity<input type="number" min="0.01" step="0.01" required value={item.quantity} onChange={e=>updateItem(item.id,{quantity:e.target.value})}/></label><label>Rate per unit (₹)<input type="number" min="0" step="0.01" required value={item.rate} onChange={e=>updateItem(item.id,{rate:e.target.value})}/></label><label>Discount (%)<input type="number" min="0" max="100" step="0.01" value={item.discount} onChange={e=>updateItem(item.id,{discount:e.target.value})}/></label><label>GST rate<select value={item.gstRate} onChange={e=>updateItem(item.id,{gstRate:e.target.value})}><option value="0">0%</option><option value="5">5%</option><option value="12">12%</option><option value="18">18% (9% CGST + 9% SGST)</option><option value="28">28%</option></select></label><label>Rate type<select value={item.taxMode} onChange={e=>updateItem(item.id,{taxMode:e.target.value as LineItem['taxMode']})}><option value="exclusive">GST extra (exclusive)</option><option value="inclusive">GST included (inclusive)</option></select></label></div></div>)}

@@ -568,6 +568,7 @@ export const handler = router({
     const lockId = createHash('sha256').update(phone).digest('hex');
     const lockRef = firestore.collection('portal_connection_request_locks').doc(lockId);
     const requestRef = firestore.collection('portal_connection_requests').doc();
+    const customerRef = firestore.collection('customers').doc();
     const planRef = firestore.collection('plans').doc(planId);
     const result = await firestore.runTransaction(async transaction => {
       const customerQuery = firestore.collection('customers').where('phone', '==', phone).limit(2);
@@ -598,8 +599,25 @@ export const handler = router({
       }
 
       const createdAt = new Date().toISOString();
+      const customerRecord = {
+        id: customerRef.id,
+        name,
+        phone,
+        address: [address, city, state, pincode].filter(Boolean).join(', '),
+        plan: selectedPlan.name,
+        monthlyFee: Number(selectedPlan.price),
+        status: 'Inactive',
+        joinedAt: indiaDateKey(),
+        dueDate: '',
+        notes: 'New Customer Nexus registration. Awaiting K&B review and service confirmation.',
+        assignedTo: '',
+        assignedToName: '',
+        source: 'customer-portal',
+        portalRequestId: requestRef.id,
+      };
       const record = {
         id: requestRef.id,
+        customerId: customerRef.id,
         name,
         phone,
         state,
@@ -615,6 +633,7 @@ export const handler = router({
         notes,
         createdAt,
       };
+      transaction.create(customerRef, customerRecord);
       transaction.create(requestRef, record);
       transaction.set(lockRef, {
         phoneHash: lockId,
@@ -622,7 +641,7 @@ export const handler = router({
         status: 'Pending',
         updatedAt: createdAt,
       }, { merge: true });
-      return { kind: 'created' as const, requestId: requestRef.id };
+      return { kind: 'created' as const, requestId: requestRef.id, customerId: customerRef.id };
     });
 
     if (result.kind === 'unavailable') return error('This plan is no longer available. Refresh and choose another plan.', 409);
@@ -630,7 +649,7 @@ export const handler = router({
       return json({ accepted: true, message: 'Your request has been received or is already associated with an existing K&B record. Our team will review it.' }, 202);
     }
     await notifyActiveAdmins('connection-request', 'New connection request', 'A new Customer Nexus connection request from ' + name + ' is waiting for review.', result.requestId);
-    return json({ accepted: true, requestId: result.requestId, status: 'Pending', message: 'Your connection request has been sent to K&B for review.' }, 201);
+    return json({ accepted: true, requestId: result.requestId, customerId: result.customerId, status: 'Pending', message: 'Your request has been received. A pending customer record has been added for K&B review.' }, 201);
   }],
 
   'GET /api/portal/connection-requests': protectedRoute(['admin'], async () => {
@@ -652,6 +671,9 @@ export const handler = router({
       }
       if (request.status === status) return { kind: 'unchanged' as const };
       const reviewedAt = new Date().toISOString();
+      const linkedCustomerId = cleanText(request.customerId, 128);
+      const linkedCustomerRef = linkedCustomerId ? firestore.collection('customers').doc(linkedCustomerId) : null;
+      const linkedCustomerSnapshot = linkedCustomerRef ? await transaction.get(linkedCustomerRef) : null;
       let lockToClose = '';
       if (status === 'Rejected') {
         const phone = cleanText(request.phone, 10);
@@ -675,6 +697,12 @@ export const handler = router({
           contactedByName: user.displayName,
         }),
       });
+      if (status === 'Rejected' && linkedCustomerRef && linkedCustomerSnapshot?.exists) {
+        transaction.update(linkedCustomerRef, {
+          status: 'Inactive',
+          notes: 'Customer Nexus registration was rejected by K&B on ' + reviewedAt + '. No service was activated.',
+        });
+      }
       if (lockToClose) {
         const lockRef = firestore.collection('portal_connection_request_locks').doc(lockToClose);
         transaction.set(lockRef, { status: 'Closed', pendingRequestId: null, reviewedAt, reviewedBy: user.id }, { merge: true });
@@ -696,7 +724,19 @@ export const handler = router({
       if (!requestSnapshot.exists) return { kind: 'not-found' as const };
       const request = requestSnapshot.data() || {};
       const existingCustomerId = cleanText(request.customerId, 128);
-      if (existingCustomerId) return { kind: 'already-converted' as const, customerId: existingCustomerId };
+      if (existingCustomerId) {
+        if (request.status !== 'Converted') {
+          const convertedAt = new Date().toISOString();
+          transaction.update(requestRef, {
+            status: 'Converted',
+            convertedAt,
+            convertedBy: user.id,
+            convertedByName: user.displayName,
+          });
+          return { kind: 'already-converted' as const, customerId: existingCustomerId, changed: true };
+        }
+        return { kind: 'already-converted' as const, customerId: existingCustomerId, changed: false };
+      }
       if (!['Pending', 'Contacted'].includes(String(request.status || ''))) return { kind: 'not-pending' as const };
 
       const phone = cleanText(request.phone, 10);
@@ -754,7 +794,10 @@ export const handler = router({
     if (result.kind === 'duplicate-customer') return error('A customer record already uses this mobile number. Review that record instead of creating a duplicate.', 409);
     if (result.kind === 'plan-unavailable') return error('The requested plan is no longer active. Update the request before converting it.', 409);
     if (result.kind === 'invalid-request') return error('The request details are incomplete. Review the request before converting it.', 400);
-    if (result.kind === 'already-converted') return json({ converted: true, customerId: result.customerId });
+    if (result.kind === 'already-converted') {
+      if (result.changed) await writeAudit(user, 'UPDATE', 'customer', result.customerId, 'Confirmed customer portal registration record');
+      return json({ converted: true, customerId: result.customerId, alreadyCreated: true });
+    }
     await writeAudit(user, 'CREATE', 'customer', result.customerId, 'Converted customer portal connection request');
     return json({ converted: true, customerId: result.customerId, customer: result.customer }, 201);
   }),
@@ -998,12 +1041,9 @@ export const handler = router({
     return deleted ? json({ deleted: true }) : error('Could not delete this plan.', 500);
   }),
 
-  'GET /api/customers': protectedRoute(['admin', 'staff'], async (_ctx, user) => {
-    const result = await db.list<Customer>('customers', { limit: 200 });
-    const items = user.role === 'admin'
-      ? result.items
-      : result.items.filter(customer => customer.assignedTo === user.id);
-    return json({ items });
+  'GET /api/customers': protectedRoute(['admin', 'staff'], async () => {
+    const result = await db.list<Customer>('customers', { limit: 500 });
+    return json({ items: result.items });
   }),
 
   'POST /api/customers': protectedRoute(['admin'], async ({ body }) => {
@@ -1091,9 +1131,9 @@ export const handler = router({
     return json({ deleted: true });
   }),
 
-  'GET /api/payments': protectedRoute(['admin', 'staff'], async (_ctx, user) => {
-    const result = await db.list<Payment>('payments', { limit: 200 });
-    return json({ items: user.role === 'admin' ? result.items : result.items.filter(item => item.recordedBy === user.id) });
+  'GET /api/payments': protectedRoute(['admin', 'staff'], async () => {
+    const result = await db.list<Payment>('payments', { limit: 500 });
+    return json({ items: result.items });
   }),
 
   'PUT /api/payments/:id': protectedRoute(['admin'], async ({ body, params }, user) => {
@@ -1117,7 +1157,7 @@ export const handler = router({
     return json({ updated: true });
   }),
 
-  'POST /api/payments': protectedRoute(['admin', 'staff'], async ({ body }, user) => {
+  'POST /api/payments': protectedRoute(['admin'], async ({ body }, user) => {
     const input = (body || {}) as Payment;
     const [customer] = await db.get<Customer>('customers', [cleanText(input.customerId, 128)], { consistent: true });
     if (!customer) return error('Customer not found.', 404);

@@ -692,14 +692,15 @@ export async function apiHandler(req: any, res: any) {
         send(res, 200, { deleted: true }); return;
       }
       if (path === '/api/customer-ledger' && method === 'GET') {
-        if (!allow(user, ['admin'], res)) return;
+        if (!allow(user, ['admin', 'staff'], res)) return;
         const customerId = clean(req.query.customerId, 128);
+        if (!customerId) { send(res, 400, { error: 'Select a customer.' }); return; }
         const customer = await getDoc('customers', customerId);
         if (!customer) { send(res, 404, { error: 'Customer not found.' }); return; }
         const [invoiceItems, paymentItems] = await Promise.all([list('invoices'), list('payments')]);
         const ledger = buildCustomerLedger(invoiceItems, paymentItems, customerId);
         send(res, 200, {
-          customer: { id: customerId, name: String(customer.name || ''), phone: String(customer.phone || ''), plan: String(customer.plan || '') },
+          customer: { id: customerId, name: String(customer.name || ''), phone: String(customer.phone || ''), plan: String(customer.plan || ''), status: String(customer.status || ''), monthlyFee: Number(customer.monthlyFee || 0), assignedToName: String(customer.assignedToName || '') },
           items: ledger.items,
           totalBilled: ledger.totalBilled,
           totalPaid: ledger.totalPaid,
@@ -708,7 +709,7 @@ export async function apiHandler(req: any, res: any) {
       }
 
       if (path === '/api/invoices' && method === 'GET') {
-        if (!allow(user, ['admin'], res)) return;
+        if (!allow(user, ['admin', 'staff'], res)) return;
         const period = clean(req.query.period, 7);
         if (!monthPattern.test(period)) { send(res, 400, { error: 'Select a valid billing month.' }); return; }
         const [invoiceItems, payments] = await Promise.all([list('invoices'), list('payments')]);

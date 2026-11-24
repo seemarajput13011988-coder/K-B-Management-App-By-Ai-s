@@ -865,3 +865,62 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
   background: #17263b !important;
   border-color: #2b3d56 !important;
 }
+
+
+/* Customer billing filters and profile ledger */
+.customer-billing-filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+  align-items: end;
+  gap: 10px;
+  margin: 14px 0 18px;
+  padding: 13px;
+  border: 1px solid var(--border, #dbe2ec);
+  border-radius: 14px;
+  background: var(--surface, #fff);
+}
+.customer-billing-filters label {
+  display: grid;
+  min-width: 0;
+  gap: 6px;
+  color: var(--muted, #64748b);
+  font-size: 11px;
+  font-weight: 700;
+}
+.customer-billing-filters input,
+.customer-billing-filters select {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+}
+.customer-ledger-panel {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border, #dbe2ec);
+}
+.customer-ledger-panel .panel-head {
+  margin: 0;
+}
+.customer-ledger-summary {
+  margin: 0;
+}
+.customer-ledger-panel .table-wrap {
+  max-height: 300px;
+  overflow: auto;
+}
+.customer-ledger-panel table {
+  min-width: 560px;
+}
+@media (max-width: 640px) {
+  .customer-billing-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .customer-billing-filters .btn {
+    width: 100%;
+  }
+  .customer-ledger-panel .table-wrap {
+    max-height: 240px;
+  }
+}

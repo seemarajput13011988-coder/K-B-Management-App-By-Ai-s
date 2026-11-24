@@ -243,6 +243,15 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   const [paymentSearch, setPaymentSearch] = useState('');
   const [paymentRange, setPaymentRange] = useState<DateRange>(initialDateRange);
   const [paymentSort, setPaymentSort] = useState('newest');
+  const [paymentMonthFilter, setPaymentMonthFilter] = useState('all');
+  const [paymentMethodFilter, setPaymentMethodFilter] = useState('all');
+  const [customerStatusFilter, setCustomerStatusFilter] = useState('All');
+  const [customerBillingMonth, setCustomerBillingMonth] = useState(() => getIndiaDateKey().slice(0, 7));
+  const [customerBillingFilter, setCustomerBillingFilter] = useState('All');
+  const [customerMethodFilter, setCustomerMethodFilter] = useState('All');
+  const [customerLedger, setCustomerLedger] = useState<any>(null);
+  const [customerLedgerLoading, setCustomerLedgerLoading] = useState(false);
+  const [customerLedgerError, setCustomerLedgerError] = useState('');
   const [staffSearch, setStaffSearch] = useState('');
   const [showComplaint, setShowComplaint] = useState(false);
   const [complaintPreview, setComplaintPreview] = useState<{name:string;mimeType:string;dataUrl:string}|null>(null);
@@ -259,6 +268,29 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   const notificationPollInFlight = useRef(false);
   const [notificationActionBusy, setNotificationActionBusy] = useState(false);
   const pushToken = useRef<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    if (!selected?.id) {
+      setCustomerLedger(null);
+      setCustomerLedgerError('');
+      return;
+    }
+    setCustomerLedger(null);
+    setCustomerLedgerError('');
+    setCustomerLedgerLoading(true);
+    api.get('/api/customer-ledger?customerId=' + encodeURIComponent(selected.id))
+      .then(response => {
+        if (active) setCustomerLedger(response.data || null);
+      })
+      .catch(error => {
+        if (active) setCustomerLedgerError(error instanceof Error ? error.message : 'Customer billing history is temporarily unavailable.');
+      })
+      .finally(() => {
+        if (active) setCustomerLedgerLoading(false);
+      });
+    return () => { active = false; };
+  }, [selected?.id]);
 
   useEffect(() => {
     const root = document.querySelector('.content');
@@ -482,19 +514,41 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   const today = indiaToday;
   const staffShiftActive = attendanceRecords.some(item => item.userId === session.user.id && isAttendanceShiftActive(item));
   const overdueValue = customers.filter(c => c.status === 'Active' && c.dueDate && c.dueDate <= today).reduce((sum, c) => sum + Math.max(0, Number(c.monthlyFee || 0) - (paidByCustomer.get(c.id) || 0)), 0);
+  const customerBillingMonthLabel = new Date(customerBillingMonth + '-01T12:00:00').toLocaleString('en-IN', { month: 'long', year: 'numeric', timeZone: 'Asia/Kolkata' });
+  const customerMonthPayments = payments.filter(payment =>
+    payment.month === customerBillingMonthLabel || String(payment.paidAt || '').slice(0, 7) === customerBillingMonth
+  );
+  const customerPaidById = new Map<string, number>();
+  customerMonthPayments.forEach(payment => {
+    customerPaidById.set(payment.customerId, (customerPaidById.get(payment.customerId) || 0) + Number(payment.amount || 0));
+  });
   const filtered = useMemo(
-    () =>
-      customers.filter(c =>
-        [c.name, c.phone, c.address, c.plan]
-          .join(' ')
-          .toLowerCase()
-          .includes(search.toLowerCase())
-      ),
-    [customers, search]
+    () => customers.filter(customer => {
+      const matchesSearch = [customer.name, customer.phone, customer.address, customer.plan, customer.assignedToName || '']
+        .join(' ').toLowerCase().includes(search.trim().toLowerCase());
+      const matchesConnection = customerStatusFilter === 'All' || customer.status === customerStatusFilter;
+      const paidAmount = customerPaidById.get(customer.id) || 0;
+      const monthlyFee = Number(customer.monthlyFee || 0);
+      const billingStatus = monthlyFee > 0
+        ? paidAmount >= monthlyFee ? 'Paid' : paidAmount > 0 ? 'Partially paid' : 'Unpaid'
+        : 'No monthly fee';
+      const matchesBilling = customerBillingFilter === 'All' || billingStatus === customerBillingFilter;
+      const matchesMethod = customerMethodFilter === 'All' || customerMonthPayments.some(payment =>
+        payment.customerId === customer.id && String(payment.method || '').toLowerCase().includes(customerMethodFilter.toLowerCase())
+      );
+      return matchesSearch && matchesConnection && matchesBilling && matchesMethod;
+    }),
+    [customers, search, customerStatusFilter, customerBillingFilter, customerMethodFilter, customerMonthPayments, customerPaidById]
   );
   const selectedStaffProfile = staff.find(member => member.id === selectedStaffProfileId);
   const filteredStaff = staff.filter(member => [member.displayName, member.userId].join(' ').toLowerCase().includes(staffSearch.toLowerCase()));
-  const filteredPayments = sortReportRows(payments.filter(payment => isInDateRange(payment.paidAt, paymentRange) && [payment.customerName, payment.month, payment.method, payment.paidAt, payment.recordedByName || ''].join(' ').toLowerCase().includes(paymentSearch.toLowerCase())), paymentSort, payment => payment.paidAt, payment => Number(payment.amount || 0), payment => payment.customerName);
+  const filteredPayments = sortReportRows(payments.filter(payment => {
+    const matchesRange = isInDateRange(payment.paidAt, paymentRange);
+    const matchesSearch = [payment.customerName, payment.month, payment.method, payment.paidAt, payment.recordedByName || ''].join(' ').toLowerCase().includes(paymentSearch.toLowerCase());
+    const matchesMonth = paymentMonthFilter === 'all' || payment.month === new Date(paymentMonthFilter + '-01T12:00:00').toLocaleString('en-IN', { month: 'long', year: 'numeric', timeZone: 'Asia/Kolkata' }) || String(payment.paidAt || '').slice(0, 7) === paymentMonthFilter;
+    const matchesMethod = paymentMethodFilter === 'all' || String(payment.method || '').toLowerCase().includes(paymentMethodFilter);
+    return matchesRange && matchesSearch && matchesMonth && matchesMethod;
+  }), paymentSort, payment => payment.paidAt, payment => Number(payment.amount || 0), payment => payment.customerName);
   const selectedStaffPayments = payments.filter(payment => payment.recordedBy === selectedStaffProfileId).sort((a, b) => b.paidAt.localeCompare(a.paidAt));
   const selectedStaffAttendance = attendanceRecords.filter(record => record.userId === selectedStaffProfileId).sort((a, b) => b.workDate.localeCompare(a.workDate));
   const selectedStaffAttendanceEquivalent = selectedStaffAttendance.filter(record => record.dayType !== 'Absent' && String(record.status || '').toLowerCase() !== 'absent').reduce((sum, record) => sum + (record.dayType === 'Half day' ? 0.5 : 1), 0);
@@ -1050,7 +1104,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                   <Plus size={17} /> Add customer
                 </button>
               )}
-              {page === 'Payments' && (
+              {page === 'Payments' && isAdmin && (
                 <button
                   className="btn primary"
                   onClick={() => setShowPayment(true)}
@@ -1141,7 +1195,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                 </article>
                 <article className="kb-overview-metric">
                   <span className="kb-overview-metric-icon"><IndianRupee size={18}/></span>
-                  <div><small>{isAdmin ? 'Payments recorded' : 'My collections'}</small><strong>{money(collected)}</strong><span>{isAdmin ? 'Total recorded collections' : 'Payments recorded by you'}</span></div>
+                  <div><small>{isAdmin ? 'Payments recorded' : 'Customer collections'}</small><strong>{money(collected)}</strong><span>{isAdmin ? 'Total recorded collections' : 'All recorded customer payments'}</span></div>
                 </article>
                 <article className="kb-overview-metric">
                   <span className="kb-overview-metric-icon"><MessageSquare size={18}/></span>
@@ -1323,7 +1377,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                     </div>
                     {['Pending', 'Contacted'].includes(String(request.status || '')) ? (
                       <div className="portal-request-actions">
-                        <button className="btn primary compact" onClick={async () => { const confirmed = window.confirm('Create an inactive customer record for ' + String(request.name || 'this applicant') + '?\\n\\nMobile: ' + String(request.phone || 'Not provided') + '\\nRequested plan: ' + String(request.planName || request.plan || 'Not specified') + '\\n\\nThis does not activate service. Review the address and plan details before proceeding.'); if (!confirmed) return; try { await api.post('/api/portal/connection-requests/' + encodeURIComponent(request.id) + '/convert', {}); flash('Request converted to an inactive customer record. Confirm service details before activation.'); await load(true); } catch (error) { flash(error instanceof Error ? error.message : 'Could not convert this request.'); } }}>Convert to customer</button>
+                        <button className="btn primary compact" onClick={async () => { const confirmed = window.confirm('Confirm the customer record for ' + String(request.name || 'this applicant') + '?\\n\\nThe customer record is already available in Customers as INACTIVE. This action only closes the intake request; it does not activate service.'); if (!confirmed) return; try { await api.post('/api/portal/connection-requests/' + encodeURIComponent(request.id) + '/convert', {}); flash('Customer record confirmed. It remains inactive until service is approved.'); await load(true); } catch (error) { flash(error instanceof Error ? error.message : 'Could not confirm this customer record.'); } }}>Confirm customer record</button>
                         {request.status === 'Pending' && <button className="btn secondary compact" onClick={async () => { try { await api.put('/api/portal/connection-requests/' + encodeURIComponent(request.id), { status: 'Contacted' }); flash('Request marked as contacted.'); await load(true); } catch (error) { flash(error instanceof Error ? error.message : 'Could not update this request.'); } }}>Mark contacted</button>}
                         <button className="btn danger compact" onClick={async () => { try { await api.put('/api/portal/connection-requests/' + encodeURIComponent(request.id), { status: 'Rejected' }); flash('Request marked as rejected.'); await load(true); } catch (error) { flash(error instanceof Error ? error.message : 'Could not update this request.'); } }}>Reject</button>
                       </div>
@@ -1378,14 +1432,21 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                   {filtered.length} customers
                 </span>
               </div>
+              <div className="plan-controls customer-billing-filters">
+                <label><span>Connection status</span><select value={customerStatusFilter} onChange={event => setCustomerStatusFilter(event.target.value)}><option>All</option><option>Active</option><option>Inactive</option><option>Suspended</option></select></label>
+                <label><span>Billing month</span><input type="month" value={customerBillingMonth} onChange={event => setCustomerBillingMonth(event.target.value)} /></label>
+                <label><span>Payment status</span><select value={customerBillingFilter} onChange={event => setCustomerBillingFilter(event.target.value)}><option>All</option><option>Paid</option><option>Partially paid</option><option>Unpaid</option></select></label>
+                <label><span>Payment method</span><select value={customerMethodFilter} onChange={event => setCustomerMethodFilter(event.target.value)}><option>All</option><option>UPI</option><option>Cash</option></select></label>
+                <button className="btn secondary compact" type="button" onClick={() => { setSearch(''); setCustomerStatusFilter('All'); setCustomerBillingMonth(getIndiaDateKey().slice(0, 7)); setCustomerBillingFilter('All'); setCustomerMethodFilter('All'); }}>Reset filters</button>
+              </div>
               <CustomerTable
                 rows={filtered}
                 onView={setSelected}
                 onDelete={isAdmin ? removeCustomer : undefined}
-                onEdit={(c: Customer) => {
+                onEdit={isAdmin ? (c: Customer) => {
                   setEditing(c);
                   setShowCustomer(true);
-                }}
+                } : undefined}
               />
               {!filtered.length && (
                 <Empty
@@ -1457,8 +1518,14 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                 <div className="searchbox"><Search size={17}/><input value={paymentSearch} onChange={e => setPaymentSearch(e.target.value)} placeholder="Search customer, month, method or date..."/></div>
                 <span className="result-count">{filteredPayments.length} of {payments.length} records</span>
               </div>
-              <DateRangeFilter value={paymentRange} onChange={setPaymentRange}><label><span>Sort by</span><select value={paymentSort} onChange={event=>setPaymentSort(event.target.value)}><option value="newest">Newest first</option><option value="oldest">Oldest first</option><option value="amount-high">Amount: high to low</option><option value="amount-low">Amount: low to high</option><option value="name">Customer name</option></select></label><button className="btn secondary compact" disabled={!filteredPayments.length} onClick={()=>{const{start,end}=dateRangeBounds(paymentRange);void exportCsvFile(`kb-payments-${start&&end?`${start}_to_${end}`:'all-dates'}.csv`,[['Date','Customer','Billing month','Method','Amount','Recorded by'],...filteredPayments.map(payment=>[payment.paidAt,payment.customerName,payment.month,payment.method,payment.amount,payment.recordedByName||''])]);}}>Export selected</button></DateRangeFilter>
-              <PaymentTable rows={filteredPayments} isAdmin={isAdmin} onEdit={(payment: Payment) => { setEditingPayment(payment); setShowPayment(true); }} onDelete={isAdmin ? deletePayment : undefined} />
+              <DateRangeFilter value={paymentRange} onChange={setPaymentRange}>
+                <label><span>Billing month</span><input type="month" value={paymentMonthFilter === 'all' ? '' : paymentMonthFilter} onChange={event => setPaymentMonthFilter(event.target.value || 'all')} /></label>
+                <label><span>Method</span><select value={paymentMethodFilter} onChange={event => setPaymentMethodFilter(event.target.value)}><option value="all">All methods</option><option value="upi">UPI</option><option value="cash">Cash</option></select></label>
+                <label><span>Sort by</span><select value={paymentSort} onChange={event=>setPaymentSort(event.target.value)}><option value="newest">Newest first</option><option value="oldest">Oldest first</option><option value="amount-high">Amount: high to low</option><option value="amount-low">Amount: low to high</option><option value="name">Customer name</option></select></label>
+                <button className="btn secondary compact" type="button" onClick={() => { setPaymentMonthFilter('all'); setPaymentMethodFilter('all'); setPaymentRange(initialDateRange); setPaymentSearch(''); setPaymentSort('newest'); }}>Reset filters</button>
+                <button className="btn secondary compact" disabled={!filteredPayments.length} onClick={()=>{const{start,end}=dateRangeBounds(paymentRange);void exportCsvFile(`kb-payments-${start&&end?`${start}_to_${end}`:'all-dates'}.csv`,[['Date','Customer','Billing month','Method','Amount','Recorded by'],...filteredPayments.map(payment=>[payment.paidAt,payment.customerName,payment.month,payment.method,payment.amount,payment.recordedByName||''])]);}}>Export selected</button>
+              </DateRangeFilter>
+              <PaymentTable rows={filteredPayments} isAdmin={isAdmin} onEdit={isAdmin ? (payment: Payment) => { setEditingPayment(payment); setShowPayment(true); } : undefined} onDelete={isAdmin ? deletePayment : undefined} />
               {payments.length > 0 && !filteredPayments.length && <p className="ops-empty">No payments match your search.</p>}
               {!payments.length && (
                 <Empty
@@ -1640,9 +1707,29 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
               </div>
             )}
             {selected.assignedToName && <div className="notes-box"><b>Assigned staff</b><p>{selected.assignedToName}</p></div>}
+            <section className="customer-ledger-panel">
+              <div className="panel-head"><div><h3>Billing & payment history</h3><p>Invoices and payments recorded for this customer</p></div></div>
+              {customerLedgerLoading && <p className="subtle">Loading billing history…</p>}
+              {customerLedgerError && <p className="subtle">{customerLedgerError}</p>}
+              {customerLedger && <>
+                <div className="profile-grid customer-ledger-summary">
+                  <ProfileItem icon={<ReceiptText />} label="Total billed" value={money(Number(customerLedger.totalBilled || 0))} />
+                  <ProfileItem icon={<CreditCard />} label="Total paid" value={money(Number(customerLedger.totalPaid || 0))} />
+                  <ProfileItem icon={<IndianRupee />} label="Outstanding" value={money(Number(customerLedger.balance || 0))} />
+                </div>
+                <div className="table-wrap">
+                  <table>
+                    <thead><tr><th>DATE</th><th>RECORD</th><th>DEBIT</th><th>CREDIT</th><th>BALANCE</th></tr></thead>
+                    <tbody>{(customerLedger.items || []).slice().reverse().map((entry: any) => <tr key={entry.id}><td>{dateLabel(entry.date)}</td><td><b>{entry.type}</b><small>{entry.description}{entry.reference ? ' · ' + entry.reference : ''}</small></td><td className="amount">{entry.debit ? money(Number(entry.debit)) : '—'}</td><td className="amount">{entry.credit ? money(Number(entry.credit)) : '—'}</td><td className="amount">{money(Number(entry.balance || 0))}</td></tr>)}</tbody>
+                  </table>
+                  {!(customerLedger.items || []).length && <p className="ops-empty">No invoices or payments recorded for this customer yet.</p>}
+                </div>
+              </>}
+            </section>
             <div className="modal-actions">
               <button
                 className="btn secondary"
+                hidden={!isAdmin}
                 onClick={() => {
                   setEditing(selected);
                   setSelected(null);
