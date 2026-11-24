@@ -30,7 +30,7 @@ import { PaymentTable } from './features/payments/PaymentTable';
 import { MonthlyChart } from './features/overview/MonthlyChart';
 import { clearSession, getSession, saveSession, type Session } from './lib/session';
 import { registerBackButton } from './lib/backButton';
-import type { Customer, Payment } from './types/models';
+import type { Customer, Payment, Staff, AdminAccount, AttendanceRecord, Task, Complaint, Plan } from './types/models';
 import { DateRangeFilter, dateRangeBounds, initialDateRange, isInDateRange, sortReportRows } from './components/DateRangeFilter';
 import type { DateRange } from './components/DateRangeFilter';
 import { exportCsvFile } from './lib/file-export';
@@ -81,48 +81,14 @@ type StaffPayrollSummary = { id: string; staffUserId: string; staffName: string;
 type StaffHolidayRequest={id:string;userId:string;displayName:string;startDate:string;endDate:string;reason:string;status:'pending'|'approved'|'rejected';createdAt:string;reviewedAt?:string;reviewedByName?:string};
 const getToken=()=>getSession()?.token || '';
 const api = client;
-type Staff = { id: string; userId: string; displayName: string; role: 'staff'; active: boolean; phone?: string; createdAt?: string };
-type AdminAccount = { id: string; userId: string; displayName: string; role: 'admin'; active: boolean; canManageAdmins?: boolean; isSuperAdmin?: boolean };
-type AttendanceRecord = { id: string; userId: string; displayName: string; workDate: string; checkInAt: string; checkOutAt?: string; autoCheckoutAt?: string; scheduledEndAt?: string; shiftEndTime?: string; gpsRestartRequired?: boolean; gpsCancelled?: boolean; dayType?: 'Full day' | 'Half day' | 'Absent'; status?: string; correctionReason?: string; correctedAt?: string; correctedByName?: string; startedByAdmin?: string; endedByAdminName?: string; endedByName?: string; attendanceSource?: string; absenceReason?: string };
+
+
+
 interface WorkLocationTrackingPlugin { startTracking(options: { token: string; apiBaseUrl: string; attendanceId: string; scheduledEndAt: string }): Promise<{ started: boolean }>; stopTracking(): Promise<{ stopped: boolean }>; }
 const WorkLocationTracking = registerPlugin<WorkLocationTrackingPlugin>('WorkLocationTracking');
-type Task = { id: string; title: string; details: string; assignedTo: string; assignedToName: string; priority: 'Low' | 'Normal' | 'High'; dueDate: string; status: 'Pending' | 'In progress' | 'Completed'; createdAt: string; createdByName: string; updatedAt?: string; completedAt?: string; attachments?: Array<{mediaId:string;fileName:string;mimeType:string;size:number}> };
-type Complaint = {
-  id: string;
-  complaintFor: 'Customer' | 'Staff';
-  customerId?: string;
-  customerName?: string;
-  staffId?: string;
-  staffName?: string;
-  subject: string;
-  details: string;
-  priority: string;
-  status: 'Pending' | 'Assigned' | 'In Progress' | 'Solved' | 'Not Solved' | string;
-  createdAt: string;
-  createdByName?: string;
-  assignedTo?: string;
-  assignedToName?: string;
-  locationText?: string;
-  latitude?: number;
-  longitude?: number;
-  resolvedByName?: string;
-  resolvedAt?: string;
-  resolutionDetails?: string;
-  attachments?: Array<{mediaId:string;fileName:string;mimeType:string;size:number}>;
-};
-type Plan = {
-  id: string;
-  name: string;
-  provider: string;
-  speed: string;
-  data: string;
-  price: number;
-  note: string;
-  details?: string;
-  connectionType: string;
-  featured: boolean;
-  active: boolean;
-};
+
+
+
 
 const money = (n: number) => '₹' + Number(n || 0).toLocaleString('en-IN');
 const attendanceDeadlineAt = (item: AttendanceRecord): number => {
