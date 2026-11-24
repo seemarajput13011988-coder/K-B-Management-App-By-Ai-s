@@ -14,32 +14,32 @@ const InventoryWorkspace = lazy(() => import('./InventoryWorkspace'));
 const GpsTrackingWorkspace = lazy(() => import('./GpsTrackingWorkspace'));
 const InstallationsWorkspace = lazy(() => import('./InstallationsWorkspace'));
 const CalendarWorkspace = lazy(() => import('./CalendarWorkspace'));
-import { useAppPreferences } from './appPreferences';
-import { buildNav, TABS } from './ui/nav';
-import { pageSubtitle } from './ui/pageMeta';
-import { MoreServicesSheet } from './ui/MoreServicesSheet';
-import { useConfirm } from './ui/ConfirmDialog';
-import { Empty } from './ui/Empty';
-import { HomeHero } from './ui/HomeHero';
-import { StatCard } from './ui/StatCard';
-import { Field } from './ui/Field';
-import { Modal } from './ui/Modal';
-import { ProfileItem } from './ui/ProfileItem';
-import { CustomerTable } from './features/customers/CustomerTable';
-import { CustomerModal } from './features/customers/CustomerModal';
-import { PaymentTable } from './features/payments/PaymentTable';
-import { PaymentModal } from './features/payments/PaymentModal';
-import { MonthlyChart } from './features/overview/MonthlyChart';
-import { StatusChart } from './features/overview/StatusChart';
-import { OverduePanel } from './features/overview/OverduePanel';
-import { PlanModal } from './features/plans/PlanModal';
-import { clearSession, getSession, saveSession, type Session } from './lib/session';
-import { registerBackButton } from './lib/backButton';
-import type { Customer, Payment, Staff, AdminAccount, AttendanceRecord, Task, Complaint, Plan } from './types/models';
-import { DateRangeFilter, dateRangeBounds, initialDateRange, isInDateRange, sortReportRows } from './components/DateRangeFilter';
-import type { DateRange } from './components/DateRangeFilter';
-import { exportCsvFile } from './lib/file-export';
-import { api as client, nativeApiPost, changeAppPassword, changeAppUserId, signInAppUser, signOutAppUser } from './lib/api';
+import { useAppPreferences } from '../../appPreferences';
+import { buildNav, TABS } from '../../ui/nav';
+import { pageSubtitle } from '../../ui/pageMeta';
+import { MoreServicesSheet } from '../../ui/MoreServicesSheet';
+import { useConfirm } from '../../ui/ConfirmDialog';
+import { Empty } from '../../ui/Empty';
+import { HomeHero } from '../../ui/HomeHero';
+import { StatCard } from '../../ui/StatCard';
+import { Field } from '../../ui/Field';
+import { Modal } from '../../ui/Modal';
+import { ProfileItem } from '../../ui/ProfileItem';
+import { CustomerTable } from '../customers/CustomerTable';
+import { CustomerModal } from '../customers/CustomerModal';
+import { PaymentTable } from '../payments/PaymentTable';
+import { PaymentModal } from '../payments/PaymentModal';
+import { MonthlyChart } from '../overview/MonthlyChart';
+import { StatusChart } from '../overview/StatusChart';
+import { OverduePanel } from '../overview/OverduePanel';
+import { PlanModal } from '../plans/PlanModal';
+import { getSession, type Session } from '../../lib/session';
+import { registerBackButton } from '../../lib/backButton';
+import type { Customer, Payment, Staff, AdminAccount, AttendanceRecord, Task, Complaint, Plan } from '../../types/models';
+import { DateRangeFilter, dateRangeBounds, initialDateRange, isInDateRange, sortReportRows } from '../../components/DateRangeFilter';
+import type { DateRange } from '../../components/DateRangeFilter';
+import { exportCsvFile } from '../../lib/file-export';
+import { api as client, nativeApiPost, changeAppPassword, changeAppUserId, signInAppUser, signOutAppUser } from '../../lib/api';
 import {
   Activity,
   Bell,
@@ -52,7 +52,6 @@ import {
   MessageSquare,
   Plus,
   Search,
-  Signal,
   Users,
   Wifi,
   Globe,
@@ -69,10 +68,9 @@ import {
   Pencil,
   Trash2,
   Eye,
-  EyeOff,
-  ShieldCheck, KeyRound, LogOut, UserPlus, UserRound, UsersRound, LockKeyhole, ReceiptText, MoreHorizontal,
+  ShieldCheck, LogOut, UserPlus, UserRound, UsersRound, LockKeyhole, ReceiptText, MoreHorizontal,
 } from 'lucide-react';
-import { getHinduFestival, getIndiaDateKey } from './festivalTheme';
+import { getHinduFestival, getIndiaDateKey } from '../../festivalTheme';
 
 
 type AppNotification={id:string;title:string;message:string;createdAt:string;read:boolean;type:string};
