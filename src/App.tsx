@@ -1255,7 +1255,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                 </section>
               </section>}
             </section>
-            {attendanceEdit&&<Modal title="Correct staff attendance" subtitle={attendanceEdit.record.displayName+' · '+attendanceEdit.record.workDate} onClose={()=>setAttendanceEdit(null)}><form className="form-grid" onSubmit={saveStaffAttendanceCorrection}><Field label="Attendance type"><select value={attendanceEdit.dayType} onChange={e=>setAttendanceEdit({...attendanceEdit,dayType:e.target.value as 'Full day'|'Half day'|'Absent'})}><option>Full day</option><option>Half day</option><option>Absent</option></select></Field><Field label="Reason for correction" wide><textarea required minLength={3} maxLength={300} value={attendanceEdit.reason} onChange={e=>setAttendanceEdit({...attendanceEdit,reason:e.target.value})} placeholder="Explain why this attendance record is being corrected"/></Field><div className="modal-actions"><button type="button" className="btn secondary" onClick={()=>setAttendanceEdit(null)}>Cancel</button><button className="btn primary">Save correction</button></div></form></Modal>}
+            {attendanceEdit&&<Modal title="Correct staff attendance" subtitle={attendanceEdit.record.displayName+' · '+attendanceEdit.record.workDate} onClose={()=>setAttendanceEdit(null)}><form className="form-grid" onSubmit={saveStaffAttendanceCorrection}><Field label="Attendance type"><select value={attendanceEdit.dayType} onChange={e=>setAttendanceEdit({...attendanceEdit,dayType:e.target.value as 'Full day'|'Half day'|'Absent'})}><option>Full day</option><option>Half day</option><option>Absent</option></select></Field><Field label="Reason for correction" wide><textarea required minLength={3} maxLength={300} value={attendanceEdit.reason} onChange={e=>setAttendanceEdit({...attendanceEdit,reason:e.target.value})} placeholder="Explain why this attendance record is being corrected"/></Field><div className="modal-actions"><button type="button" className="btn secondary" onClick={()=>setAttendanceEdit(null)}>Cancel</button><button type="submit" className="btn primary">Save correction</button></div></form></Modal>}
             </>
           )}
 
@@ -1832,7 +1832,7 @@ function PlanModal({ initial, onClose, onSave }: { initial: Plan | null; onClose
         <Field label="Short description" wide><textarea rows={2} maxLength={180} value={form.note} onChange={e => setForm({ ...form, note: e.target.value })} placeholder="Who is this plan suitable for?" /></Field>
         <Field label="Additional plan details (optional)" wide><textarea rows={3} maxLength={1000} value={form.details} onChange={e => setForm({ ...form, details: e.target.value })} placeholder="Add extra features, fair-use policy, router details, installation terms or any other information. This field is optional." /></Field>
         <label className="plan-check"><input type="checkbox" checked={form.featured} onChange={e => setForm({ ...form, featured: e.target.checked })} /> Mark as popular plan</label>
-        <div className="modal-actions"><button type="button" className="btn secondary" onClick={onClose}>Cancel</button><button className="btn primary" disabled={busy}>{busy ? 'Saving...' : initial ? 'Save changes' : 'Create plan'}</button></div>
+        <div className="modal-actions"><button type="button" className="btn secondary" onClick={onClose}>Cancel</button><button type="submit" className="btn primary" disabled={busy}>{busy ? 'Saving...' : initial ? 'Save changes' : 'Create plan'}</button></div>
       </form>
     </Modal>
   );
@@ -1956,7 +1956,7 @@ function CustomerModal({ initial, onClose, onSave, staff = [], role = 'admin', p
           <button type="button" className="btn secondary" onClick={onClose}>
             Cancel
           </button>
-          <button className="btn primary" disabled={busy}>
+          <button type="submit" className="btn primary" disabled={busy}>
             {busy ? 'Saving…' : initial ? 'Save changes' : 'Add customer'}
           </button>
         </div>
@@ -1982,7 +1982,7 @@ function AdminModal({ onClose, onSave }: any) {
       <Field label="Temporary password" wide><input required type="password" minLength={8} autoComplete="new-password" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} /></Field>
       <p className="form-hint">Use at least 8 characters. The new account will have Admin access, but cannot create or manage other admin accounts.</p>
       {message && <div className="auth-message">{message}</div>}
-      <div className="form-actions"><button type="button" className="btn secondary" onClick={onClose}>Cancel</button><button className="btn primary" disabled={busy}>{busy ? 'Creating…' : 'Create admin'}</button></div>
+      <div className="form-actions"><button type="button" className="btn secondary" onClick={onClose}>Cancel</button><button type="submit" className="btn primary" disabled={busy}>{busy ? 'Creating…' : 'Create admin'}</button></div>
     </form>
   </Modal>;
 }
@@ -2179,7 +2179,7 @@ function TaskCompletionModal({ task, onClose, onComplete }: any) {
       <p className="form-hint">Both a photo and a video are required. The task remains open until both files upload successfully.</p>
       <Field label="Task photo (required)" wide><input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={event => { const file=event.target.files?.[0]||null; setPhoto(file&&valid(file,'photo')?file:null); }}/>{photo&&<small>{photo.name} · {(photo.size/1024).toFixed(0)} KB</small>}</Field>
       <Field label="Task video (required)" wide><input type="file" accept="video/mp4,video/webm,video/quicktime" capture="environment" onChange={event => { const file=event.target.files?.[0]||null; setVideo(file&&valid(file,'video')?file:null); }}/>{video&&<small>{video.name} · {(video.size/1024/1024).toFixed(1)} MB</small>}</Field>
-      <div className="form-actions"><button type="button" className="btn secondary" onClick={onClose}>Cancel</button><button className="btn primary" disabled={busy||!photo||!video}>{busy?'Uploading evidence…':'Upload and complete task'}</button></div>
+      <div className="form-actions"><button type="button" className="btn secondary" onClick={onClose}>Cancel</button><button type="submit" className="btn primary" disabled={busy||!photo||!video}>{busy?'Uploading evidence…':'Upload and complete task'}</button></div>
     </form>
   </Modal>;
 }
@@ -2194,7 +2194,7 @@ function TaskModal({ staff, onClose, onSave }: any) {
     <Field label="Due date"><input type="date" required value={form.dueDate} onChange={e => setForm({ ...form, dueDate: e.target.value })} /></Field>
     <Field label="Instructions" wide><textarea rows={3} maxLength={1000} value={form.details} onChange={e => setForm({ ...form, details: e.target.value })} placeholder="Add location, customer or work instructions" /></Field>
     {!staff.length && <p className="form-hint">Create an active staff account before assigning work.</p>}
-    <div className="form-actions"><button type="button" className="btn secondary" onClick={onClose}>Cancel</button><button className="btn primary" disabled={busy || !staff.length}>{busy ? 'Assigning…' : 'Assign task'}</button></div>
+    <div className="form-actions"><button type="button" className="btn secondary" onClick={onClose}>Cancel</button><button type="submit" className="btn primary" disabled={busy || !staff.length}>{busy ? 'Assigning…' : 'Assign task'}</button></div>
   </form></Modal>;
 }
 function AccountSettingsModal({ session, onClose, onChangeUserId, onChangePassword }: any) {
@@ -2219,14 +2219,14 @@ function AccountSettingsModal({ session, onClose, onChangeUserId, onChangePasswo
       <form className="form-grid" onSubmit={submitUserId}>
         <Field label="Current password"><input type="password" required value={currentPasswordForUserId} onChange={e => setCurrentPasswordForUserId(e.target.value)} autoComplete="current-password" /></Field>
         <Field label="New user ID"><input required minLength={3} maxLength={32} pattern="[a-zA-Z0-9_-]{3,32}" value={newUserId} onChange={e => setNewUserId(e.target.value)} /></Field>
-        <div className="form-actions"><button className="btn primary" disabled={busy || newUserId.trim().toLowerCase() === session.user.userId.toLowerCase()}>{busy ? 'Saving…' : 'Change username'}</button></div>
+        <div className="form-actions"><button type="submit" className="btn primary" disabled={busy || newUserId.trim().toLowerCase() === session.user.userId.toLowerCase()}>{busy ? 'Saving…' : 'Change username'}</button></div>
       </form>
       <div className="form-hint">Changing your username signs you out. Sign in again with the new ID.</div>
       <form className="form-grid" onSubmit={submitPassword}>
         <Field label="Current password"><input type="password" required value={currentPasswordForPassword} onChange={e => setCurrentPasswordForPassword(e.target.value)} autoComplete="current-password" /></Field>
         <Field label="New password"><input type="password" required minLength={10} value={newPassword} onChange={e => setNewPassword(e.target.value)} autoComplete="new-password" /></Field>
         {message && <div className="auth-message">{message}</div>}
-        <div className="form-actions"><button className="btn primary" disabled={busy || !newPassword}>{busy ? 'Saving…' : 'Change password'}</button><button type="button" className="btn secondary" onClick={onClose}>Close</button></div>
+        <div className="form-actions"><button type="submit" className="btn primary" disabled={busy || !newPassword}>{busy ? 'Saving…' : 'Change password'}</button><button type="button" className="btn secondary" onClick={onClose}>Close</button></div>
       </form>
     </div>
   </Modal>;
@@ -2234,12 +2234,12 @@ function AccountSettingsModal({ session, onClose, onChangeUserId, onChangePasswo
 function StaffUsernameModal({ staff, onClose, onSave }: any) {
   const [userId, setUserId] = useState(staff.userId);
   const [busy, setBusy] = useState(false);
-  return <Modal title={'Change username · ' + staff.displayName} subtitle="The staff member must use the new ID at their next sign-in." onClose={onClose}><form className="form-grid" onSubmit={async e => { e.preventDefault(); setBusy(true); await onSave(userId.trim()); setBusy(false); }}><Field label="New staff user ID"><input required minLength={3} maxLength={32} pattern="[a-zA-Z0-9_-]{3,32}" value={userId} onChange={e => setUserId(e.target.value)} /></Field><div className="form-actions"><button type="button" className="btn secondary" onClick={onClose}>Cancel</button><button className="btn primary" disabled={busy || userId.trim().toLowerCase() === staff.userId.toLowerCase()}>{busy ? 'Saving…' : 'Save username'}</button></div></form></Modal>;
+  return <Modal title={'Change username · ' + staff.displayName} subtitle="The staff member must use the new ID at their next sign-in." onClose={onClose}><form className="form-grid" onSubmit={async e => { e.preventDefault(); setBusy(true); await onSave(userId.trim()); setBusy(false); }}><Field label="New staff user ID"><input required minLength={3} maxLength={32} pattern="[a-zA-Z0-9_-]{3,32}" value={userId} onChange={e => setUserId(e.target.value)} /></Field><div className="form-actions"><button type="button" className="btn secondary" onClick={onClose}>Cancel</button><button type="submit" className="btn primary" disabled={busy || userId.trim().toLowerCase() === staff.userId.toLowerCase()}>{busy ? 'Saving…' : 'Save username'}</button></div></form></Modal>;
 }
 function StaffPasswordModal({ staff, onClose, onSave }: any) {
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
-  return <Modal title={'Reset password · ' + staff.displayName} subtitle="The staff member will need to sign in again." onClose={onClose}><form className="form-grid" onSubmit={async e => { e.preventDefault(); setBusy(true); await onSave(password); setBusy(false); }}><Field label="New temporary password" wide><input type="password" required minLength={10} value={password} onChange={e => setPassword(e.target.value)} /></Field><div className="form-actions"><button type="button" className="btn secondary" onClick={onClose}>Cancel</button><button className="btn primary" disabled={busy}>{busy ? 'Saving…' : 'Reset password'}</button></div></form></Modal>;
+  return <Modal title={'Reset password · ' + staff.displayName} subtitle="The staff member will need to sign in again." onClose={onClose}><form className="form-grid" onSubmit={async e => { e.preventDefault(); setBusy(true); await onSave(password); setBusy(false); }}><Field label="New temporary password" wide><input type="password" required minLength={10} value={password} onChange={e => setPassword(e.target.value)} /></Field><div className="form-actions"><button type="button" className="btn secondary" onClick={onClose}>Cancel</button><button type="submit" className="btn primary" disabled={busy}>{busy ? 'Saving…' : 'Reset password'}</button></div></form></Modal>;
 }
 function PaymentModal({ customers, initial, onClose, onSave }: any) {
   const [f, s] = useState<any>(initial || {
@@ -2333,7 +2333,7 @@ function PaymentModal({ customers, initial, onClose, onSave }: any) {
           <button type="button" className="btn secondary" onClick={onClose}>
             Cancel
           </button>
-          <button className="btn primary" disabled={!customers.length}>
+          <button type="submit" className="btn primary" disabled={!customers.length}>
             {initial ? 'Save changes' : 'Save payment'}
           </button>
         </div>
@@ -2426,7 +2426,7 @@ function ComplaintModal({ customers, staff, session, onClose, onSave }: any) {
       <Field label={isAdmin ? "Photo (optional)" : "Photo (required for staff)"} wide><input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={event => { const file = event.target.files?.[0] || null; if (file && validateFile(file, 'photo')) setPhotoFile(file); else setPhotoFile(null); }}/>{photoFile && <small className="complaint-file-name">{photoFile.name} · {(photoFile.size / 1024).toFixed(0)} KB</small>}</Field>
       <Field label="Video (optional)" wide><input type="file" accept="video/mp4,video/webm,video/quicktime" onChange={event => { const file = event.target.files?.[0] || null; if (file && validateFile(file, 'video')) setVideoFile(file); else setVideoFile(null); }}/>{videoFile && <small className="complaint-file-name">{videoFile.name} · {(videoFile.size / 1024 / 1024).toFixed(1)} MB</small>}</Field>
       {isAdmin && <Field label="Assign complaint to" wide><select value={f.assignedTo} onChange={event => setF({ ...f, assignedTo: event.target.value })}><option value="">Leave unassigned</option>{activeStaff.map((member: Staff) => <option value={member.id} key={member.id}>{member.displayName}</option>)}</select></Field>}
-      <div className="form-actions"><button type="button" className="btn secondary" onClick={onClose}>Cancel</button><button className="btn primary" disabled={saving}>{saving ? 'Saving complaint…' : 'Create complaint'}</button></div>
+      <div className="form-actions"><button type="button" className="btn secondary" onClick={onClose}>Cancel</button><button type="submit" className="btn primary" disabled={saving}>{saving ? 'Saving complaint…' : 'Create complaint'}</button></div>
     </form>
     <p className="form-hint">Staff must attach at least one photo or video. Photos up to 2 MB and videos up to 8 MB are saved with the complaint. Admins may submit without evidence.</p>
   </Modal>;
@@ -2447,7 +2447,7 @@ function Modal({ title, subtitle, onClose, children, className = '' }: any) {
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="modal">
+      <div className={'modal ' + className}>
         <div className="modal-head">
           <div>
             <h2>{title}</h2>
@@ -2493,7 +2493,7 @@ function LoginScreen({onLogin}:{onLogin:(id:string,pw:string,role:'admin'|'staff
  </div> : !registrationOpen?<button type="button" className="auth-link" onClick={()=>{setRegistrationOpen(true);setRegistrationMessage('');}}>Request staff access</button>:<div className="staff-registration-form"><strong>Staff registration request</strong><Field label="Preferred staff ID"><input required minLength={3} maxLength={32} pattern="[a-zA-Z0-9_-]{3,32}" value={registration.userId} onChange={e=>setRegistration({...registration,userId:e.target.value})}/></Field><Field label="Full name"><input required maxLength={80} value={registration.displayName} onChange={e=>setRegistration({...registration,displayName:e.target.value})}/></Field><Field label="Phone (optional)"><input type="tel" inputMode="numeric" pattern="[0-9]{10}" maxLength={10} value={registration.phone} onChange={e=>setRegistration({...registration,phone:e.target.value.replace(/\D/g,'').slice(0,10)})} placeholder="10-digit mobile number"/></Field><Field label="Reason / note (optional)"><textarea rows={2} maxLength={300} value={registration.reason} onChange={e=>setRegistration({...registration,reason:e.target.value})}/></Field><div className="form-actions"><button type="button" className="btn secondary" onClick={()=>setRegistrationOpen(false)}>Cancel</button><button type="button" className="btn primary" disabled={registrationBusy} onClick={e=>{const form=e.currentTarget.closest('.staff-registration-form');const fields=form?.querySelectorAll('input');if(fields && Array.from(fields).every(field=>field.reportValidity()))void submitRegistration();}}>{registrationBusy?'Submitting…':'Submit request'}</button></div></div>}
  {registrationMessage&&<div className={registrationError?'auth-message':'form-hint'}>{registrationMessage}</div>}</>:<>
  <label className="auth-field"><span>{role==='admin'?'Admin username':'Staff user ID'}</span><input value={id} onChange={e=>setId(e.target.value)} required autoComplete="username" placeholder={role==='admin'?'Enter your admin username':'Enter your staff ID'}/></label><label className="auth-field"><span>Password</span><input type="password" value={pw} onChange={e=>setPw(e.target.value)} required autoComplete="current-password"/></label>
- {msg&&<div className="auth-message">{msg}</div>}<button className="btn primary auth-submit">Sign in securely</button><button type="button" className="auth-link" onClick={()=>{setRole(null);setId('');setPw('');setMsg('');}}>← Choose another sign-in</button>
+ {msg&&<div className="auth-message">{msg}</div>}<button type="submit" className="btn primary auth-submit">Sign in securely</button><button type="button" className="auth-link" onClick={()=>{setRole(null);setId('');setPw('');setMsg('');}}>← Choose another sign-in</button>
  </>}
  <div className="auth-security"><KeyRound size={14}/> Keep your password private. Access is based on your account role.</div></form></div></div>;
 }
