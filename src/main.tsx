@@ -65,7 +65,7 @@ function showUpdateScreen(message: string, retry: () => void) {
   progressTrack.setAttribute('aria-label', 'Update download progress');
   progressTrack.style.cssText = 'width:min(320px,78vw);height:9px;overflow:hidden;border-radius:999px;background:#dbe4f0';
   const progressFill = document.createElement('div');
-  progressFill.style.cssText = 'display:block;width:0%;height:100%;border-radius:999px;background:linear-gradient(90deg,#2f7dd5,#32a36b);transition:width .18s ease';
+  progressFill.style.cssText = 'display:block;width:0%;height:100%;border-radius:999px;background:linear-gradient(90deg,#2f70bd,#f0a044);transition:width .18s ease';
   progressTrack.append(progressFill);
   const progressLabel = document.createElement('p');
   progressLabel.textContent = 'Preparing download… 0%';
@@ -133,7 +133,7 @@ async function runUpdateCheck(): Promise<void> {
   try {
     // Compare against the active OTA bundle, not only the APK's built-in version.
     // Otherwise every launch can repeatedly offer the same already-installed bundle.
-    const removeCheckingStatus = showCheckingStatus();
+    showCheckingStatus();
     const currentInfo = await withTimeout(CapacitorUpdater.current().catch(() => null), NATIVE_PLUGIN_TIMEOUT_MS, 'Could not read installed update state.').catch(() => null);
     const builtinVersion = await withTimeout(CapacitorUpdater.getBuiltinVersion().catch(() => null), NATIVE_PLUGIN_TIMEOUT_MS, 'Could not read built-in version.').catch(() => null);
     const currentVersion = currentInfo?.bundle?.version || builtinVersion || '1.0.0';
