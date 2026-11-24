@@ -21,6 +21,8 @@ import { MoreServicesSheet } from './ui/MoreServicesSheet';
 import { useConfirm } from './ui/ConfirmDialog';
 import { EmptyState } from './ui/EmptyState';
 import { HomeHero } from './ui/HomeHero';
+import { Field } from './ui/Field';
+import { Modal } from './ui/Modal';
 import { clearSession, getSession, saveSession, type Session } from './lib/session';
 import { registerBackButton } from './lib/backButton';
 import { DateRangeFilter, dateRangeBounds, initialDateRange, isInDateRange, sortReportRows } from './components/DateRangeFilter';
@@ -2458,38 +2460,6 @@ function ComplaintModal({ customers, staff, session, onClose, onSave, flash }: a
     <p className="form-hint">Staff must attach at least one photo or video. Photos up to 2 MB and videos up to 8 MB are saved with the complaint. Admins may submit without evidence.</p>
   </Modal>;
 }
-function Field({ label, children, wide }: any) {
-  return (
-    <label className={'field ' + (wide ? 'wide' : '')}>
-      <span>{label}</span>
-      {children}
-    </label>
-  );
-}
-function Modal({ title, subtitle, onClose, children }: any) {
-  return (
-    <div
-      className="modal-backdrop"
-      onMouseDown={e => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      <div className="modal">
-        <div className="modal-head">
-          <div>
-            <h2>{title}</h2>
-            <p>{subtitle}</p>
-          </div>
-          <button type="button" className="icon-button" onClick={onClose}>
-            <X />
-          </button>
-        </div>
-        {children}
-      </div>
-    </div>
-  );
-}
-
 function App(){
  const [session,setSession]=useState<Session|null>(null);const [checking,setChecking]=useState(true);
  const [minSplashDone,setMinSplashDone]=useState(false);const [maxSplashReached,setMaxSplashReached]=useState(false);
