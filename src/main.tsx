@@ -37,6 +37,15 @@ function NativeReadinessSignal() {
   return null;
 }
 
+function showOtaTestMarker() {
+  const marker = document.createElement('div');
+  marker.textContent = 'OTA TEST 1.0.460';
+  marker.setAttribute('role', 'status');
+  marker.style.cssText = 'position:fixed;z-index:9998;left:50%;bottom:calc(82px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);padding:8px 13px;border:1px solid rgba(255,255,255,.24);border-radius:999px;background:#1d4776;color:#fff;box-shadow:0 8px 24px rgba(15,35,60,.22);font:800 11px/1.2 system-ui,sans-serif;letter-spacing:.04em;white-space:nowrap;pointer-events:none';
+  document.body.append(marker);
+  window.setTimeout(() => marker.remove(), 12000);
+}
+
 function mountApp(native = false) {
   createRoot(appRoot).render(
     <StrictMode>
@@ -44,6 +53,7 @@ function mountApp(native = false) {
       {native ? <NativeReadinessSignal /> : null}
     </StrictMode>,
   );
+  if (native) showOtaTestMarker();
 }
 
 function showUpdateScreen(message: string, retry: () => void) {
