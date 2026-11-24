@@ -1,0 +1,366 @@
+/*
+ * K&B Nexus — canonical mobile application shell.
+ * This file owns the phone layout and mobile navigation. Feature styles remain
+ * in their existing component stylesheets; no data, routes, or workflows change.
+ */
+:root {
+  --kb-primary: #244f83;
+  --kb-primary-deep: #183a64;
+  --kb-accent: #e99538;
+  --kb-canvas: #f3f6fb;
+  --kb-surface: #ffffff;
+  --kb-line: #e4eaf2;
+  --kb-ink: #1d2d43;
+  --kb-muted: #77869a;
+  --kb-radius: 18px;
+  --kb-shadow: 0 7px 24px rgba(24, 48, 79, .055);
+}
+
+html, body, #root { min-height: 100%; width: 100%; max-width: 100%; }
+body { background: var(--kb-canvas); color: var(--kb-ink); -webkit-tap-highlight-color: transparent; }
+button, a, input, select, textarea { touch-action: manipulation; }
+button:focus:not(:focus-visible) { outline: none; }
+button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+  outline: 2px solid rgba(233,149,56,.55);
+  outline-offset: 2px;
+}
+
+@media (max-width: 700px) {
+  html, body, #root { min-height: 100dvh; overflow-x: clip; }
+  body { overscroll-behavior-y: none; }
+  .shell {
+    display: block;
+    width: 100%;
+    min-height: 100dvh;
+    padding: 0;
+    background: var(--kb-canvas);
+  }
+  .main {
+    width: 100%;
+    min-width: 0;
+    min-height: 100dvh;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: var(--kb-canvas);
+  }
+
+  /* Compact app bar: page title, menu, notifications and account actions. */
+  .topbar {
+    position: sticky !important;
+    inset: 0 0 auto;
+    z-index: 40;
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    width: 100%;
+    height: calc(62px + env(safe-area-inset-top, 0px)) !important;
+    min-height: calc(62px + env(safe-area-inset-top, 0px)) !important;
+    padding: env(safe-area-inset-top, 0px) 14px 0 !important;
+    border: 0 !important;
+    border-bottom: 1px solid var(--kb-line) !important;
+    background: rgba(255,255,255,.96) !important;
+    box-shadow: 0 3px 16px rgba(24,48,79,.045);
+    backdrop-filter: blur(18px);
+  }
+  .hamburger {
+    display: grid;
+    flex: 0 0 40px;
+    width: 40px;
+    height: 40px;
+    place-items: center;
+    padding: 0;
+    border: 1px solid #e4eaf2;
+    border-radius: 13px;
+    background: #f5f8fc;
+    color: #31577f;
+  }
+  .hamburger svg { width: 19px; height: 19px; }
+  .crumb {
+    flex: 1 1 auto;
+    min-width: 0;
+    margin: 0 !important;
+    overflow: hidden;
+    color: transparent;
+    font-size: 0 !important;
+    line-height: 1;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .crumb span { display: none; }
+  .crumb strong {
+    display: block;
+    overflow: hidden;
+    color: #1e3552 !important;
+    font: 800 16px/1.2 Manrope, 'DM Sans', system-ui, sans-serif;
+    letter-spacing: -.025em;
+    text-overflow: ellipsis;
+  }
+  .top-actions {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 6px !important;
+    min-width: 0;
+    max-width: none !important;
+    overflow: visible !important;
+  }
+  .system-status { display: none !important; }
+  .preference-controls { display: flex; align-items: center; gap: 4px !important; }
+  .language-control {
+    display: flex;
+    width: 39px;
+    height: 38px;
+    justify-content: center;
+    padding: 0 4px !important;
+    border: 1px solid #e5eaf1;
+    border-radius: 12px;
+    background: #fff;
+    color: #50647e;
+  }
+  .language-control select { width: 25px; max-width: 25px !important; font-size: 0 !important; }
+  .theme-toggle {
+    display: grid;
+    width: 38px;
+    height: 38px;
+    place-items: center;
+    padding: 0 !important;
+    border: 1px solid #e5eaf1;
+    border-radius: 12px;
+    background: #fff;
+    color: #50647e;
+  }
+  .theme-toggle span { display: none !important; }
+  .icon-button {
+    width: 38px;
+    height: 38px;
+    border: 1px solid #e5eaf1;
+    border-radius: 12px;
+    background: #fff;
+    color: #526983;
+  }
+  .account-trigger { display: none !important; }
+  .notification-anchor { position: relative; }
+  .notification-popover {
+    position: fixed !important;
+    top: calc(62px + env(safe-area-inset-top, 0px)) !important;
+    right: 10px !important;
+    left: 10px !important;
+    width: auto !important;
+    max-width: none !important;
+    max-height: min(65dvh, 520px);
+    overflow: auto;
+    border-radius: 18px !important;
+    box-shadow: 0 18px 48px rgba(14,31,54,.2) !important;
+  }
+
+  /* Content becomes a phone workspace, not a compressed desktop canvas. */
+  .content {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    margin: 0;
+    padding: 18px 15px calc(112px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+  .content > *, .content section, .content article, .content .panel,
+  .content .toolbar, .content .page-heading, .content .finance-head {
+    min-width: 0;
+    max-width: 100%;
+  }
+  .page-heading {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 9px !important;
+    margin: 0 0 18px !important;
+  }
+  .page-heading .eyebrow {
+    margin: 0 0 5px;
+    color: #73869d !important;
+    font-size: 9px;
+    font-weight: 850;
+    letter-spacing: .13em;
+  }
+  .page-heading h1 {
+    margin: 0 0 6px !important;
+    color: #1d3553 !important;
+    font: 800 clamp(23px, 6vw, 29px)/1.12 Manrope, 'DM Sans', system-ui, sans-serif !important;
+    letter-spacing: -.045em;
+    overflow-wrap: anywhere;
+  }
+  .page-heading p {
+    max-width: 100% !important;
+    margin: 0;
+    color: #77869a !important;
+    font-size: 12px;
+    line-height: 1.55;
+  }
+  .heading-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+  .heading-actions .btn { min-height: 42px; }
+  .panel, .ops-panel, .finance-panel, .calendar-panel, .task-card,
+  .staff-insight, .plan-card, .ops-summary {
+    min-width: 0;
+    border-radius: 17px !important;
+    box-shadow: var(--kb-shadow);
+  }
+  .panel { padding: 15px; }
+  .panel-head, .ops-panel-head, .finance-head {
+    align-items: flex-start;
+    gap: 10px;
+  }
+  .panel-head h2, .ops-panel-head h2 { font-size: 15px; }
+  .toolbar { display: flex; flex-wrap: wrap; gap: 8px; }
+  .toolbar > input, .toolbar > select, .toolbar .search-box,
+  .toolbar .search-input { flex: 1 1 150px; min-width: 0; max-width: 100%; }
+  .btn { min-height: 42px; border-radius: 12px; }
+  input, select, textarea { min-height: 42px; max-width: 100%; }
+  .table-wrap, .finance-table-wrap, .inventory-table-wrap,
+  .subscription-table-wrap {
+    max-width: 100%;
+    overflow-x: auto !important;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+  .content table { min-width: 620px; }
+  .content footer { display: none; }
+
+  /* Persistent five-destination Android-style navigation. */
+  .mobile-tab-bar {
+    position: fixed !important;
+    z-index: 55 !important;
+    inset: auto 0 0 !important;
+    display: grid !important;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    align-items: stretch;
+    gap: 3px;
+    width: 100%;
+    min-height: calc(68px + env(safe-area-inset-bottom, 0px));
+    padding: 7px 7px calc(7px + env(safe-area-inset-bottom, 0px)) !important;
+    border: 0 !important;
+    border-top: 1px solid #e4eaf2 !important;
+    border-radius: 0 !important;
+    background: rgba(255,255,255,.97) !important;
+    box-shadow: 0 -7px 26px rgba(24,48,79,.075);
+    backdrop-filter: blur(22px);
+  }
+  .mobile-tab {
+    display: grid !important;
+    min-width: 0;
+    min-height: 50px;
+    align-content: center;
+    justify-items: center;
+    gap: 4px;
+    padding: 5px 2px;
+    border: 0 !important;
+    border-radius: 13px !important;
+    background: transparent !important;
+    color: #7c8ba0 !important;
+    touch-action: manipulation;
+  }
+  .mobile-tab svg { width: 20px; height: 20px; stroke-width: 1.9; }
+  .mobile-tab span {
+    display: block;
+    max-width: 100%;
+    overflow: hidden;
+    color: inherit;
+    font-size: 9px !important;
+    font-weight: 750;
+    line-height: 1.1;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .mobile-tab.active {
+    border: 1px solid #f2dfc8 !important;
+    background: #fff5e9 !important;
+    color: #a85d18 !important;
+  }
+  .mobile-tab.active svg { stroke-width: 2.35; }
+
+  /* Drawer remains available for every existing destination and account action. */
+  .sidebar {
+    position: fixed !important;
+    inset: 0 auto 0 0 !important;
+    z-index: 70 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    width: min(86vw, 320px) !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    padding: calc(18px + env(safe-area-inset-top, 0px)) 13px calc(12px + env(safe-area-inset-bottom, 0px)) !important;
+    overflow: hidden !important;
+    transform: translateX(-105%);
+    background: #172b45 !important;
+    box-shadow: 18px 0 48px rgba(11,28,49,.22);
+  }
+  .sidebar.mobile-open { transform: translateX(0) !important; }
+  .sidebar .primary-navigation {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    overflow-y: auto !important;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+  .sidebar .sidebar-bottom {
+    flex: 0 0 auto !important;
+    max-height: 34dvh;
+    overflow-y: auto;
+    background: #172b45 !important;
+  }
+  .sidebar .brand { flex: 0 0 auto; }
+  .sidebar .mobile-close { min-width: 38px; min-height: 38px; }
+  .scrim { position: fixed !important; inset: 0 !important; z-index: 65 !important; }
+
+  /* Dark mode uses the same navy/orange identity with accessible contrast. */
+  [data-theme="dark"] body,
+  [data-theme="dark"] .shell,
+  [data-theme="dark"] .main,
+  [data-theme="dark"] .content { background: #0e1726 !important; color: #e7edf6; }
+  [data-theme="dark"] .topbar,
+  [data-theme="dark"] .mobile-tab-bar {
+    background: rgba(17,29,46,.97) !important;
+    border-color: #293b54 !important;
+  }
+  [data-theme="dark"] .crumb strong,
+  [data-theme="dark"] .page-heading h1 { color: #edf3fb !important; }
+  [data-theme="dark"] .page-heading p,
+  [data-theme="dark"] .page-heading .eyebrow { color: #a4b3c7 !important; }
+  [data-theme="dark"] .panel, [data-theme="dark"] .ops-panel,
+  [data-theme="dark"] .finance-panel, [data-theme="dark"] .calendar-panel,
+  [data-theme="dark"] .task-card, [data-theme="dark"] .staff-insight,
+  [data-theme="dark"] .plan-card, [data-theme="dark"] .ops-summary {
+    background: #17263b !important;
+    border-color: #2b3d56 !important;
+    color: #e7edf6 !important;
+  }
+  [data-theme="dark"] .mobile-tab { color: #a8b6c9 !important; }
+  [data-theme="dark"] .mobile-tab.active {
+    border-color: #654a2d !important;
+    background: #382a1d !important;
+    color: #ffc47a !important;
+  }
+  [data-theme="dark"] .hamburger, [data-theme="dark"] .icon-button,
+  [data-theme="dark"] .language-control, [data-theme="dark"] .theme-toggle {
+    background: #1b2c43 !important;
+    border-color: #354760 !important;
+    color: #d5e0ef !important;
+  }
+  [data-theme="dark"] input, [data-theme="dark"] select,
+  [data-theme="dark"] textarea {
+    background: #101d30 !important;
+    border-color: #354760 !important;
+    color: #e7edf6 !important;
+  }
+}
+
+@media (max-width: 390px) {
+  .topbar { padding-right: 9px !important; padding-left: 9px !important; gap: 7px !important; }
+  .top-actions { gap: 4px !important; }
+  .language-control { width: 34px; }
+  .theme-toggle, .icon-button { width: 35px; height: 35px; }
+  .content { padding-right: 11px !important; padding-left: 11px !important; }
+  .mobile-tab-bar { padding-right: 4px !important; padding-left: 4px !important; }
+  .mobile-tab span { font-size: 8px !important; }
+}
+
+@media (min-width: 701px) {
+  .mobile-tab-bar { display: none !important; }
+}
