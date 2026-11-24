@@ -368,3 +368,141 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
   .kb-overview-actions { gap:7px; }
   .kb-overview-actions button { grid-template-columns:18px minmax(0,1fr); column-gap:7px; }
 }
+
+
+/* Phase 6 — data-entry, finance and modal ergonomics. */
+.field,
+.ops-form,
+.subscription-form,
+.invoice-form,
+.finance-expense-form,
+.invoice-form-section { min-width:0; }
+.field label,
+.ops-form label,
+.subscription-form label,
+.invoice-form label,
+.finance-expense-form label {
+  min-width:0;
+  overflow-wrap:anywhere;
+}
+.field input,
+.field select,
+.field textarea,
+.ops-form input,
+.ops-form select,
+.ops-form textarea,
+.subscription-form input,
+.subscription-form select,
+.subscription-form textarea,
+.invoice-form input,
+.invoice-form select,
+.invoice-form textarea,
+.finance-expense-form input,
+.finance-expense-form select,
+.finance-expense-form textarea {
+  box-sizing:border-box;
+  max-width:100%;
+  min-width:0;
+  color:var(--kb-ink);
+}
+.field textarea,
+.ops-form textarea,
+.subscription-form textarea,
+.invoice-form textarea { min-height:92px; resize:vertical; }
+.invoice-modal,
+.invoice-modal-backdrop,
+.modal,
+.modal-backdrop { overscroll-behavior:contain; }
+.invoice-modal {
+  box-sizing:border-box;
+  width:min( min(760px, calc(100vw - 28px)), 760px);
+  max-width:calc(100vw - 28px);
+  max-height:calc(100dvh - 28px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  overflow-y:auto;
+  -webkit-overflow-scrolling:touch;
+}
+.invoice-form-section,
+.invoice-tax-preview { min-width:0; }
+.invoice-line { min-width:0; }
+.invoice-line input { min-width:0; max-width:100%; }
+.finance-table-wrap,
+.subscription-table-wrap,
+.table-wrap {
+  max-width:100%;
+  overscroll-behavior-x:contain;
+  -webkit-overflow-scrolling:touch;
+}
+.finance-table-wrap table,
+.subscription-table-wrap table,
+.table-wrap table { font-variant-numeric:tabular-nums; }
+.finance-table-wrap td,
+.finance-table-wrap th,
+.subscription-table-wrap td,
+.subscription-table-wrap th {
+  overflow-wrap:anywhere;
+}
+.amount,
+.finance-metrics strong,
+.ledger-metrics strong { font-variant-numeric:tabular-nums lining-nums; }
+.calendar-panel,
+.calendar-agenda,
+.attendance-calendar-card { min-width:0; }
+.calendar-event>div:last-child { min-width:0; overflow-wrap:anywhere; }
+
+[data-theme="dark"] .field input,
+[data-theme="dark"] .field select,
+[data-theme="dark"] .field textarea,
+[data-theme="dark"] .ops-form input,
+[data-theme="dark"] .ops-form select,
+[data-theme="dark"] .ops-form textarea,
+[data-theme="dark"] .subscription-form input,
+[data-theme="dark"] .subscription-form select,
+[data-theme="dark"] .subscription-form textarea,
+[data-theme="dark"] .invoice-form input,
+[data-theme="dark"] .invoice-form select,
+[data-theme="dark"] .invoice-form textarea,
+[data-theme="dark"] .finance-expense-form input,
+[data-theme="dark"] .finance-expense-form select,
+[data-theme="dark"] .finance-expense-form textarea {
+  color:var(--kb-ink);
+}
+@media(max-width:700px) {
+  .invoice-modal {
+    width:calc(100vw - 20px);
+    max-width:calc(100vw - 20px);
+    max-height:calc(100dvh - 16px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+    border-radius:17px;
+  }
+  .invoice-modal-head {
+    position:sticky;
+    top:0;
+    z-index:2;
+    background:inherit;
+  }
+  .invoice-grid { grid-template-columns:minmax(0,1fr); }
+  .invoice-grid .wide { grid-column:auto; }
+  .invoice-line {
+    display:grid;
+    grid-template-columns:minmax(0,1fr) auto;
+    gap:8px;
+  }
+  .invoice-line input { width:100%; }
+  .finance-expense-form,
+  .subscription-form,
+  .ops-form { gap:12px; }
+  .finance-head,
+  .finance-foot,
+  .subscription-toolbar-actions { flex-wrap:wrap; }
+  .finance-actions { display:flex; flex-wrap:wrap; gap:8px; }
+  .finance-actions input,
+  .finance-actions select { flex:1 1 140px; min-width:0; }
+  .calendar-summary { gap:9px 13px; }
+  .calendar-day { overflow:hidden; }
+  .calendar-day small { max-width:100%; overflow:hidden; }
+}
+@media(max-width:380px) {
+  .invoice-modal { padding:12px; }
+  .invoice-form-section { padding:11px; }
+  .finance-metrics article { min-width:0; padding:11px; }
+  .finance-metrics strong { font-size:clamp(16px,5vw,21px); }
+}
