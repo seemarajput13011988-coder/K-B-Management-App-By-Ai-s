@@ -223,3 +223,22 @@
 @media(prefers-reduced-motion:reduce) {
   .portal-request-card,.portal-request-panel { transition: none!important; }
 }
+
+
+/* Staff registration requests: compact, filterable and easy to scroll past. */
+.staff-registration-panel { min-width: 0; }
+.staff-request-tools { display: grid; grid-template-columns: minmax(0,1.4fr) minmax(125px,.8fr); gap: 10px; margin: 12px 0; }
+.staff-request-tools input, .staff-request-tools select { width: 100%; min-width: 0; }
+.staff-request-list { display: grid; gap: 10px; min-width: 0; }
+.staff-request-item { min-width: 0; padding: 13px; border: 1px solid var(--kb-line,#e4eaf2); border-radius: 14px; background: var(--kb-surface,#fff); }
+.staff-request-item .ops-message-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; min-width: 0; }
+.staff-request-item .ops-message-top b { min-width: 0; overflow-wrap: anywhere; }
+.staff-request-item p { margin: 7px 0; overflow-wrap: anywhere; }
+.staff-request-item small { display: block; overflow-wrap: anywhere; }
+.staff-request-item .ops-form { margin-top: 10px; }
+.staff-request-item .ops-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+@media (max-width:700px) {
+  .staff-request-tools { grid-template-columns: minmax(0,1fr); gap: 8px; }
+  .staff-request-item { padding: 11px; }
+  .staff-request-item .ops-actions .btn { flex: 1 1 130px; }
+}
