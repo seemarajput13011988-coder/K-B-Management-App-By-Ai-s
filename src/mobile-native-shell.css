@@ -565,3 +565,13 @@ body {
   border-color: #2c405a;
   background: linear-gradient(155deg, #192b42, #15243a);
 }
+
+
+/* Consistent breathing room between stacked app cards without changing their contents. */
+@media (max-width:700px) {
+  .ops-layout { display: grid; gap: 16px; align-content: start; }
+  .ops-layout > section, .ops-layout > .ops-summary-grid { margin: 0 !important; min-width: 0; }
+  .ops-summary-grid { gap: 10px !important; }
+  .content > .panel + .panel, .content > section.panel + section.panel { margin-top: 16px; }
+  .ops-panel, .panel, .finance-panel, .calendar-panel, .task-card, .plan-card { min-width: 0; }
+}
