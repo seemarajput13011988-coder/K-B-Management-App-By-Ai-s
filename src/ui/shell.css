@@ -182,3 +182,8 @@
   .content .table-panel > .toolbar { position: sticky; top: calc(var(--appbar-h) + var(--safe-top)); z-index: 15; padding: 10px 0; background: var(--bg); }
   .content .table-panel > .toolbar .searchbox { flex: 1 1 100%; min-width: 0; }
 }
+
+.account-preferences { display: grid; gap: 10px; padding: 15px; border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--surface-2); }
+.account-preferences > strong { color: var(--text); font-size: var(--fs-md); }
+.account-preferences .field { margin: 0; }
+.account-preferences .btn { justify-content: center; min-height: 44px; }
