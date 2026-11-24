@@ -121,3 +121,54 @@
   .page-heading { min-height: 0; margin: 0 0 12px; padding: 0; }
   .page-heading .heading-actions { width: 100%; justify-content: flex-end; }
 }
+
+/* Responsive record tables: one data row becomes one readable phone card. */
+@media (max-width: 720px) {
+  .content .table-wrap, .content .finance-table-wrap { width: 100%; overflow: visible; }
+  .content .table-wrap table, .content .finance-table-wrap table { width: 100%; min-width: 0; border-collapse: separate; border-spacing: 0; }
+  .content .table-wrap thead, .content .finance-table-wrap thead { display: none; }
+  .content .table-wrap table, .content .table-wrap tbody, .content .table-wrap tr, .content .table-wrap td,
+  .content .finance-table-wrap table, .content .finance-table-wrap tbody, .content .finance-table-wrap tr, .content .finance-table-wrap td { display: block; }
+  .content .table-wrap tbody tr, .content .finance-table-wrap tbody tr {
+    margin: 0 0 11px;
+    padding: 10px 13px;
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    background: var(--surface);
+    box-shadow: var(--shadow-1);
+  }
+  .content .table-wrap td, .content .finance-table-wrap td {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    min-width: 0;
+    padding: 8px 0;
+    border: 0;
+    border-bottom: 1px solid var(--border);
+    color: var(--text);
+    font-size: var(--fs-sm);
+    text-align: right;
+    overflow-wrap: anywhere;
+  }
+  .content .table-wrap td:last-child, .content .finance-table-wrap td:last-child { border-bottom: 0; }
+  .content .table-wrap td::before, .content .finance-table-wrap td::before {
+    flex: 0 0 38%;
+    content: attr(data-label);
+    color: var(--text-3);
+    font-size: var(--fs-xs);
+    font-weight: 800;
+    text-align: left;
+  }
+  .content .table-wrap td:first-child, .content .finance-table-wrap td:first-child {
+    justify-content: flex-start;
+    padding-top: 4px;
+    font-size: var(--fs-md);
+    font-weight: 800;
+    text-align: left;
+  }
+  .content .table-wrap td:first-child::before, .content .finance-table-wrap td:first-child::before { display: none; }
+  .content .table-wrap td[colspan], .content .finance-table-wrap td[colspan] { display: block; text-align: center; }
+  .content .table-wrap td[colspan]::before, .content .finance-table-wrap td[colspan]::before { display: none; }
+  .content .table-wrap td .staff-actions, .content .finance-table-wrap td .staff-actions { justify-content: flex-end; flex-wrap: wrap; }
+}
