@@ -21,6 +21,7 @@ import { MoreServicesSheet } from './ui/MoreServicesSheet';
 import { useConfirm } from './ui/ConfirmDialog';
 import { Empty } from './ui/Empty';
 import { HomeHero } from './ui/HomeHero';
+import { StatCard } from './ui/StatCard';
 import { Field } from './ui/Field';
 import { Modal } from './ui/Modal';
 import { ProfileItem } from './ui/ProfileItem';
@@ -1121,22 +1122,10 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
               )}
 
               <section className="kb-overview-metrics" aria-label="Business snapshot">
-                <article className="kb-overview-metric">
-                  <span className="kb-overview-metric-icon"><Users size={18}/></span>
-                  <div><small>{isAdmin ? 'Total customers' : 'My assigned customers'}</small><strong>{customers.length.toLocaleString('en-IN')}</strong><span>{isAdmin ? 'Registered connections' : 'Currently assigned to you'}</span></div>
-                </article>
-                <article className="kb-overview-metric">
-                  <span className="kb-overview-metric-icon"><Activity size={18}/></span>
-                  <div><small>{isAdmin ? 'Active connections' : 'Pending tasks'}</small><strong>{(isAdmin ? active : pendingTasks).toLocaleString('en-IN')}</strong><span>{isAdmin ? (customers.length ? Math.round(active/customers.length*100)+'% of customer base' : 'No customers yet') : 'Assigned work to complete'}</span></div>
-                </article>
-                <article className="kb-overview-metric">
-                  <span className="kb-overview-metric-icon"><IndianRupee size={18}/></span>
-                  <div><small>{isAdmin ? 'Payments recorded' : 'My collections'}</small><strong>{money(collected)}</strong><span>{isAdmin ? 'Total recorded collections' : 'Payments recorded by you'}</span></div>
-                </article>
-                <article className="kb-overview-metric">
-                  <span className="kb-overview-metric-icon"><MessageSquare size={18}/></span>
-                  <div><small>Open complaints</small><strong>{openComplaints.toLocaleString('en-IN')}</strong><span>Awaiting resolution</span></div>
-                </article>
+                <StatCard className="kb-overview-metric" icon={Users} label={isAdmin ? 'Total customers' : 'My assigned customers'} value={customers.length.toLocaleString('en-IN')} detail={isAdmin ? 'Registered connections' : 'Currently assigned to you'} />
+                <StatCard className="kb-overview-metric" icon={Activity} label={isAdmin ? 'Active connections' : 'Pending tasks'} value={(isAdmin ? active : pendingTasks).toLocaleString('en-IN')} detail={isAdmin ? (customers.length ? Math.round(active/customers.length*100)+'% of customer base' : 'No customers yet') : 'Assigned work to complete'} tone="success" />
+                <StatCard className="kb-overview-metric" icon={IndianRupee} label={isAdmin ? 'Payments recorded' : 'My collections'} value={money(collected)} detail={isAdmin ? 'Total recorded collections' : 'Payments recorded by you'} tone="brand" />
+                <StatCard className="kb-overview-metric" icon={MessageSquare} label="Open complaints" value={openComplaints.toLocaleString('en-IN')} detail="Awaiting resolution" tone={openComplaints ? 'warning' : 'success'} />
               </section>
 
               <div className="kb-overview-main">
