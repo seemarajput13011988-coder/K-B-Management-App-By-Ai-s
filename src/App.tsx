@@ -54,6 +54,7 @@ import {
   Pencil,
   Trash2,
   Eye,
+  EyeOff,
   ShieldCheck, KeyRound, BarChart3, LogOut, UserPlus, UserRound, UsersRound, LockKeyhole, ReceiptText, MoreHorizontal,
 } from 'lucide-react';
 import { getHinduFestival, getIndiaDateKey } from './festivalTheme';
@@ -2443,6 +2444,7 @@ function App(){
 }
 function LoginScreen({onLogin}:{onLogin:(id:string,pw:string,role:'admin'|'staff')=>Promise<void>}){
  const [role,setRole]=useState<'admin'|'staff'|null>(null);
+ const [showPassword,setShowPassword]=useState(false);
  const [id,setId]=useState(''),[pw,setPw]=useState(''),[msg,setMsg]=useState('');
  const [registrationOpen,setRegistrationOpen]=useState(false);
  const [registration,setRegistration]=useState({userId:'',displayName:'',phone:'',reason:''});
@@ -2463,7 +2465,7 @@ function LoginScreen({onLogin}:{onLogin:(id:string,pw:string,role:'admin'|'staff
   {registrationStatus.status==='rejected' && <button type="button" className="auth-link" onClick={()=>{localStorage.removeItem('kandb-staff-registration');setRegistrationStatus(null);setRegistrationOpen(true);}}>Submit a new request</button>}
  </div> : !registrationOpen?<button type="button" className="auth-link" onClick={()=>{setRegistrationOpen(true);setRegistrationMessage('');}}>Request staff access</button>:<div className="staff-registration-form"><strong>Staff registration request</strong><Field label="Preferred staff ID"><input required minLength={3} maxLength={32} pattern="[a-zA-Z0-9_-]{3,32}" value={registration.userId} onChange={e=>setRegistration({...registration,userId:e.target.value})}/></Field><Field label="Full name"><input required maxLength={80} value={registration.displayName} onChange={e=>setRegistration({...registration,displayName:e.target.value})}/></Field><Field label="Phone (optional)"><input type="tel" inputMode="numeric" pattern="[0-9]{10}" maxLength={10} value={registration.phone} onChange={e=>setRegistration({...registration,phone:e.target.value.replace(/\D/g,'').slice(0,10)})} placeholder="10-digit mobile number"/></Field><Field label="Reason / note (optional)"><textarea rows={2} maxLength={300} value={registration.reason} onChange={e=>setRegistration({...registration,reason:e.target.value})}/></Field><div className="form-actions"><button type="button" className="btn secondary" onClick={()=>setRegistrationOpen(false)}>Cancel</button><button type="button" className="btn primary" disabled={registrationBusy} onClick={e=>{const form=e.currentTarget.closest('.staff-registration-form');const fields=form?.querySelectorAll('input');if(fields && Array.from(fields).every(field=>field.reportValidity()))void submitRegistration();}}>{registrationBusy?'Submitting…':'Submit request'}</button></div></div>}
  {registrationMessage&&<div className={registrationError?'auth-message':'form-hint'}>{registrationMessage}</div>}</>:<>
- <label className="auth-field"><span>{role==='admin'?'Admin username':'Staff user ID'}</span><input value={id} onChange={e=>setId(e.target.value)} required autoComplete="username" placeholder={role==='admin'?'Enter your admin username':'Enter your staff ID'}/></label><label className="auth-field"><span>Password</span><input type="password" value={pw} onChange={e=>setPw(e.target.value)} required autoComplete="current-password"/></label>
+ <label className="auth-field"><span>{role==='admin'?'Admin username':'Staff user ID'}</span><input value={id} onChange={e=>setId(e.target.value)} required autoComplete="username" placeholder={role==='admin'?'Enter your admin username':'Enter your staff ID'}/></label><label className="auth-field"><span>Password</span><div className="auth-password-wrap"><input type={showPassword?'text':'password'} value={pw} onChange={e=>setPw(e.target.value)} required autoComplete="current-password"/><button type="button" className="auth-password-toggle" aria-label={showPassword?'Hide password':'Show password'} onClick={()=>setShowPassword(value=>!value)}>{showPassword?<EyeOff size={18}/>:<Eye size={18}/>}</button></div></label>
  {msg&&<div className="auth-message">{msg}</div>}<button className="btn primary auth-submit">Sign in securely</button><button type="button" className="auth-link" onClick={()=>{setRole(null);setId('');setPw('');setMsg('');}}>← Choose another sign-in</button>
  </>}
  <div className="auth-security"><KeyRound size={14}/> Keep your password private. Access is based on your account role.</div></form></div></div>;
