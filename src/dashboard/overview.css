@@ -68,3 +68,74 @@
 @media(max-width:1000px){.kb-overview-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.kb-overview-metric:nth-child(3){padding-left:0;border-left:0}.kb-overview-main{grid-template-columns:minmax(0,1fr)}}
 @media(max-width:700px){.kb-overview{gap:22px}.kb-overview-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px 18px}.kb-overview-actions button{min-height:44px}.kb-overview-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.kb-overview-metric{gap:9px;min-height:104px;padding:13px}.kb-overview-metric+.kb-overview-metric{padding-left:13px}.kb-overview-metric:nth-child(3){padding-left:13px;border-left:0}.kb-overview-metric-icon{width:32px;height:32px;flex-basis:32px}.kb-overview-metric strong{font-size:20px}.kb-overview-metric small{font-size:9px}.kb-overview-section-head h2{font-size:14px}.kb-overview-charts{grid-template-columns:minmax(0,1fr);gap:24px}.kb-overview .chart-panel .chart-bars{min-height:165px}.kb-overview-review{gap:7px 12px}.kb-overview-review-list{padding-left:0}}
 @media(max-width:390px){.kb-overview-metric{display:block;min-height:110px;padding:12px}.kb-overview-metric-icon{margin-bottom:8px}.kb-overview-metric strong{font-size:18px}.kb-overview-section-head{gap:8px}.kb-overview-section-head h2{font-size:13px}}
+
+
+/* Dashboard card alignment repair — especially narrow Android screens. */
+.kb-overview .chart-panel,
+.chart-grid .chart-panel {
+  min-width: 0;
+  max-width: 100%;
+}
+.kb-overview .chart-panel .panel-head,
+.chart-grid .chart-panel .panel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+.kb-overview .chart-panel .panel-head > div,
+.chart-grid .chart-panel .panel-head > div {
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 100%;
+}
+.kb-overview .chart-panel .panel-head h2,
+.chart-grid .chart-panel .panel-head h2,
+.kb-overview .chart-panel .panel-head p,
+.chart-grid .chart-panel .panel-head p {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: normal;
+  white-space: normal;
+}
+.kb-overview .chart-panel .chart-mark,
+.chart-grid .chart-panel .chart-mark {
+  flex: 0 0 32px;
+  width: 32px;
+  height: 32px;
+}
+.status-chart-row {
+  grid-template-columns: minmax(0, 82px) minmax(0, 1fr) 28px;
+  min-width: 0;
+}
+.status-chart-row > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+.status-chart-row > div { min-width: 0; }
+.overdue-value {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  font-variant-numeric: tabular-nums;
+}
+.overdue-note {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 700px) {
+  .kb-overview .chart-panel .panel-head,
+  .chart-grid .chart-panel .panel-head { gap: 9px; }
+  .kb-overview .chart-panel .panel-head h2,
+  .chart-grid .chart-panel .panel-head h2 { font-size: 14px; line-height: 1.3; }
+  .kb-overview .chart-panel .panel-head p,
+  .chart-grid .chart-panel .panel-head p { font-size: 10px; line-height: 1.45; }
+  .status-chart-row { grid-template-columns: minmax(0, 72px) minmax(0, 1fr) 24px; gap: 8px; }
+}
+@media (max-width: 390px) {
+  .kb-overview .chart-panel .panel-head h2,
+  .chart-grid .chart-panel .panel-head h2 { font-size: 13px; }
+  .status-chart-row { grid-template-columns: minmax(0, 66px) minmax(0, 1fr) 22px; gap: 7px; font-size: 9px; }
+}
