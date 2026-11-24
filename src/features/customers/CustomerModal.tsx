@@ -4,7 +4,9 @@ import type { Customer, Staff, Plan } from '../../types/models';
 import { Field } from '../../ui/Field';
 import { Modal } from '../../ui/Modal';
 
-type CustomerForm = Omit<Customer, 'id' | 'monthlyFee'> & { monthlyFee: number | string };\n\nexport function CustomerModal({ initial, onClose, onSave, staff = [], role = 'admin', plans = [], preferredPlan = '' }: { initial: Customer | null; onClose: () => void; onSave: (data: Omit<Customer, 'id'>) => Promise<void>; staff?: Staff[]; role?: 'admin' | 'staff'; plans?: Plan[]; preferredPlan?: string }) {
+type CustomerForm = Omit<Customer, 'id' | 'monthlyFee'> & { monthlyFee: number | string };
+
+export function CustomerModal({ initial, onClose, onSave, staff = [], role = 'admin', plans = [], preferredPlan = '' }: { initial: Customer | null; onClose: () => void; onSave: (data: Omit<Customer, 'id'>) => Promise<void>; staff?: Staff[]; role?: 'admin' | 'staff'; plans?: Plan[]; preferredPlan?: string }) {
   const [form, setForm] = useState<CustomerForm>(
     initial || {
       name: '',
