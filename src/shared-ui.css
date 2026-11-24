@@ -1,0 +1,110 @@
+/* K&B Nexus — shared component foundation (Phase 3).
+   Presentation-only layer: preserves component behavior, routes, data and semantic states. */
+:root {
+  --kb-primary: #2563a6;
+  --kb-primary-deep: #174879;
+  --kb-accent: #e99538;
+  --kb-canvas: #f4f7fb;
+  --kb-surface: #ffffff;
+  --kb-line: #e2e9f2;
+  --kb-ink: #1b2b42;
+  --kb-muted: #718096;
+  --kb-focus: rgba(233, 149, 56, .48);
+  --kb-control-radius: 12px;
+}
+
+/* Shared action controls */
+.btn {
+  min-height: 42px;
+  border-radius: var(--kb-control-radius);
+  font-weight: 700;
+  -webkit-tap-highlight-color: transparent;
+}
+.btn.primary {
+  background: linear-gradient(135deg, var(--kb-primary), var(--kb-primary-deep));
+  border-color: transparent;
+  color: #fff;
+  box-shadow: 0 5px 14px rgba(37, 99, 166, .16);
+}
+.btn.primary:hover { filter: brightness(1.045); }
+.btn.primary:active { filter: brightness(.97); }
+.btn.secondary {
+  border: 1px solid var(--kb-line);
+  background: var(--kb-surface);
+  color: var(--kb-ink);
+}
+.icon-button {
+  border: 1px solid var(--kb-line);
+  border-radius: var(--kb-control-radius);
+  background: var(--kb-surface);
+  color: var(--kb-muted);
+}
+
+/* Shared form controls: suppress pointer-focus boxes, retain a visible keyboard ring. */
+input, select, textarea {
+  border-radius: 10px;
+  accent-color: var(--kb-primary);
+}
+button:focus:not(:focus-visible),
+a:focus:not(:focus-visible),
+input:focus:not(:focus-visible),
+select:focus:not(:focus-visible),
+textarea:focus:not(:focus-visible) { outline: none; }
+button:focus-visible, a:focus-visible,
+input:focus-visible, select:focus-visible, textarea:focus-visible {
+  outline: 2px solid var(--kb-focus);
+  outline-offset: 2px;
+}
+
+/* Shared content surfaces; status chips and attendance colors remain component-owned. */
+.panel, .ops-panel, .finance-panel, .calendar-panel,
+.staff-insight, .task-card, .plan-card, .ops-summary {
+  border-color: var(--kb-line);
+}
+.table-wrap, .finance-table-wrap, .inventory-table-wrap,
+.subscription-table-wrap {
+  border-color: var(--kb-line);
+  border-radius: 14px;
+}
+.modal {
+  border-radius: 20px;
+  border-color: var(--kb-line);
+}
+.toast { border-radius: 13px; }
+
+/* Dark-mode equivalents for shared primitives. */
+[data-theme="dark"] {
+  --kb-canvas: #0e1726;
+  --kb-surface: #17263b;
+  --kb-line: #2b3d56;
+  --kb-ink: #e7edf6;
+  --kb-muted: #a4b3c7;
+  --kb-focus: rgba(255, 190, 112, .58);
+}
+[data-theme="dark"] .btn.secondary,
+[data-theme="dark"] .icon-button {
+  border-color: var(--kb-line);
+  background: #1b2c43;
+  color: #d5e0ef;
+}
+[data-theme="dark"] .table-wrap,
+[data-theme="dark"] .finance-table-wrap,
+[data-theme="dark"] .inventory-table-wrap,
+[data-theme="dark"] .subscription-table-wrap {
+  border-color: var(--kb-line);
+}
+[data-theme="dark"] .modal {
+  border-color: var(--kb-line);
+  background: #17263b;
+  color: #e7edf6;
+}
+
+/* Compact layouts keep shared controls usable without changing feature grids. */
+@media (max-width: 700px) {
+  .btn { min-height: 42px; }
+  .icon-button { min-width: 38px; min-height: 38px; }
+  input, select, textarea { max-width: 100%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .btn, .icon-button { transition: none !important; }
+}
