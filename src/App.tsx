@@ -506,6 +506,15 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
     window.setTimeout(() => setNotice(''), 3200);
   }
 
+  useEffect(() => {
+    const onToast = (event: Event) => {
+      const message = (event as CustomEvent<string>).detail;
+      if (message) flash(message);
+    };
+    window.addEventListener('kb:toast', onToast);
+    return () => window.removeEventListener('kb:toast', onToast);
+  }, []);
+
 
   async function deleteNotification(item: AppNotification) {
     if (!await confirm({ title: 'Delete this notification?', danger: true })) return;
