@@ -863,6 +863,7 @@ export function Workspace({ session, onLogout }: { session: Session; onLogout: (
         ...(isAdmin ? [{ label: 'Invoices', icon: ReceiptText }] : []),
         ...(isAdmin ? [{ label: 'Plans & Pricing', icon: Wifi }] : []),
         { label: 'Inventory', icon: ClipboardList },
+        ...(isAdmin ? [{ label: 'Finance & Billing', icon: IndianRupee }] : []),
       ],
     },
     {
