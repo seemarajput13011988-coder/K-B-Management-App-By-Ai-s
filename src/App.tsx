@@ -19,6 +19,7 @@ import { buildNav, TABS } from './ui/nav';
 import { pageSubtitle } from './ui/pageMeta';
 import { MoreServicesSheet } from './ui/MoreServicesSheet';
 import { useConfirm } from './ui/ConfirmDialog';
+import { EmptyState } from './ui/EmptyState';
 import { DateRangeFilter, dateRangeBounds, initialDateRange, isInDateRange, sortReportRows } from './components/DateRangeFilter';
 import type { DateRange } from './components/DateRangeFilter';
 import { exportCsvFile } from './lib/file-export';
@@ -1680,17 +1681,12 @@ function OverduePanel({ value }: { value: number }) {
 
 function Empty({ icon, title, text, action, onClick }: any) {
   return (
-    <div className="empty-state">
-      <div className="empty-icon">{icon}</div>
-      <strong>{title}</strong>
-      <p>{text}</p>
-      {action && (
-        <button className="btn primary" onClick={onClick}>
-          <Plus size={16} />
-          {action}
-        </button>
-      )}
-    </div>
+    <EmptyState
+      icon={icon}
+      title={title}
+      text={text}
+      action={action ? <button type="button" className="btn primary" onClick={onClick}><Plus size={16} />{action}</button> : undefined}
+    />
   );
 }
 function CustomerTable({ rows, onView, onEdit, onDelete }: any) {
