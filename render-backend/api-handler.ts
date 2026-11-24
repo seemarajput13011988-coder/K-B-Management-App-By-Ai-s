@@ -692,14 +692,18 @@ export async function apiHandler(req: any, res: any) {
         send(res, 200, { deleted: true }); return;
       }
       if (path === '/api/customer-ledger' && method === 'GET') {
-        if (!allow(user, ['admin'], res)) return;
+        if (!allow(user, ['admin', 'staff'], res)) return;
         const customerId = clean(req.query.customerId, 128);
+        if (!customerId) { send(res, 400, { error: 'Select a customer.' }); return; }
         const customer = await getDoc('customers', customerId);
         if (!customer) { send(res, 404, { error: 'Customer not found.' }); return; }
+        if (user.role === 'staff' && customer.assignedTo !== user.uid) {
+          send(res, 403, { error: 'This customer is not assigned to your account.' }); return;
+        }
         const [invoiceItems, paymentItems] = await Promise.all([list('invoices'), list('payments')]);
         const ledger = buildCustomerLedger(invoiceItems, paymentItems, customerId);
         send(res, 200, {
-          customer: { id: customerId, name: String(customer.name || ''), phone: String(customer.phone || ''), plan: String(customer.plan || '') },
+          customer: { id: customerId, name: String(customer.name || ''), phone: String(customer.phone || ''), plan: String(customer.plan || ''), status: String(customer.status || ''), monthlyFee: Number(customer.monthlyFee || 0), assignedToName: String(customer.assignedToName || '') },
           items: ledger.items,
           totalBilled: ledger.totalBilled,
           totalPaid: ledger.totalPaid,
@@ -708,12 +712,13 @@ export async function apiHandler(req: any, res: any) {
       }
 
       if (path === '/api/invoices' && method === 'GET') {
-        if (!allow(user, ['admin'], res)) return;
+        if (!allow(user, ['admin', 'staff'], res)) return;
         const period = clean(req.query.period, 7);
         if (!monthPattern.test(period)) { send(res, 400, { error: 'Select a valid billing month.' }); return; }
-        const [invoiceItems, payments] = await Promise.all([list('invoices'), list('payments')]);
+        const [invoiceItems, payments, customerItems] = await Promise.all([list('invoices'), list('payments'), list('customers')]);
+        const assignedCustomerIds = new Set(customerItems.filter(customer => customer.assignedTo === user.uid).map(customer => String(customer.id)));
         const monthLabel = new Date(period + '-01T12:00:00').toLocaleString('en-IN', { month: 'long', year: 'numeric' });
-        const items = invoiceItems.filter(item => item.period === period).map(item => {
+        const items = invoiceItems.filter(item => item.period === period && (user.role === 'admin' || assignedCustomerIds.has(String(item.customerId)))).map(item => {
           const paidAmount = payments.filter(payment => payment.customerId === item.customerId && (payment.month === monthLabel || String(payment.paidAt || '').slice(0, 7) === period)).reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
           const amount = Number(item.amount || 0);
           return { ...item, paidAmount: item.voidedAt ? 0 : paidAmount, status: item.voidedAt ? 'Void' : paidAmount >= amount ? 'Paid' : paidAmount > 0 ? 'Partially paid' : 'Unpaid' };
