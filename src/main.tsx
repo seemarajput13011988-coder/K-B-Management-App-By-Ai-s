@@ -8,6 +8,7 @@ import './mobile-overhaul.css';
 import './dashboard/overview.css';
 import './app-redesign.css';
 import './mobile-native-shell.css';
+import './shared-ui.css';
 
 const UPDATE_CHECK_TIMEOUT_MS = 25000;
 const UPDATE_DOWNLOAD_TIMEOUT_MS = 120000;
