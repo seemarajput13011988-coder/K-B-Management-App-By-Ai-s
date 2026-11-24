@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useConfirm } from './ui/ConfirmDialog';
 import { api as client } from './lib/api';
 import { Download, Plus, RefreshCw, ReceiptText, Trash2, TrendingDown, TrendingUp, Wallet } from 'lucide-react';
 import { exportCsvFile, exportPdfFile } from './lib/file-export';
@@ -88,7 +89,8 @@ async function printReport(title: string, rows: unknown[][]) {
   }
 }
 
-export default function FinanceWorkspace({ session, customers, payments, flash, salaryOnly = false }: {
+export default function FinanceWorkspace({
+  const confirm = useConfirm(); session, customers, payments, flash, salaryOnly = false }: {
   session: Session;
   customers: Customer[];
   payments: Payment[];
@@ -170,7 +172,7 @@ export default function FinanceWorkspace({ session, customers, payments, flash, 
 
 
   async function generateInvoices() {
-    if (!window.confirm('Generate monthly invoices for ' + monthName(period) + ' for all active customers? Existing invoices will not be duplicated.')) return;
+    if (!await confirm({ title: 'Generate monthly invoices for ' + monthName(period) + ' for all active customers? Existing invoices will not be duplicated.', danger: true })) return;
     setBusy(true);
     try {
       const result = await client.post('/api/invoices/generate', { period, sessionToken: session.token });
@@ -195,7 +197,7 @@ export default function FinanceWorkspace({ session, customers, payments, flash, 
   }
 
   async function deleteSalary(item: PayrollRecord) {
-    if (session.user.role !== 'admin' || !window.confirm('Delete this salary record for ' + item.staffName + ' (' + monthName(item.period) + ')? This action will be recorded in the audit log.')) return;
+    if (session.user.role !== 'admin' || !await confirm({ title: 'Delete this salary record for ' + item.staffName + ' (' + monthName(item.period) + ')? This action will be recorded in the audit log.', danger: true })) return;
     setBusy(true);
     try { await client.delete('/api/payroll/' + item.id + tokenQuery); await load(); flash('Salary record deleted.'); }
     catch (err) { flash(err instanceof Error ? err.message : 'Could not delete salary record.'); }
@@ -215,7 +217,7 @@ export default function FinanceWorkspace({ session, customers, payments, flash, 
     } finally { setBusy(false); }
   }
   async function deleteExpense(item: Expense) {
-    if (!window.confirm('Delete expense "' + item.title + '"? The audit history will remain.')) return;
+    if (!await confirm({ title: 'Delete expense "' + item.title + '"? The audit history will remain.', danger: true })) return;
     setBusy(true);
     try {
       await client.delete('/api/expenses/' + item.id + tokenQuery);
