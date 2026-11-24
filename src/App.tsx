@@ -20,6 +20,7 @@ import { pageSubtitle } from './ui/pageMeta';
 import { MoreServicesSheet } from './ui/MoreServicesSheet';
 import { useConfirm } from './ui/ConfirmDialog';
 import { EmptyState } from './ui/EmptyState';
+import { HomeHero } from './ui/HomeHero';
 import { DateRangeFilter, dateRangeBounds, initialDateRange, isInDateRange, sortReportRows } from './components/DateRangeFilter';
 import type { DateRange } from './components/DateRangeFilter';
 import { exportCsvFile } from './lib/file-export';
@@ -1054,31 +1055,29 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
 
           {page === 'Overview' && (
             <section className="kb-overview" aria-label="Operations overview">
-              <section className="kb-command-hero" aria-label="Workspace summary">
-                <div className="kb-command-hero-copy">
-                  <span className="kb-command-kicker"><span className="kb-command-live-dot"/> K&amp;B OPERATIONS DESK</span>
-                  <h2>{isAdmin ? 'Your business, clearly in view.' : 'Your workday, organised.'}</h2>
-                  <p>{isAdmin ? 'A single place to oversee customer connections, service requests, collections and your team.' : 'See your assigned work, customer visits and service updates in one organised workspace.'}</p>
-                  <div className="kb-command-actions">
-                    {isAdmin && <button type="button" className="kb-command-primary" onClick={() => { setEditing(null); setShowCustomer(true); }}><Plus size={16}/> Add a customer</button>}
-                    <button type="button" className="kb-command-secondary" onClick={() => setPage('Complaints')}><MessageSquare size={16}/> Review complaints</button>
-                  </div>
-                </div>
-                <div className="kb-command-hero-aside">
-                  <span className="kb-command-aside-label">TODAY AT A GLANCE</span>
-                  <strong>{new Date().toLocaleDateString('en-IN',{weekday:'long'})}</strong>
-                  <span>{new Date().toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'})}</span>
-                  <div className="kb-command-aside-divider"/>
-                  <small>{isAdmin ? 'Keep every connection and follow-up moving.' : 'Focus on the next task and keep updates current.'}</small>
-                </div>
-              </section>
-              <nav className="kb-overview-actions" aria-label="Overview shortcuts">
-                <button type="button" onClick={() => setPage('Customers')}><Users size={18}/><span>Customers</span><small>Browse records</small></button>
-                <button type="button" onClick={() => setPage('Complaints')}><MessageSquare size={18}/><span>Complaints</span><small>Resolve issues</small></button>
-                {isAdmin && <button type="button" onClick={() => { setEditing(null); setShowCustomer(true); }}><Plus size={18}/><span>Add customer</span><small>Create connection</small></button>}
-                {isAdmin && <button type="button" onClick={() => setPage('Salary')}><IndianRupee size={18}/><span>Salary</span><small>Team payments</small></button>}
-                {!isAdmin && <button type="button" onClick={() => setPage('My Work')}><ClipboardList size={18}/><span>My work</span><small>Assigned tasks</small></button>}
-              </nav>
+              <HomeHero
+                greeting={greeting}
+                name={session.user.displayName}
+                sub={isAdmin ? 'Payments recorded' : 'Pending tasks'}
+                headline={isAdmin ? money(collected) : pendingTasks.toLocaleString('en-IN')}
+                onGo={setPage}
+                quick={isAdmin ? [
+                  { id: 'Customers', label: 'Customers', icon: Users, tint: '#2563eb' },
+                  { id: 'Payments', label: 'Payments', icon: CreditCard, tint: '#16a34a' },
+                  { id: 'Complaints', label: 'Complaints', icon: MessageSquare, tint: '#dc2626' },
+                  { id: 'Installations', label: 'Installs', icon: Wrench, tint: '#0d9488' },
+                  { id: 'Subscriptions', label: 'Renewals', icon: Repeat, tint: '#9333ea' },
+                  { id: 'Inventory', label: 'Stock', icon: Package, tint: '#d97706' },
+                  { id: 'Invoices', label: 'Invoices', icon: ReceiptText, tint: '#c2410c' },
+                  { id: 'Calendar', label: 'Calendar', icon: CalendarDays, tint: '#7c3aed' },
+                ] : [
+                  { id: 'My Work', label: 'My Work', icon: ClipboardList, tint: '#0891b2' },
+                  { id: 'My Day', label: 'My Day', icon: CalendarDays, tint: '#ea580c' },
+                  { id: 'Customers', label: 'Customers', icon: Users, tint: '#2563eb' },
+                  { id: 'Complaints', label: 'Complaints', icon: MessageSquare, tint: '#dc2626' },
+                  { id: 'Calendar', label: 'Calendar', icon: CalendarDays, tint: '#7c3aed' },
+                ]}
+              />
 
               {isAdmin && (
                 <aside className="kb-overview-review" aria-label="Records due for review">
