@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { api } from '@appdeploy/client';
+import { api } from './lib/api';
 import { plans, money, heroImages, getSeasonalFestival, getCustomerGreeting, type Plan } from './data/catalog';
 import PlanCard from './components/PlanCard';
 import AdminStudio from './components/AdminStudio';
