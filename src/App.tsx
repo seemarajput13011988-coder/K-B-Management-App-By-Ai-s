@@ -240,6 +240,8 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   const [showAccountSettings, setShowAccountSettings] = useState(false);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [customerStatusFilter, setCustomerStatusFilter] = useState<'All' | 'Active' | 'Suspended' | 'Inactive'>('All');
+  const [complaintStatusFilter, setComplaintStatusFilter] = useState<'All' | 'Open' | 'In progress' | 'Resolved'>('All');
   const [showCustomer, setShowCustomer] = useState(false);
   const [editing, setEditing] = useState<Customer | null>(null);
   const [showPlan, setShowPlan] = useState(false);
@@ -480,16 +482,21 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   const filtered = useMemo(
     () =>
       customers.filter(c =>
-        [c.name, c.phone, c.address, c.plan]
-          .join(' ')
-          .toLowerCase()
-          .includes(search.toLowerCase())
+        (customerStatusFilter === 'All' ||
+          (customerStatusFilter === 'Inactive' ? c.status === 'Inactive' || c.status === 'Unknown' : c.status === customerStatusFilter)) &&
+        [c.name, c.phone, c.address, c.plan].join(' ').toLowerCase().includes(search.toLowerCase())
       ),
-    [customers, search]
+    [customers, search, customerStatusFilter]
   );
   const selectedStaffProfile = staff.find(member => member.id === selectedStaffProfileId);
   const filteredStaff = staff.filter(member => [member.displayName, member.userId].join(' ').toLowerCase().includes(staffSearch.toLowerCase()));
   const filteredPayments = sortReportRows(payments.filter(payment => isInDateRange(payment.paidAt, paymentRange) && [payment.customerName, payment.month, payment.method, payment.paidAt, payment.recordedByName || ''].join(' ').toLowerCase().includes(paymentSearch.toLowerCase())), paymentSort, payment => payment.paidAt, payment => Number(payment.amount || 0), payment => payment.customerName);
+  const filteredComplaints = complaints.filter(item => {
+    if (complaintStatusFilter === 'All') return true;
+    if (complaintStatusFilter === 'Open') return !['Solved', 'Resolved'].includes(item.status);
+    if (complaintStatusFilter === 'Resolved') return ['Solved', 'Resolved'].includes(item.status);
+    return ['In Progress', 'In progress'].includes(item.status);
+  });
   const selectedStaffPayments = payments.filter(payment => payment.recordedBy === selectedStaffProfileId).sort((a, b) => b.paidAt.localeCompare(a.paidAt));
   const selectedStaffAttendance = attendanceRecords.filter(record => record.userId === selectedStaffProfileId).sort((a, b) => b.workDate.localeCompare(a.workDate));
   const selectedStaffAttendanceEquivalent = selectedStaffAttendance.filter(record => record.dayType !== 'Absent' && String(record.status || '').toLowerCase() !== 'absent').reduce((sum, record) => sum + (record.dayType === 'Half day' ? 0.5 : 1), 0);
@@ -1343,6 +1350,11 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                   {filtered.length} customers
                 </span>
               </div>
+              <div className="chips" aria-label="Filter customers by status">
+                {(['All', 'Active', 'Suspended', 'Inactive'] as const).map(status => (
+                  <button type="button" key={status} className={'chip ' + (customerStatusFilter === status ? 'active' : '')} aria-pressed={customerStatusFilter === status} onClick={() => setCustomerStatusFilter(status)}>{status}{status === 'All' ? ' · ' + customers.length : ' · ' + customers.filter(customer => status === 'Inactive' ? customer.status === 'Inactive' || customer.status === 'Unknown' : customer.status === status).length}</button>
+                ))}
+              </div>
               <CustomerTable
                 rows={filtered}
                 onView={setSelected}
@@ -1444,8 +1456,13 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                 <div className="complaint-counts"><span><b>{complaints.filter(item => !['Solved','Resolved'].includes(item.status)).length}</b> Pending / active</span><span><b>{complaints.filter(item => item.status === 'Solved' || item.status === 'Resolved').length}</b> Solved</span><span><b>{complaints.filter(item => item.status === 'Not Solved').length}</b> Not solved</span></div>
                 <span className="result-count">{complaints.length} records</span>
               </div>
+              <div className="chips" aria-label="Filter complaints by status">
+                {(['All', 'Open', 'In progress', 'Resolved'] as const).map(status => (
+                  <button type="button" key={status} className={'chip ' + (complaintStatusFilter === status ? 'active' : '')} aria-pressed={complaintStatusFilter === status} onClick={() => setComplaintStatusFilter(status)}>{status}{status === 'All' ? ' · ' + complaints.length : ' · ' + filteredComplaints.filter(item => status === 'Open' ? !['Solved', 'Resolved'].includes(item.status) : status === 'Resolved' ? ['Solved', 'Resolved'].includes(item.status) : ['In Progress', 'In progress'].includes(item.status)).length}</button>
+                ))}
+              </div>
               <div className="complaint-list">
-                {complaints.map(c => {
+                {filteredComplaints.map(c => {
                   const canUpdate = isAdmin;
                   const targetName = c.complaintFor === 'Staff' ? (c.staffName || 'Staff member') : (c.customerName || 'Customer');
                   return <article className="complaint-card" key={c.id}>
