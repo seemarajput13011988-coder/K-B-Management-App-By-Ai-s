@@ -813,3 +813,55 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
   background: #17263b;
   border-color: #2b3d56;
 }
+
+
+/* Final dialog/navigation collision guard.
+   The mobile tab bar is fixed to the viewport; reserve its full footprint and
+   keep dialogs above it. Staff actions are a direct modal child so sticky
+   positioning is not constrained by the scrolling form element. */
+@media (max-width: 700px) {
+  .modal-backdrop {
+    z-index: 500 !important;
+    display: grid !important;
+    place-items: center !important;
+    padding: max(10px, env(safe-area-inset-top, 0px)) 12px
+      calc(82px + env(safe-area-inset-bottom, 0px)) !important;
+    overflow-y: auto !important;
+    overscroll-behavior: contain;
+  }
+
+  .modal {
+    width: min(100%, 540px) !important;
+    max-height: calc(100dvh - 104px - env(safe-area-inset-bottom, 0px)) !important;
+    min-height: 0 !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .modal > .staff-create-actions {
+    position: sticky !important;
+    bottom: calc(-1 * env(safe-area-inset-bottom, 0px)) !important;
+    z-index: 30 !important;
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    gap: 10px !important;
+    margin: 14px -16px calc(-16px - env(safe-area-inset-bottom, 0px)) !important;
+    padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px)) !important;
+    background: var(--kb-surface, #fff) !important;
+    border-top: 1px solid var(--kb-line, #e4eaf2) !important;
+    box-shadow: 0 -8px 20px rgba(16, 35, 58, .08);
+  }
+
+  .modal > .staff-create-actions .btn {
+    flex: 1 1 0 !important;
+    min-width: 0 !important;
+    min-height: 48px !important;
+  }
+}
+
+[data-theme="dark"] .modal > .staff-create-actions {
+  background: #17263b !important;
+  border-color: #2b3d56 !important;
+}
