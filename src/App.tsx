@@ -15,6 +15,8 @@ const GpsTrackingWorkspace = lazy(() => import('./GpsTrackingWorkspace'));
 const InstallationsWorkspace = lazy(() => import('./InstallationsWorkspace'));
 const CalendarWorkspace = lazy(() => import('./CalendarWorkspace'));
 import { useAppPreferences } from './appPreferences';
+import { buildNav, TABS } from './ui/nav';
+import { pageSubtitle } from './ui/pageMeta';
 import { DateRangeFilter, dateRangeBounds, initialDateRange, isInDateRange, sortReportRows } from './components/DateRangeFilter';
 import type { DateRange } from './components/DateRangeFilter';
 import { exportCsvFile } from './lib/file-export';
@@ -844,6 +846,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
     {
       label: 'TEAM & ADMINISTRATION',
       items: [
+        ...(isAdmin ? [{ label: 'Team Operations', icon: UsersRound }] : []),
         ...(isAdmin ? [{ label: 'GPS Tracking', icon: MapPin }] : []),
         ...(isAdmin ? [{ label: 'Staff', icon: UserRound, count: staff.length }] : []),
         ...(canManageAdmins ? [{ label: 'Admin Accounts', icon: ShieldCheck, count: adminAccounts.length || undefined }] : []),
@@ -852,13 +855,10 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
     },
   ];
   const moreNav = moreNavGroups.flatMap(group => group.items);
+  const configuredNav = buildNav(taskPage, isAdmin ? 'admin' : 'staff', canManageAdmins);
   const mobileTabs = [
-    { label: 'Overview', icon: Home },
-    ...(isAdmin
-      ? [{ label: 'Customers', icon: Users }, { label: 'Finance & Billing', icon: IndianRupee }]
-      : [{ label: 'My Day', icon: CalendarDays }, { label: 'Customers', icon: Users }]),
-    { label: 'Complaints', icon: MessageSquare },
-    { label: 'More', icon: MoreHorizontal },
+    ...TABS[isAdmin ? 'admin' : 'staff'].map(id => configuredNav.find(item => item.id === id)).filter((item): item is NonNullable<typeof item> => Boolean(item)),
+    { id: 'More', label: 'More', icon: MoreHorizontal },
   ];
 
   return (
@@ -976,34 +976,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                 K&B NET SERVICE <span>•</span> OPERATIONS
               </div>
               <h1>{page === 'Overview' ? (isAdmin ? greeting + ', ' + session.user.displayName : 'Your work at a glance') : page}</h1>
-              <p>
-                {page === 'Overview'
-                  ? 'Here’s what is happening with your connections today.'
-                  : page === 'Customers'
-                    ? 'Manage customer details, connections and account status.'
-                    : page === 'Plans & Pricing'                      ? 'Your available internet packages and monthly pricing.'
-                      : page === 'Subscriptions'
-                        ? 'Manage customer renewals, subscription periods and expiry dates.'
-                      : page === 'Installations'
-                        ? 'Schedule customer installations, upgrades and repair visits.'
-                      : page === 'Inventory'
-                        ? 'Track equipment, stock levels, supplies and stock movements.'
-                      : page === 'Invoices'
-                        ? 'Create professional GST invoices and customer-ready PDF documents.'
-                      : page === 'Payments'
-                        ? 'Track customer collections and payment history.'
-                        : page === 'Staff'
-                          ? 'Manage staff accounts, assignments and collection performance.'
-                          : page === 'Admin Accounts'
-                            ? 'Create and view administrator sign-in accounts.'
-                          : page === 'Calendar'
-                            ? 'View task deadlines and team attendance by date.'
-                          : page === taskPage
-                            ? (isAdmin ? 'Assign work, set priorities and monitor team progress.' : 'Your assigned work, priorities and due dates.')
-                            : page === 'My Day' || page === 'Salary'
-                              ? (isAdmin ? 'Record monthly staff salaries and export payroll.' : 'Your attendance, customer visits, team updates and messages.')
-                              : 'Track and resolve customer service requests.'}
-              </p>
+              <p>{page === taskPage && isAdmin ? 'Assign work, set priorities and monitor team progress.' : pageSubtitle(page, isAdmin)}</p>
             </div>
             <div className="heading-actions">
               {page === 'Staff' && isAdmin && (
@@ -1505,13 +1478,13 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
       </main>
 
       <nav className="mobile-tab-bar" aria-label="Main navigation">
-        {mobileTabs.map(item => item.label === 'More' ? (
-          <button key={item.label} type="button" className={'mobile-tab ' + (mobileNav || moreNav.some(tool => tool.label === page) ? 'active' : '')} onClick={() => setMobileNav(open => !open)} aria-expanded={mobileNav}>
+        {mobileTabs.map(item => item.id === 'More' ? (
+          <button key={item.id} type="button" className={'mobile-tab ' + (mobileNav || moreNav.some(tool => tool.label === page) ? 'active' : '')} onClick={() => setMobileNav(open => !open)} aria-expanded={mobileNav}>
             <item.icon size={20}/><span>{item.label}</span>
           </button>
         ) : (
-          <button key={item.label} type="button" className={'mobile-tab ' + (page === item.label ? 'active' : '')} onClick={() => { setPage(item.label); setMobileNav(false); setNotificationsOpen(false); }} aria-current={page === item.label ? 'page' : undefined}>
-            <item.icon size={20}/><span>{item.label === 'Finance & Billing' ? 'Finance' : item.label}</span>
+          <button key={item.id} type="button" className={'mobile-tab ' + (page === item.id ? 'active' : '')} onClick={() => { setPage(item.id); setMobileNav(false); setNotificationsOpen(false); }} aria-current={page === item.id ? 'page' : undefined}>
+            <item.icon size={20}/><span>{item.label}</span>
           </button>
         ))}
       </nav>
