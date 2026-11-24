@@ -70,3 +70,21 @@
   .mobile-tab { color: var(--text-3) !important; }
   .mobile-tab.active { background: var(--brand-50) !important; color: var(--brand-600) !important; border-color: var(--brand-100) !important; }
 }
+
+/* Home hero and shortcut grid. */
+.home-hero { position: relative; margin: -16px -16px 18px; padding: 24px 20px 54px; color: #fff; background: var(--hero); overflow: hidden; border-radius: 0 0 var(--r-xl) var(--r-xl); }
+.home-hero-glow { position: absolute; width: 260px; height: 260px; right: -80px; top: -90px; border-radius: 50%; background: radial-gradient(closest-side, rgba(255,255,255,.28), transparent); pointer-events: none; }
+.home-hero-greeting { position: relative; margin: 0; opacity: .88; font-size: var(--fs-sm); }
+.home-hero-name { position: relative; margin: 2px 0 0; color: #fff; font-size: var(--fs-2xl); letter-spacing: -.035em; }
+.home-hero-summary { position: absolute; left: 16px; right: 16px; bottom: -34px; display: grid; gap: 2px; min-height: 88px; padding: 14px 16px; border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--surface); color: var(--text); box-shadow: var(--shadow-2); }
+.home-hero-summary small { color: var(--text-2); font-weight: 650; }
+.home-hero-summary strong { font-size: var(--fs-xl); }
+.home-hero-summary button { position: absolute; right: 12px; top: 14px; display: flex; align-items: center; gap: 4px; padding: 7px 11px; border: 0; border-radius: var(--r-pill); background: var(--brand-50); color: var(--brand-600); font: 700 12px var(--font); }
+.home-quick-grid { position: relative; margin-top: 50px; display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 14px 8px; }
+.home-quick-grid button { display: grid; justify-items: center; gap: 7px; min-width: 0; padding: 3px 2px; border: 0; background: transparent; color: var(--text); font: inherit; }
+.home-quick-grid button:active span { transform: scale(.94); }
+.home-quick-grid span { display: grid; place-items: center; width: 52px; height: 52px; border-radius: 17px; transition: transform var(--t-fast); }
+.home-quick-grid small { max-width: 100%; color: var(--text-2); font-size: 11px; font-weight: 700; text-align: center; overflow-wrap: anywhere; }
+@media (min-width: 701px) { .home-hero { margin: 0 0 18px; border-radius: var(--r-xl); } }
+@media (min-width: 1024px) { .home-quick-grid { grid-template-columns: repeat(8, minmax(0,1fr)); } }
+@media (max-width: 360px) { .home-quick-grid { grid-template-columns: repeat(4,minmax(0,1fr)); gap: 12px 4px; } .home-quick-grid span { width: 46px; height: 46px; } }
