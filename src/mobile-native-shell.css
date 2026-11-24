@@ -75,6 +75,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
     color: #31577f;
   }
   .hamburger svg { width: 19px; height: 19px; }
+  .desktop-crumb { display: none !important; }
+  .crumb .mobile-brand { display: block !important; }
   .crumb {
     flex: 1 1 auto;
     min-width: 0;
@@ -363,4 +365,6 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 
 @media (min-width: 701px) {
   .mobile-tab-bar { display: none !important; }
+  .mobile-brand { display: none !important; }
+  .desktop-crumb { display: inline !important; }
 }
