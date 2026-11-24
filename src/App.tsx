@@ -280,18 +280,21 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   }, []);
 
   useEffect(() => {
-    if (!mobileNav) return;
+    // Always clear stale scroll locks when the drawer is closed or the app remounts.
+    if (!mobileNav) {
+      document.body.style.removeProperty('overflow');
+      document.documentElement.style.removeProperty('overflow');
+      return;
+    }
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === 'Escape') setMobileNav(false);
     };
-    const previousBodyOverflow = document.body.style.overflow;
-    const previousRootOverflow = document.documentElement.style.overflow;
     document.body.style.overflow = 'hidden';
     document.documentElement.style.overflow = 'hidden';
     window.addEventListener('keydown', closeOnEscape);
     return () => {
-      document.body.style.overflow = previousBodyOverflow;
-      document.documentElement.style.overflow = previousRootOverflow;
+      document.body.style.removeProperty('overflow');
+      document.documentElement.style.removeProperty('overflow');
       window.removeEventListener('keydown', closeOnEscape);
     };
   }, [mobileNav]);
