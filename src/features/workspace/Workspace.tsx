@@ -89,6 +89,7 @@ type StaffInventoryItem = { id: string; name: string; sku: string; category: str
 type StaffInstallationSummary = { id: string; customerName: string; assignedTo?: string; scheduledDate?: string; status?: string; type?: string; address?: string; createdAt?: string; updatedAt?: string };
 type StaffPayrollSummary = { id: string; staffUserId: string; staffName: string; paidAt?: string; period?: string; amount: number; method?: string; createdAt?: string; recordedByName?: string };
 type StaffHolidayRequest={id:string;userId:string;displayName:string;startDate:string;endDate:string;reason:string;status:'pending'|'approved'|'rejected';createdAt:string;reviewedAt?:string;reviewedByName?:string};
+type ComplaintSubmission = Omit<Complaint, 'id' | 'status' | 'createdByName' | 'assignedToName' | 'resolvedByName' | 'resolvedAt' | 'resolutionDetails' | 'attachments'> & { assignedTo?: string; photoFile: File | null; videoFile: File | null };
 const getToken=()=>getSession()?.token || '';
 const api = client;
 
@@ -729,7 +730,7 @@ export function Workspace({ session, onLogout }: { session: Session; onLogout: (
       flash(err instanceof Error ? err.message : 'Could not delete payment.');
     }
   }
-  async function saveComplaint(data: any) {
+  async function saveComplaint(data: ComplaintSubmission) {
     try {
       const { photoFile, videoFile, ...fields } = data;
       const attachments = await Promise.all([photoFile, videoFile].filter((item): item is File => item instanceof File).map(async file => ({
