@@ -25,8 +25,8 @@ async function exportInstallationsPdf(items:Installation[]){
   catch(error) { notifyToast(error instanceof Error?error.message:'Could not create installation PDF.'); }
 }
 
-export default function InstallationsWorkspace({
-  const confirm = useConfirm();customers,staff,isAdmin,flash}:{customers:Customer[];staff:Staff[];isAdmin:boolean;flash:(message:string)=>void}) {
+export default function InstallationsWorkspace({customers,staff,isAdmin,flash}:{customers:Customer[];staff:Staff[];isAdmin:boolean;flash:(message:string)=>void}) {
+  const confirm = useConfirm();
   const [items,setItems]=useState<Installation[]>([]);
   const [loading,setLoading]=useState(true);
   const [saving,setSaving]=useState(false);
