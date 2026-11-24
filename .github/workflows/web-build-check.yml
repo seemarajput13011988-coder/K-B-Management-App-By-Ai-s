@@ -10,6 +10,7 @@ on:
       - on-demand-gps-proof-permissions
       - ui-rebuild-gps-holidays-api-fixes
       - nexus-native-redesign-2026-11-19
+      - nexus-redesign-phase3-2026-11-24
     paths:
       - "src/**"
       - "package.json"
