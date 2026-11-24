@@ -3,7 +3,7 @@ import type { Customer, Payment } from '../../types/models';
 import { Field } from '../../ui/Field';
 import { Modal } from '../../ui/Modal';
 
-type PaymentForm = Omit<Payment, 'id' | 'amount'> & { id?: string; amount: number | string };
+type PaymentForm = { id?: string; customerId: string; customerName?: string; amount: number | string; method: string; month: string; paidAt: string; recordedBy?: string; recordedByName?: string };
 
 export function PaymentModal({ customers, initial, onClose, onSave }: { customers: Customer[]; initial: Payment | null; onClose: () => void; onSave: (data: Omit<Payment, 'id'>) => void | Promise<void> }) {
   const [f, s] = useState<PaymentForm>(initial || {
