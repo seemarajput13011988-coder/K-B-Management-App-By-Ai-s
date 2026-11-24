@@ -352,10 +352,6 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
     width:100%;
     min-width:0;
   }
-  .plans-grid,
-  .staff-insight-grid {
-    grid-template-columns:minmax(0,1fr);
-  }
   .plan-card { padding:17px; }
   .complaint-card,
   .task-card,
