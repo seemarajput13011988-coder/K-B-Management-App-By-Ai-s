@@ -18,6 +18,7 @@ import { useAppPreferences } from './appPreferences';
 import { buildNav, TABS } from './ui/nav';
 import { pageSubtitle } from './ui/pageMeta';
 import { MoreServicesSheet } from './ui/MoreServicesSheet';
+import { useConfirm } from './ui/ConfirmDialog';
 import { DateRangeFilter, dateRangeBounds, initialDateRange, isInDateRange, sortReportRows } from './components/DateRangeFilter';
 import type { DateRange } from './components/DateRangeFilter';
 import { exportCsvFile } from './lib/file-export';
@@ -169,6 +170,7 @@ const fileAsBase64 = (file: File) => new Promise<string>((resolve, reject) => {
 });
 
 function Workspace({ session, onLogout }: { session: Session; onLogout: () => void }) {
+  const confirm = useConfirm();
   const isAdmin = session.user.role === 'admin';
   const canManageAdmins = session.user.canManageAdmins === true;
   const { language, setLanguage, theme, toggleTheme } = useAppPreferences();
@@ -506,7 +508,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
 
 
   async function deleteNotification(item: AppNotification) {
-    if (!window.confirm('Delete this notification?')) return;
+    if (!await confirm({ title: 'Delete this notification?', danger: true })) return;
     try {
       await api.delete('/api/notifications/' + item.id);
       setNotifications(current => current.filter(entry => entry.id !== item.id));
@@ -542,7 +544,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
     }
   }
   async function deletePlan(plan: Plan) {
-    if (!window.confirm('Permanently delete plan "' + plan.name + '"? Plans linked to customers cannot be deleted; archive those instead.')) return;
+    if (!await confirm({ title: 'Permanently delete plan "' + plan.name + '"? Plans linked to customers cannot be deleted; archive those instead.', danger: true })) return;
     try {
       await api.delete('/api/plans/' + plan.id);
       await load();
@@ -553,7 +555,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   }
   async function togglePlanStatus(plan: Plan) {
     const nextActive = !plan.active;
-    if (!nextActive && !window.confirm('Archive ' + plan.name + '? Existing customer records will be kept unchanged.')) return;
+    if (!nextActive && !await confirm({ title: 'Archive ' + plan.name + '? Existing customer records will be kept unchanged.', danger: true })) return;
     try {
       await api.put('/api/plans/' + plan.id, { ...plan, active: nextActive } as unknown as Record<string, unknown>);
       await load();
@@ -579,7 +581,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
     }
   }
   async function removeCustomer(c: Customer) {
-    if (!window.confirm('Delete ' + c.name + '? This cannot be undone.'))
+    if (!await confirm({ title: 'Delete ' + c.name + '? This cannot be undone.', danger: true }))
       return;
     try {
       await api.delete('/api/customers/' + c.id);
@@ -611,7 +613,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
     }catch(error){flash(error instanceof Error?error.message:'Could not update attendance.');}
   }
   async function reviewHolidayRequest(item:StaffHolidayRequest,status:'approved'|'rejected') {
-    if (!window.confirm((status==='approved'?'Approve':'Decline')+' '+item.displayName+' holiday request for '+item.startDate+' to '+item.endDate+'?')) return;
+    if (!await confirm({ title: (status==='approved'?'Approve':'Decline')+' '+item.displayName+' holiday request for '+item.startDate+' to '+item.endDate+'?', danger: true })) return;
     try {
       await api.put('/api/holidays/'+item.id,{status});
       await load(true);
@@ -624,7 +626,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   async function reviewStaffRequest(item:StaffRegistrationRequest,status:'approved'|'rejected') {
     const password=staffRequestPasswords[item.id]||'';
     if(status==='approved'&&password.length<10){flash('Enter a temporary password of at least 10 characters.');return;}
-    if(!window.confirm(status==='approved'?'Approve '+item.displayName+' and create the staff account?':'Decline '+item.displayName+' staff access request?'))return;
+    if(!await confirm({ title: status==='approved'?'Approve '+item.displayName+' and create the staff account?':'Decline '+item.displayName+' staff access request?', danger: true }))return;
     try{
       await api.put('/api/staff-registration-requests/'+item.id,{status,...(status==='approved'?{password}:{})});
       setStaffRequestPasswords(current=>{const next={...current};delete next[item.id];return next;});
@@ -644,12 +646,12 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   }
   async function removeAdmin(account: AdminAccount) {
     if (account.canManageAdmins || account.isSuperAdmin || account.id === session.user.id) { flash('The primary super-admin account cannot be removed.'); return; }
-    if (!window.confirm('Remove administrator account ' + account.displayName + '? Their sign-in will be revoked. Existing business records and history will be preserved.')) return;
+    if (!await confirm({ title: 'Remove administrator account ' + account.displayName + '? Their sign-in will be revoked. Existing business records and history will be preserved.', danger: true })) return;
     try { await api.delete('/api/admins/' + account.id); await load(); flash('Admin account removed. Existing records were preserved.'); }
     catch (err) { flash(err instanceof Error ? err.message : 'Could not remove admin account.'); }
   }
   async function removeStaff(staffUser: Staff) {
-    if (!window.confirm('Delete staff account "' + staffUser.displayName + '"? Their sign-in will be removed and assigned customers will become unassigned. Payment, attendance and work history will be preserved.')) return;
+    if (!await confirm({ title: 'Delete staff account "' + staffUser.displayName + '"? Their sign-in will be removed and assigned customers will become unassigned. Payment, attendance and work history will be preserved.', danger: true })) return;
     try {
       await api.delete('/api/staff/' + staffUser.id);
       if (selectedStaffProfileId === staffUser.id) setSelectedStaffProfileId('');
@@ -700,7 +702,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
     }
   }
   async function deletePayment(payment: Payment) {
-    if (!isAdmin || !window.confirm('Delete this payment record for ' + payment.customerName + '? The audit history will be preserved.')) return;
+    if (!isAdmin || !await confirm({ title: 'Delete this payment record for ' + payment.customerName + '? The audit history will be preserved.', danger: true })) return;
     try {
       await api.delete('/api/payments/' + payment.id);
       await load();
@@ -736,7 +738,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
     }
   }
   async function deleteTask(task: Task) {
-    if (!isAdmin || !window.confirm('Delete task "' + task.title + '"? Its evidence files will also be removed.')) return;
+    if (!isAdmin || !await confirm({ title: 'Delete task "' + task.title + '"? Its evidence files will also be removed.', danger: true })) return;
     try {
       await api.delete('/api/tasks/' + task.id);
       await load();
@@ -790,7 +792,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
     }
   }
   async function deleteComplaint(item: Complaint) {
-    if (!window.confirm('Delete this complaint and its attached photo/video? This cannot be undone.')) return;
+    if (!await confirm({ title: 'Delete this complaint and its attached photo/video? This cannot be undone.', danger: true })) return;
     try {
       await api.delete('/api/complaints/' + item.id);
       await load();
@@ -1273,7 +1275,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                     </div>
                     {['Pending', 'Contacted'].includes(String(request.status || '')) ? (
                       <div className="portal-request-actions">
-                        <button className="btn primary compact" onClick={async () => { const confirmed = window.confirm('Create an inactive customer record for ' + String(request.name || 'this applicant') + '?\\n\\nMobile: ' + String(request.phone || 'Not provided') + '\\nRequested plan: ' + String(request.planName || request.plan || 'Not specified') + '\\n\\nThis does not activate service. Review the address and plan details before proceeding.'); if (!confirmed) return; try { await api.post('/api/portal/connection-requests/' + encodeURIComponent(request.id) + '/convert', {}); flash('Request converted to an inactive customer record. Confirm service details before activation.'); await load(true); } catch (error) { flash(error instanceof Error ? error.message : 'Could not convert this request.'); } }}>Convert to customer</button>
+                        <button className="btn primary compact" onClick={async () => { const confirmed = await confirm({ title: 'Create an inactive customer record for ' + String(request.name || 'this applicant') + '?\\n\\nMobile: ' + String(request.phone || 'Not provided') + '\\nRequested plan: ' + String(request.planName || request.plan || 'Not specified') + '\\n\\nThis does not activate service. Review the address and plan details before proceeding.', danger: true }); if (!confirmed) return; try { await api.post('/api/portal/connection-requests/' + encodeURIComponent(request.id) + '/convert', {}); flash('Request converted to an inactive customer record. Confirm service details before activation.'); await load(true); } catch (error) { flash(error instanceof Error ? error.message : 'Could not convert this request.'); } }}>Convert to customer</button>
                         {request.status === 'Pending' && <button className="btn secondary compact" onClick={async () => { try { await api.put('/api/portal/connection-requests/' + encodeURIComponent(request.id), { status: 'Contacted' }); flash('Request marked as contacted.'); await load(true); } catch (error) { flash(error instanceof Error ? error.message : 'Could not update this request.'); } }}>Mark contacted</button>}
                         <button className="btn danger compact" onClick={async () => { try { await api.put('/api/portal/connection-requests/' + encodeURIComponent(request.id), { status: 'Rejected' }); flash('Request marked as rejected.'); await load(true); } catch (error) { flash(error instanceof Error ? error.message : 'Could not update this request.'); } }}>Reject</button>
                       </div>
@@ -1302,8 +1304,8 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                     </div>
                     {request.status === 'Pending' ? (
                       <div className="portal-request-actions">
-                        <button className="btn primary compact" onClick={async () => { const confirmed = window.confirm('Confirm plan change for ' + String(request.customerName || 'this customer') + '?\\n\\nCurrent plan: ' + String(request.currentPlan || 'Unknown') + '\\nNew plan: ' + String(request.requestedPlan || 'Unknown') + '\\nNew monthly fee: ' + money(Number(request.requestedMonthlyFee || 0)) + '\\n\\nApproving immediately updates the customer record and monthly fee.'); if (!confirmed) return; try { await api.post('/api/portal/plan-change-requests/' + encodeURIComponent(request.id) + '/decision', { decision: 'Approved' }); flash('Customer plan updated successfully.'); await load(true); } catch (error) { flash(error instanceof Error ? error.message : 'Could not approve this plan change.'); } }}>Approve & update plan</button>
-                        <button className="btn danger compact" onClick={async () => { const reviewNote = window.prompt('Optional reason for rejecting this plan-change request:'); if (reviewNote === null) return; const confirmed = window.confirm('Reject the plan-change request from ' + String(request.customerName || 'this customer') + '?'); if (!confirmed) return; try { await api.post('/api/portal/plan-change-requests/' + encodeURIComponent(request.id) + '/decision', { decision: 'Rejected', reviewNote: reviewNote.trim().slice(0, 300) }); flash('Plan-change request rejected.'); await load(true); } catch (error) { flash(error instanceof Error ? error.message : 'Could not reject this request.'); } }}>Reject</button>
+                        <button className="btn primary compact" onClick={async () => { const confirmed = await confirm({ title: 'Confirm plan change for ' + String(request.customerName || 'this customer') + '?\\n\\nCurrent plan: ' + String(request.currentPlan || 'Unknown') + '\\nNew plan: ' + String(request.requestedPlan || 'Unknown') + '\\nNew monthly fee: ' + money(Number(request.requestedMonthlyFee || 0)) + '\\n\\nApproving immediately updates the customer record and monthly fee.', danger: true }); if (!confirmed) return; try { await api.post('/api/portal/plan-change-requests/' + encodeURIComponent(request.id) + '/decision', { decision: 'Approved' }); flash('Customer plan updated successfully.'); await load(true); } catch (error) { flash(error instanceof Error ? error.message : 'Could not approve this plan change.'); } }}>Approve & update plan</button>
+                        <button className="btn danger compact" onClick={async () => { const reviewNote = window.prompt('Optional reason for rejecting this plan-change request:'); if (reviewNote === null) return; const confirmed = await confirm({ title: 'Reject the plan-change request from ' + String(request.customerName || 'this customer') + '?', danger: true }); if (!confirmed) return; try { await api.post('/api/portal/plan-change-requests/' + encodeURIComponent(request.id) + '/decision', { decision: 'Rejected', reviewNote: reviewNote.trim().slice(0, 300) }); flash('Plan-change request rejected.'); await load(true); } catch (error) { flash(error instanceof Error ? error.message : 'Could not reject this request.'); } }}>Reject</button>
                       </div>
                     ) : (
                       <span className={'portal-request-status ' + String(request.status || '').toLowerCase()}>{request.status} · Reviewed {dateLabel(request.reviewedAt || request.createdAt)}</span>
