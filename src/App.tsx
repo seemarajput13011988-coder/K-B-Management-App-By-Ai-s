@@ -22,6 +22,7 @@ import { useConfirm } from './ui/ConfirmDialog';
 import { EmptyState } from './ui/EmptyState';
 import { HomeHero } from './ui/HomeHero';
 import { clearSession, getSession, saveSession, type Session } from './lib/session';
+import { registerBackButton } from './lib/backButton';
 import { DateRangeFilter, dateRangeBounds, initialDateRange, isInDateRange, sortReportRows } from './components/DateRangeFilter';
 import type { DateRange } from './components/DateRangeFilter';
 import { exportCsvFile } from './lib/file-export';
@@ -263,6 +264,31 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   const [mobileNav, setMobileNav] = useState(false);
   const [showMoreNav, setShowMoreNav] = useState(false);
   const [showMoreSheet, setShowMoreSheet] = useState(false);
+  useEffect(() => registerBackButton(() => {
+    if (showMoreSheet) { setShowMoreSheet(false); return true; }
+    if (notificationsOpen) { setNotificationsOpen(false); return true; }
+    if (mobileNav) { setMobileNav(false); return true; }
+    if (showAccountSettings) { setShowAccountSettings(false); return true; }
+    if (showCustomer) { setShowCustomer(false); setEditing(null); return true; }
+    if (showPlan) { setShowPlan(false); setEditingPlan(null); return true; }
+    if (showPayment) { setShowPayment(false); setEditingPayment(null); return true; }
+    if (showComplaint) { setShowComplaint(false); return true; }
+    if (showTask) { setShowTask(false); return true; }
+    if (showStaff) { setShowStaff(false); return true; }
+    if (showAdminModal) { setShowAdminModal(false); return true; }
+    if (permissionSetupOpen) { setPermissionSetupOpen(false); return true; }
+    if (completingTask) { setCompletingTask(null); return true; }
+    if (taskPreview) { setTaskPreview(null); return true; }
+    if (complaintPreview) { setComplaintPreview(null); return true; }
+    if (attendanceEdit) { setAttendanceEdit(null); return true; }
+    if (selected) { setSelected(null); return true; }
+    if (resetStaff) { setResetStaff(null); return true; }
+    if (editStaffUserId) { setEditStaffUserId(null); return true; }
+    if (page !== 'Overview') { setPage('Overview'); return true; }
+    return false;
+  }), [showMoreSheet, notificationsOpen, mobileNav, showAccountSettings, showCustomer, showPlan, showPayment, showComplaint, showTask, showStaff, showAdminModal, permissionSetupOpen, completingTask, taskPreview, complaintPreview, attendanceEdit, selected, resetStaff, editStaffUserId, page]);
+
+
 
 
   const [retentionItems, setRetentionItems] = useState<RetentionReviewItem[]>([]);
