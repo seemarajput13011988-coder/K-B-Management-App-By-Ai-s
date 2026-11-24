@@ -1458,7 +1458,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
               </div>
               <div className="chips" aria-label="Filter complaints by status">
                 {(['All', 'Open', 'In progress', 'Resolved'] as const).map(status => (
-                  <button type="button" key={status} className={'chip ' + (complaintStatusFilter === status ? 'active' : '')} aria-pressed={complaintStatusFilter === status} onClick={() => setComplaintStatusFilter(status)}>{status}{status === 'All' ? ' · ' + complaints.length : ' · ' + filteredComplaints.filter(item => status === 'Open' ? !['Solved', 'Resolved'].includes(item.status) : status === 'Resolved' ? ['Solved', 'Resolved'].includes(item.status) : ['In Progress', 'In progress'].includes(item.status)).length}</button>
+                  <button type="button" key={status} className={'chip ' + (complaintStatusFilter === status ? 'active' : '')} aria-pressed={complaintStatusFilter === status} onClick={() => setComplaintStatusFilter(status)}>{status}{status === 'All' ? ' · ' + complaints.length : ' · ' + complaints.filter(item => status === 'Open' ? !['Solved', 'Resolved'].includes(item.status) : status === 'Resolved' ? ['Solved', 'Resolved'].includes(item.status) : ['In Progress', 'In progress'].includes(item.status)).length}</button>
                 ))}
               </div>
               <div className="complaint-list">
