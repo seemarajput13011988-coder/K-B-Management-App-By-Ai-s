@@ -503,3 +503,8 @@ body {
 [data-theme="dark"] .btn.primary {
   background: linear-gradient(135deg, #397fc2, #285d98);
 }
+
+@keyframes kb-update-scan {
+  from { transform: translateX(-85%); }
+  to { transform: translateX(190%); }
+}
