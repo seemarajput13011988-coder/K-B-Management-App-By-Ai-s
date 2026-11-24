@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Signal, UserRound, ShieldCheck, KeyRound, Eye, EyeOff } from 'lucide-react';
 import { Field } from '../../ui/Field';
-import type { Session } from '../../lib/session';
 import { submitStaffRegistrationRequest, getStaffRegistrationStatus } from '../../lib/api';
 
 export function LoginScreen({onLogin}:{onLogin:(id:string,pw:string,role:'admin'|'staff')=>Promise<void>}){
