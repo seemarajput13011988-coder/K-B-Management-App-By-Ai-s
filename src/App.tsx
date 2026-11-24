@@ -2356,8 +2356,8 @@ function ComplaintModal({ customers, staff, session, onClose, onSave, flash }: a
   function validateFile(file: File, kind: 'photo' | 'video') {
     const allowed = kind === 'photo' ? ['image/jpeg', 'image/png', 'image/webp'] : ['video/mp4', 'video/webm', 'video/quicktime'];
     const maxBytes = kind === 'photo' ? 2 * 1024 * 1024 : 8 * 1024 * 1024;
-    if (!allowed.includes(file.type)) { window.alert(kind === 'photo' ? 'Choose a JPG, PNG or WEBP photo.' : 'Choose an MP4, WEBM or MOV video.'); return false; }
-    if (file.size > maxBytes) { window.alert(kind === 'photo' ? 'Photo must be 2 MB or smaller.' : 'Video must be 8 MB or smaller.'); return false; }
+    if (!allowed.includes(file.type)) { flash(kind === 'photo' ? 'Choose a JPG, PNG or WEBP photo.' : 'Choose an MP4, WEBM or MOV video.'); return false; }
+    if (file.size > maxBytes) { flash(kind === 'photo' ? 'Photo must be 2 MB or smaller.' : 'Video must be 8 MB or smaller.'); return false; }
     return true;
   }
   return <Modal title="New complaint" subtitle="Choose a customer or staff member, then add the issue details." onClose={onClose}>
