@@ -368,3 +368,138 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   .mobile-brand { display: none !important; }
   .desktop-crumb { display: inline !important; }
 }
+
+
+/* K&B Nexus stability pass: reliable phone scrolling, wrapping and calmer motion. */
+:root {
+  --kb-primary: #285f9a;
+  --kb-primary-deep: #1c4777;
+  --kb-accent: #e99538;
+  --kb-canvas: #f3f6fb;
+  --kb-surface: #ffffff;
+  --kb-line: #e2e9f2;
+  --kb-ink: #1d2d43;
+  --kb-muted: #718198;
+  --kb-shadow: 0 8px 26px rgba(24, 48, 79, .075);
+}
+html, body, #root {
+  min-height: 100%;
+  height: auto;
+}
+body {
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: auto;
+}
+.shell, .main, .content {
+  min-width: 0;
+}
+.panel, .ops-panel, .finance-panel, .calendar-panel, .task-card,
+.staff-insight, .plan-card, .ops-summary, .stat-card {
+  min-width: 0;
+  border: 1px solid var(--kb-line);
+  box-shadow: var(--kb-shadow);
+}
+.btn.primary {
+  background: linear-gradient(135deg, #2d70b4, #1e4f85);
+  box-shadow: 0 6px 16px rgba(35, 91, 151, .18);
+}
+.nav-item.active {
+  background: #263f60;
+  box-shadow: inset 3px 0 var(--kb-accent);
+}
+.nav-item.active svg { color: #f4b35e; }
+.kb-overview-metric-icon,
+.kb-overview-actions button svg {
+  background: #edf4fc;
+  color: #285f9a;
+}
+.kb-overview-metric strong { color: #1e3c60; }
+
+.content h1, .content h2, .content h3,
+.content p, .content small, .content label,
+.content button, .content td, .content th,
+.content span, .content strong {
+  min-width: 0;
+}
+.content h1, .content h2, .content h3 {
+  line-height: 1.25;
+  overflow-wrap: break-word;
+}
+.content p, .content small, .content label,
+.content td, .content th {
+  line-height: 1.45;
+}
+.content button {
+  line-height: 1.25;
+  white-space: normal;
+  overflow-wrap: break-word;
+}
+.content input, .content select, .content textarea {
+  min-width: 0;
+  max-width: 100%;
+}
+.quick-actions > *, .kb-overview-actions > *,
+.stats-grid > *, .finance-metrics > *,
+.ops-summary-grid > * {
+  min-width: 0;
+}
+.quick-actions button, .kb-overview-actions button {
+  min-width: 0;
+  white-space: normal;
+}
+@media (max-width: 700px) {
+  html, body, #root {
+    min-height: 100dvh;
+    height: auto !important;
+  }
+  body {
+    overflow-x: hidden;
+    overflow-y: auto;
+    touch-action: pan-y;
+  }
+  #root, .shell, .main {
+    height: auto !important;
+    min-height: 100dvh;
+    overflow: visible;
+  }
+  .main { display: flex; flex-direction: column; }
+  .content {
+    flex: 1 0 auto;
+    height: auto !important;
+    overflow: visible !important;
+    padding-bottom: calc(124px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+  .page-transition { animation: none !important; transform: none !important; }
+  .page-heading h1 { overflow-wrap: anywhere; }
+  .page-heading p { max-width: 100%; }
+  .quick-actions, .kb-overview-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .quick-actions > *, .kb-overview-actions > * { min-width: 0; }
+  .panel, .ops-panel, .finance-panel, .calendar-panel,
+  .task-card, .staff-insight, .plan-card, .ops-summary {
+    overflow-wrap: anywhere;
+  }
+}
+@media (hover: none) and (pointer: coarse) {
+  .page-transition, .festival-banner, .festival-banner-symbol,
+  .festival-sparkle, .finance-chart-bar, .status-chart-row i {
+    animation: none !important;
+  }
+  .panel, .ops-panel, .finance-panel, .calendar-panel,
+  .task-card, .plan-card, .quick-actions button, .btn, .nav-item {
+    transition: none !important;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation: none !important;
+    transition: none !important;
+  }
+}
+[data-theme="dark"] .btn.primary {
+  background: linear-gradient(135deg, #397fc2, #285d98);
+}
