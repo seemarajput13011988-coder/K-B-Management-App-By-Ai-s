@@ -67,7 +67,7 @@ export function ComplaintModal({ customers, staff, session, onClose, onSave, fla
       setSaving(false);
     }}>
       <Field label="Complaint for" wide>
-        <select value={f.complaintFor} onChange={event => setF({ ...f, complaintFor: event.target.value, customerId: '', staffId: isAdmin ? '' : session.user.id })}>
+        <select value={f.complaintFor} onChange={event => setF({ ...f, complaintFor: event.target.value as 'Customer' | 'Staff', customerId: '', staffId: isAdmin ? '' : session.user.id })}>
           <option value="Customer">Customer complaint</option>
           <option value="Staff">Staff complaint</option>
         </select>
