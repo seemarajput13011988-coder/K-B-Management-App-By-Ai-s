@@ -28,6 +28,7 @@ import { ProfileItem } from './ui/ProfileItem';
 import { CustomerTable } from './features/customers/CustomerTable';
 import { CustomerModal } from './features/customers/CustomerModal';
 import { PaymentTable } from './features/payments/PaymentTable';
+import { PaymentModal } from './features/payments/PaymentModal';
 import { MonthlyChart } from './features/overview/MonthlyChart';
 import { StatusChart } from './features/overview/StatusChart';
 import { OverduePanel } from './features/overview/OverduePanel';
@@ -1905,109 +1906,6 @@ function StaffPasswordModal({ staff, onClose, onSave }: any) {
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   return <Modal title={'Reset password · ' + staff.displayName} subtitle="The staff member will need to sign in again." onClose={onClose}><form className="form-grid" onSubmit={async e => { e.preventDefault(); setBusy(true); await onSave(password); setBusy(false); }}><Field label="New temporary password" wide><input type="password" required minLength={10} value={password} onChange={e => setPassword(e.target.value)} /></Field><div className="form-actions"><button type="button" className="btn secondary" onClick={onClose}>Cancel</button><button className="btn primary" disabled={busy}>{busy ? 'Saving…' : 'Reset password'}</button></div></form></Modal>;
-}
-function PaymentModal({ customers, initial, onClose, onSave }: any) {
-  const [f, s] = useState<any>(initial || {
-    customerId: customers[0]?.id || '',
-    amount: customers[0]?.monthlyFee || 0,
-    method: 'UPI',
-    month: new Date().toLocaleString('en-IN', {
-      month: 'long',
-      year: 'numeric',
-    }),
-    paidAt: new Date().toISOString().slice(0, 10),
-  });
-  const c = customers.find((x: Customer) => x.id === f.customerId);
-  return (
-    <Modal
-      title={initial ? 'Edit payment' : 'Record payment'}
-      subtitle={initial ? 'Correct the saved customer payment details.' : "Add a payment to the customer's collection history."}
-      onClose={onClose}
-    >
-      <form
-        className="form-grid"
-        onSubmit={e => {
-          e.preventDefault();
-          const paymentFields = { ...f };
-          delete paymentFields.id;
-          onSave({
-            ...paymentFields,
-            amount: Number(f.amount),
-            customerName: c?.name || '',
-          });
-        }}
-      >
-        <Field label="Customer" wide>
-          <select
-            required
-            value={f.customerId}
-            onChange={e => {
-              const x = customers.find(
-                (c: Customer) => c.id === e.target.value
-              );
-              s({
-                ...f,
-                customerId: e.target.value,
-                amount: x?.monthlyFee || 0,
-              });
-            }}
-          >
-            {customers.map((c: Customer) => (
-              <option value={c.id} key={c.id}>
-                {c.name} · {c.phone}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <Field label="Amount (₹)">
-          <input
-            type="number"
-            min="1"
-            required
-            value={f.amount}
-            onChange={e => s({ ...f, amount: e.target.value })}
-          />
-        </Field>
-        <Field label="Payment method">
-          <select
-            value={f.method}
-            onChange={e => s({ ...f, method: e.target.value })}
-          >
-            <option>UPI</option>
-            <option>Cash</option>
-            <option>Bank transfer</option>
-            <option>Other</option>
-          </select>
-        </Field>
-        <Field label="Billing month">
-          <input
-            required
-            value={f.month}
-            onChange={e => s({ ...f, month: e.target.value })}
-          />
-        </Field>
-        <Field label="Payment date">
-          <input
-            type="date"
-            required
-            value={f.paidAt}
-            onChange={e => s({ ...f, paidAt: e.target.value })}
-          />
-        </Field>
-        <div className="form-actions">
-          <button type="button" className="btn secondary" onClick={onClose}>
-            Cancel
-          </button>
-          <button className="btn primary" disabled={!customers.length}>
-            {initial ? 'Save changes' : 'Save payment'}
-          </button>
-        </div>
-      </form>
-      {!customers.length && (
-        <p className="form-hint">Add a customer before recording a payment.</p>
-      )}
-    </Modal>
-  );
 }
 function ComplaintModal({ customers, staff, session, onClose, onSave, flash }: any) {
   const isAdmin = session.user.role === 'admin';
