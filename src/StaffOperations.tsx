@@ -64,6 +64,8 @@ export default function StaffOperations({ session, customers, flash, compact = f
   const [admins, setAdmins] = useState<Array<{id:string;userId:string;displayName:string;active:boolean}>>([]);
   const [adminForm, setAdminForm] = useState({userId:'',displayName:'',password:''});
   const [registrationRequests, setRegistrationRequests] = useState<StaffRegistrationRequest[]>([]);
+  const [registrationFilter, setRegistrationFilter] = useState<'all'|'pending'|'approved'|'rejected'>('all');
+  const [registrationSearch, setRegistrationSearch] = useState('');
   const [registrationPasswords, setRegistrationPasswords] = useState<Record<string,string>>({});
   const [dayType, setDayType] = useState<'Full day'|'Half day'>('Full day');
   const [staffDayTypes, setStaffDayTypes] = useState<Record<string, 'Full day'|'Half day'|'Absent'>>({});
@@ -360,13 +362,22 @@ export default function StaffOperations({ session, customers, flash, compact = f
       <div className="ops-location-list">{admins.map(item=><article className="ops-location-card" key={item.id}><div className="ops-person"><span className="avatar">{item.displayName.slice(0,2).toUpperCase()}</span><div><b>{item.displayName}</b><small>{item.userId} · {item.userId.toLowerCase()==='brajraj'?'Primary owner':'Administrator'}</small></div></div><div className="ops-location-detail"><span className={item.active?'ops-pill is-live':'ops-pill is-idle'}>{item.active?'ACTIVE':'DISABLED'}</span>{item.userId.toLowerCase()!=='brajraj' && <button className={'btn compact '+(item.active?'danger':'secondary')} disabled={busy} onClick={()=>updateAdminAccount(item,!item.active)}>{item.active?'Deactivate':'Reactivate'}</button>}</div></article>)}</div>
     </section>}
 
-    {admin && <section className="panel ops-panel">
-      <div className="ops-panel-head"><div><span className="eyebrow">STAFF ONBOARDING</span><h2>Registration requests</h2><p>Approve requests to create staff accounts, or reject them. No account can sign in before approval.</p></div><span className="ops-pill">{registrationRequests.filter(item=>item.status==='pending').length} PENDING</span></div>
-      <div className="ops-feed">{registrationRequests.filter(item=>item.status==='pending').map(item=><article className="ops-feed-item" key={item.id}>
-        <div className="ops-message-top"><b>{item.displayName} · {item.userId}</b><span className="ops-pill">PENDING</span></div>
+    {admin && <section className="panel ops-panel staff-registration-panel">
+      <div className="ops-panel-head"><div><span className="eyebrow">STAFF ONBOARDING</span><h2>Registration requests</h2><p>Review staff sign-up requests. Approved and declined decisions remain available in history.</p></div><span className="ops-pill">{registrationRequests.filter(item=>item.status==='pending').length} PENDING</span></div>
+      <div className="staff-request-tools">
+        <input type="search" aria-label="Search staff requests" placeholder="Search name, staff ID or phone" value={registrationSearch} onChange={e=>setRegistrationSearch(e.target.value)}/>
+        <select aria-label="Filter staff requests by status" value={registrationFilter} onChange={e=>setRegistrationFilter(e.target.value as 'all'|'pending'|'approved'|'rejected')}>
+          <option value="all">All requests</option><option value="pending">Pending</option><option value="approved">Approved</option><option value="rejected">Declined</option>
+        </select>
+      </div>
+      <div className="staff-request-list">{registrationRequests.filter(item=>(registrationFilter==='all'||item.status===registrationFilter)&&[item.displayName,item.userId,item.phone||'',item.reason||''].some(value=>value.toLowerCase().includes(registrationSearch.trim().toLowerCase()))).sort((a,b)=>b.createdAt.localeCompare(a.createdAt)).map(item=><article className="staff-request-item" key={item.id}>
+        <div className="ops-message-top"><b>{item.displayName} · {item.userId}</b><span className={'ops-pill '+(item.status==='approved'?'is-live':item.status==='rejected'?'is-idle':'')}>{item.status==='rejected'?'DECLINED':item.status.toUpperCase()}</span></div>
         <p>{item.reason || 'No additional note provided.'}</p><small>{item.phone ? 'Phone: '+item.phone+' · ' : ''}Requested {stamp(item.createdAt)}</small>
-        <div className="ops-form"><input type="password" minLength={10} autoComplete="new-password" placeholder="Set temporary password (10+ characters)" value={registrationPasswords[item.id] || ''} onChange={e=>setRegistrationPasswords(current=>({...current,[item.id]:e.target.value}))}/><div className="ops-actions"><button className="btn primary compact" disabled={busy || (registrationPasswords[item.id] || '').length<10} onClick={()=>reviewStaffRegistration(item,'approved')}>Approve & create account</button><button className="btn danger compact" disabled={busy} onClick={()=>reviewStaffRegistration(item,'rejected')}>Reject</button></div></div>
-      </article>)}{!registrationRequests.some(item=>item.status==='pending') && <p className="ops-empty">No pending staff registration requests.</p>}</div>
+        {item.status==='pending' && <div className="ops-form"><input type="password" minLength={10} autoComplete="new-password" placeholder="Set temporary password (10+ characters)" value={registrationPasswords[item.id] || ''} onChange={e=>setRegistrationPasswords(current=>({...current,[item.id]:e.target.value}))}/><div className="ops-actions"><button className="btn primary compact" disabled={busy || (registrationPasswords[item.id] || '').length<10} onClick={()=>reviewStaffRegistration(item,'approved')}>Approve & create account</button><button className="btn danger compact" disabled={busy} onClick={()=>reviewStaffRegistration(item,'rejected')}>Decline</button></div></div>}
+      </article>)}
+      {!registrationRequests.length && <p className="ops-empty">No staff registration requests yet.</p>}
+      {registrationRequests.length>0 && !registrationRequests.some(item=>(registrationFilter==='all'||item.status===registrationFilter)&&[item.displayName,item.userId,item.phone||'',item.reason||''].some(value=>value.toLowerCase().includes(registrationSearch.trim().toLowerCase()))) && <p className="ops-empty">No requests match these filters.</p>}
+      </div>
     </section>}
 
     {admin && <section className="panel ops-panel team-summary-panel">
