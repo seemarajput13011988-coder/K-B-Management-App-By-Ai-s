@@ -21,6 +21,7 @@ import { MoreServicesSheet } from './ui/MoreServicesSheet';
 import { useConfirm } from './ui/ConfirmDialog';
 import { EmptyState } from './ui/EmptyState';
 import { HomeHero } from './ui/HomeHero';
+import { clearSession, getSession, saveSession, type Session } from './lib/session';
 import { DateRangeFilter, dateRangeBounds, initialDateRange, isInDateRange, sortReportRows } from './components/DateRangeFilter';
 import type { DateRange } from './components/DateRangeFilter';
 import { exportCsvFile } from './lib/file-export';
@@ -59,12 +60,12 @@ import {
 } from 'lucide-react';
 import { getHinduFestival, getIndiaDateKey } from './festivalTheme';
 
-type Session={token:string;expiresAt:number;user:{id:string;userId:string;displayName:string;role:'admin'|'staff';active:boolean;canManageAdmins?:boolean}};
+
 type AppNotification={id:string;title:string;message:string;createdAt:string;read:boolean;type:string};
 type RetentionReviewItem={id:string;collection:string;collectionLabel:string;recordLabel:string;createdAt:string};
 type StaffRegistrationRequest={id:string;userId:string;displayName:string;phone?:string;reason?:string;status:'pending'|'approved'|'rejected';createdAt:string;reviewedAt?:string;};
 type StaffHolidayRequest={id:string;userId:string;displayName:string;startDate:string;endDate:string;reason:string;status:'pending'|'approved'|'rejected';createdAt:string;reviewedAt?:string;reviewedByName?:string};
-const getToken=()=>{for(const storage of [sessionStorage,localStorage]){try{const token=(JSON.parse(storage.getItem('kb-customer-session')||'null') as Session|null)?.token;if(token)return token;}catch{/* Continue to the legacy storage fallback. */}}return '';};
+const getToken=()=>getSession()?.token || '';
 const api = client;
 type Customer = {
   id: string;
@@ -2456,10 +2457,10 @@ function App(){
  const [session,setSession]=useState<Session|null>(null);const [checking,setChecking]=useState(true);
  const [minSplashDone,setMinSplashDone]=useState(false);const [maxSplashReached,setMaxSplashReached]=useState(false);
  useEffect(()=>{const min=window.setTimeout(()=>setMinSplashDone(true),900);const max=window.setTimeout(()=>setMaxSplashReached(true),1200);return()=>{window.clearTimeout(min);window.clearTimeout(max);};},[]);
- useEffect(()=>{let live=true;async function restore(){const raw=sessionStorage.getItem('kb-customer-session')||localStorage.getItem('kb-customer-session');if(!raw){setChecking(false);return;}try{const old=JSON.parse(raw) as Session;const r=await client.get('/api/auth/me');if(live){const restored={...old,user:r.data.user};sessionStorage.setItem('kb-customer-session',JSON.stringify(restored));localStorage.removeItem('kb-customer-session');setSession(restored);}}catch{sessionStorage.removeItem('kb-customer-session');localStorage.removeItem('kb-customer-session');}finally{if(live)setChecking(false);}}restore();return()=>{live=false;};},[]);
- async function login(userId:string,password:string,expectedRole:'admin'|'staff'){const next=await signInAppUser(userId,password,expectedRole) as Session;if(next.user.role!==expectedRole){await signOutAppUser();throw new Error(expectedRole==='admin'?'This account is not an admin account. Choose Staff Sign In instead.':'This account is not a staff account. Choose Admin Sign In instead.');}sessionStorage.setItem('kb-customer-session',JSON.stringify(next));localStorage.removeItem('kb-customer-session');setSession(next);}
+ useEffect(()=>{let live=true;async function restore(){const old=getSession();if(!old){setChecking(false);return;}try{const r=await client.get('/api/auth/me');if(live){const restored={...old,user:r.data.user};saveSession(restored);setSession(restored);}}catch{clearSession();}finally{if(live)setChecking(false);}}restore();return()=>{live=false;};},[]);
+ async function login(userId:string,password:string,expectedRole:'admin'|'staff'){const next=await signInAppUser(userId,password,expectedRole) as Session;if(next.user.role!==expectedRole){await signOutAppUser();throw new Error(expectedRole==='admin'?'This account is not an admin account. Choose Staff Sign In instead.':'This account is not a staff account. Choose Admin Sign In instead.');}saveSession(next);setSession(next);}
  if(!minSplashDone || (checking && !maxSplashReached))return <div className="loading-cover"><div className="loading-brand-mark" aria-label="K&B NET SERVICE">K&amp;B</div><strong className="loading-brand-name">K&amp;B NET SERVICE</strong><div className="loader"/><span>Preparing your secure workspace…</span></div>;
- return session?<Workspace session={session} onLogout={()=>{signOutAppUser().catch(()=>undefined);sessionStorage.removeItem('kb-customer-session');localStorage.removeItem('kb-customer-session');setSession(null);}}/>:<LoginScreen onLogin={login}/>;
+ return session?<Workspace session={session} onLogout={()=>{signOutAppUser().catch(()=>undefined);clearSession();setSession(null);}}/>:<LoginScreen onLogin={login}/>;
 }
 function LoginScreen({onLogin}:{onLogin:(id:string,pw:string,role:'admin'|'staff')=>Promise<void>}){
  const [role,setRole]=useState<'admin'|'staff'|null>(null);
