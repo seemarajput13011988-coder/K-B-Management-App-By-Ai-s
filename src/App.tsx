@@ -1195,7 +1195,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                 </article>
                 <article className="kb-overview-metric">
                   <span className="kb-overview-metric-icon"><IndianRupee size={18}/></span>
-                  <div><small>{isAdmin ? 'Payments recorded' : 'My collections'}</small><strong>{money(collected)}</strong><span>{isAdmin ? 'Total recorded collections' : 'Payments recorded by you'}</span></div>
+                  <div><small>{isAdmin ? 'Payments recorded' : 'Customer collections'}</small><strong>{money(collected)}</strong><span>{isAdmin ? 'Total recorded collections' : 'All recorded customer payments'}</span></div>
                 </article>
                 <article className="kb-overview-metric">
                   <span className="kb-overview-metric-icon"><MessageSquare size={18}/></span>
@@ -1377,7 +1377,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                     </div>
                     {['Pending', 'Contacted'].includes(String(request.status || '')) ? (
                       <div className="portal-request-actions">
-                        <button className="btn primary compact" onClick={async () => { const confirmed = window.confirm('Create an inactive customer record for ' + String(request.name || 'this applicant') + '?\\n\\nMobile: ' + String(request.phone || 'Not provided') + '\\nRequested plan: ' + String(request.planName || request.plan || 'Not specified') + '\\n\\nThis does not activate service. Review the address and plan details before proceeding.'); if (!confirmed) return; try { await api.post('/api/portal/connection-requests/' + encodeURIComponent(request.id) + '/convert', {}); flash('Request converted to an inactive customer record. Confirm service details before activation.'); await load(true); } catch (error) { flash(error instanceof Error ? error.message : 'Could not convert this request.'); } }}>Convert to customer</button>
+                        <button className="btn primary compact" onClick={async () => { const confirmed = window.confirm('Confirm the customer record for ' + String(request.name || 'this applicant') + '?\\n\\nThe customer record is already available in Customers as INACTIVE. This action only closes the intake request; it does not activate service.'); if (!confirmed) return; try { await api.post('/api/portal/connection-requests/' + encodeURIComponent(request.id) + '/convert', {}); flash('Customer record confirmed. It remains inactive until service is approved.'); await load(true); } catch (error) { flash(error instanceof Error ? error.message : 'Could not confirm this customer record.'); } }}>Confirm customer record</button>
                         {request.status === 'Pending' && <button className="btn secondary compact" onClick={async () => { try { await api.put('/api/portal/connection-requests/' + encodeURIComponent(request.id), { status: 'Contacted' }); flash('Request marked as contacted.'); await load(true); } catch (error) { flash(error instanceof Error ? error.message : 'Could not update this request.'); } }}>Mark contacted</button>}
                         <button className="btn danger compact" onClick={async () => { try { await api.put('/api/portal/connection-requests/' + encodeURIComponent(request.id), { status: 'Rejected' }); flash('Request marked as rejected.'); await load(true); } catch (error) { flash(error instanceof Error ? error.message : 'Could not update this request.'); } }}>Reject</button>
                       </div>
@@ -1443,10 +1443,10 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                 rows={filtered}
                 onView={setSelected}
                 onDelete={isAdmin ? removeCustomer : undefined}
-                onEdit={(c: Customer) => {
+                onEdit={isAdmin ? (c: Customer) => {
                   setEditing(c);
                   setShowCustomer(true);
-                }}
+                } : undefined}
               />
               {!filtered.length && (
                 <Empty
