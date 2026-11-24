@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { Task, Staff } from '../../types/models';
+import type { Task } from '../../types/models';
 import { Field } from '../../ui/Field';
 import { Modal } from '../../ui/Modal';
 
