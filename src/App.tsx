@@ -27,6 +27,7 @@ import { Modal } from './ui/Modal';
 import { ProfileItem } from './ui/ProfileItem';
 import { CustomerTable } from './features/customers/CustomerTable';
 import { PaymentTable } from './features/payments/PaymentTable';
+import { MonthlyChart } from './features/overview/MonthlyChart';
 import { clearSession, getSession, saveSession, type Session } from './lib/session';
 import { registerBackButton } from './lib/backButton';
 import type { Customer, Payment } from './types/models';
@@ -1153,8 +1154,8 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
               </div>
 
               <div className="kb-overview-charts">
-                <MonthlyChart title={isAdmin ? 'Monthly collections' : 'Your recorded collections'} subtitle="Payment totals from the last six months" items={payments} dateKey="paidAt" valueKey="amount" moneyValue/>
-                <MonthlyChart title="Customer additions" subtitle={isAdmin ? 'New connections added each month' : 'Your assigned customer base by join date'} items={customers} dateKey="joinedAt" countOnly/>
+                <MonthlyChart title={isAdmin ? 'Monthly collections' : 'Your recorded collections'} subtitle="Payment totals from the last six months" items={payments} dateKey="paidAt" valueKey="amount" moneyValue money={money}/>
+                <MonthlyChart title="Customer additions" subtitle={isAdmin ? 'New connections added each month' : 'Your assigned customer base by join date'} items={customers} dateKey="joinedAt" countOnly money={money}/>
               </div>
               {isAdmin && <div className="kb-overview-charts kb-overview-admin-charts"><StatusChart complaints={complaints}/><OverduePanel value={overdueValue}/></div>}
 
@@ -1684,21 +1685,6 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   );
 }
 
-function MonthlyChart({ title, subtitle, items, dateKey, valueKey, moneyValue, countOnly }: { title: string; subtitle: string; items: any[]; dateKey: string; valueKey?: string; moneyValue?: boolean; countOnly?: boolean }) {
-  const now = new Date();
-  const buckets = Array.from({ length: 6 }, (_, index) => {
-    const date = new Date(now.getFullYear(), now.getMonth() - (5 - index), 1);
-    const key = date.getFullYear() + '-' + date.getMonth();
-    const value = items.reduce((sum, item) => {
-      const parsed = item[dateKey] ? new Date(item[dateKey]) : null;
-      if (!parsed || Number.isNaN(parsed.getTime()) || parsed.getFullYear() + '-' + parsed.getMonth() !== key) return sum;
-      return sum + (countOnly ? 1 : Number(item[valueKey || 'amount'] || 0));
-    }, 0);
-    return { label: date.toLocaleDateString('en-IN', { month: 'short' }), value };
-  });
-  const max = Math.max(1, ...buckets.map(item => item.value));
-  return <section className="panel chart-panel"><div className="panel-head"><div><h2>{title}</h2><p>{subtitle}</p></div><span className="chart-mark"><BarChart3 size={17} /></span></div><div className="chart-bars">{buckets.map(item => <div className="chart-column" key={item.label}><b>{item.value ? (moneyValue ? money(item.value) : item.value.toLocaleString('en-IN')) : '—'}</b><div className="chart-track"><i style={{ height: (item.value ? Math.max(5, item.value / max * 100) : 2) + '%' }} /></div><small>{item.label}</small></div>)}</div></section>;
-}
 function StatusChart({ complaints }: { complaints: Complaint[] }) {
   const rows = [{ label: 'Pending', count: complaints.filter(c => c.status === 'Pending' || c.status === 'Open').length }, { label: 'Assigned', count: complaints.filter(c => c.status === 'Assigned').length }, { label: 'In progress', count: complaints.filter(c => c.status === 'In Progress' || c.status === 'In progress').length }, { label: 'Solved', count: complaints.filter(c => c.status === 'Solved' || c.status === 'Resolved').length }, { label: 'Not solved', count: complaints.filter(c => c.status === 'Not Solved').length }];
   const max = Math.max(1, ...rows.map(row => row.count));
