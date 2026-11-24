@@ -672,3 +672,77 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
   }
   .staff-create-form .staff-create-actions .btn { flex: 1 1 0; }
 }
+
+
+/* App-wide form action visibility audit.
+   Keep submit controls reachable in scrollable dialogs and make action rows consistent. */
+.modal { min-width: 0; }
+.modal .form-grid,
+.modal .ops-form,
+.modal .inventory-form,
+.modal .inventory-movement-form {
+  min-width: 0;
+}
+.modal .form-actions,
+.modal .modal-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 9px;
+  min-width: 0;
+  padding-top: 12px;
+}
+.modal .form-actions .btn,
+.modal .modal-actions .btn {
+  min-height: 44px;
+  min-width: 112px;
+}
+.modal .form-actions,
+.modal .modal-actions,
+.modal .staff-create-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  margin-bottom: 0;
+  padding: 12px 0 5px;
+  background: var(--kb-surface, #fff);
+  border-top: 1px solid var(--kb-line, #e4eaf2);
+}
+.modal .form-grid { padding-bottom: 8px; }
+[data-theme="dark"] .modal .form-actions,
+[data-theme="dark"] .modal .modal-actions,
+[data-theme="dark"] .modal .staff-create-actions {
+  background: #17263b;
+  border-color: #2b3d56;
+}
+@media (max-width:700px) {
+  .modal {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    max-height: calc(100dvh - env(safe-area-inset-top,0px) - 12px);
+  }
+  .modal-head { flex: 0 0 auto; }
+  .modal > .form-grid,
+  .modal > .ops-form,
+  .modal > .inventory-form,
+  .modal > .inventory-movement-form {
+    min-height: 0;
+    max-height: min(68dvh, 620px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 8px;
+  }
+  .modal .form-actions,
+  .modal .modal-actions,
+  .modal .staff-create-actions {
+    bottom: 0;
+    margin: 8px -16px 0;
+    padding: 12px 16px calc(10px + env(safe-area-inset-bottom,0px));
+  }
+  .modal .form-actions .btn,
+  .modal .modal-actions .btn { flex: 1 1 112px; }
+}
