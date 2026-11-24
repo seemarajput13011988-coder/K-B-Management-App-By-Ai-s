@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useConfirm } from './ui/ConfirmDialog';
 import type { FormEvent } from 'react';
 import { api as client } from './lib/api';
 import { DateRangeFilter, dateRangeBounds, initialDateRange, isInDateRange, sortReportRows } from './components/DateRangeFilter';
@@ -50,7 +51,8 @@ function AttendanceCalendar({ staffId, staffName, records, holidays }: { staffId
   </div>;
 }
 
-export default function StaffOperations({ session, customers, flash, compact = false, onDataChanged }: { session: Session; customers: Array<{ id: string; name: string; assignedTo?: string }>; flash: (message: string) => void; compact?: boolean; onDataChanged?: () => void }) {
+export default function StaffOperations({
+  const confirm = useConfirm(); session, customers, flash, compact = false, onDataChanged }: { session: Session; customers: Array<{ id: string; name: string; assignedTo?: string }>; flash: (message: string) => void; compact?: boolean; onDataChanged?: () => void }) {
   const admin = session.user.role === 'admin';
   const superAdmin = admin && session.user.isSuperAdmin === true;
   const [attendance, setAttendance] = useState<Attendance[]>([]);
@@ -95,7 +97,7 @@ export default function StaffOperations({ session, customers, flash, compact = f
   }, [session.token]);
 
   async function deleteAdminRecord(path: string, confirmText: string, successText: string) {
-    if (!admin || !window.confirm(confirmText)) return;
+    if (!admin || !await confirm({ title: confirmText, danger: true })) return;
     setBusy(true);
     try {
       await request('delete', path);
@@ -107,7 +109,7 @@ export default function StaffOperations({ session, customers, flash, compact = f
   }
 
   async function deleteGroupMessage(messageId: string) {
-    if (!admin || !selectedGroupId || !window.confirm('Delete this group message permanently?')) return;
+    if (!admin || !selectedGroupId || !await confirm({ title: 'Delete this group message permanently?', danger: true })) return;
     setBusy(true);
     try {
       await request('delete', '/api/groups/' + selectedGroupId + '/messages/' + messageId);
@@ -239,7 +241,7 @@ export default function StaffOperations({ session, customers, flash, compact = f
   }
 
   async function adminAbsent(userId: string) {
-    if (!window.confirm('Mark this staff member absent for today?')) return;
+    if (!await confirm({ title: 'Mark this staff member absent for today?', danger: true })) return;
     setBusy(true);
     try {
       await request('post', '/api/attendance/admin-absent', { userId, reason: 'Marked absent by administrator' });
@@ -254,7 +256,7 @@ export default function StaffOperations({ session, customers, flash, compact = f
   async function reviewStaffRegistration(item: StaffRegistrationRequest, status: 'approved' | 'rejected') {
     const password = registrationPasswords[item.id] || '';
     if (status === 'approved' && password.length < 10) { flash('Set a temporary password with at least 10 characters before approving.'); return; }
-    if (!window.confirm(status === 'approved' ? 'Approve this request and create a staff login for ' + item.displayName + '?' : 'Reject this staff registration request?')) return;
+    if (!await confirm({ title: status === 'approved' ? 'Approve this request and create a staff login for ' + item.displayName + '?' : 'Reject this staff registration request?', danger: true })) return;
     setBusy(true);
     try {
       await request('put', '/api/staff-registration-requests/' + item.id, { status, ...(status === 'approved' ? { password } : {}) });
@@ -274,7 +276,7 @@ export default function StaffOperations({ session, customers, flash, compact = f
     finally{setBusy(false);}
   }
   async function updateAdminAccount(item:{id:string;displayName:string;active:boolean},active:boolean) {
-    if(!window.confirm((active?'Reactivate ':'Deactivate ')+item.displayName+'?'))return;
+    if(!await confirm({ title: (active?'Reactivate ':'Deactivate ')+item.displayName+'?', danger: true }))return;
     setBusy(true);
     try{await request('put','/api/admins/'+item.id,{displayName:item.displayName,active});await refresh();flash('Administrator status updated.');}
     catch(err){flash(err instanceof Error?err.message:'Could not update administrator.');}
