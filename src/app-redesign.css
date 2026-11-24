@@ -624,3 +624,51 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
   .main{padding-top:env(safe-area-inset-top)!important}
   .topbar{scroll-margin-top:env(safe-area-inset-top)}
 }
+
+
+/* Keep the staff-create action reachable on short Android screens. */
+.staff-create-modal {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+.staff-create-modal .modal-head { flex: 0 0 auto; }
+.staff-create-form {
+  min-height: 0;
+  max-height: min(62dvh, 560px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 2px 2px 10px;
+}
+.staff-create-form .form-hint,
+.staff-create-form .staff-create-error { grid-column: 1 / -1; margin: 0; }
+.staff-create-form .staff-create-error { color: #b42318; font-size: 12px; }
+.staff-create-form .staff-create-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
+  background: var(--kb-surface, #fff);
+  border-top: 1px solid var(--kb-line, #e4eaf2);
+  margin: 4px -2px 0;
+  padding: 12px 2px 4px;
+}
+.staff-create-form .staff-create-actions .btn {
+  min-height: 46px;
+  min-width: 112px;
+}
+[data-theme="dark"] .staff-create-form .staff-create-actions { background: #17263b; }
+@media (max-width: 700px) {
+  .staff-create-modal {
+    max-height: calc(100dvh - env(safe-area-inset-top) - 8px);
+    overflow: hidden;
+  }
+  .staff-create-modal .modal-head { flex: 0 0 auto; }
+  .staff-create-form { max-height: min(64dvh, 560px); }
+  .staff-create-form .staff-create-actions {
+    margin-inline: -16px;
+    padding: 12px 16px calc(8px + env(safe-area-inset-bottom));
+  }
+  .staff-create-form .staff-create-actions .btn { flex: 1 1 0; }
+}
