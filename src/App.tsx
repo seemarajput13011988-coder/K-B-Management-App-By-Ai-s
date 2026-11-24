@@ -28,7 +28,6 @@ import {
   ChevronDown,
   CircleHelp,
   CreditCard,
-  Home,
   IndianRupee,
   LayoutDashboard,
   Menu,
@@ -49,7 +48,7 @@ import {
   Pencil,
   Trash2,
   Eye,
-  ShieldCheck, KeyRound, BarChart3, LogOut, UserPlus, UserRound, LockKeyhole, ReceiptText, MoreHorizontal,
+  ShieldCheck, KeyRound, BarChart3, LogOut, UserPlus, UserRound, UsersRound, LockKeyhole, ReceiptText, MoreHorizontal,
 } from 'lucide-react';
 import { getHinduFestival, getIndiaDateKey } from './festivalTheme';
 
