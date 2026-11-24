@@ -1092,8 +1092,12 @@ export const handler = router({
   }),
 
   'GET /api/payments': protectedRoute(['admin', 'staff'], async (_ctx, user) => {
-    const result = await db.list<Payment>('payments', { limit: 200 });
-    return json({ items: user.role === 'admin' ? result.items : result.items.filter(item => item.recordedBy === user.id) });
+    const result = await db.list<Payment>('payments', { limit: 500 });
+    if (user.role === 'admin') return json({ items: result.items });
+    const customerResult = await db.list<Customer>('customers', { limit: 500 });
+    const assignedCustomerIds = new Set(customerResult.items.filter(customer => customer.assignedTo === user.id).map(customer => customer.id));
+    const visible = result.items.filter(item => assignedCustomerIds.has(item.customerId) || item.recordedBy === user.id);
+    return json({ items: visible });
   }),
 
   'PUT /api/payments/:id': protectedRoute(['admin'], async ({ body, params }, user) => {
