@@ -1,0 +1,57 @@
+/* Bridge: restyle legacy classes via tokens. Loaded last, so no !important. */
+.panel,
+.plan-card,
+.task-card,
+.ops-panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-1);
+}
+
+.btn {
+  min-height: 44px;
+  border-radius: var(--r-md);
+  font-weight: 700;
+  transition: transform var(--t-fast) var(--ease), background var(--t-fast);
+}
+
+.btn:active {
+  transform: scale(.97);
+}
+
+.btn.primary {
+  background: var(--brand-600);
+  color: #fff;
+  border: 0;
+  box-shadow: 0 6px 14px rgba(37,99,235,.28);
+}
+
+.btn.secondary {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+input,
+select,
+textarea {
+  font-family: inherit;
+  font-size: 16px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--brand-500);
+}
+
+table th,
+table td {
+  border-color: var(--border);
+  color: var(--text);
+}
