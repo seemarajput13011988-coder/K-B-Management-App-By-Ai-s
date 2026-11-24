@@ -23,6 +23,8 @@ import { Empty } from './ui/Empty';
 import { HomeHero } from './ui/HomeHero';
 import { Field } from './ui/Field';
 import { Modal } from './ui/Modal';
+import { CustomerTable } from './features/customers/CustomerTable';
+import { PaymentTable } from './features/payments/PaymentTable';
 import { clearSession, getSession, saveSession, type Session } from './lib/session';
 import { registerBackButton } from './lib/backButton';
 import type { Customer, Payment } from './types/models';
@@ -1143,7 +1145,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                     <div><h2>Recent customers</h2><p>Latest connections added to your records</p></div>
                     <button className="kb-overview-link" type="button" onClick={() => setPage('Customers')}>View all <span>→</span></button>
                   </header>
-                  <CustomerTable rows={customers.slice().sort((left, right) => Date.parse(String(right.joinedAt || '')) - Date.parse(String(left.joinedAt || ''))).slice(0,5)} onView={setSelected}/>
+                  <CustomerTable rows={customers.slice().sort((left, right) => Date.parse(String(right.joinedAt || '')) - Date.parse(String(left.joinedAt || ''))).slice(0,5)} onView={setSelected} money={money} dateLabel={dateLabel} statusLabel={customerStatusLabel}/>
                   {!customers.length && <Empty icon={<Users/>} title="No customers yet" text="Add your first customer to start building your records." action={isAdmin ? 'Add customer' : undefined} onClick={() => setShowCustomer(true)}/>}
                 </section>
 
@@ -1172,7 +1174,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                   <div><h2>Recent payments</h2><p>Latest recorded customer payments</p></div>
                   <button className="kb-overview-link" type="button" onClick={() => setPage('Payments')}>View payments <span>→</span></button>
                 </header>
-                <PaymentTable rows={payments.slice().sort((left, right) => Date.parse(String(right.paidAt || '')) - Date.parse(String(left.paidAt || ''))).slice(0,4)}/>
+                <PaymentTable rows={payments.slice().sort((left, right) => Date.parse(String(right.paidAt || '')) - Date.parse(String(left.paidAt || ''))).slice(0,4)} money={money} dateLabel={dateLabel}/>
               </section>
             </section>
           )}
@@ -1372,6 +1374,9 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                 ))}
               </div>
               <CustomerTable
+                money={money}
+                dateLabel={dateLabel}
+                statusLabel={customerStatusLabel}
                 rows={filtered}
                 onView={setSelected}
                 onDelete={isAdmin ? removeCustomer : undefined}
@@ -1451,7 +1456,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
                 <span className="result-count">{filteredPayments.length} of {payments.length} records</span>
               </div>
               <DateRangeFilter value={paymentRange} onChange={setPaymentRange}><label><span>Sort by</span><select value={paymentSort} onChange={event=>setPaymentSort(event.target.value)}><option value="newest">Newest first</option><option value="oldest">Oldest first</option><option value="amount-high">Amount: high to low</option><option value="amount-low">Amount: low to high</option><option value="name">Customer name</option></select></label><button className="btn secondary compact" disabled={!filteredPayments.length} onClick={()=>{const{start,end}=dateRangeBounds(paymentRange);void exportCsvFile(`kb-payments-${start&&end?`${start}_to_${end}`:'all-dates'}.csv`,[['Date','Customer','Billing month','Method','Amount','Recorded by'],...filteredPayments.map(payment=>[payment.paidAt,payment.customerName,payment.month,payment.method,payment.amount,payment.recordedByName||''])]);}}>Export selected</button></DateRangeFilter>
-              <PaymentTable rows={filteredPayments} isAdmin={isAdmin} onEdit={(payment: Payment) => { setEditingPayment(payment); setShowPayment(true); }} onDelete={isAdmin ? deletePayment : undefined} />
+              <PaymentTable rows={filteredPayments} money={money} dateLabel={dateLabel} isAdmin={isAdmin} onEdit={(payment: Payment) => { setEditingPayment(payment); setShowPayment(true); }} onDelete={isAdmin ? deletePayment : undefined} />
               {payments.length > 0 && !filteredPayments.length && <p className="ops-empty">No payments match your search.</p>}
               {!payments.length && (
                 <Empty
@@ -1715,101 +1720,6 @@ function OverduePanel({ value }: { value: number }) {
 }
 
 
-function CustomerTable({ rows, onView, onEdit, onDelete }: any) {
-  return (
-    <div className="table-wrap customer-table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>CUSTOMER</th>
-            <th>PLAN</th>
-            <th>MONTHLY FEE</th>
-            <th>STATUS</th>
-            <th>JOINED</th>
-            <th>ACTIONS</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((c: Customer) => (
-            <tr key={c.id}>
-              <td data-label="Customer">
-                <button className="customer-cell" onClick={() => onView(c)}>
-                  <span className="avatar customer-avatar">
-                    {c.name
-                      .split(' ')
-                      .map(s => s[0])
-                      .slice(0, 2)
-                      .join('')
-                      .toUpperCase()}
-                  </span>
-                  <span>
-                    <b>{c.name}</b>
-                    <small>{c.phone}</small>
-                  </span>
-                </button>
-              </td>
-              <td data-label="Plan">{c.plan}</td>
-              <td data-label="Monthly fee" className="amount">{money(c.monthlyFee)}</td>
-              <td data-label="Status">
-                <span className={'status ' + customerStatusLabel(c.status).toLowerCase()} aria-label={'Customer status: ' + customerStatusLabel(c.status)}>
-                  {customerStatusLabel(c.status)}
-                </span>
-              </td>
-              <td data-label="Joined">{dateLabel(c.joinedAt)}</td>
-              <td data-label="Actions">
-                {onEdit && (
-                  <button
-                    className="row-action"
-                    title="Edit customer"
-                    onClick={() => onEdit(c)}
-                  >
-                    <Pencil size={15} />
-                  </button>                  )}
-                {onDelete && <button className="row-action danger" title="Delete customer" onClick={() => onDelete(c)}><Trash2 size={15} /></button>}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-function PaymentTable({ rows, isAdmin = false, onEdit, onDelete }: any) {
-  return (
-    <div className="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>CUSTOMER</th>
-            <th>MONTH</th>
-            <th>METHOD</th>
-            <th>DATE</th>
-            <th>AMOUNT</th>
-            <th>STATUS</th>
-            {(isAdmin || onDelete) && <th>ACTIONS</th>}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((p: Payment) => (
-            <tr key={p.id}>
-              <td data-label="Customer">
-                <b>{p.customerName}</b>
-              </td>
-              <td data-label="Month">{p.month}</td>
-              <td data-label="Method">{p.method}</td>
-              <td data-label="Date">{dateLabel(p.paidAt)}</td>
-              <td data-label="Amount" className="amount">{money(p.amount)}</td>
-              <td data-label="Status">
-                <span className="status active">Paid</span>
-              </td>
-              {(isAdmin || onDelete) && <td data-label="Actions"><div className="staff-actions"><button className="row-action" title="Edit payment" onClick={() => onEdit?.(p)}><Pencil size={14}/></button>{onDelete && <button className="row-action danger" title="Delete payment" onClick={() => onDelete(p)}><Trash2 size={14}/></button>}</div></td>}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
 function ProfileItem({ icon, label, value }: any) {
   return (
     <div className="profile-item">
