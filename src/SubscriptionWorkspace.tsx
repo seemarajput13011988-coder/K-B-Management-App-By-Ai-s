@@ -107,11 +107,11 @@ export default function SubscriptionWorkspace({ customers, plans, isAdmin, flash
     {loading?<p className="ops-empty">Loading renewal history…</p>:<div className="subscription-table-wrap"><table className="subscription-table">
       <thead><tr><th>Customer</th><th>Plan</th><th>Period</th><th>Amount</th><th>Payment</th><th>Status</th>{isAdmin&&<th>Manage</th>}</tr></thead>
       <tbody>{visible.map(item=><tr key={item.id}>
-        <td><strong>{item.customerName}</strong><small>{labelDate(String(item.createdAt||'').slice(0,10))}</small></td>
-        <td>{item.plan}</td><td>{labelDate(item.startDate)} – {labelDate(item.endDate)}</td><td>{money(item.amount)}</td>
-        <td><span className={'subscription-payment '+(item.paymentStatus==='Paid'?'paid':'unpaid')}>{item.paymentStatus}</span>{item.paymentStatus==='Paid'&&<small>{item.paymentMethod} · {labelDate(item.paidAt||'')}</small>}</td>
-        <td><span className={'subscription-status '+item.status.toLowerCase()}>{item.status}</span></td>
-        {isAdmin&&<td><select aria-label={'Change status for '+item.customerName} value={item.status} onChange={event=>void changeStatus(item,event.target.value as Subscription['status'])}><option>Active</option><option>Pending</option><option>Expired</option><option>Cancelled</option></select></td>}
+        <td data-label="Customer"><strong>{item.customerName}</strong><small>{labelDate(String(item.createdAt||'').slice(0,10))}</small></td>
+        <td data-label="Plan">{item.plan}</td><td data-label="Period">{labelDate(item.startDate)} – {labelDate(item.endDate)}</td><td data-label="Amount">{money(item.amount)}</td>
+        <td data-label="Payment"><span className={'subscription-payment '+(item.paymentStatus==='Paid'?'paid':'unpaid')}>{item.paymentStatus}</span>{item.paymentStatus==='Paid'&&<small>{item.paymentMethod} · {labelDate(item.paidAt||'')}</small>}</td>
+        <td data-label="Status"><span className={'subscription-status '+item.status.toLowerCase()}>{item.status}</span></td>
+        {isAdmin&&<td data-label="Manage"><select aria-label={'Change status for '+item.customerName} value={item.status} onChange={event=>void changeStatus(item,event.target.value as Subscription['status'])}><option>Active</option><option>Pending</option><option>Expired</option><option>Cancelled</option></select></td>}
       </tr>)}</tbody>
     </table>{!visible.length&&<p className="ops-empty">{items.length?'No renewals match this filter.':'No renewal records yet. Create the first renewal above.'}</p>}</div>}
     <style>{`

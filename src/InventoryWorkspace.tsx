@@ -3,6 +3,7 @@ import type { FormEvent } from 'react';
 import { api } from './lib/api';
 import { Download, FileText } from 'lucide-react';
 import { exportCsvFile, exportPdfReport } from './lib/file-export';
+import { notifyToast } from './ui/toast';
 
 type InventoryItem = {
   id: string; name: string; sku: string; category: string; unit: string; quantity: number;
@@ -18,14 +19,14 @@ async function exportInventory(items:InventoryItem[],isAdmin:boolean){
   const rows=[['Item','SKU','Category','Quantity','Unit','Minimum stock',...(isAdmin?['Unit cost','Supplier']:[]),'Storage location','Active'],
     ...items.map(item=>[item.name,item.sku,item.category,item.quantity,item.unit,item.minimumQuantity,...(isAdmin?[item.unitCost||0,item.supplier||'']:[]),item.location||'',item.active?'Yes':'No'])];
   try { await exportCsvFile('kb-inventory-'+new Date().toISOString().slice(0,10)+'.csv',rows); }
-  catch(error) { window.alert(error instanceof Error?error.message:'Could not export inventory.'); }
+  catch(error) { notifyToast(error instanceof Error?error.message:'Could not export inventory.'); }
 }
 
 async function exportInventoryPdf(items:InventoryItem[],isAdmin:boolean){
   const rows=[['Item','SKU','Category','Quantity','Unit','Minimum stock',...(isAdmin?['Unit cost','Supplier']:[]),'Storage location','Active'],
     ...items.map(item=>[item.name,item.sku,item.category,item.quantity,item.unit,item.minimumQuantity,...(isAdmin?[item.unitCost||0,item.supplier||'']:[]),item.location||'',item.active?'Yes':'No'])];
   try { await exportPdfReport('kb-inventory-'+new Date().toISOString().slice(0,10)+'.pdf','Inventory register',rows); }
-  catch(error) { window.alert(error instanceof Error?error.message:'Could not create inventory PDF.'); }
+  catch(error) { notifyToast(error instanceof Error?error.message:'Could not create inventory PDF.'); }
 }
 
 export default function InventoryWorkspace({isAdmin,flash}:{isAdmin:boolean;flash:(message:string)=>void}) {
@@ -117,10 +118,10 @@ export default function InventoryWorkspace({isAdmin,flash}:{isAdmin:boolean;flas
     {loading?<p className="ops-empty">Loading inventory…</p>:<div className="inventory-table-wrap"><table className="inventory-table">
       <thead><tr><th>Item</th><th>Category</th><th>In stock</th><th>Minimum</th>{isAdmin&&<th>Unit cost</th>}<th>Assigned to</th><th>Location</th><th>Actions</th></tr></thead>
       <tbody>{items.map(item=><tr key={item.id} className={!item.active?'inventory-archived':''}>
-        <td><strong>{item.name}</strong><small>{item.sku} · {item.unit}</small><small>Added {stamp(item.createdAt||'')}{item.updatedAt?' · Updated '+stamp(item.updatedAt):''}</small></td><td>{item.category}</td>
-        <td><span className={'inventory-quantity '+(item.quantity<=item.minimumQuantity?'low':'')}>{item.quantity} {item.unit}</span></td>
-        <td>{item.minimumQuantity} {item.unit}</td>{isAdmin&&<td>{money(item.unitCost||0)}</td>}<td>{item.assignedToName||'—'}</td><td>{item.location||'—'}</td>
-        <td><div className="inventory-actions">{isAdmin&&<><button className="btn secondary compact" disabled={!item.active} onClick={()=>{setMovementItem(item);setMovementType('OUT');setMovementQuantity('1');}}>Issue</button><button className="btn secondary compact" disabled={!item.active} onClick={()=>{setMovementItem(item);setMovementType('IN');setMovementQuantity('1');}}>Receive</button><button className="btn secondary compact" onClick={()=>openEdit(item)}>Edit / assign</button></>}<button className="btn secondary compact" onClick={()=>void showHistory(item)}>History</button></div></td>
+        <td data-label="Item"><strong>{item.name}</strong><small>{item.sku} · {item.unit}</small><small>Added {stamp(item.createdAt||'')}{item.updatedAt?' · Updated '+stamp(item.updatedAt):''}</small></td><td data-label="Category">{item.category}</td>
+        <td data-label="In Stock"><span className={'inventory-quantity '+(item.quantity<=item.minimumQuantity?'low':'')}>{item.quantity} {item.unit}</span></td>
+        <td data-label="Minimum">{item.minimumQuantity} {item.unit}</td>{isAdmin&&<td data-label="Unit Cost">{money(item.unitCost||0)}</td>}<td data-label="Assigned To">{item.assignedToName||'—'}</td><td data-label="Location">{item.location||'—'}</td>
+        <td data-label="Actions"><div className="inventory-actions">{isAdmin&&<><button className="btn secondary compact" disabled={!item.active} onClick={()=>{setMovementItem(item);setMovementType('OUT');setMovementQuantity('1');}}>Issue</button><button className="btn secondary compact" disabled={!item.active} onClick={()=>{setMovementItem(item);setMovementType('IN');setMovementQuantity('1');}}>Receive</button><button className="btn secondary compact" onClick={()=>openEdit(item)}>Edit / assign</button></>}<button className="btn secondary compact" onClick={()=>void showHistory(item)}>History</button></div></td>
       </tr>)}</tbody>
     </table>{!items.length&&<p className="ops-empty">No inventory items yet. {isAdmin?'Add routers, ONTs, cables and tools to begin stock tracking.':'Ask an administrator to add inventory items.'}</p>}</div>}
     {historyItem&&<div className="inventory-history"><div className="inventory-form-title"><strong>Stock history · {historyItem.name}</strong><button className="btn secondary compact" onClick={()=>setHistoryItem(null)}>Close</button></div>{history.length?<div className="inventory-history-list">{history.map(entry=><div key={entry.id}><span className={'inventory-movement-badge '+entry.type.toLowerCase()}>{entry.type}</span><div><b>{entry.quantity} {historyItem.unit} · {entry.reason}</b><small>{entry.quantityBefore} → {entry.quantityAfter} · {entry.createdByName} · {stamp(entry.createdAt)}</small></div></div>)}</div>:<p className="ops-empty">No stock movements recorded yet.</p>}</div>}

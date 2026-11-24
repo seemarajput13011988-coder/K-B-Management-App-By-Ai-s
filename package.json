@@ -8,9 +8,13 @@
     "build": "vite build",
     "preview": "vite preview",
     "android:sync": "cap sync android",
-    "deploy:hosting": "npm run build && npx firebase-tools deploy --only hosting"
+    "deploy:hosting": "npm run build && npx firebase-tools deploy --only hosting",
+    "typecheck": "tsc --noEmit",
+    "check": "npm run typecheck && npm run build"
   },
   "dependencies": {
+    "@capacitor/app": "^7.0.1",
+    "@fontsource-variable/plus-jakarta-sans": "^5.2.6",
     "lucide-react": "^0.469.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",

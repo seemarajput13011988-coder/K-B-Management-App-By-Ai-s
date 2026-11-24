@@ -3,10 +3,16 @@ import { createRoot } from 'react-dom/client';
 import { Capacitor } from '@capacitor/core';
 import { CapacitorUpdater } from '@capgo/capacitor-updater';
 import App from './App';
+import { ConfirmProvider } from './ui/ConfirmDialog';
+import './styles/tokens.css';
+import './styles/base.css';
 import './index.css';
 import './mobile-overhaul.css';
 import './dashboard/overview.css';
 import './app-redesign.css';
+import './mobile-native-shell.css';
+import './styles/components.css';
+import './ui/shell.css';
 
 const UPDATE_CHECK_TIMEOUT_MS = 25000;
 const UPDATE_DOWNLOAD_TIMEOUT_MS = 120000;
@@ -37,8 +43,10 @@ function NativeReadinessSignal() {
 function mountApp(native = false) {
   createRoot(appRoot).render(
     <StrictMode>
-      <App />
-      {native ? <NativeReadinessSignal /> : null}
+      <ConfirmProvider>
+        <App />
+        {native ? <NativeReadinessSignal /> : null}
+      </ConfirmProvider>
     </StrictMode>,
   );
 }

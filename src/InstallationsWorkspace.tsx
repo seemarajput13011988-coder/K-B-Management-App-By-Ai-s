@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
+import { useConfirm } from './ui/ConfirmDialog';
 import type { FormEvent } from 'react';
 import { api } from './lib/api';
 import { Download, FileText, Trash2 } from 'lucide-react';
 import { exportCsvFile, exportPdfReport } from './lib/file-export';
+import { notifyToast } from './ui/toast';
 
 type Customer={id:string;name:string;phone?:string;address:string};
 type Staff={id:string;displayName:string;active:boolean};
@@ -13,17 +15,18 @@ async function exportInstallations(items:Installation[]){
   const rows=[['Customer','Phone','Address','Job type','Scheduled date','Assigned staff','Status','Notes'],
     ...items.map(item=>[item.customerName,item.phone||'',item.address,item.type,item.scheduledDate,item.assignedToName,item.status,item.notes||''])];
   try { await exportCsvFile('kb-installations-'+dateToday()+'.csv',rows); }
-  catch(error) { window.alert(error instanceof Error?error.message:'Could not export installation jobs.'); }
+  catch(error) { notifyToast(error instanceof Error?error.message:'Could not export installation jobs.'); }
 }
 
 async function exportInstallationsPdf(items:Installation[]){
   const rows=[['Customer','Phone','Address','Job type','Scheduled date','Assigned staff','Status','Notes'],
     ...items.map(item=>[item.customerName,item.phone||'',item.address,item.type,item.scheduledDate,item.assignedToName,item.status,item.notes||''])];
   try { await exportPdfReport('kb-installations-'+dateToday()+'.pdf','Installation jobs',rows); }
-  catch(error) { window.alert(error instanceof Error?error.message:'Could not create installation PDF.'); }
+  catch(error) { notifyToast(error instanceof Error?error.message:'Could not create installation PDF.'); }
 }
 
 export default function InstallationsWorkspace({customers,staff,isAdmin,flash}:{customers:Customer[];staff:Staff[];isAdmin:boolean;flash:(message:string)=>void}) {
+  const confirm = useConfirm();
   const [items,setItems]=useState<Installation[]>([]);
   const [loading,setLoading]=useState(true);
   const [saving,setSaving]=useState(false);
@@ -49,7 +52,7 @@ export default function InstallationsWorkspace({customers,staff,isAdmin,flash}:{
   async function createJob(event:FormEvent){event.preventDefault();if(!customerId||!assignedTo){flash('Choose a customer and staff member.');return;}setSaving(true);try{if(editingJob){await api.put('/api/installations/'+editingJob.id,{status:editingJob.status,assignedTo,scheduledDate,address,notes});}else{await api.post('/api/installations',{customerId,assignedTo,type,scheduledDate,address,notes});}setShowForm(false);setEditingJob(null);setNotes('');await load();flash(editingJob?'Installation job updated.':'Installation job assigned.');}catch(error){flash(error instanceof Error?error.message:'Could not save installation job.');}finally{setSaving(false);}}
   async function updateJob(item:Installation,status:Installation['status']){try{await api.put('/api/installations/'+item.id,{status,notes:item.notes||''});await load();flash('Installation status updated.');}catch(error){flash(error instanceof Error?error.message:'Could not update installation.');}}
   async function deleteJob(item:Installation){
-    if(!window.confirm('Delete installation job for '+item.customerName+'? This cannot be undone.'))return;
+    if(!await confirm({ title: 'Delete installation job for '+item.customerName+'? This cannot be undone.', danger: true }))return;
     setSaving(true);
     try{await api.delete('/api/installations/'+item.id);await load();flash('Installation job deleted.');}
     catch(error){flash(error instanceof Error?error.message:'Could not delete installation job.');}

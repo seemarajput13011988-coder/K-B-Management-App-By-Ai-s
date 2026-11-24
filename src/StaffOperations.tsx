@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useConfirm } from './ui/ConfirmDialog';
 import type { FormEvent } from 'react';
 import { api as client } from './lib/api';
 import { DateRangeFilter, dateRangeBounds, initialDateRange, isInDateRange, sortReportRows } from './components/DateRangeFilter';
@@ -51,6 +52,7 @@ function AttendanceCalendar({ staffId, staffName, records, holidays }: { staffId
 }
 
 export default function StaffOperations({ session, customers, flash, compact = false, onDataChanged }: { session: Session; customers: Array<{ id: string; name: string; assignedTo?: string }>; flash: (message: string) => void; compact?: boolean; onDataChanged?: () => void }) {
+  const confirm = useConfirm();
   const admin = session.user.role === 'admin';
   const superAdmin = admin && session.user.isSuperAdmin === true;
   const [attendance, setAttendance] = useState<Attendance[]>([]);
@@ -95,7 +97,7 @@ export default function StaffOperations({ session, customers, flash, compact = f
   }, [session.token]);
 
   async function deleteAdminRecord(path: string, confirmText: string, successText: string) {
-    if (!admin || !window.confirm(confirmText)) return;
+    if (!admin || !await confirm({ title: confirmText, danger: true })) return;
     setBusy(true);
     try {
       await request('delete', path);
@@ -107,7 +109,7 @@ export default function StaffOperations({ session, customers, flash, compact = f
   }
 
   async function deleteGroupMessage(messageId: string) {
-    if (!admin || !selectedGroupId || !window.confirm('Delete this group message permanently?')) return;
+    if (!admin || !selectedGroupId || !await confirm({ title: 'Delete this group message permanently?', danger: true })) return;
     setBusy(true);
     try {
       await request('delete', '/api/groups/' + selectedGroupId + '/messages/' + messageId);
@@ -239,7 +241,7 @@ export default function StaffOperations({ session, customers, flash, compact = f
   }
 
   async function adminAbsent(userId: string) {
-    if (!window.confirm('Mark this staff member absent for today?')) return;
+    if (!await confirm({ title: 'Mark this staff member absent for today?', danger: true })) return;
     setBusy(true);
     try {
       await request('post', '/api/attendance/admin-absent', { userId, reason: 'Marked absent by administrator' });
@@ -254,7 +256,7 @@ export default function StaffOperations({ session, customers, flash, compact = f
   async function reviewStaffRegistration(item: StaffRegistrationRequest, status: 'approved' | 'rejected') {
     const password = registrationPasswords[item.id] || '';
     if (status === 'approved' && password.length < 10) { flash('Set a temporary password with at least 10 characters before approving.'); return; }
-    if (!window.confirm(status === 'approved' ? 'Approve this request and create a staff login for ' + item.displayName + '?' : 'Reject this staff registration request?')) return;
+    if (!await confirm({ title: status === 'approved' ? 'Approve this request and create a staff login for ' + item.displayName + '?' : 'Reject this staff registration request?', danger: true })) return;
     setBusy(true);
     try {
       await request('put', '/api/staff-registration-requests/' + item.id, { status, ...(status === 'approved' ? { password } : {}) });
@@ -274,7 +276,7 @@ export default function StaffOperations({ session, customers, flash, compact = f
     finally{setBusy(false);}
   }
   async function updateAdminAccount(item:{id:string;displayName:string;active:boolean},active:boolean) {
-    if(!window.confirm((active?'Reactivate ':'Deactivate ')+item.displayName+'?'))return;
+    if(!await confirm({ title: (active?'Reactivate ':'Deactivate ')+item.displayName+'?', danger: true }))return;
     setBusy(true);
     try{await request('put','/api/admins/'+item.id,{displayName:item.displayName,active});await refresh();flash('Administrator status updated.');}
     catch(err){flash(err instanceof Error?err.message:'Could not update administrator.');}
@@ -378,7 +380,7 @@ export default function StaffOperations({ session, customers, flash, compact = f
         const memberDays = attendance.filter(item => item.userId === member.id && !!item.checkInAt && item.dayType !== 'Absent' && String(item.status || '').toLowerCase() !== 'absent').reduce((sum,item) => sum + (item.dayType === 'Half day' ? 0.5 : 1), 0);
         const memberShift = attendance.find(item => item.userId === member.id && item.workDate === today);
         const memberAbsent = memberShift?.dayType === 'Absent' || String(memberShift?.status || '').toLowerCase() === 'absent';
-        return <tr key={member.id}><td><b>{member.displayName}</b></td><td>{memberPayments.length}</td><td className="amount">₹{memberTotal.toLocaleString('en-IN')}</td><td className="amount">₹{memberMonth.toLocaleString('en-IN')}</td><td>{memberDays}</td><td>{memberAbsent ? 'Absent' : memberShift?.checkOutAt ? 'Completed' : memberShift ? 'On shift' : 'Not started'}</td></tr>;
+        return <tr key={member.id}><td data-label="Staff Member"><b>{member.displayName}</b></td><td data-label="Payment Records">{memberPayments.length}</td><td data-label="Total Collected" className="amount">₹{memberTotal.toLocaleString('en-IN')}</td><td data-label="This Month" className="amount">₹{memberMonth.toLocaleString('en-IN')}</td><td data-label="Attendance Days">{memberDays}</td><td data-label="Today">{memberAbsent ? 'Absent' : memberShift?.checkOutAt ? 'Completed' : memberShift ? 'On shift' : 'Not started'}</td></tr>;
       })}{!staff.length && <tr><td colSpan={6}>No staff records available yet.</td></tr>}</tbody></table></div>
     </section>}
 
