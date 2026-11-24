@@ -23,6 +23,7 @@ import { Empty } from './ui/Empty';
 import { HomeHero } from './ui/HomeHero';
 import { Field } from './ui/Field';
 import { Modal } from './ui/Modal';
+import { ProfileItem } from './ui/ProfileItem';
 import { CustomerTable } from './features/customers/CustomerTable';
 import { PaymentTable } from './features/payments/PaymentTable';
 import { clearSession, getSession, saveSession, type Session } from './lib/session';
@@ -1720,17 +1721,6 @@ function OverduePanel({ value }: { value: number }) {
 }
 
 
-function ProfileItem({ icon, label, value }: any) {
-  return (
-    <div className="profile-item">
-      <span>{icon}</span>
-      <div>
-        <small>{label}</small>
-        <b>{value || '—'}</b>
-      </div>
-    </div>
-  );
-}
 function PlanModal({ initial, onClose, onSave }: { initial: Plan | null; onClose: () => void; onSave: (data: Omit<Plan, 'id'>) => Promise<void> }) {
   const [form, setForm] = useState({
     name: initial?.name || '',
