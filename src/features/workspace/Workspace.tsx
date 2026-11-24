@@ -922,23 +922,6 @@ export function Workspace({ session, onLogout }: { session: Session; onLogout: (
           </div>}
         </nav>
         <div className="sidebar-bottom">
-          <button className="btn secondary compact" style={{width:'100%',marginBottom:12}} onClick={async()=>{if(Capacitor.isNativePlatform()){const permission=await LocalNotifications.requestPermissions();flash(permission.display==='granted'?'Notifications enabled. You will receive new messages, assigned work and reminders while the app is running.':'Notifications are blocked. Enable them in Android settings.');return;}if(typeof Notification==='undefined'){flash('This browser does not support desktop notifications.');return;}const permission=await Notification.requestPermission();flash(permission==='granted'?'Notifications enabled. You will receive new messages, assigned work and reminders while the app is open.': 'Notifications are blocked. Enable them in your browser settings.');}}>
-            <Bell size={15}/> Enable notifications
-          </button>
-          <div className="help-card">
-            <div className="help-icon">
-              <CircleHelp size={18} />
-            </div>
-            <strong>Need help?</strong>
-            <p>Manage service, finance and team work from one place.</p>
-            <button
-              onClick={() =>
-                flash('Contact your K&B administrator for assistance.')
-              }
-            >
-              Help centre <span>↗</span>
-            </button>
-          </div>
           <div className="user-row">
             <div className="avatar">{session.user.displayName.slice(0, 2).toUpperCase()}</div>
             <div>
@@ -965,10 +948,6 @@ export function Workspace({ session, onLogout }: { session: Session; onLogout: (
             <span className="system-status" title="Workspace status">
               <i /> K&amp;B workspace
             </span>
-            <div className="preference-controls">
-              <label className="language-control" title="App language"><span>🌐</span><select aria-label="App language" value={language} onChange={event => setLanguage(event.target.value as 'en' | 'hi' | 'gu')}><option value="en">English</option><option value="hi">हिन्दी</option><option value="gu">ગુજરાતી</option></select></label>
-              <button className="theme-toggle" onClick={toggleTheme} title={theme === 'dark' ? 'Switch to day mode' : 'Switch to night mode'} aria-label={theme === 'dark' ? 'Switch to day mode' : 'Switch to night mode'}>{theme === 'dark' ? '☀️' : '🌙'}<span>{theme === 'dark' ? 'Day' : 'Night'}</span></button>
-            </div>
             <div className="notification-anchor" ref={notificationAnchorRef}>
               <button className="icon-button notification-bell" onClick={() => setNotificationsOpen(open => !open)} aria-label="Open notifications">
                 <Bell size={18}/>{notifications.filter(item=>!item.read).length>0 && <span className="notification-count">{Math.min(99,notifications.filter(item=>!item.read).length)}</span>}
@@ -1559,7 +1538,7 @@ export function Workspace({ session, onLogout }: { session: Session; onLogout: (
       {complaintPreview && <Modal title={complaintPreview.name} subtitle="Complaint attachment" onClose={() => setComplaintPreview(null)}><div className="complaint-preview">{complaintPreview.mimeType.startsWith('video/') ? <video src={complaintPreview.dataUrl} controls playsInline /> : <img src={complaintPreview.dataUrl} alt={complaintPreview.name}/>}</div><div className="form-actions"><a className="btn secondary" href={complaintPreview.dataUrl} download={complaintPreview.name}>Download attachment</a><button type="button" className="btn primary" onClick={() => setComplaintPreview(null)}>Close</button></div></Modal>}
       {showStaff && <StaffModal onClose={() => setShowStaff(false)} onSave={createStaff} />}
       {showAdminModal && canManageAdmins && <AdminModal onClose={() => setShowAdminModal(false)} onSave={createAdmin} />}
-      {showAccountSettings && <AccountSettingsModal session={session} onClose={() => setShowAccountSettings(false)} onChangeUserId={async (currentPassword: string, userId: string) => { await changeAppUserId(currentPassword, userId); onLogout(); }} onChangePassword={async (currentPassword: string, newPassword: string) => { await changeAppPassword(currentPassword, newPassword); onLogout(); }} />}
+      {showAccountSettings && <AccountSettingsModal session={session} language={language} setLanguage={setLanguage} theme={theme} toggleTheme={toggleTheme} onEnableNotifications={async () => { if (Capacitor.isNativePlatform()) { const permission = await LocalNotifications.requestPermissions(); flash(permission.display === 'granted' ? 'Notifications enabled. You will receive new messages, assigned work and reminders while the app is running.' : 'Notifications are blocked. Enable them in Android settings.'); return; } if (typeof Notification === 'undefined') { flash('This browser does not support desktop notifications.'); return; } const permission = await Notification.requestPermission(); flash(permission === 'granted' ? 'Notifications enabled. You will receive new messages, assigned work and reminders while the app is open.' : 'Notifications are blocked. Enable them in your browser settings.'); }} onHelp={() => flash('Contact your K&B administrator for assistance.')} onClose={() => setShowAccountSettings(false)} onChangeUserId={async (currentPassword: string, userId: string) => { await changeAppUserId(currentPassword, userId); onLogout(); }} onChangePassword={async (currentPassword: string, newPassword: string) => { await changeAppPassword(currentPassword, newPassword); onLogout(); }} />}
       {showTask && <TaskModal staff={staff.filter(member => member.active)} onClose={() => setShowTask(false)} onSave={saveTask} />}
       {editStaffUserId && <StaffUsernameModal staff={editStaffUserId} onClose={() => setEditStaffUserId(null)} onSave={(userId: string) => saveStaffUserId(editStaffUserId, userId)} />}
       {resetStaff && <StaffPasswordModal staff={resetStaff} onClose={() => setResetStaff(null)} onSave={(password: string) => saveStaffPassword(resetStaff, password)} />}
@@ -1861,7 +1840,7 @@ function TaskModal({ staff, onClose, onSave }: any) {
     <div className="form-actions"><button type="button" className="btn secondary" onClick={onClose}>Cancel</button><button className="btn primary" disabled={busy || !staff.length}>{busy ? 'Assigning…' : 'Assign task'}</button></div>
   </form></Modal>;
 }
-function AccountSettingsModal({ session, onClose, onChangeUserId, onChangePassword }: any) {
+function AccountSettingsModal({ session, onClose, onChangeUserId, onChangePassword, language, setLanguage, theme, toggleTheme, onEnableNotifications, onHelp }: any) {
   const [currentPasswordForUserId, setCurrentPasswordForUserId] = useState('');
   const [currentPasswordForPassword, setCurrentPasswordForPassword] = useState('');
   const [newUserId, setNewUserId] = useState(session.user.userId);
@@ -1880,6 +1859,13 @@ function AccountSettingsModal({ session, onClose, onChangeUserId, onChangePasswo
   }
   return <Modal title="My account" subtitle={'Signed in as ' + session.user.displayName + ' · ' + session.user.role} onClose={onClose}>
     <div className="form-grid">
+      <section className="account-preferences">
+        <strong>App preferences</strong>
+        <label className="field"><span>Language</span><select value={language} onChange={event => setLanguage(event.target.value as 'en' | 'hi' | 'gu')}><option value="en">English</option><option value="hi">हिन्दी</option><option value="gu">ગુજરાતી</option></select></label>
+        <button type="button" className="btn secondary" onClick={toggleTheme}>{theme === 'dark' ? '☀️ Switch to day mode' : '🌙 Switch to night mode'}</button>
+        <button type="button" className="btn secondary" onClick={() => void onEnableNotifications()}><Bell size={15}/> Enable notifications</button>
+        <button type="button" className="btn secondary" onClick={onHelp}><CircleHelp size={15}/> Help centre</button>
+      </section>
       <form className="form-grid" onSubmit={submitUserId}>
         <Field label="Current password"><input type="password" required value={currentPasswordForUserId} onChange={e => setCurrentPasswordForUserId(e.target.value)} autoComplete="current-password" /></Field>
         <Field label="New user ID"><input required minLength={3} maxLength={32} pattern="[a-zA-Z0-9_-]{3,32}" value={newUserId} onChange={e => setNewUserId(e.target.value)} /></Field>
