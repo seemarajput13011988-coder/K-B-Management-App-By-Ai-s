@@ -1,5 +1,5 @@
 import { Pencil, Trash2 } from 'lucide-react';
-import type { Customer } from '../types/models';
+import type { Customer } from '../../types/models';
 
 export function CustomerTable({ rows, onView, onEdit, onDelete, money, dateLabel, statusLabel }: { rows: Customer[]; onView: (customer: Customer) => void; onEdit?: (customer: Customer) => void; onDelete?: (customer: Customer) => void; money: (value: number) => string; dateLabel: (value: string) => string; statusLabel: (value: unknown) => Customer['status'] }) {
   return (
@@ -37,7 +37,7 @@ export function CustomerTable({ rows, onView, onEdit, onDelete, money, dateLabel
               <td data-label="Plan">{c.plan}</td>
               <td data-label="Monthly fee" className="amount">{money(c.monthlyFee)}</td>
               <td data-label="Status">
-                <span className={'status ' + statusLabel(c.status).toLowerCase()} aria-label={'Customer status: ' + customerStatusLabel(c.status)}>
+                <span className={'status ' + statusLabel(c.status).toLowerCase()} aria-label={'Customer status: ' + statusLabel(c.status)}>
                   {customerStatusLabel(c.status)}
                 </span>
               </td>
