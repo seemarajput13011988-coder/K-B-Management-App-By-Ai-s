@@ -2025,17 +2025,17 @@ function StaffModal({ onClose, onSave }: any) {
     }
   }
   return <Modal className="staff-create-modal" title="Create staff account" subtitle="Complete all three fields, then use the button below to add this team member." onClose={onClose}>
-    <form className="form-grid staff-create-form" onSubmit={submitStaffForm}>
+    <form id="staff-create-form" className="form-grid staff-create-form" onSubmit={submitStaffForm}>
       <Field label="Staff full name"><input required maxLength={80} autoComplete="name" value={form.displayName} onChange={e => setForm({ ...form, displayName: e.target.value })} /></Field>
       <Field label="Staff user ID"><input required minLength={3} maxLength={32} pattern="[a-zA-Z0-9_-]{3,32}" autoComplete="username" value={form.userId} onChange={e => setForm({ ...form, userId: e.target.value })} /></Field>
       <Field label="Temporary password" wide><input required type="password" minLength={10} autoComplete="new-password" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} /></Field>
       <p className="form-hint">Use at least 10 characters and share it privately. Admin can reset it from Staff if needed.</p>
       {error && <p className="staff-create-error" role="alert">{error}</p>}
-      <div className="form-actions staff-create-actions">
-        <button type="button" className="btn secondary" onClick={onClose} disabled={busy}>Cancel</button>
-        <button type="submit" className="btn primary" disabled={busy || !form.displayName.trim() || !form.userId.trim() || form.password.length < 10}>{busy ? 'Creating…' : 'Add Staff'}</button>
-      </div>
     </form>
+    <div className="form-actions staff-create-actions">
+      <button type="button" className="btn secondary" onClick={onClose} disabled={busy}>Cancel</button>
+      <button type="submit" form="staff-create-form" className="btn primary" disabled={busy || !form.displayName.trim() || !form.userId.trim() || form.password.length < 10}>{busy ? 'Creating…' : 'Add Staff'}</button>
+    </div>
   </Modal>;
 }
 function StaffLocationResponder({ activeShift, userId }: { activeShift: boolean; userId: string }) {
