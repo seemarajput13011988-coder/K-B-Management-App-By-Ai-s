@@ -1,5 +1,5 @@
 import { Pencil, Trash2 } from 'lucide-react';
-import type { Payment } from '../types/models';
+import type { Payment } from '../../types/models';
 
 export function PaymentTable({ rows, isAdmin = false, onEdit, onDelete, money, dateLabel }: { rows: Payment[]; isAdmin?: boolean; onEdit?: (payment: Payment) => void; onDelete?: (payment: Payment) => void; money: (value: number) => string; dateLabel: (value: string) => string }) {
   return (
