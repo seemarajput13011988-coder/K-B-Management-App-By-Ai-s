@@ -506,3 +506,49 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
   .finance-metrics article { min-width:0; padding:11px; }
   .finance-metrics strong { font-size:clamp(16px,5vw,21px); }
 }
+
+
+/* Phase 7 — accessibility and interaction refinement.
+   Visual-only safeguards: no routes, data, handlers, or feature visibility change. */
+:where(button, a, input, select, textarea, [role="button"], [tabindex]:not([tabindex="-1"])):focus-visible {
+  outline: 3px solid rgba(233,149,56,.78);
+  outline-offset: 3px;
+}
+:where(button, a, [role="button"]):focus:not(:focus-visible) {
+  outline: none;
+}
+:where(button, [role="button"]) {
+  -webkit-tap-highlight-color: transparent;
+}
+:where(button, input, select, textarea):disabled,
+:where([aria-disabled="true"]) {
+  cursor: not-allowed;
+  opacity: .62;
+}
+:where(input, select, textarea)::placeholder {
+  color: #8291a4;
+  opacity: 1;
+}
+[data-theme="dark"] :where(input, select, textarea)::placeholder {
+  color: #9aabc1;
+}
+:where(.page-heading, .panel, .ops-panel, .finance-panel, .calendar-panel, [id]) {
+  scroll-margin-top: calc(76px + env(safe-area-inset-top, 0px));
+}
+@media (max-width:700px) {
+  :where(button, a, [role="button"]) {
+    touch-action: manipulation;
+  }
+  :where(.icon-button, .hamburger, .theme-toggle, .language-control, .mobile-close) {
+    min-width: 40px;
+    min-height: 40px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}
