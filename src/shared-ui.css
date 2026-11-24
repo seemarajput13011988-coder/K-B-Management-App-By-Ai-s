@@ -589,3 +589,61 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
   outline: 2px solid var(--kb-focus, rgba(233,149,56,.72)) !important;
   outline-offset: 2px;
 }
+
+
+/* Form action controls across non-modal workspaces. */
+.inventory-form-actions,
+.installation-form-actions,
+.subscription-form-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 9px;
+  width: 100%;
+  margin-top: 10px;
+}
+.inventory-form-actions .btn,
+.installation-form-actions .btn,
+.subscription-form-actions .btn {
+  min-height: 44px;
+  min-width: 112px;
+}
+.finance-expense-form > .btn,
+.ops-form > .btn,
+.group-message-form > .btn {
+  min-height: 44px;
+  max-width: 100%;
+}
+.invoice-submit {
+  position: sticky;
+  bottom: 0;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 12px 0 calc(8px + env(safe-area-inset-bottom,0px));
+  border-top: 1px solid var(--kb-line,#e4eaf2);
+  background: var(--kb-surface,#fff);
+}
+.invoice-submit .btn { min-height: 46px; }
+@media(max-width:700px) {
+  .inventory-form-actions,
+  .installation-form-actions,
+  .subscription-form-actions {
+    justify-content: stretch;
+  }
+  .inventory-form-actions .btn,
+  .installation-form-actions .btn,
+  .subscription-form-actions .btn {
+    flex: 1 1 130px;
+  }
+  .invoice-submit { align-items: stretch; }
+  .invoice-submit > .btn { width: 100%; }
+}
+[data-theme="dark"] .invoice-submit {
+  background: var(--kb-surface,#17263b);
+  border-color: var(--kb-line,#2b3d56);
+}
