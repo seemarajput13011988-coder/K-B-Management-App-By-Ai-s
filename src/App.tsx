@@ -72,10 +72,10 @@ type AppNotification={id:string;title:string;message:string;createdAt:string;rea
 type RetentionReviewItem={id:string;collection:string;collectionLabel:string;recordLabel:string;createdAt:string};
 type StaffRegistrationRequest={id:string;userId:string;displayName:string;phone?:string;reason?:string;status:'pending'|'approved'|'rejected';createdAt:string;reviewedAt?:string;};
 type PortalConnectionRequest = { id: string; name?: string; phone?: string; plan?: string; planName?: string; monthlyFee?: number; address?: string; city?: string; state?: string; pincode?: string; notes?: string; status: string; createdAt?: string; updatedAt?: string; reviewedAt?: string };
-type PortalPlanChangeRequest = { id: string; customerName?: string; phone?: string; currentPlan?: string; requestedPlan?: string; currentMonthlyFee?: number; requestedMonthlyFee?: number; status: string; createdAt?: string; updatedAt?: string };
+type PortalPlanChangeRequest = { id: string; customerName?: string; phone?: string; currentPlan?: string; requestedPlan?: string; currentMonthlyFee?: number; requestedMonthlyFee?: number; status: string; createdAt?: string; updatedAt?: string; reviewedAt?: string };
 type StaffInventoryItem = { id: string; name: string; sku: string; category: string; quantity: number; unit: string; location?: string; assignedTo?: string; createdAt?: string };
-type StaffInstallationSummary = { id: string; customerName: string; assignedTo?: string; scheduledDate?: string; status?: string };
-type StaffPayrollSummary = { id: string; staffUserId: string; staffName: string; paidAt?: string; period?: string; amount: number; method?: string };
+type StaffInstallationSummary = { id: string; customerName: string; assignedTo?: string; scheduledDate?: string; status?: string; type?: string; address?: string; createdAt?: string; updatedAt?: string };
+type StaffPayrollSummary = { id: string; staffUserId: string; staffName: string; paidAt?: string; period?: string; amount: number; method?: string; createdAt?: string; recordedByName?: string };
 type StaffHolidayRequest={id:string;userId:string;displayName:string;startDate:string;endDate:string;reason:string;status:'pending'|'approved'|'rejected';createdAt:string;reviewedAt?:string;reviewedByName?:string};
 const getToken=()=>getSession()?.token || '';
 const api = client;
@@ -143,7 +143,7 @@ const customerStatusLabel = (value: unknown): Customer['status'] => {
   if (['inactive', 'disconnected', 'disabled', 'offline'].includes(status)) return 'Inactive';
   return 'Unknown';
 };
-const dateLabel = (s: string) =>
+const dateLabel = (s?: string) =>
   s
     ? new Date(s).toLocaleDateString('en-IN', {
         day: '2-digit',
@@ -250,6 +250,12 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   const [mobileNav, setMobileNav] = useState(false);
   const [showMoreNav, setShowMoreNav] = useState(false);
   const [showMoreSheet, setShowMoreSheet] = useState(false);
+
+
+
+  const [retentionItems, setRetentionItems] = useState<RetentionReviewItem[]>([]);
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
   useEffect(() => registerBackButton(() => {
     if (showMoreSheet) { setShowMoreSheet(false); return true; }
     if (notificationsOpen) { setNotificationsOpen(false); return true; }
@@ -273,13 +279,6 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
     if (page !== 'Overview') { setPage('Overview'); return true; }
     return false;
   }), [showMoreSheet, notificationsOpen, mobileNav, showAccountSettings, showCustomer, showPlan, showPayment, showComplaint, showTask, showStaff, showAdminModal, permissionSetupOpen, completingTask, taskPreview, complaintPreview, attendanceEdit, selected, resetStaff, editStaffUserId, page]);
-
-
-
-
-  const [retentionItems, setRetentionItems] = useState<RetentionReviewItem[]>([]);
-  const [notifications, setNotifications] = useState<AppNotification[]>([]);
-  const [notificationsOpen, setNotificationsOpen] = useState(false);
   const notificationAnchorRef = useRef<HTMLDivElement | null>(null);
   const noticeTimerRef = useRef<number | null>(null);
   const seenNotifications = useRef<Set<string> | null>(null);
