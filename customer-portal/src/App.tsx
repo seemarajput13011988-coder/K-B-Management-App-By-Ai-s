@@ -133,13 +133,13 @@ function App() {
 
   useEffect(() => {
     let active = true;
-    api.get('/api/portal-content').then(response => {
-      if (active && response.data?.plans && response.data?.heroImages) {
-        setPortalContent(response.data as PortalContent);
-        setPlanSource(response.data.planSource === 'management-nexus' ? 'management-nexus' : 'legacy-fallback');
-        if (Array.isArray(response.data.plans) && response.data.plans.length) {
-          setSelectedPlan(current => response.data.plans.find((plan: Plan) => plan.id === current.id) || response.data.plans[0]);
-        }
+    api.get('/api/portal/plans').then(response => {
+      if (!active) return;
+      const items = Array.isArray(response.data?.items) ? response.data.items as Plan[] : [];
+      setPortalContent({ ...defaultPortalContent, plans: items });
+      setPlanSource('management-nexus');
+      if (items.length) {
+        setSelectedPlan(current => items.find(plan => plan.id === current.id) || items[0]);
       }
     }).catch(() => {
       if (active) setPlanSource('legacy-fallback');
@@ -244,7 +244,7 @@ function App() {
     }
     setBookingSubmitting(true);
     try {
-      const response = await api.post('/api/management/connection-requests', {
+      const response = await api.post('/api/portal/connection-requests', {
         name: bookingFullName.trim(),
         phone: bookingPhone,
         state: bookingState.trim(),
@@ -299,7 +299,7 @@ function App() {
     setComplaintMessage('');
     try {
       const dataBase64 = await readFileAsBase64(complaintPhoto);
-      const response = await api.post('/api/management/complaints', {
+      const response = await api.post('/api/portal/complaints', {
         phone: complaintPhone,
         subject: complaintType,
         details: complaintText.trim(),
